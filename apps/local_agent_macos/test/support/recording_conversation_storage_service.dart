@@ -18,6 +18,7 @@ final class RecordingConversationStorageService
   final List<String> lifecycle = <String>[];
 
   Completer<void>? userSaveGate;
+  Object? terminalSaveError;
 
   @override
   Future<List<Turn>> loadTurns(ConversationId conversationId) async {
@@ -40,6 +41,10 @@ final class RecordingConversationStorageService
     Turn turn,
     Generation generation,
   ) async {
+    final Object? error = terminalSaveError;
+    if (error != null) {
+      throw error;
+    }
     assistantTurns.add(SavedAssistantTurn(turn: turn, generation: generation));
     lifecycle.add('assistant-saved');
   }

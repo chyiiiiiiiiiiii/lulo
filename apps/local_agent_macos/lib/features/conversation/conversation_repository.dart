@@ -131,23 +131,47 @@ final class _GenerationOperation {
     }
 
     _terminal = true;
+    await _cancelGeneration(generation, publishCancellation: true);
+  }
+
+  Future<void> onListenerCancelled() async {
+    if (_terminal || _finished) {
+      return;
+    }
+
+    _terminal = true;
+    final Generation? generation = _generation;
+    if (generation != null) {
+      await _cancelGeneration(generation, publishCancellation: false);
+      return;
+    }
     try {
       await _subscription?.cancel();
-      await _inferenceService.cancel(generation.id);
     } finally {
-      await _persistTerminal(
-        generation: generation,
-        status: TurnStatus.cancelled,
-      );
-      if (!_controller.isClosed) {
-        _controller.add(GenerationCancelled(generation.id));
-      }
       await _finish();
     }
   }
 
-  Future<void> onListenerCancelled() async {
-    await _subscription?.cancel();
+  Future<void> _cancelGeneration(
+    Generation generation, {
+    required bool publishCancellation,
+  }) async {
+    try {
+      await _subscription?.cancel();
+      await _inferenceService.cancel(generation.id);
+    } finally {
+      try {
+        await _persistTerminal(
+          generation: generation,
+          status: TurnStatus.cancelled,
+        );
+        if (publishCancellation && !_controller.isClosed) {
+          _controller.add(GenerationCancelled(generation.id));
+        }
+      } finally {
+        await _finish();
+      }
+    }
   }
 
   void _receiveEvent(GenerationEvent event) {
@@ -257,10 +281,28 @@ final class _GenerationOperation {
   }
 
   void _receiveDone() {
-    if (!_terminal) {
+    if (_terminal) {
+      return;
+    }
+
+    final Generation? generation = _generation;
+    if (generation == null) {
       _terminal = true;
       unawaited(_finish());
+      return;
     }
+
+    unawaited(
+      _finishFromEvent(
+        GenerationFailed(
+          generationId: generation.id,
+          failure: const ConversationFailure(
+            'Inference ended before a terminal event.',
+          ),
+        ),
+        TurnStatus.failed,
+      ),
+    );
   }
 
   Future<void> _finish() async {
