@@ -4,6 +4,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:local_agent_macos/features/conversation/conversation_repository.dart';
 import 'package:local_agent_macos/features/conversation/conversation_view.dart';
 import 'package:local_agent_macos/features/conversation/conversation_view_model.dart';
+import 'package:local_agent_macos/features/presence/agent_presence_controller.dart';
+import 'package:local_agent_macos/features/presence/agent_presence_state.dart';
 
 import '../../support/controlled_inference_service.dart';
 import '../../support/recording_conversation_storage_service.dart';
@@ -69,6 +71,106 @@ void main() {
 
     inference.emit(const GenerationCompleted(GenerationId('generation-1')));
     await tester.pumpAndSettle();
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets('state and amplitude updates repaint only the presence orb', (
+    WidgetTester tester,
+  ) async {
+    final ConversationBuildObserver observer = ConversationBuildObserver();
+    final _ViewHarness harness = _ViewHarness();
+    await tester.pumpWidget(
+      harness.app(observer: observer, disableAnimations: true),
+    );
+    await tester.pump();
+    final AgentPresenceController controller =
+        observer.agentPresenceController!;
+    observer.reset();
+
+    controller.dispatch(
+      AgentPresenceEvent.listeningStarted,
+      const Duration(milliseconds: 1),
+    );
+    await tester.pump();
+
+    expect(observer.agentPresenceOrbPaints, 1);
+    expect(observer.agentPresenceSemanticBuilds, 1);
+    _expectConversationCountersAreZero(observer);
+
+    observer.reset();
+    controller.acceptAudioRms(0, const Duration(milliseconds: 16));
+    controller.acceptAudioRms(0.42, const Duration(milliseconds: 71));
+    await tester.pump();
+
+    expect(observer.agentPresenceOrbPaints, 1);
+    expect(observer.agentPresenceSemanticBuilds, 0);
+    _expectConversationCountersAreZero(observer);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    expect(
+      () => controller.semanticStateListenable.addListener(() {}),
+      throwsFlutterError,
+    );
+  });
+
+  testWidgets(
+    'conversation projection maps thinking then first delta to speaking once',
+    (WidgetTester tester) async {
+      final ConversationBuildObserver observer = ConversationBuildObserver();
+      final _ViewHarness harness = _ViewHarness();
+      await tester.pumpWidget(harness.app(observer: observer));
+
+      expect(find.text('Agent ready'), findsOneWidget);
+      await harness.start();
+      await tester.pump();
+      expect(find.text('Thinking'), findsOneWidget);
+
+      harness.inference.emit(
+        const GenerationDelta(
+          generationId: GenerationId('generation-1'),
+          delta: 'A',
+        ),
+      );
+      await tester.pump();
+      expect(find.text('Speaking'), findsOneWidget);
+
+      observer.reset();
+      harness.inference.emit(
+        const GenerationDelta(
+          generationId: GenerationId('generation-1'),
+          delta: 'B',
+        ),
+      );
+      await tester.pump();
+
+      expect(observer.agentPresenceSemanticBuilds, 0);
+      expect(find.text('Speaking'), findsOneWidget);
+
+      harness.inference.emit(
+        const GenerationCompleted(GenerationId('generation-1')),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('Agent ready'), findsOneWidget);
+      await tester.pumpWidget(const SizedBox.shrink());
+    },
+  );
+
+  testWidgets('last failed assistant turn maps to attention needed', (
+    WidgetTester tester,
+  ) async {
+    final ConversationBuildObserver observer = ConversationBuildObserver();
+    final _ViewHarness harness = _ViewHarness();
+    await tester.pumpWidget(harness.app(observer: observer));
+    await harness.start();
+    harness.inference.emit(
+      const GenerationFailed(
+        generationId: GenerationId('generation-1'),
+        failure: ConversationFailure('runtime failed'),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.text('Attention needed'), findsOneWidget);
     await tester.pumpWidget(const SizedBox.shrink());
   });
 
@@ -140,8 +242,18 @@ final class _ViewHarness {
     idFactory: () => const ConversationId('conversation-1'),
   );
 
-  Widget app() =>
-      MaterialApp(home: ConversationView(viewModelFactory: () => viewModel));
+  Widget app({
+    ConversationBuildObserver? observer,
+    bool disableAnimations = false,
+  }) => MaterialApp(
+    home: MediaQuery(
+      data: MediaQueryData(disableAnimations: disableAnimations),
+      child: ConversationView(
+        viewModelFactory: () => viewModel,
+        buildObserver: observer,
+      ),
+    ),
+  );
 
   Future<void> start() async {
     await viewModel.submit('Hello');
@@ -158,4 +270,13 @@ final class _ViewHarness {
       ),
     );
   }
+}
+
+void _expectConversationCountersAreZero(ConversationBuildObserver observer) {
+  expect(observer.chromeBuilds, 0);
+  expect(observer.conversationListBuilds, 0);
+  expect(observer.completedTurnsBuilds, 0);
+  expect(observer.activeStreamingTurnBuilds, 0);
+  expect(observer.composerBuilds, 0);
+  expect(observer.modelStatusBuilds, 0);
 }

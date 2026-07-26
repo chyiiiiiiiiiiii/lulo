@@ -1,5 +1,9 @@
+import 'package:agent_core/agent_core.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
+import '../presence/agent_presence_controller.dart';
+import '../presence/agent_presence_header.dart';
 import 'conversation_view_model.dart';
 import 'widgets/conversation_composer.dart';
 import 'widgets/conversation_list.dart';
@@ -24,6 +28,15 @@ final class ConversationBuildObserver {
   /// Reserved count for model-status builds.
   int modelStatusBuilds = 0;
 
+  /// Number of presence-orb paints.
+  int agentPresenceOrbPaints = 0;
+
+  /// Number of narrow presence semantic builds.
+  int agentPresenceSemanticBuilds = 0;
+
+  /// Feature-local controller exposed only to rendering-isolation tests.
+  AgentPresenceController? agentPresenceController;
+
   /// Resets all counters after the initial layout is established.
   void reset() {
     chromeBuilds = 0;
@@ -32,6 +45,8 @@ final class ConversationBuildObserver {
     activeStreamingTurnBuilds = 0;
     composerBuilds = 0;
     modelStatusBuilds = 0;
+    agentPresenceOrbPaints = 0;
+    agentPresenceSemanticBuilds = 0;
   }
 }
 
@@ -78,7 +93,18 @@ final class _ConversationViewState extends State<ConversationView> {
       body: SafeArea(
         child: Column(
           children: <Widget>[
-            const _ConversationChrome(),
+            _ConversationChrome(
+              completedTurns: _viewModel.completedTurnsListenable,
+              activeTurn: _viewModel.activeTurnListenable,
+              onPresenceControllerCreated:
+                  (AgentPresenceController controller) =>
+                      widget.buildObserver?.agentPresenceController =
+                          controller,
+              onPresenceOrbPaint: () =>
+                  widget.buildObserver?.agentPresenceOrbPaints += 1,
+              onPresenceSemanticBuild: () =>
+                  widget.buildObserver?.agentPresenceSemanticBuilds += 1,
+            ),
             Expanded(
               child: ConversationList(
                 completedTurns: _viewModel.completedTurnsListenable,
@@ -105,7 +131,19 @@ final class _ConversationViewState extends State<ConversationView> {
 }
 
 final class _ConversationChrome extends StatelessWidget {
-  const _ConversationChrome();
+  const _ConversationChrome({
+    required this.completedTurns,
+    required this.activeTurn,
+    required this.onPresenceControllerCreated,
+    required this.onPresenceOrbPaint,
+    required this.onPresenceSemanticBuild,
+  });
+
+  final ValueListenable<List<Turn>> completedTurns;
+  final ValueListenable<Turn?> activeTurn;
+  final AgentPresenceControllerCallback onPresenceControllerCreated;
+  final VoidCallback onPresenceOrbPaint;
+  final VoidCallback onPresenceSemanticBuild;
 
   @override
   Widget build(BuildContext context) => Padding(
@@ -113,6 +151,14 @@ final class _ConversationChrome extends StatelessWidget {
     child: Row(
       children: <Widget>[
         Text('Pocket Agent', style: Theme.of(context).textTheme.titleMedium),
+        const SizedBox(width: 12),
+        AgentPresenceHeader(
+          completedTurns: completedTurns,
+          activeTurn: activeTurn,
+          onControllerCreated: onPresenceControllerCreated,
+          onOrbPaint: onPresenceOrbPaint,
+          onSemanticBuild: onPresenceSemanticBuild,
+        ),
         const Spacer(),
         Semantics(
           label: 'Local model',
