@@ -197,5 +197,27 @@ void main() {
       expect(semanticNotifications, 0);
       expect(visualNotifications, 0);
     });
+
+    test('conversation projection publishes only each direct target state', () {
+      final AgentPresenceController controller = AgentPresenceController();
+      final List<AgentPresenceState> publishedStates = <AgentPresenceState>[];
+      controller.semanticStateListenable.addListener(() {
+        publishedStates.add(controller.semanticStateListenable.value);
+      });
+
+      controller.projectConversationState(
+        AgentPresenceProjectionState.thinking,
+        Duration.zero,
+      );
+      controller.projectConversationState(
+        AgentPresenceProjectionState.idle,
+        const Duration(milliseconds: 200),
+      );
+
+      expect(publishedStates, <AgentPresenceState>[
+        AgentPresenceState.thinking,
+        AgentPresenceState.idle,
+      ]);
+    });
   });
 }

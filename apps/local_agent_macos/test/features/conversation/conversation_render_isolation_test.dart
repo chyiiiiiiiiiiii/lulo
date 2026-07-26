@@ -29,12 +29,16 @@ void main() {
     viewModel.addListener(() => broadNotifications += 1);
     await tester.pumpWidget(
       MaterialApp(
-        home: ConversationView(
-          viewModelFactory: () => viewModel,
-          buildObserver: observer,
+        home: MediaQuery(
+          data: const MediaQueryData(disableAnimations: true),
+          child: ConversationView(
+            viewModelFactory: () => viewModel,
+            buildObserver: observer,
+          ),
         ),
       ),
     );
+    await tester.pump();
     await viewModel.submit('Hello');
     await inference.requestReceived;
     inference.emit(
@@ -66,6 +70,8 @@ void main() {
     expect(observer.conversationListBuilds, 0);
     expect(observer.chromeBuilds, 0);
     expect(observer.modelStatusBuilds, 0);
+    expect(observer.agentPresenceOrbPaints, 1);
+    expect(observer.agentPresenceSemanticBuilds, 1);
     expect(broadNotifications, 0);
     expect(find.text('A'), findsOneWidget);
 
@@ -114,17 +120,29 @@ void main() {
   });
 
   testWidgets(
-    'conversation projection maps thinking then first delta to speaking once',
+    'conversation projection publishes only direct lifecycle states',
     (WidgetTester tester) async {
       final ConversationBuildObserver observer = ConversationBuildObserver();
       final _ViewHarness harness = _ViewHarness();
-      await tester.pumpWidget(harness.app(observer: observer));
+      await tester.pumpWidget(
+        harness.app(observer: observer, disableAnimations: true),
+      );
+      final AgentPresenceController controller =
+          observer.agentPresenceController!;
+      final List<AgentPresenceState> publishedStates = <AgentPresenceState>[];
+      controller.semanticStateListenable.addListener(() {
+        publishedStates.add(controller.semanticStateListenable.value);
+      });
 
       expect(find.text('Agent ready'), findsOneWidget);
       await harness.start();
       await tester.pump();
       expect(find.text('Thinking'), findsOneWidget);
+      expect(publishedStates, <AgentPresenceState>[
+        AgentPresenceState.thinking,
+      ]);
 
+      publishedStates.clear();
       harness.inference.emit(
         const GenerationDelta(
           generationId: GenerationId('generation-1'),
@@ -133,8 +151,12 @@ void main() {
       );
       await tester.pump();
       expect(find.text('Speaking'), findsOneWidget);
+      expect(publishedStates, <AgentPresenceState>[
+        AgentPresenceState.speaking,
+      ]);
 
       observer.reset();
+      publishedStates.clear();
       harness.inference.emit(
         const GenerationDelta(
           generationId: GenerationId('generation-1'),
@@ -144,16 +166,60 @@ void main() {
       await tester.pump();
 
       expect(observer.agentPresenceSemanticBuilds, 0);
+      expect(observer.agentPresenceOrbPaints, 0);
+      expect(observer.activeStreamingTurnBuilds, 1);
+      expect(observer.completedTurnsBuilds, 0);
+      expect(observer.composerBuilds, 0);
+      expect(observer.conversationListBuilds, 0);
+      expect(observer.chromeBuilds, 0);
+      expect(observer.modelStatusBuilds, 0);
+      expect(publishedStates, isEmpty);
       expect(find.text('Speaking'), findsOneWidget);
 
+      publishedStates.clear();
       harness.inference.emit(
         const GenerationCompleted(GenerationId('generation-1')),
       );
       await tester.pumpAndSettle();
       expect(find.text('Agent ready'), findsOneWidget);
+      expect(publishedStates, <AgentPresenceState>[AgentPresenceState.idle]);
+      expect(publishedStates, isNot(contains(AgentPresenceState.listening)));
+      expect(publishedStates, isNot(contains(AgentPresenceState.working)));
       await tester.pumpWidget(const SizedBox.shrink());
     },
   );
+
+  testWidgets('empty response returns from thinking directly to idle', (
+    WidgetTester tester,
+  ) async {
+    final ConversationBuildObserver observer = ConversationBuildObserver();
+    final _ViewHarness harness = _ViewHarness();
+    await tester.pumpWidget(
+      harness.app(observer: observer, disableAnimations: true),
+    );
+    final AgentPresenceController controller =
+        observer.agentPresenceController!;
+    final List<AgentPresenceState> publishedStates = <AgentPresenceState>[];
+    controller.semanticStateListenable.addListener(() {
+      publishedStates.add(controller.semanticStateListenable.value);
+    });
+
+    await harness.start();
+    await tester.pump();
+    harness.inference.emit(
+      const GenerationCompleted(GenerationId('generation-1')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(publishedStates, <AgentPresenceState>[
+      AgentPresenceState.thinking,
+      AgentPresenceState.idle,
+    ]);
+    expect(publishedStates, isNot(contains(AgentPresenceState.listening)));
+    expect(publishedStates, isNot(contains(AgentPresenceState.speaking)));
+    expect(publishedStates, isNot(contains(AgentPresenceState.working)));
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
 
   testWidgets('last failed assistant turn maps to attention needed', (
     WidgetTester tester,

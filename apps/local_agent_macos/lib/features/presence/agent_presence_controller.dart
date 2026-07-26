@@ -76,12 +76,27 @@ final class AgentPresenceController {
     if (identical(next, _snapshot)) {
       return;
     }
+    _applySnapshot(next, now);
+  }
 
-    _snapshot = next;
-    if (_semanticStateNotifier.value != next.state) {
-      _semanticStateNotifier.value = next.state;
+  /// Projects a conversation-derived state without fabricating event states.
+  void projectConversationState(
+    AgentPresenceProjectionState state,
+    Duration now,
+  ) {
+    if (_isDisposed) {
+      return;
     }
-    _publishVisual(now);
+
+    final AgentPresenceSnapshot next = _reducer.projectConversationState(
+      _snapshot,
+      state: state,
+      now: now,
+    );
+    if (identical(next, _snapshot)) {
+      return;
+    }
+    _applySnapshot(next, now);
   }
 
   /// Accepts one normalized RMS [rms] sample at monotonic [now].
@@ -141,5 +156,13 @@ final class AgentPresenceController {
       amplitude: _amplitude,
       sampledAt: now,
     );
+  }
+
+  void _applySnapshot(AgentPresenceSnapshot next, Duration now) {
+    _snapshot = next;
+    if (_semanticStateNotifier.value != next.state) {
+      _semanticStateNotifier.value = next.state;
+    }
+    _publishVisual(now);
   }
 }

@@ -57,6 +57,46 @@ void main() {
       expect(find.text('Attention needed'), findsOneWidget);
     });
 
+    for (final _MotionCase motionCase in <_MotionCase>[
+      const _MotionCase(
+        name: 'idle',
+        state: AgentPresenceState.idle,
+        disableAnimations: false,
+      ),
+      const _MotionCase(
+        name: 'error',
+        state: AgentPresenceState.error,
+        disableAnimations: false,
+      ),
+      const _MotionCase(
+        name: 'reduced motion',
+        state: AgentPresenceState.listening,
+        disableAnimations: true,
+      ),
+    ]) {
+      testWidgets('${motionCase.name} does not schedule ticker paints', (
+        WidgetTester tester,
+      ) async {
+        final AgentPresenceController controller = AgentPresenceController();
+        addTearDown(controller.dispose);
+        _dispatchState(controller, motionCase.state);
+        var paints = 0;
+        await tester.pumpWidget(
+          _app(
+            controller: controller,
+            disableAnimations: motionCase.disableAnimations,
+            onPaint: () => paints += 1,
+          ),
+        );
+        await tester.pump();
+        paints = 0;
+
+        await tester.pump(const Duration(seconds: 1));
+
+        expect(paints, 0);
+      });
+    }
+
     testWidgets('state and amplitude updates repaint only the orb boundary', (
       WidgetTester tester,
     ) async {
@@ -171,4 +211,16 @@ final class _SemanticCase {
 
   final AgentPresenceState state;
   final String label;
+}
+
+final class _MotionCase {
+  const _MotionCase({
+    required this.name,
+    required this.state,
+    required this.disableAnimations,
+  });
+
+  final String name;
+  final AgentPresenceState state;
+  final bool disableAnimations;
 }

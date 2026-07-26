@@ -19,6 +19,21 @@ enum AgentPresenceState {
   error,
 }
 
+/// Conversation-derived states that may be projected without fabricated events.
+enum AgentPresenceProjectionState {
+  /// No active response and no failed terminal assistant turn.
+  idle,
+
+  /// An active response exists but has no content yet.
+  thinking,
+
+  /// The active response has received its first non-empty content.
+  speaking,
+
+  /// The last terminal assistant turn failed.
+  error,
+}
+
 /// An explicit presentation input for [AgentPresenceReducer].
 enum AgentPresenceEvent {
   /// Requests the idle state when the current state permits it.
@@ -287,6 +302,30 @@ final class AgentPresenceReducer {
   }) {
     final _Transition? transition = _transitionTable[snapshot.state]?[event];
     if (transition == null || transition.state == snapshot.state) {
+      return snapshot;
+    }
+    return AgentPresenceSnapshot._(
+      state: transition.state,
+      sourceWeights: snapshot.weightsAt(now),
+      transitionStartedAt: now,
+      transitionDuration: transition.duration,
+    );
+  }
+
+  /// Projects one conversation-derived target without traversing event states.
+  AgentPresenceSnapshot projectConversationState(
+    AgentPresenceSnapshot snapshot, {
+    required AgentPresenceProjectionState state,
+    required Duration now,
+  }) {
+    final _Transition transition = switch (state) {
+      AgentPresenceProjectionState.idle => _Transition.idle,
+      AgentPresenceProjectionState.thinking =>
+        _Transition.thinkingFromTranscript,
+      AgentPresenceProjectionState.speaking => _Transition.speaking,
+      AgentPresenceProjectionState.error => _Transition.error,
+    };
+    if (transition.state == snapshot.state) {
       return snapshot;
     }
     return AgentPresenceSnapshot._(

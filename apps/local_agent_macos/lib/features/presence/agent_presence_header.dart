@@ -81,11 +81,12 @@ final class _AgentPresenceHeaderState extends State<AgentPresenceHeader> {
   void _projectConversation() {
     final Turn? activeTurn = widget.activeTurn.value;
     if (activeTurn != null) {
-      if (activeTurn.text.isEmpty) {
-        _requestThinking();
-      } else {
-        _requestSpeaking();
-      }
+      _controller.projectConversationState(
+        activeTurn.text.isEmpty
+            ? AgentPresenceProjectionState.thinking
+            : AgentPresenceProjectionState.speaking,
+        _clock.elapsed,
+      );
       return;
     }
 
@@ -93,80 +94,16 @@ final class _AgentPresenceHeaderState extends State<AgentPresenceHeader> {
         .where((Turn turn) => turn.role == TurnRole.assistant)
         .lastOrNull;
     if (lastAssistantTurn?.status == TurnStatus.failed) {
-      _controller.dispatch(AgentPresenceEvent.failed, _clock.elapsed);
+      _controller.projectConversationState(
+        AgentPresenceProjectionState.error,
+        _clock.elapsed,
+      );
       return;
     }
-    _requestIdle();
-  }
-
-  void _requestThinking() {
-    switch (_controller.semanticStateListenable.value) {
-      case AgentPresenceState.idle:
-        _controller.dispatch(
-          AgentPresenceEvent.listeningStarted,
-          _clock.elapsed,
-        );
-        _controller.dispatch(
-          AgentPresenceEvent.transcriptCommitted,
-          _clock.elapsed,
-        );
-      case AgentPresenceState.listening:
-        _controller.dispatch(
-          AgentPresenceEvent.transcriptCommitted,
-          _clock.elapsed,
-        );
-      case AgentPresenceState.thinking:
-        return;
-      case AgentPresenceState.speaking:
-        _controller.dispatch(AgentPresenceEvent.speechStopped, _clock.elapsed);
-        _requestThinking();
-      case AgentPresenceState.working:
-        _controller.dispatch(AgentPresenceEvent.workCompleted, _clock.elapsed);
-      case AgentPresenceState.error:
-        _controller.dispatch(
-          AgentPresenceEvent.transcriptCommitted,
-          _clock.elapsed,
-        );
-    }
-  }
-
-  void _requestSpeaking() {
-    switch (_controller.semanticStateListenable.value) {
-      case AgentPresenceState.idle:
-      case AgentPresenceState.listening:
-        _requestThinking();
-        _requestSpeaking();
-      case AgentPresenceState.thinking:
-        _controller.dispatch(AgentPresenceEvent.speechStarted, _clock.elapsed);
-      case AgentPresenceState.speaking:
-        return;
-      case AgentPresenceState.working:
-        _controller.dispatch(AgentPresenceEvent.workCompleted, _clock.elapsed);
-        _requestSpeaking();
-      case AgentPresenceState.error:
-        _controller.dispatch(AgentPresenceEvent.speechStarted, _clock.elapsed);
-    }
-  }
-
-  void _requestIdle() {
-    switch (_controller.semanticStateListenable.value) {
-      case AgentPresenceState.idle:
-        return;
-      case AgentPresenceState.listening:
-      case AgentPresenceState.speaking:
-        _controller.dispatch(AgentPresenceEvent.speechStopped, _clock.elapsed);
-      case AgentPresenceState.thinking:
-        _controller.dispatch(AgentPresenceEvent.speechStarted, _clock.elapsed);
-        _controller.dispatch(AgentPresenceEvent.speechStopped, _clock.elapsed);
-      case AgentPresenceState.working:
-        _controller.dispatch(AgentPresenceEvent.workCompleted, _clock.elapsed);
-        _requestIdle();
-      case AgentPresenceState.error:
-        _controller.dispatch(
-          AgentPresenceEvent.errorAcknowledged,
-          _clock.elapsed,
-        );
-    }
+    _controller.projectConversationState(
+      AgentPresenceProjectionState.idle,
+      _clock.elapsed,
+    );
   }
 
   @override
