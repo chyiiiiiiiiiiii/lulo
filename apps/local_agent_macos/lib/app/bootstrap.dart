@@ -1,3 +1,4 @@
+import '../platform/pigeon_desktop_host_service.dart';
 import 'app_composition.dart';
 import 'fake_runtime.dart';
 
@@ -39,10 +40,13 @@ AppComposition createAppComposition({
       InMemoryConversationStorageService();
   final DeterministicFakeInferenceService inferenceService =
       DeterministicFakeInferenceService();
+  final PigeonDesktopHostService desktopHostService =
+      PigeonDesktopHostService();
   return AppComposition(
     () async {
       await inferenceService.dispose();
       storageService.dispose();
+      await desktopHostService.dispose();
     },
     storageService: storageService,
     inferenceService: inferenceService,
