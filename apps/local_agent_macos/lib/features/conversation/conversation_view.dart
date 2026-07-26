@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../presence/agent_presence_controller.dart';
 import '../presence/agent_presence_header.dart';
+import '../presence/agent_presence_orb.dart';
 import 'conversation_view_model.dart';
 import 'widgets/conversation_composer.dart';
 import 'widgets/conversation_list.dart';
@@ -56,6 +57,7 @@ final class ConversationView extends StatefulWidget {
   const ConversationView({
     required this.viewModelFactory,
     this.buildObserver,
+    this.presenceShaderLoader = loadAgentPresenceShader,
     super.key,
   });
 
@@ -64,6 +66,9 @@ final class ConversationView extends StatefulWidget {
 
   /// Optional render instrumentation used by tests.
   final ConversationBuildObserver? buildObserver;
+
+  /// Loads the presence shader, with deterministic substitution in tests.
+  final AgentPresenceShaderLoader presenceShaderLoader;
 
   /// Creates the state that owns the feature-scoped ViewModel.
   @override
@@ -104,6 +109,7 @@ final class _ConversationViewState extends State<ConversationView> {
                   widget.buildObserver?.agentPresenceOrbPaints += 1,
               onPresenceSemanticBuild: () =>
                   widget.buildObserver?.agentPresenceSemanticBuilds += 1,
+              presenceShaderLoader: widget.presenceShaderLoader,
             ),
             Expanded(
               child: ConversationList(
@@ -137,6 +143,7 @@ final class _ConversationChrome extends StatelessWidget {
     required this.onPresenceControllerCreated,
     required this.onPresenceOrbPaint,
     required this.onPresenceSemanticBuild,
+    required this.presenceShaderLoader,
   });
 
   final ValueListenable<List<Turn>> completedTurns;
@@ -144,6 +151,7 @@ final class _ConversationChrome extends StatelessWidget {
   final AgentPresenceControllerCallback onPresenceControllerCreated;
   final VoidCallback onPresenceOrbPaint;
   final VoidCallback onPresenceSemanticBuild;
+  final AgentPresenceShaderLoader presenceShaderLoader;
 
   @override
   Widget build(BuildContext context) => Padding(
@@ -158,6 +166,7 @@ final class _ConversationChrome extends StatelessWidget {
           onControllerCreated: onPresenceControllerCreated,
           onOrbPaint: onPresenceOrbPaint,
           onSemanticBuild: onPresenceSemanticBuild,
+          shaderLoader: presenceShaderLoader,
         ),
         const Spacer(),
         Semantics(

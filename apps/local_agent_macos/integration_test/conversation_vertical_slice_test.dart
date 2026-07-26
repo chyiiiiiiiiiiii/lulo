@@ -1,3 +1,5 @@
+import 'dart:ui' as ui;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
@@ -11,9 +13,16 @@ void main() {
     'fake runtime stops partial output then completes a second response',
     (WidgetTester tester) async {
       final composition = createAppComposition(inferenceRuntime: 'fake');
-      await tester.pumpWidget(LocalAgentApp(composition: composition));
+      await tester.pumpWidget(
+        LocalAgentApp(
+          composition: composition,
+          presenceShaderLoader: _failShaderLoad,
+        ),
+      );
+      await tester.pump();
 
       expect(find.text('Start a conversation'), findsOneWidget);
+      expect(find.byKey(const Key('agent-presence-fallback')), findsOneWidget);
 
       await tester.enterText(
         find.byKey(const Key('conversation-composer-field')),
@@ -64,4 +73,8 @@ void main() {
       await tester.pumpAndSettle();
     },
   );
+}
+
+Future<ui.FragmentProgram> _failShaderLoad() async {
+  throw UnsupportedError('Runtime shader rendering is outside this test.');
 }

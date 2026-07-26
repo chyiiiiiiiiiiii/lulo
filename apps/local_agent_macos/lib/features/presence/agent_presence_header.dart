@@ -19,6 +19,7 @@ final class AgentPresenceHeader extends StatefulWidget {
     this.onControllerCreated,
     this.onOrbPaint,
     this.onSemanticBuild,
+    this.shaderLoader = loadAgentPresenceShader,
     super.key,
   });
 
@@ -36,6 +37,9 @@ final class AgentPresenceHeader extends StatefulWidget {
 
   /// Optional semantic-build instrumentation used by isolation tests.
   final VoidCallback? onSemanticBuild;
+
+  /// Loads the presence shader, with deterministic substitution in tests.
+  final AgentPresenceShaderLoader shaderLoader;
 
   @override
   State<AgentPresenceHeader> createState() => _AgentPresenceHeaderState();
@@ -112,6 +116,7 @@ final class _AgentPresenceHeaderState extends State<AgentPresenceHeader> {
       controller: _controller,
       onPaint: widget.onOrbPaint,
       onSemanticBuild: widget.onSemanticBuild,
+      shaderLoader: widget.shaderLoader,
     );
   }
 }

@@ -3,15 +3,23 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../features/conversation/conversation_view.dart';
+import '../features/presence/agent_presence_orb.dart';
 import 'app_composition.dart';
 
 /// Root application widget that owns the application composition lifecycle.
 final class LocalAgentApp extends StatefulWidget {
   /// Creates the local agent application.
-  const LocalAgentApp({required this.composition, super.key});
+  const LocalAgentApp({
+    required this.composition,
+    this.presenceShaderLoader = loadAgentPresenceShader,
+    super.key,
+  });
 
   /// App-scoped dependency owner.
   final AppComposition composition;
+
+  /// Loads the presence shader, with deterministic substitution in tests.
+  final AgentPresenceShaderLoader presenceShaderLoader;
 
   @override
   State<LocalAgentApp> createState() => _LocalAgentAppState();
@@ -35,6 +43,7 @@ final class _LocalAgentAppState extends State<LocalAgentApp> {
       darkTheme: _theme(Brightness.dark, seed),
       home: ConversationView(
         viewModelFactory: widget.composition.createConversationViewModel,
+        presenceShaderLoader: widget.presenceShaderLoader,
       ),
     );
   }
