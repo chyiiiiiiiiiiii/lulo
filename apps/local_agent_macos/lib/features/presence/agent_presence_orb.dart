@@ -1,11 +1,21 @@
+import 'dart:ui' as ui;
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import 'agent_presence_controller.dart';
+import 'agent_presence_fallback_painter.dart';
 import 'agent_presence_state.dart';
 
 /// Paint instrumentation used by rendering-isolation tests.
 typedef AgentPresencePaintCallback = void Function();
+
+/// Loads the feature-local runtime shader program.
+typedef AgentPresenceShaderLoader = Future<ui.FragmentProgram> Function();
+
+/// Loads the bundled presence fragment program.
+Future<ui.FragmentProgram> loadAgentPresenceShader() =>
+    ui.FragmentProgram.fromAsset('shaders/agent_presence.frag');
 
 /// The local repaint and animation boundary for agent-presence visuals.
 final class AgentPresenceOrb extends StatefulWidget {
@@ -14,6 +24,7 @@ final class AgentPresenceOrb extends StatefulWidget {
     required this.controller,
     this.onPaint,
     this.onSemanticBuild,
+    this.shaderLoader = loadAgentPresenceShader,
     super.key,
   });
 
@@ -26,6 +37,9 @@ final class AgentPresenceOrb extends StatefulWidget {
   /// Optional semantic-build instrumentation used by tests.
   final VoidCallback? onSemanticBuild;
 
+  /// Shader loader injected by focused lifecycle tests.
+  final AgentPresenceShaderLoader shaderLoader;
+
   @override
   State<AgentPresenceOrb> createState() => _AgentPresenceOrbState();
 }
@@ -34,12 +48,13 @@ final class _AgentPresenceOrbState extends State<AgentPresenceOrb>
     with SingleTickerProviderStateMixin {
   static const Duration _placeholderCycle = Duration(milliseconds: 5600);
   static const double _orbExtent = 56;
-  static const double _discExtent = 44;
 
   late final AnimationController _motion;
   late final Listenable _repaint;
-  late final _AgentPresencePlaceholderPainter _painter;
+  late final AgentPresenceFallbackPainter _painter;
   bool _disableAnimations = false;
+  _ShaderLoadPhase _shaderLoadPhase = _ShaderLoadPhase.pending;
+  ui.FragmentProgram? _fragmentProgram;
 
   @override
   void initState() {
@@ -49,7 +64,7 @@ final class _AgentPresenceOrbState extends State<AgentPresenceOrb>
       _motion,
       widget.controller.visualInputListenable,
     ]);
-    _painter = _AgentPresencePlaceholderPainter(
+    _painter = AgentPresenceFallbackPainter(
       visualInput: widget.controller.visualInputListenable,
       repaint: _repaint,
       onPaint: widget.onPaint,
@@ -57,6 +72,9 @@ final class _AgentPresenceOrbState extends State<AgentPresenceOrb>
     widget.controller.semanticStateListenable.addListener(
       _updateMotionLifecycle,
     );
+    WidgetsBinding.instance.addPostFrameCallback((Duration _) {
+      _loadShader();
+    });
   }
 
   @override
@@ -92,6 +110,31 @@ final class _AgentPresenceOrbState extends State<AgentPresenceOrb>
     _motion.value = 0;
   }
 
+  Future<void> _loadShader() async {
+    try {
+      final ui.FragmentProgram program = await widget.shaderLoader();
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _fragmentProgram = program;
+        _shaderLoadPhase = _ShaderLoadPhase.ready;
+      });
+    } on Object catch (error) {
+      if (!mounted) {
+        return;
+      }
+      if (kDebugMode) {
+        debugPrint(
+          'presence_shader_fallback exception_type=${error.runtimeType}',
+        );
+      }
+      setState(() {
+        _shaderLoadPhase = _ShaderLoadPhase.fallback;
+      });
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return RepaintBoundary(
@@ -111,9 +154,18 @@ final class _AgentPresenceOrbState extends State<AgentPresenceOrb>
                   children: <Widget>[
                     SizedBox.square(
                       dimension: _orbExtent,
-                      child: CustomPaint(
-                        key: const Key('agent-presence-canvas'),
-                        painter: _painter,
+                      child: KeyedSubtree(
+                        key:
+                            _shaderLoadPhase == _ShaderLoadPhase.ready &&
+                                _fragmentProgram != null
+                            ? const Key('agent-presence-shader-ready')
+                            : _shaderLoadPhase == _ShaderLoadPhase.fallback
+                            ? const Key('agent-presence-fallback')
+                            : const Key('agent-presence-shader-pending'),
+                        child: CustomPaint(
+                          key: const Key('agent-presence-canvas'),
+                          painter: _painter,
+                        ),
                       ),
                     ),
                     const SizedBox(width: 8),
@@ -127,34 +179,7 @@ final class _AgentPresenceOrbState extends State<AgentPresenceOrb>
   }
 }
 
-final class _AgentPresencePlaceholderPainter extends CustomPainter {
-  _AgentPresencePlaceholderPainter({
-    required this.visualInput,
-    required Listenable repaint,
-    this.onPaint,
-  }) : super(repaint: repaint);
-
-  final ValueListenable<AgentPresenceVisualInput> visualInput;
-  final AgentPresencePaintCallback? onPaint;
-  final Paint _paint = Paint();
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    onPaint?.call();
-    _paint.color = _placeholderColor(visualInput.value.snapshot.state);
-    canvas.drawCircle(
-      size.center(Offset.zero),
-      _AgentPresenceOrbState._discExtent / 2,
-      _paint,
-    );
-  }
-
-  @override
-  bool shouldRepaint(_AgentPresencePlaceholderPainter oldDelegate) {
-    return oldDelegate.visualInput != visualInput ||
-        oldDelegate.onPaint != onPaint;
-  }
-}
+enum _ShaderLoadPhase { pending, ready, fallback }
 
 String _semanticLabel(AgentPresenceState state) {
   return switch (state) {
@@ -164,16 +189,5 @@ String _semanticLabel(AgentPresenceState state) {
     AgentPresenceState.speaking => 'Speaking',
     AgentPresenceState.working => 'Working',
     AgentPresenceState.error => 'Attention needed',
-  };
-}
-
-Color _placeholderColor(AgentPresenceState state) {
-  return switch (state) {
-    AgentPresenceState.idle => const Color(0xFF4B4F82),
-    AgentPresenceState.listening => const Color(0xFF3C817E),
-    AgentPresenceState.thinking => const Color(0xFF54538E),
-    AgentPresenceState.speaking => const Color(0xFF477690),
-    AgentPresenceState.working => const Color(0xFF707452),
-    AgentPresenceState.error => const Color(0xFF9A5C53),
   };
 }

@@ -1,11 +1,188 @@
+import 'dart:async';
+import 'dart:ui' as ui;
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:local_agent_macos/features/presence/agent_presence_controller.dart';
+import 'package:local_agent_macos/features/presence/agent_presence_fallback_painter.dart';
 import 'package:local_agent_macos/features/presence/agent_presence_orb.dart';
 import 'package:local_agent_macos/features/presence/agent_presence_state.dart';
 
 void main() {
   group('AgentPresenceOrb', () {
+    testWidgets('paints fallback immediately while shader load is pending', (
+      WidgetTester tester,
+    ) async {
+      final AgentPresenceController controller = AgentPresenceController();
+      addTearDown(controller.dispose);
+      final Completer<ui.FragmentProgram> load =
+          Completer<ui.FragmentProgram>();
+
+      await tester.pumpWidget(
+        _app(controller: controller, shaderLoader: () => load.future),
+      );
+
+      final CustomPaint canvas = tester.widget<CustomPaint>(
+        find.byKey(const Key('agent-presence-canvas')),
+      );
+      expect(canvas.painter, isA<AgentPresenceFallbackPainter>());
+      expect(
+        tester.getSize(find.byKey(const Key('agent-presence-canvas'))),
+        const Size.square(56),
+      );
+      expect(find.bySemanticsLabel('Agent ready'), findsOneWidget);
+      expect(find.text('Agent ready'), findsOneWidget);
+    });
+
+    testWidgets('selects the loaded path after the shader loader succeeds', (
+      WidgetTester tester,
+    ) async {
+      final AgentPresenceController controller = AgentPresenceController();
+      addTearDown(controller.dispose);
+      var attempts = 0;
+
+      await tester.pumpWidget(
+        _app(
+          controller: controller,
+          shaderLoader: () {
+            attempts += 1;
+            return ui.FragmentProgram.fromAsset('shaders/agent_presence.frag');
+          },
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(attempts, 1);
+      expect(
+        find.byKey(const Key('agent-presence-shader-ready')),
+        findsOneWidget,
+      );
+      expect(find.bySemanticsLabel('Agent ready'), findsOneWidget);
+      expect(find.text('Agent ready'), findsOneWidget);
+    });
+
+    testWidgets('loader exception latches one same-size semantic fallback', (
+      WidgetTester tester,
+    ) async {
+      final AgentPresenceController controller = AgentPresenceController();
+      addTearDown(controller.dispose);
+      _dispatchState(controller, AgentPresenceState.working);
+      var attempts = 0;
+      final List<String> diagnostics = <String>[];
+      final DebugPrintCallback originalDebugPrint = debugPrint;
+      debugPrint = (String? message, {int? wrapWidth}) {
+        diagnostics.add(message ?? '');
+      };
+      addTearDown(() => debugPrint = originalDebugPrint);
+
+      try {
+        await tester.pumpWidget(
+          _app(
+            controller: controller,
+            shaderLoader: () async {
+              attempts += 1;
+              throw StateError(
+                'must not log /private/path, prompt, or audio samples',
+              );
+            },
+          ),
+        );
+        await tester.pump();
+
+        expect(attempts, 1);
+        expect(
+          find.byKey(const Key('agent-presence-fallback')),
+          findsOneWidget,
+        );
+        expect(
+          tester.getSize(find.byKey(const Key('agent-presence-canvas'))),
+          const Size.square(56),
+        );
+        expect(find.bySemanticsLabel('Working'), findsOneWidget);
+        expect(find.text('Working'), findsOneWidget);
+        expect(diagnostics, <String>[
+          'presence_shader_fallback exception_type=StateError',
+        ]);
+      } finally {
+        debugPrint = originalDebugPrint;
+      }
+    });
+
+    testWidgets('fallback repaints never retry shader compilation', (
+      WidgetTester tester,
+    ) async {
+      final AgentPresenceController controller = AgentPresenceController();
+      addTearDown(controller.dispose);
+      var attempts = 0;
+      await tester.pumpWidget(
+        _app(
+          controller: controller,
+          shaderLoader: () async {
+            attempts += 1;
+            throw UnsupportedError('shader unavailable');
+          },
+        ),
+      );
+      await tester.pump();
+      final CustomPainter? selectedPainter = tester
+          .widget<CustomPaint>(find.byKey(const Key('agent-presence-canvas')))
+          .painter;
+
+      controller.dispatch(
+        AgentPresenceEvent.listeningStarted,
+        const Duration(milliseconds: 1),
+      );
+      controller.acceptAudioRms(0, const Duration(milliseconds: 16));
+      controller.acceptAudioRms(0.42, const Duration(milliseconds: 71));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 32));
+
+      expect(attempts, 1);
+      expect(
+        tester
+            .widget<CustomPaint>(find.byKey(const Key('agent-presence-canvas')))
+            .painter,
+        same(selectedPainter),
+      );
+      expect(find.byKey(const Key('agent-presence-fallback')), findsOneWidget);
+    });
+
+    testWidgets('a remounted orb may retry shader compilation', (
+      WidgetTester tester,
+    ) async {
+      final AgentPresenceController controller = AgentPresenceController();
+      addTearDown(controller.dispose);
+      var attempts = 0;
+      Future<ui.FragmentProgram> failLoad() async {
+        attempts += 1;
+        throw UnsupportedError('shader unavailable');
+      }
+
+      await tester.pumpWidget(
+        _app(
+          controller: controller,
+          shaderLoader: failLoad,
+          orbKey: const ValueKey<String>('first-orb'),
+        ),
+      );
+      await tester.pump();
+      expect(attempts, 1);
+
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pumpWidget(
+        _app(
+          controller: controller,
+          shaderLoader: failLoad,
+          orbKey: const ValueKey<String>('second-orb'),
+        ),
+      );
+      await tester.pump();
+
+      expect(attempts, 2);
+      expect(find.byKey(const Key('agent-presence-fallback')), findsOneWidget);
+    });
+
     for (final _SemanticCase semanticCase in <_SemanticCase>[
       const _SemanticCase(state: AgentPresenceState.idle, label: 'Agent ready'),
       const _SemanticCase(
@@ -155,12 +332,19 @@ Widget _app({
   required AgentPresenceController controller,
   bool disableAnimations = false,
   VoidCallback? onPaint,
+  AgentPresenceShaderLoader shaderLoader = loadAgentPresenceShader,
+  Key? orbKey,
 }) {
   return MaterialApp(
     home: MediaQuery(
       data: MediaQueryData(disableAnimations: disableAnimations),
       child: Scaffold(
-        body: AgentPresenceOrb(controller: controller, onPaint: onPaint),
+        body: AgentPresenceOrb(
+          key: orbKey,
+          controller: controller,
+          onPaint: onPaint,
+          shaderLoader: shaderLoader,
+        ),
       ),
     ),
   );
