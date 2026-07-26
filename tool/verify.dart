@@ -1,0 +1,150 @@
+import 'dart:async';
+import 'dart:io';
+
+/// Runs the CP0 quality gate from the workspace root.
+Future<void> main() async {
+  final Directory workspaceRoot = Directory.current;
+  final List<_VerificationCommand> commands = <_VerificationCommand>[
+    _VerificationCommand(
+      name: 'format',
+      executable: 'dart',
+      arguments: const <String>['format', '--set-exit-if-changed', '.'],
+      workingDirectory: workspaceRoot.path,
+    ),
+    _VerificationCommand(
+      name: 'core analysis',
+      executable: 'dart',
+      arguments: const <String>['analyze', '--fatal-infos', '--fatal-warnings'],
+      workingDirectory: _join(workspaceRoot.path, 'packages/agent_core'),
+    ),
+    _VerificationCommand(
+      name: 'app analysis',
+      executable: 'flutter',
+      arguments: const <String>['analyze', '--fatal-infos', '--fatal-warnings'],
+      workingDirectory: _join(workspaceRoot.path, 'apps/local_agent_macos'),
+    ),
+    _VerificationCommand(
+      name: 'core tests',
+      executable: 'dart',
+      arguments: const <String>['test'],
+      workingDirectory: _join(workspaceRoot.path, 'packages/agent_core'),
+    ),
+    _VerificationCommand(
+      name: 'Flutter tests',
+      executable: 'flutter',
+      arguments: const <String>['test'],
+      workingDirectory: _join(workspaceRoot.path, 'apps/local_agent_macos'),
+    ),
+    _VerificationCommand(
+      name: 'macOS profile build',
+      executable: 'flutter',
+      arguments: const <String>['build', 'macos', '--profile'],
+      workingDirectory: _join(workspaceRoot.path, 'apps/local_agent_macos'),
+    ),
+  ];
+  final File swiftPackage = File(
+    _join(workspaceRoot.path, 'native/inference_service/Package.swift'),
+  );
+  if (swiftPackage.existsSync()) {
+    commands.add(
+      _VerificationCommand(
+        name: 'Swift tests',
+        executable: 'swift',
+        arguments: const <String>['test'],
+        workingDirectory: swiftPackage.parent.path,
+      ),
+    );
+  }
+
+  final List<_VerificationResult> results = await Future.wait(
+    commands.map(_runCommand),
+  );
+  final List<_VerificationResult> failures = results
+      .where((_VerificationResult result) => result.exitCode != 0)
+      .toList();
+
+  for (final _VerificationResult result in results) {
+    stdout.writeln('[${result.name}] exit ${result.exitCode}');
+    if (result.output.isNotEmpty) {
+      stdout.writeln(result.output);
+    }
+  }
+
+  if (failures.isNotEmpty) {
+    stderr.writeln('${failures.length} verification subprocess(es) failed.');
+    exitCode = 1;
+  }
+}
+
+/// Runs one explicit verification subprocess and preserves its diagnostics.
+Future<_VerificationResult> _runCommand(_VerificationCommand command) async {
+  try {
+    final ProcessResult processResult = await Process.run(
+      command.executable,
+      command.arguments,
+      workingDirectory: command.workingDirectory,
+    );
+    final String output = <String>[
+      processResult.stdout.toString().trim(),
+      processResult.stderr.toString().trim(),
+    ].where((String line) => line.isNotEmpty).join('\n');
+    return _VerificationResult(
+      name: command.name,
+      exitCode: processResult.exitCode,
+      output: output,
+    );
+  } on ProcessException catch (error) {
+    return _VerificationResult(
+      name: command.name,
+      exitCode: 1,
+      output: '$error',
+    );
+  }
+}
+
+/// Joins [childPath] to [parentPath] with the host platform separator.
+String _join(String parentPath, String childPath) {
+  return '$parentPath${Platform.pathSeparator}$childPath';
+}
+
+/// Describes one subprocess in the root verification fan-out.
+final class _VerificationCommand {
+  /// Creates a subprocess definition.
+  const _VerificationCommand({
+    required this.name,
+    required this.executable,
+    required this.arguments,
+    required this.workingDirectory,
+  });
+
+  /// A readable label for reporting failures.
+  final String name;
+
+  /// The executable to run.
+  final String executable;
+
+  /// Arguments passed to [executable].
+  final List<String> arguments;
+
+  /// Directory from which the executable runs.
+  final String workingDirectory;
+}
+
+/// Captures the result of one verification subprocess.
+final class _VerificationResult {
+  /// Creates a reported subprocess result.
+  const _VerificationResult({
+    required this.name,
+    required this.exitCode,
+    required this.output,
+  });
+
+  /// The readable subprocess label.
+  final String name;
+
+  /// The subprocess result code.
+  final int exitCode;
+
+  /// Combined standard output and error diagnostics.
+  final String output;
+}

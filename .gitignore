@@ -1,0 +1,7 @@
+.dart_tool/
+build/
+
+# Editor and operating-system metadata.
+.DS_Store
+.idea/
+.vscode/
