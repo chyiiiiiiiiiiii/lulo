@@ -27,6 +27,7 @@ final class ConversationViewModel extends ChangeNotifier {
   ConversationId? _conversationId;
   GenerationId? _activeGenerationId;
   bool _stopRequested = false;
+  bool _disposed = false;
 
   /// Immutable state consumed by the conversation view.
   ConversationProjection get projection => _projection;
@@ -65,6 +66,9 @@ final class ConversationViewModel extends ChangeNotifier {
   }
 
   void _onEvent(GenerationEvent event) {
+    if (_disposed) {
+      return;
+    }
     switch (event) {
       case GenerationStarted(:final Generation generation):
         if (_activeGenerationId != null) {
@@ -112,6 +116,9 @@ final class ConversationViewModel extends ChangeNotifier {
     TurnStatus status, {
     bool createWhenNotStarted = false,
   }) {
+    if (_disposed) {
+      return;
+    }
     final Turn? projectedTurn = _projection.activeTurn;
     if (projectedTurn == null && !createWhenNotStarted) {
       return;
@@ -134,10 +141,16 @@ final class ConversationViewModel extends ChangeNotifier {
   }
 
   void _onOperationError(Object _, StackTrace _) {
+    if (_disposed) {
+      return;
+    }
     _finishActiveTurn(TurnStatus.failed, createWhenNotStarted: true);
   }
 
   void _onOperationDone() {
+    if (_disposed) {
+      return;
+    }
     _operationSubscription = null;
     notifyListeners();
   }
@@ -157,12 +170,16 @@ final class ConversationViewModel extends ChangeNotifier {
     }
     _stopRequested = true;
     await subscription.cancel();
+    if (_disposed) {
+      return;
+    }
     _operationSubscription = null;
     _finishActiveTurn(TurnStatus.cancelled, createWhenNotStarted: true);
   }
 
   @override
   void dispose() {
+    _disposed = true;
     unawaited(_operationSubscription?.cancel());
     _operationSubscription = null;
     super.dispose();

@@ -385,6 +385,39 @@ void main() {
       await harness.dispose();
     },
   );
+
+  test(
+    'dispose while pre-start stop is suspended prevents its continuation',
+    () async {
+      final _Harness harness = _Harness();
+      final Completer<void> saveGate = Completer<void>();
+      harness.storage.userSaveGate = saveGate;
+      final ConversationViewModel viewModel = harness.createViewModel();
+      int notifications = 0;
+      viewModel.addListener(() => notifications += 1);
+
+      await viewModel.submit('Hello');
+      final ConversationProjection projectionBeforeStop = viewModel.projection;
+      final int notificationsBeforeStop = notifications;
+      final Future<void> stop = viewModel.stop();
+      viewModel.dispose();
+      saveGate.complete();
+      await stop;
+      await Future<void>.delayed(Duration.zero);
+
+      expect(notifications, notificationsBeforeStop);
+      expect(viewModel.projection, same(projectionBeforeStop));
+      expect(harness.inference.requests, isEmpty);
+
+      final ConversationViewModel recovered = harness.createViewModel();
+      await recovered.submit('Recovered');
+      await Future<void>.delayed(Duration.zero);
+      expect(harness.inference.requests, hasLength(1));
+
+      recovered.dispose();
+      await harness.dispose();
+    },
+  );
 }
 
 Future<void> _startGeneration(
@@ -417,12 +450,13 @@ final class _Harness {
   final RecordingConversationStorageService storage =
       RecordingConversationStorageService();
   final ControlledInferenceService inference = ControlledInferenceService();
+  late final ConversationRepository repository = ConversationRepository(
+    storageService: storage,
+    inferenceService: inference,
+  );
 
   ConversationViewModel createViewModel() => ConversationViewModel(
-    repository: ConversationRepository(
-      storageService: storage,
-      inferenceService: inference,
-    ),
+    repository: repository,
     idFactory: () => const ConversationId('conversation-1'),
   );
 
