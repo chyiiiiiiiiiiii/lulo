@@ -90,7 +90,13 @@ final class CarbonHotKeyBackend: HotKeyBackend {
     id: UInt32,
     handler: @escaping () -> Void
   ) throws -> HotKeyRegistration {
-    let callback = CarbonHotKeyCallback(id: id, handler: handler)
+    let signature = OSType(0x4C_41_47_54)
+    let mainQueueHandler = MainQueueHotKeyHandler(handler: handler)
+    let callback = CarbonHotKeyCallback(
+      signature: signature,
+      id: id,
+      handler: mainQueueHandler.enqueue
+    )
     var eventSpec = EventTypeSpec(
       eventClass: OSType(kEventClassKeyboard),
       eventKind: UInt32(kEventHotKeyPressed)
@@ -115,10 +121,9 @@ final class CarbonHotKeyBackend: HotKeyBackend {
           nil,
           &eventID
         )
-        guard status == noErr, eventID.id == callback.id else {
+        guard status == noErr, callback.route(eventID) else {
           return OSStatus(eventNotHandledErr)
         }
-        DispatchQueue.main.async(execute: callback.handler)
         return noErr
       },
       1,
@@ -134,7 +139,7 @@ final class CarbonHotKeyBackend: HotKeyBackend {
 
     var hotKeyRef: EventHotKeyRef?
     let hotKeyID = EventHotKeyID(
-      signature: OSType(0x4C_41_47_54),
+      signature: signature,
       id: id
     )
     let registrationStatus = RegisterEventHotKey(
@@ -169,13 +174,39 @@ final class CarbonHotKeyBackend: HotKeyBackend {
   }
 }
 
-private final class CarbonHotKeyCallback {
-  let id: UInt32
-  let handler: () -> Void
+private final class MainQueueHotKeyHandler {
+  private let handler: () -> Void
 
-  init(id: UInt32, handler: @escaping () -> Void) {
+  init(handler: @escaping () -> Void) {
+    self.handler = handler
+  }
+
+  func enqueue() {
+    DispatchQueue.main.async(execute: handler)
+  }
+}
+
+final class CarbonHotKeyCallback {
+  private let signature: OSType
+  private let id: UInt32
+  private let handler: () -> Void
+
+  init(
+    signature: OSType,
+    id: UInt32,
+    handler: @escaping () -> Void
+  ) {
+    self.signature = signature
     self.id = id
     self.handler = handler
+  }
+
+  func route(_ eventID: EventHotKeyID) -> Bool {
+    guard eventID.signature == signature, eventID.id == id else {
+      return false
+    }
+    handler()
+    return true
   }
 }
 

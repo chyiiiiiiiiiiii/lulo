@@ -41,6 +41,30 @@ final class GlobalHotKeyControllerTests: XCTestCase {
     XCTAssertThrowsError(try controller.replace(with: conflicting, handler: {}))
     XCTAssertEqual(backend.activeKeys, [first])
   }
+
+  func testCarbonCallbackRoutesOnlyTheExactSignatureAndIDPair() {
+    let expectedSignature = OSType(0x4C_41_47_54)
+    var invocationCount = 0
+    let callback = CarbonHotKeyCallback(
+      signature: expectedSignature,
+      id: 7,
+      handler: { invocationCount += 1 }
+    )
+
+    XCTAssertFalse(
+      callback.route(
+        EventHotKeyID(signature: OSType(0x4F_54_48_52), id: 7)
+      )
+    )
+    XCTAssertEqual(invocationCount, 0)
+
+    XCTAssertTrue(
+      callback.route(
+        EventHotKeyID(signature: expectedSignature, id: 7)
+      )
+    )
+    XCTAssertEqual(invocationCount, 1)
+  }
 }
 
 @MainActor
