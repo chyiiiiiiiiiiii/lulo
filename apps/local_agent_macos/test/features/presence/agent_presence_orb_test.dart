@@ -7,6 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:local_agent_macos/features/presence/agent_presence_controller.dart';
 import 'package:local_agent_macos/features/presence/agent_presence_fallback_painter.dart';
 import 'package:local_agent_macos/features/presence/agent_presence_orb.dart';
+import 'package:local_agent_macos/features/presence/agent_presence_painter.dart';
 import 'package:local_agent_macos/features/presence/agent_presence_state.dart';
 
 void main() {
@@ -57,6 +58,12 @@ void main() {
       expect(
         find.byKey(const Key('agent-presence-shader-ready')),
         findsOneWidget,
+      );
+      expect(
+        tester
+            .widget<CustomPaint>(find.byKey(const Key('agent-presence-canvas')))
+            .painter,
+        isA<AgentPresencePainter>(),
       );
       expect(find.bySemanticsLabel('Agent ready'), findsOneWidget);
       expect(find.text('Agent ready'), findsOneWidget);

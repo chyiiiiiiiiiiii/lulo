@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 
 import 'agent_presence_controller.dart';
 import 'agent_presence_fallback_painter.dart';
+import 'agent_presence_painter.dart';
 import 'agent_presence_state.dart';
 
 /// Paint instrumentation used by rendering-isolation tests.
@@ -51,20 +52,22 @@ final class _AgentPresenceOrbState extends State<AgentPresenceOrb>
 
   late final AnimationController _motion;
   late final Listenable _repaint;
-  late final AgentPresenceFallbackPainter _painter;
+  late final Stopwatch _clock;
+  late final AgentPresenceFallbackPainter _fallbackPainter;
+  AgentPresencePainter? _shaderPainter;
   bool _disableAnimations = false;
   _ShaderLoadPhase _shaderLoadPhase = _ShaderLoadPhase.pending;
-  ui.FragmentProgram? _fragmentProgram;
 
   @override
   void initState() {
     super.initState();
+    _clock = Stopwatch()..start();
     _motion = AnimationController.unbounded(vsync: this);
     _repaint = Listenable.merge(<Listenable>[
       _motion,
       widget.controller.visualInputListenable,
     ]);
-    _painter = AgentPresenceFallbackPainter(
+    _fallbackPainter = AgentPresenceFallbackPainter(
       visualInput: widget.controller.visualInputListenable,
       repaint: _repaint,
       onPaint: widget.onPaint,
@@ -90,6 +93,7 @@ final class _AgentPresenceOrbState extends State<AgentPresenceOrb>
       _updateMotionLifecycle,
     );
     _motion.dispose();
+    _clock.stop();
     super.dispose();
   }
 
@@ -131,10 +135,33 @@ final class _AgentPresenceOrbState extends State<AgentPresenceOrb>
     if (!mounted) {
       return;
     }
-    setState(() {
-      _fragmentProgram = program;
-      _shaderLoadPhase = _ShaderLoadPhase.ready;
-    });
+    try {
+      final AgentPresencePainter painter = AgentPresencePainter(
+        program: program,
+        visualInput: widget.controller.visualInputListenable,
+        phase: _motion,
+        repaint: _repaint,
+        now: () => _clock.elapsed,
+        motionEnabled: !_disableAnimations,
+        onPaint: widget.onPaint,
+      );
+      setState(() {
+        _shaderPainter = painter;
+        _shaderLoadPhase = _ShaderLoadPhase.ready;
+      });
+    } on Object catch (error) {
+      if (!mounted) {
+        return;
+      }
+      if (kDebugMode) {
+        debugPrint(
+          'presence_shader_fallback exception_type=${error.runtimeType}',
+        );
+      }
+      setState(() {
+        _shaderLoadPhase = _ShaderLoadPhase.fallback;
+      });
+    }
   }
 
   @override
@@ -159,14 +186,18 @@ final class _AgentPresenceOrbState extends State<AgentPresenceOrb>
                       child: KeyedSubtree(
                         key:
                             _shaderLoadPhase == _ShaderLoadPhase.ready &&
-                                _fragmentProgram != null
+                                _shaderPainter != null
                             ? const Key('agent-presence-shader-ready')
                             : _shaderLoadPhase == _ShaderLoadPhase.fallback
                             ? const Key('agent-presence-fallback')
                             : const Key('agent-presence-shader-pending'),
                         child: CustomPaint(
                           key: const Key('agent-presence-canvas'),
-                          painter: _painter,
+                          painter:
+                              _shaderLoadPhase == _ShaderLoadPhase.ready &&
+                                  _shaderPainter != null
+                              ? _shaderPainter
+                              : _fallbackPainter,
                         ),
                       ),
                     ),
