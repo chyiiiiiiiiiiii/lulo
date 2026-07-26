@@ -1,5 +1,6 @@
 .dart_tool/
 build/
+.worktrees/
 
 # Editor and operating-system metadata.
 .DS_Store
