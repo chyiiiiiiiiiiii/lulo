@@ -28,11 +28,19 @@ void main() {
   float angle = atan(point.y, point.x);
   float time = uTimeSeconds * uMotionScale;
   float tau = 6.28318530718;
+  float speakingPhase = tau * fract(time / 2.4);
+  float workingPhase = tau * fract(time / 1.6);
+  float primaryPhase =
+      mix(time * 1.122, workingPhase, uWorkingWeight);
+  float secondaryPhase =
+      mix(-time * 1.63, -speakingPhase, uSpeakingWeight);
+  float tertiaryPhase =
+      mix(time * 2.62, speakingPhase * 2.0, uSpeakingWeight);
 
   // Three fixed, bounded analytic waves. No dynamic loop or sampled input.
-  float wave0 = sin(angle * 2.0 + time * 1.122 + uSeed * tau);
-  float wave1 = sin(angle * 5.0 - time * 1.63 + uSeed * 3.0);
-  float wave2 = sin(angle * 8.0 + time * 2.62 - uSeed * 2.0);
+  float wave0 = sin(angle * 2.0 + primaryPhase + uSeed * tau);
+  float wave1 = sin(angle * 5.0 + secondaryPhase + uSeed * 3.0);
+  float wave2 = sin(angle * 8.0 + tertiaryPhase - uSeed * 2.0);
 
   float idleBreath =
       uIdleWeight * sin(time * tau / 5.6 + uSeed) * 0.012;
@@ -94,7 +102,7 @@ void main() {
       uSpeakingWeight *
       (1.0 -
        smoothstep(0.025, 0.10, abs(radius - 0.31 - wave2 * 0.018)));
-  float seamDirection = cos(angle - time * tau / 1.6);
+  float seamDirection = cos(angle - workingPhase);
   float workingSeam =
       uWorkingWeight * pow(max(seamDirection, 0.0), 18.0) * rim;
   float errorRim = uErrorWeight * rim;

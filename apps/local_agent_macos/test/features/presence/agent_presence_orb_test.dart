@@ -52,7 +52,8 @@ void main() {
           },
         ),
       );
-      await tester.pumpAndSettle();
+      await tester.pump();
+      await tester.pump();
 
       expect(attempts, 1);
       expect(
@@ -293,6 +294,45 @@ void main() {
       expect(find.byKey(const Key('agent-presence-fallback')), findsOneWidget);
     });
 
+    for (final _ShaderFailureStage stage in _ShaderFailureStage.values) {
+      testWidgets(
+        '${stage.name} paint failure latches fallback without retry',
+        (WidgetTester tester) async {
+          final AgentPresenceController controller = AgentPresenceController();
+          addTearDown(controller.dispose);
+          final _FailingShaderBackend backend = _FailingShaderBackend(stage);
+
+          await tester.pumpWidget(
+            _app(controller: controller, shaderBackendFactory: () => backend),
+          );
+          await tester.pump();
+          await tester.pump();
+          await tester.pump();
+
+          expect(
+            find.byKey(const Key('agent-presence-fallback')),
+            findsOneWidget,
+          );
+          expect(backend.frameAttempts, 1);
+          expect(find.bySemanticsLabel('Agent ready'), findsOneWidget);
+
+          controller.dispatch(
+            AgentPresenceEvent.listeningStarted,
+            const Duration(milliseconds: 1),
+          );
+          controller.acceptAudioRms(0, const Duration(milliseconds: 16));
+          controller.acceptAudioRms(0.42, const Duration(milliseconds: 71));
+          await tester.pump(const Duration(milliseconds: 32));
+
+          expect(backend.frameAttempts, 1);
+          expect(
+            find.byKey(const Key('agent-presence-fallback')),
+            findsOneWidget,
+          );
+        },
+      );
+    }
+
     for (final _SemanticCase semanticCase in <_SemanticCase>[
       const _SemanticCase(state: AgentPresenceState.idle, label: 'Agent ready'),
       const _SemanticCase(
@@ -328,6 +368,23 @@ void main() {
       );
     }
 
+    testWidgets('idle schedules breathing paints while motion is enabled', (
+      WidgetTester tester,
+    ) async {
+      final AgentPresenceController controller = AgentPresenceController();
+      addTearDown(controller.dispose);
+      var paints = 0;
+      await tester.pumpWidget(
+        _app(controller: controller, onPaint: () => paints += 1),
+      );
+      await tester.pump();
+      paints = 0;
+
+      await tester.pump(const Duration(milliseconds: 100));
+
+      expect(paints, greaterThan(0));
+    });
+
     testWidgets('reduced motion retains state semantics and visible text', (
       WidgetTester tester,
     ) async {
@@ -344,12 +401,76 @@ void main() {
       expect(find.text('Attention needed'), findsOneWidget);
     });
 
+    testWidgets(
+      'loaded shader follows a reduced-motion toggle and resumes safely',
+      (WidgetTester tester) async {
+        final AgentPresenceController controller = AgentPresenceController();
+        addTearDown(controller.dispose);
+        _dispatchState(controller, AgentPresenceState.speaking);
+        controller.acceptAudioRms(0, const Duration(milliseconds: 416));
+        controller.acceptAudioRms(0.42, const Duration(milliseconds: 471));
+        var paints = 0;
+        var semanticBuilds = 0;
+
+        await tester.pumpWidget(
+          _app(
+            controller: controller,
+            onPaint: () => paints += 1,
+            onSemanticBuild: () => semanticBuilds += 1,
+          ),
+        );
+        await tester.pump();
+        await tester.pump();
+        final AgentPresencePainter painter =
+            tester
+                    .widget<CustomPaint>(
+                      find.byKey(const Key('agent-presence-canvas')),
+                    )
+                    .painter!
+                as AgentPresencePainter;
+        expect(painter.motionEnabled.value, isTrue);
+
+        await tester.pumpWidget(
+          _app(
+            controller: controller,
+            disableAnimations: true,
+            onPaint: () => paints += 1,
+            onSemanticBuild: () => semanticBuilds += 1,
+          ),
+        );
+        await tester.pump();
+        final _RecordingUniformSink reduced = _RecordingUniformSink();
+        painter.writeUniforms(reduced, const Size.square(56));
+        expect(reduced.valueAt(9), 0);
+        expect(reduced.valueAt(10), 0);
+        paints = 0;
+        semanticBuilds = 0;
+
+        await tester.pump(const Duration(seconds: 1));
+
+        expect(paints, 0);
+        expect(semanticBuilds, 0);
+
+        await tester.pumpWidget(
+          _app(
+            controller: controller,
+            onPaint: () => paints += 1,
+            onSemanticBuild: () => semanticBuilds += 1,
+          ),
+        );
+        await tester.pump();
+        expect(painter.motionEnabled.value, isTrue);
+        paints = 0;
+        semanticBuilds = 0;
+
+        await tester.pump(const Duration(milliseconds: 100));
+
+        expect(paints, greaterThan(0));
+        expect(semanticBuilds, 0);
+      },
+    );
+
     for (final _MotionCase motionCase in <_MotionCase>[
-      const _MotionCase(
-        name: 'idle',
-        state: AgentPresenceState.idle,
-        disableAnimations: false,
-      ),
       const _MotionCase(
         name: 'error',
         state: AgentPresenceState.error,
@@ -442,7 +563,10 @@ Widget _app({
   required AgentPresenceController controller,
   bool disableAnimations = false,
   VoidCallback? onPaint,
+  VoidCallback? onSemanticBuild,
   AgentPresenceShaderLoader shaderLoader = loadAgentPresenceShader,
+  AgentPresenceShaderBackendFactory shaderBackendFactory =
+      createAgentPresenceShaderBackend,
   Key? orbKey,
 }) {
   return MaterialApp(
@@ -453,7 +577,9 @@ Widget _app({
           key: orbKey,
           controller: controller,
           onPaint: onPaint,
+          onSemanticBuild: onSemanticBuild,
           shaderLoader: shaderLoader,
+          shaderBackendFactory: shaderBackendFactory,
         ),
       ),
     ),
@@ -517,4 +643,46 @@ final class _MotionCase {
   final String name;
   final AgentPresenceState state;
   final bool disableAnimations;
+}
+
+final class _RecordingUniformSink implements AgentPresenceUniformSink {
+  final Map<int, double> _values = <int, double>{};
+
+  @override
+  void setFloat(int index, double value) {
+    _values[index] = value;
+  }
+
+  double? valueAt(int index) => _values[index];
+}
+
+enum _ShaderFailureStage { instantiation, uniformUpload, draw }
+
+final class _FailingShaderBackend implements AgentPresenceShaderBackend {
+  _FailingShaderBackend(this.stage);
+
+  final _ShaderFailureStage stage;
+  var frameAttempts = 0;
+
+  @override
+  void beginFrame(ui.FragmentProgram program) {
+    frameAttempts += 1;
+    if (stage == _ShaderFailureStage.instantiation) {
+      throw StateError('fragment shader instantiation failed');
+    }
+  }
+
+  @override
+  void draw(Canvas canvas, Size size, Path clipPath) {
+    if (stage == _ShaderFailureStage.draw) {
+      throw StateError('shader draw failed');
+    }
+  }
+
+  @override
+  void setFloat(int index, double value) {
+    if (stage == _ShaderFailureStage.uniformUpload) {
+      throw StateError('uniform upload failed');
+    }
+  }
 }

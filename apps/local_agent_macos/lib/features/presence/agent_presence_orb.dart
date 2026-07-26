@@ -26,6 +26,7 @@ final class AgentPresenceOrb extends StatefulWidget {
     this.onPaint,
     this.onSemanticBuild,
     this.shaderLoader = loadAgentPresenceShader,
+    this.shaderBackendFactory = createAgentPresenceShaderBackend,
     super.key,
   });
 
@@ -41,6 +42,9 @@ final class AgentPresenceOrb extends StatefulWidget {
   /// Shader loader injected by focused lifecycle tests.
   final AgentPresenceShaderLoader shaderLoader;
 
+  /// Creates one shader backend for this mounted orb.
+  final AgentPresenceShaderBackendFactory shaderBackendFactory;
+
   @override
   State<AgentPresenceOrb> createState() => _AgentPresenceOrbState();
 }
@@ -51,6 +55,7 @@ final class _AgentPresenceOrbState extends State<AgentPresenceOrb>
   static const double _orbExtent = 56;
 
   late final AnimationController _motion;
+  late final ValueNotifier<bool> _motionEnabled;
   late final Listenable _repaint;
   late final Stopwatch _clock;
   late final AgentPresenceFallbackPainter _fallbackPainter;
@@ -63,8 +68,10 @@ final class _AgentPresenceOrbState extends State<AgentPresenceOrb>
     super.initState();
     _clock = Stopwatch()..start();
     _motion = AnimationController.unbounded(vsync: this);
+    _motionEnabled = ValueNotifier<bool>(true);
     _repaint = Listenable.merge(<Listenable>[
       _motion,
+      _motionEnabled,
       widget.controller.visualInputListenable,
     ]);
     _fallbackPainter = AgentPresenceFallbackPainter(
@@ -84,6 +91,7 @@ final class _AgentPresenceOrbState extends State<AgentPresenceOrb>
   void didChangeDependencies() {
     super.didChangeDependencies();
     _disableAnimations = MediaQuery.disableAnimationsOf(context);
+    _motionEnabled.value = !_disableAnimations;
     _updateMotionLifecycle();
   }
 
@@ -93,6 +101,7 @@ final class _AgentPresenceOrbState extends State<AgentPresenceOrb>
       _updateMotionLifecycle,
     );
     _motion.dispose();
+    _motionEnabled.dispose();
     _clock.stop();
     super.dispose();
   }
@@ -101,9 +110,7 @@ final class _AgentPresenceOrbState extends State<AgentPresenceOrb>
     final AgentPresenceState state =
         widget.controller.semanticStateListenable.value;
     final bool shouldAnimate =
-        !_disableAnimations &&
-        state != AgentPresenceState.idle &&
-        state != AgentPresenceState.error;
+        !_disableAnimations && state != AgentPresenceState.error;
     if (shouldAnimate) {
       if (!_motion.isAnimating) {
         _motion.repeat(min: 0, max: 1, period: _placeholderCycle);
@@ -142,7 +149,10 @@ final class _AgentPresenceOrbState extends State<AgentPresenceOrb>
         phase: _motion,
         repaint: _repaint,
         now: () => _clock.elapsed,
-        motionEnabled: !_disableAnimations,
+        motionEnabled: _motionEnabled,
+        backend: widget.shaderBackendFactory(),
+        failurePainter: _fallbackPainter,
+        onFailure: _handleShaderPaintFailure,
         onPaint: widget.onPaint,
       );
       setState(() {
@@ -162,6 +172,20 @@ final class _AgentPresenceOrbState extends State<AgentPresenceOrb>
         _shaderLoadPhase = _ShaderLoadPhase.fallback;
       });
     }
+  }
+
+  void _handleShaderPaintFailure(Object error) {
+    if (!mounted || _shaderLoadPhase != _ShaderLoadPhase.ready) {
+      return;
+    }
+    if (kDebugMode) {
+      debugPrint(
+        'presence_shader_fallback exception_type=${error.runtimeType}',
+      );
+    }
+    setState(() {
+      _shaderLoadPhase = _ShaderLoadPhase.fallback;
+    });
   }
 
   @override

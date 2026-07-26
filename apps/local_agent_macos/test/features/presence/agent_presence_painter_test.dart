@@ -95,6 +95,7 @@ void main() {
             phase: const AlwaysStoppedAnimation<double>(0.25),
             repaint: input,
             now: () => Duration.zero,
+            motionEnabled: const AlwaysStoppedAnimation<bool>(true),
           ),
         ),
       );
@@ -120,6 +121,100 @@ void main() {
       }
     },
   );
+
+  testWidgets('working rendering repeats every 1.6 seconds', (
+    WidgetTester tester,
+  ) async {
+    final ui.FragmentProgram program = (await tester.runAsync(
+      () => ui.FragmentProgram.fromAsset('shaders/agent_presence.frag'),
+    ))!;
+
+    final Uint8List first = await _captureStateAt(
+      tester,
+      program: program,
+      state: AgentPresenceState.working,
+      elapsedSeconds: 0.35,
+    );
+    final Uint8List nextCycle = await _captureStateAt(
+      tester,
+      program: program,
+      state: AgentPresenceState.working,
+      elapsedSeconds: 1.95,
+    );
+
+    expect(nextCycle, orderedEquals(first));
+  });
+
+  testWidgets('idle rendering repeats every 5.6 seconds', (
+    WidgetTester tester,
+  ) async {
+    final ui.FragmentProgram program = (await tester.runAsync(
+      () => ui.FragmentProgram.fromAsset('shaders/agent_presence.frag'),
+    ))!;
+
+    final Uint8List first = await _captureStateAt(
+      tester,
+      program: program,
+      state: AgentPresenceState.idle,
+      elapsedSeconds: 0.7,
+    );
+    final Uint8List nextCycle = await _captureStateAt(
+      tester,
+      program: program,
+      state: AgentPresenceState.idle,
+      elapsedSeconds: 6.3,
+    );
+
+    expect(nextCycle, orderedEquals(first));
+  });
+
+  testWidgets('speaking rendering repeats every 2.4 seconds', (
+    WidgetTester tester,
+  ) async {
+    final ui.FragmentProgram program = (await tester.runAsync(
+      () => ui.FragmentProgram.fromAsset('shaders/agent_presence.frag'),
+    ))!;
+
+    final Uint8List first = await _captureStateAt(
+      tester,
+      program: program,
+      state: AgentPresenceState.speaking,
+      elapsedSeconds: 0.45,
+    );
+    final Uint8List nextCycle = await _captureStateAt(
+      tester,
+      program: program,
+      state: AgentPresenceState.speaking,
+      elapsedSeconds: 2.85,
+    );
+
+    expect(nextCycle, orderedEquals(first));
+  });
+
+  testWidgets('working stays continuous across the former 5.6 second reset', (
+    WidgetTester tester,
+  ) async {
+    final ui.FragmentProgram program = (await tester.runAsync(
+      () => ui.FragmentProgram.fromAsset('shaders/agent_presence.frag'),
+    ))!;
+
+    final Uint8List before = await _captureStateAt(
+      tester,
+      program: program,
+      state: AgentPresenceState.working,
+      elapsedSeconds: 5.599,
+      controllerPhaseSeconds: 5.599,
+    );
+    final Uint8List after = await _captureStateAt(
+      tester,
+      program: program,
+      state: AgentPresenceState.working,
+      elapsedSeconds: 5.601,
+      controllerPhaseSeconds: 0.001,
+    );
+
+    expect(_meanAbsoluteDifference(before, after), lessThan(0.5));
+  });
 }
 
 Widget _imageFixture(CustomPainter painter) {
@@ -139,6 +234,88 @@ Future<ui.Image> _capture(WidgetTester tester) async {
     find.byKey(const Key('shader-image')),
   );
   return (await tester.runAsync(() => boundary.toImage(pixelRatio: 1)))!;
+}
+
+Future<Uint8List> _captureStateAt(
+  WidgetTester tester, {
+  required ui.FragmentProgram program,
+  required AgentPresenceState state,
+  required double elapsedSeconds,
+  double? controllerPhaseSeconds,
+}) async {
+  final Duration now = Duration(
+    microseconds: (elapsedSeconds * Duration.microsecondsPerSecond).round(),
+  );
+  final ValueNotifier<AgentPresenceVisualInput> input =
+      ValueNotifier<AgentPresenceVisualInput>(
+        AgentPresenceVisualInput(
+          snapshot: _settledSnapshot(state, now),
+          amplitude: 0.42,
+          sampledAt: now,
+        ),
+      );
+  await tester.pumpWidget(
+    _imageFixture(
+      AgentPresencePainter(
+        program: program,
+        visualInput: input,
+        phase: AlwaysStoppedAnimation<double>(
+          (controllerPhaseSeconds ?? elapsedSeconds) / 5.6,
+        ),
+        repaint: input,
+        now: () => now,
+        motionEnabled: const AlwaysStoppedAnimation<bool>(true),
+      ),
+    ),
+  );
+  final ui.Image image = await _capture(tester);
+  final ByteData data = (await tester.runAsync(
+    () async => (await image.toByteData(format: ui.ImageByteFormat.rawRgba))!,
+  ))!;
+  image.dispose();
+  input.dispose();
+  return data.buffer.asUint8List();
+}
+
+double _meanAbsoluteDifference(Uint8List first, Uint8List second) {
+  var difference = 0;
+  for (var index = 0; index < first.length; index += 1) {
+    difference += (first[index] - second[index]).abs();
+  }
+  return difference / first.length;
+}
+
+AgentPresenceSnapshot _settledSnapshot(AgentPresenceState state, Duration now) {
+  const AgentPresenceReducer reducer = AgentPresenceReducer();
+  AgentPresenceSnapshot snapshot = const AgentPresenceSnapshot.idle();
+  if (state == AgentPresenceState.speaking ||
+      state == AgentPresenceState.working) {
+    snapshot = reducer.reduce(
+      snapshot,
+      event: AgentPresenceEvent.listeningStarted,
+      now: Duration.zero,
+    );
+    snapshot = reducer.reduce(
+      snapshot,
+      event: AgentPresenceEvent.transcriptCommitted,
+      now: const Duration(milliseconds: 200),
+    );
+  }
+  if (state == AgentPresenceState.speaking) {
+    snapshot = reducer.reduce(
+      snapshot,
+      event: AgentPresenceEvent.speechStarted,
+      now: const Duration(milliseconds: 400),
+    );
+  }
+  if (state == AgentPresenceState.working) {
+    snapshot = reducer.reduce(
+      snapshot,
+      event: AgentPresenceEvent.workStarted,
+      now: const Duration(milliseconds: 400),
+    );
+  }
+  return snapshot.settledAt(now);
 }
 
 _Rgba _rgbaAt(ByteData data, int width, int x, int y) {

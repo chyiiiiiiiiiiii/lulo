@@ -56,7 +56,7 @@ void main() {
 
     harness.start(prompt: 'Hello Gemma');
     harness.complete();
-    await tester.pumpAndSettle();
+    await tester.pump();
     await _finish(tester);
   });
 
@@ -82,7 +82,7 @@ void main() {
 
     harness.start(prompt: 'Keyboard prompt');
     harness.complete();
-    await tester.pumpAndSettle();
+    await tester.pump();
     await _finish(tester);
   });
 
@@ -104,7 +104,7 @@ void main() {
 
     expect(find.byKey(const Key('conversation-stop-button')), findsOneWidget);
     await tester.runAsync(harness.viewModel.stop);
-    await tester.pumpAndSettle();
+    await tester.pump();
 
     expect(harness.inference.cancellations, const <GenerationId>[
       GenerationId('generation-1'),
@@ -164,7 +164,7 @@ void main() {
       expect(find.byKey(const Key('terminal-markdown')), findsNothing);
 
       harness.complete();
-      await tester.pumpAndSettle();
+      await tester.pump();
 
       expect(
         find.byKey(const Key('active-streaming-plain-text')),

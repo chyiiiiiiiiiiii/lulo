@@ -27,7 +27,7 @@ void main() {
       expect(find.byKey(const Key('conversation-stop-button')), findsOneWidget);
 
       await tester.tap(find.byKey(const Key('conversation-stop-button')));
-      await tester.pumpAndSettle();
+      await tester.pump();
 
       expect(find.text('Response stopped'), findsOneWidget);
       expect(find.textContaining('Local inference'), findsOneWidget);

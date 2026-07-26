@@ -2,6 +2,7 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 
 import 'agent_presence_controller.dart';
 import 'agent_presence_state.dart';
@@ -11,6 +12,27 @@ abstract interface class AgentPresenceUniformSink {
   /// Writes one scalar [value] at [index].
   void setFloat(int index, double value);
 }
+
+/// Creates one mutable backend for a mounted shader painter.
+typedef AgentPresenceShaderBackendFactory =
+    AgentPresenceShaderBackend Function();
+
+/// Creates the production runtime-effect backend.
+AgentPresenceShaderBackend createAgentPresenceShaderBackend() =>
+    _RuntimeAgentPresenceShaderBackend();
+
+/// Testable frame boundary around shader instantiation, upload, and draw.
+abstract interface class AgentPresenceShaderBackend
+    implements AgentPresenceUniformSink {
+  /// Instantiates the fragment shader for one frame.
+  void beginFrame(ui.FragmentProgram program);
+
+  /// Draws the prepared frame inside [clipPath].
+  void draw(Canvas canvas, Size size, Path clipPath);
+}
+
+/// Receives a latched first-paint failure after the failed frame completes.
+typedef AgentPresencePaintFailureCallback = void Function(Object error);
 
 /// Owns the single ordered upload site for the presence shader contract.
 final class AgentPresenceUniformBinder {
@@ -58,12 +80,15 @@ final class AgentPresencePainter extends CustomPainter {
     required this.phase,
     required Listenable repaint,
     required this.now,
-    this.motionEnabled = true,
+    required this.motionEnabled,
+    AgentPresenceShaderBackend? backend,
+    this.failurePainter,
+    this.onFailure,
     this.colorStrength = 1,
     this.onPaint,
-  }) : super(repaint: repaint);
+  }) : _backend = backend ?? createAgentPresenceShaderBackend(),
+       super(repaint: repaint);
 
-  static const double _cycleSeconds = 5.6;
   static const AgentPresenceUniformBinder _uniformBinder =
       AgentPresenceUniformBinder();
 
@@ -79,8 +104,8 @@ final class AgentPresencePainter extends CustomPainter {
   /// Supplies the monotonic transition sampling time.
   final Duration Function() now;
 
-  /// Whether periodic motion and amplitude deformation are permitted.
-  final bool motionEnabled;
+  /// Live narrow input controlling motion and amplitude deformation.
+  final ValueListenable<bool> motionEnabled;
 
   /// Dark-ramp colour intensity, normally one.
   final double colorStrength;
@@ -88,10 +113,16 @@ final class AgentPresencePainter extends CustomPainter {
   /// Optional paint instrumentation used by isolation tests.
   final VoidCallback? onPaint;
 
-  final Paint _paint = Paint();
+  /// Canvas fallback used for the first failed shader frame.
+  final CustomPainter? failurePainter;
+
+  /// Reports the first setup/upload/draw failure after the frame.
+  final AgentPresencePaintFailureCallback? onFailure;
+
+  final AgentPresenceShaderBackend _backend;
   final Path _clipPath = Path();
-  final _FragmentShaderUniformSink _uniformSink = _FragmentShaderUniformSink();
   Size _clipSize = Size.zero;
+  bool _failureLatched = false;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -102,23 +133,24 @@ final class AgentPresencePainter extends CustomPainter {
         ..addOval(Offset.zero & size);
       _clipSize = size;
     }
-    final ui.FragmentShader shader = program.fragmentShader();
-    _uniformSink.shader = shader;
-    _uniformBinder.write(
-      _uniformSink,
-      size: size,
-      visualInput: visualInput.value,
-      now: now(),
-      timeSeconds: phase.value * _cycleSeconds,
-      motionEnabled: motionEnabled,
-      colorStrength: colorStrength,
-    );
-    _paint.shader = shader;
-    canvas
-      ..save()
-      ..clipPath(_clipPath)
-      ..drawPaint(_paint)
-      ..restore();
+    if (_failureLatched) {
+      failurePainter?.paint(canvas, size);
+      return;
+    }
+    try {
+      _backend.beginFrame(program);
+      writeUniforms(_backend, size);
+      _backend.draw(canvas, size, _clipPath);
+    } on Object catch (error) {
+      _failureLatched = true;
+      failurePainter?.paint(canvas, size);
+      final AgentPresencePaintFailureCallback? callback = onFailure;
+      if (callback != null) {
+        SchedulerBinding.instance.addPostFrameCallback((Duration _) {
+          callback(error);
+        });
+      }
+    }
   }
 
   @override
@@ -128,13 +160,47 @@ final class AgentPresencePainter extends CustomPainter {
         oldDelegate.phase != phase ||
         oldDelegate.now != now ||
         oldDelegate.motionEnabled != motionEnabled ||
+        oldDelegate._backend != _backend ||
+        oldDelegate.failurePainter != failurePainter ||
+        oldDelegate.onFailure != onFailure ||
         oldDelegate.colorStrength != colorStrength ||
         oldDelegate.onPaint != onPaint;
   }
+
+  /// Uploads one deterministic frame to [sink].
+  void writeUniforms(AgentPresenceUniformSink sink, Size size) {
+    final Duration frameNow = now();
+    _uniformBinder.write(
+      sink,
+      size: size,
+      visualInput: visualInput.value,
+      now: frameNow,
+      timeSeconds: frameNow.inMicroseconds / Duration.microsecondsPerSecond,
+      motionEnabled: motionEnabled.value,
+      colorStrength: colorStrength,
+    );
+  }
 }
 
-final class _FragmentShaderUniformSink implements AgentPresenceUniformSink {
+final class _RuntimeAgentPresenceShaderBackend
+    implements AgentPresenceShaderBackend {
   late ui.FragmentShader shader;
+  final Paint _paint = Paint();
+
+  @override
+  void beginFrame(ui.FragmentProgram program) {
+    shader = program.fragmentShader();
+  }
+
+  @override
+  void draw(Canvas canvas, Size size, Path clipPath) {
+    _paint.shader = shader;
+    canvas
+      ..save()
+      ..clipPath(clipPath)
+      ..drawPaint(_paint)
+      ..restore();
+  }
 
   @override
   void setFloat(int index, double value) {

@@ -1,6 +1,8 @@
+import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:local_agent_macos/features/presence/agent_presence_controller.dart';
 import 'package:local_agent_macos/features/presence/agent_presence_painter.dart';
@@ -62,7 +64,9 @@ void main() {
               phase: const AlwaysStoppedAnimation<double>(0.3125),
               repaint: input,
               now: () => _fixtureNow,
-              motionEnabled: goldenCase.motionEnabled,
+              motionEnabled: AlwaysStoppedAnimation<bool>(
+                goldenCase.motionEnabled,
+              ),
             ),
           ),
         ),
@@ -76,6 +80,28 @@ void main() {
         find.byKey(const Key('golden-orb')),
         matchesGoldenFile('goldens/${goldenCase.fileName}'),
       );
+      final RenderRepaintBoundary boundary = tester.renderObject(
+        find.byKey(const Key('golden-orb')),
+      );
+      final ui.Image retinaImage = (await tester.runAsync(
+        () => boundary.toImage(pixelRatio: 2),
+      ))!;
+      expect(retinaImage.width, 112);
+      expect(retinaImage.height, 112);
+      final ByteData retinaRgba = (await tester.runAsync(
+        () async =>
+            (await retinaImage.toByteData(format: ui.ImageByteFormat.rawRgba))!,
+      ))!;
+      expect(retinaRgba.getUint8(3), 0);
+      expect(
+        retinaRgba.getUint8(((56 * retinaImage.width) + 56) * 4 + 3),
+        greaterThan(0),
+      );
+      await expectLater(
+        retinaImage,
+        matchesGoldenFile('goldens/2x/${goldenCase.fileName}'),
+      );
+      retinaImage.dispose();
     });
   }
 }
