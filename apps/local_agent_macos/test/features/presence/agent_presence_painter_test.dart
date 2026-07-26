@@ -215,6 +215,56 @@ void main() {
 
     expect(_meanAbsoluteDifference(before, after), lessThan(0.5));
   });
+
+  testWidgets('half-working blend stays continuous across its 1.6s boundary', (
+    WidgetTester tester,
+  ) async {
+    final ui.FragmentProgram program = (await tester.runAsync(
+      () => ui.FragmentProgram.fromAsset('shaders/agent_presence.frag'),
+    ))!;
+
+    final Uint8List before = await _captureStateAt(
+      tester,
+      program: program,
+      state: AgentPresenceState.working,
+      elapsedSeconds: 1.599,
+      blendProgress: 0.5,
+    );
+    final Uint8List after = await _captureStateAt(
+      tester,
+      program: program,
+      state: AgentPresenceState.working,
+      elapsedSeconds: 1.601,
+      blendProgress: 0.5,
+    );
+
+    expect(_meanAbsoluteDifference(before, after), lessThan(0.5));
+  });
+
+  testWidgets('half-speaking blend stays continuous across its 2.4s boundary', (
+    WidgetTester tester,
+  ) async {
+    final ui.FragmentProgram program = (await tester.runAsync(
+      () => ui.FragmentProgram.fromAsset('shaders/agent_presence.frag'),
+    ))!;
+
+    final Uint8List before = await _captureStateAt(
+      tester,
+      program: program,
+      state: AgentPresenceState.speaking,
+      elapsedSeconds: 2.399,
+      blendProgress: 0.5,
+    );
+    final Uint8List after = await _captureStateAt(
+      tester,
+      program: program,
+      state: AgentPresenceState.speaking,
+      elapsedSeconds: 2.401,
+      blendProgress: 0.5,
+    );
+
+    expect(_meanAbsoluteDifference(before, after), lessThan(0.5));
+  });
 }
 
 Widget _imageFixture(CustomPainter painter) {
@@ -242,6 +292,7 @@ Future<Uint8List> _captureStateAt(
   required AgentPresenceState state,
   required double elapsedSeconds,
   double? controllerPhaseSeconds,
+  double? blendProgress,
 }) async {
   final Duration now = Duration(
     microseconds: (elapsedSeconds * Duration.microsecondsPerSecond).round(),
@@ -249,7 +300,9 @@ Future<Uint8List> _captureStateAt(
   final ValueNotifier<AgentPresenceVisualInput> input =
       ValueNotifier<AgentPresenceVisualInput>(
         AgentPresenceVisualInput(
-          snapshot: _settledSnapshot(state, now),
+          snapshot: blendProgress == null
+              ? _settledSnapshot(state, now)
+              : _blendedSnapshot(state, now, blendProgress),
           amplitude: 0.42,
           sampledAt: now,
         ),
@@ -275,6 +328,37 @@ Future<Uint8List> _captureStateAt(
   image.dispose();
   input.dispose();
   return data.buffer.asUint8List();
+}
+
+AgentPresenceSnapshot _blendedSnapshot(
+  AgentPresenceState state,
+  Duration now,
+  double progress,
+) {
+  const AgentPresenceReducer reducer = AgentPresenceReducer();
+  final Duration transitionDuration = switch (state) {
+    AgentPresenceState.speaking => const Duration(milliseconds: 180),
+    AgentPresenceState.working => const Duration(milliseconds: 140),
+    _ => throw ArgumentError.value(state, 'state', 'does not support blending'),
+  };
+  final Duration transitionStartedAt =
+      now -
+      Duration(
+        microseconds: (transitionDuration.inMicroseconds * progress).round(),
+      );
+  final AgentPresenceSnapshot thinking = reducer
+      .projectConversationState(
+        const AgentPresenceSnapshot.idle(),
+        state: AgentPresenceProjectionState.thinking,
+        now: Duration.zero,
+      )
+      .settledAt(Duration.zero);
+  final AgentPresenceEvent event = switch (state) {
+    AgentPresenceState.speaking => AgentPresenceEvent.speechStarted,
+    AgentPresenceState.working => AgentPresenceEvent.workStarted,
+    _ => throw ArgumentError.value(state, 'state', 'does not support blending'),
+  };
+  return reducer.reduce(thinking, event: event, now: transitionStartedAt);
 }
 
 double _meanAbsoluteDifference(Uint8List first, Uint8List second) {
