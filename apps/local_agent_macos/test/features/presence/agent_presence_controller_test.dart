@@ -90,6 +90,27 @@ void main() {
       );
     });
 
+    test('maps the fixed noise floor to a zero envelope target', () {
+      final AgentPresenceController controller = AgentPresenceController();
+
+      controller.acceptAudioRms(0, Duration.zero);
+      controller.acceptAudioRms(0.018, const Duration(milliseconds: 55));
+
+      expect(controller.visualInputListenable.value.amplitude, 0);
+    });
+
+    test('maps the fixed midpoint RMS to a half-scale envelope target', () {
+      final AgentPresenceController controller = AgentPresenceController();
+
+      controller.acceptAudioRms(0, Duration.zero);
+      controller.acceptAudioRms(0.219, const Duration(milliseconds: 55));
+
+      expect(
+        controller.visualInputListenable.value.amplitude,
+        closeTo(0.5 * (1 - math.exp(-1)), 1e-12),
+      );
+    });
+
     test('uses a 55 millisecond exponential attack envelope', () {
       final AgentPresenceController controller = AgentPresenceController();
 
@@ -125,6 +146,20 @@ void main() {
         controller.visualInputListenable.value.amplitude,
         closeTo(1 - math.exp(-100 / 55), 1e-12),
       );
+    });
+
+    test('rejects a backwards sample even when it is more than 16ms old', () {
+      final AgentPresenceController controller = AgentPresenceController();
+      var visualNotifications = 0;
+      controller.visualInputListenable.addListener(() {
+        visualNotifications += 1;
+      });
+
+      controller.acceptAudioRms(0, const Duration(milliseconds: 100));
+      controller.acceptAudioRms(0.42, const Duration(milliseconds: 50));
+
+      expect(visualNotifications, 1);
+      expect(controller.visualInputListenable.value.amplitude, 0);
     });
 
     test('snaps a released amplitude below the silence threshold to zero', () {
