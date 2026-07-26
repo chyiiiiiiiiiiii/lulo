@@ -26,6 +26,7 @@ final class ConversationViewModel extends ChangeNotifier {
   StreamSubscription<GenerationEvent>? _operationSubscription;
   ConversationId? _conversationId;
   GenerationId? _activeGenerationId;
+  bool _stopRequested = false;
 
   /// Immutable state consumed by the conversation view.
   ConversationProjection get projection => _projection;
@@ -39,6 +40,7 @@ final class ConversationViewModel extends ChangeNotifier {
     if (prompt.isEmpty || !canSubmit) {
       return;
     }
+    _stopRequested = false;
 
     final ConversationId conversationId = _conversationId ??= _idFactory();
     final Turn userTurn = Turn(
@@ -106,11 +108,21 @@ final class ConversationViewModel extends ChangeNotifier {
     }
   }
 
-  void _finishActiveTurn(TurnStatus status) {
-    final Turn? activeTurn = _projection.activeTurn;
-    if (activeTurn == null) {
+  void _finishActiveTurn(
+    TurnStatus status, {
+    bool createWhenNotStarted = false,
+  }) {
+    final Turn? projectedTurn = _projection.activeTurn;
+    if (projectedTurn == null && !createWhenNotStarted) {
       return;
     }
+    final Turn activeTurn =
+        projectedTurn ??
+        const Turn(
+          role: TurnRole.assistant,
+          text: '',
+          status: TurnStatus.streaming,
+        );
     _projection = ConversationProjection(
       completedTurns: <Turn>[
         ..._projection.completedTurns,
@@ -122,12 +134,7 @@ final class ConversationViewModel extends ChangeNotifier {
   }
 
   void _onOperationError(Object _, StackTrace _) {
-    if (_projection.activeTurn != null) {
-      _finishActiveTurn(TurnStatus.failed);
-      return;
-    }
-    _activeGenerationId = null;
-    notifyListeners();
+    _finishActiveTurn(TurnStatus.failed, createWhenNotStarted: true);
   }
 
   void _onOperationDone() {
@@ -138,10 +145,20 @@ final class ConversationViewModel extends ChangeNotifier {
   /// Stops the active generation.
   Future<void> stop() async {
     final GenerationId? generationId = _activeGenerationId;
-    if (generationId == null) {
+    if (generationId != null) {
+      await _repository.stop(generationId);
       return;
     }
-    await _repository.stop(generationId);
+
+    final StreamSubscription<GenerationEvent>? subscription =
+        _operationSubscription;
+    if (subscription == null || _stopRequested) {
+      return;
+    }
+    _stopRequested = true;
+    await subscription.cancel();
+    _operationSubscription = null;
+    _finishActiveTurn(TurnStatus.cancelled, createWhenNotStarted: true);
   }
 
   @override

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:agent_core/agent_core.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:local_agent_macos/features/conversation/conversation_repository.dart';
@@ -265,6 +267,124 @@ void main() {
     viewModel.dispose();
     await harness.dispose();
   });
+
+  test('stop before generation starts cancels the pending operation', () async {
+    final _Harness harness = _Harness();
+    final Completer<void> saveGate = Completer<void>();
+    harness.storage.userSaveGate = saveGate;
+    final ConversationViewModel viewModel = harness.createViewModel();
+
+    await viewModel.submit('Hello');
+    await Future<void>.delayed(Duration.zero);
+    await Future.wait<void>(<Future<void>>[viewModel.stop(), viewModel.stop()]);
+    saveGate.complete();
+    await Future<void>.delayed(Duration.zero);
+
+    expect(harness.inference.requests, isEmpty);
+    expect(viewModel.projection.activeTurn, isNull);
+    expect(viewModel.projection.completedTurns, hasLength(2));
+    expect(viewModel.projection.completedTurns.last.role, TurnRole.assistant);
+    expect(viewModel.projection.completedTurns.last.text, isEmpty);
+    expect(
+      viewModel.projection.completedTurns.last.status,
+      TurnStatus.cancelled,
+    );
+    expect(viewModel.canSubmit, isTrue);
+
+    viewModel.dispose();
+    await harness.dispose();
+  });
+
+  test(
+    'source error before generation starts publishes a failed assistant turn',
+    () async {
+      final _Harness harness = _Harness();
+      final ConversationViewModel viewModel = harness.createViewModel();
+
+      await viewModel.submit('Hello');
+      await harness.inference.requestReceived;
+      harness.inference.emitError(
+        StateError('runtime failed before start'),
+        StackTrace.current,
+      );
+      await Future<void>.delayed(Duration.zero);
+
+      expect(viewModel.projection.activeTurn, isNull);
+      expect(viewModel.projection.completedTurns, hasLength(2));
+      expect(viewModel.projection.completedTurns.last.role, TurnRole.assistant);
+      expect(viewModel.projection.completedTurns.last.text, isEmpty);
+      expect(
+        viewModel.projection.completedTurns.last.status,
+        TurnStatus.failed,
+      );
+      expect(viewModel.canSubmit, isTrue);
+
+      await viewModel.submit('Recovered');
+      await Future<void>.delayed(Duration.zero);
+      expect(harness.inference.requests, hasLength(2));
+
+      viewModel.dispose();
+      await harness.dispose();
+    },
+  );
+
+  test(
+    'dispose during a pending user save prevents inference and late notification',
+    () async {
+      final _Harness harness = _Harness();
+      final Completer<void> saveGate = Completer<void>();
+      harness.storage.userSaveGate = saveGate;
+      final ConversationViewModel viewModel = harness.createViewModel();
+      int notifications = 0;
+      viewModel.addListener(() => notifications += 1);
+
+      await viewModel.submit('Hello');
+      final int notificationsBeforeDispose = notifications;
+      viewModel.dispose();
+      saveGate.complete();
+      await Future<void>.delayed(Duration.zero);
+
+      expect(harness.inference.requests, isEmpty);
+      expect(notifications, notificationsBeforeDispose);
+
+      await harness.dispose();
+    },
+  );
+
+  test(
+    'late delta after stop cannot mutate or notify the projection',
+    () async {
+      final _Harness harness = _Harness();
+      final ConversationViewModel viewModel = harness.createViewModel();
+      await _startGeneration(harness, viewModel);
+      int notifications = 0;
+      viewModel.addListener(() => notifications += 1);
+
+      await viewModel.stop();
+      await Future<void>.delayed(Duration.zero);
+      final int notificationsAfterStop = notifications;
+      final List<Turn> turnsAfterStop = viewModel.projection.completedTurns;
+      harness.inference.emit(
+        const GenerationDelta(
+          generationId: GenerationId('generation-1'),
+          delta: 'Late mutation',
+        ),
+      );
+      await Future<void>.delayed(Duration.zero);
+
+      expect(notifications, notificationsAfterStop);
+      expect(viewModel.projection.activeTurn, isNull);
+      expect(viewModel.projection.completedTurns, same(turnsAfterStop));
+      expect(viewModel.projection.completedTurns.last.text, 'Partial');
+      expect(
+        viewModel.projection.completedTurns.last.status,
+        TurnStatus.cancelled,
+      );
+
+      viewModel.dispose();
+      await harness.dispose();
+    },
+  );
 }
 
 Future<void> _startGeneration(
