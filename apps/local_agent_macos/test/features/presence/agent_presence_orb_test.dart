@@ -360,7 +360,9 @@ void main() {
           addTearDown(controller.dispose);
           _dispatchState(controller, semanticCase.state);
 
-          await tester.pumpWidget(_app(controller: controller));
+          await tester.pumpWidget(
+            _app(controller: controller, disableAnimations: true),
+          );
 
           expect(find.bySemanticsLabel(semanticCase.label), findsOneWidget);
           expect(find.text(semanticCase.label), findsOneWidget);
@@ -400,6 +402,85 @@ void main() {
       expect(find.bySemanticsLabel('Attention needed'), findsOneWidget);
       expect(find.text('Attention needed'), findsOneWidget);
     });
+
+    testWidgets(
+      'reduced motion renders a shader state target immediately at arrival',
+      (WidgetTester tester) async {
+        final AgentPresenceController controller = AgentPresenceController();
+        addTearDown(controller.dispose);
+
+        await tester.pumpWidget(
+          _app(controller: controller, disableAnimations: true),
+        );
+        await tester.pump();
+        await tester.pump();
+
+        controller.dispatch(
+          AgentPresenceEvent.listeningStarted,
+          const Duration(milliseconds: 1),
+        );
+        controller.acceptAudioRms(0, const Duration(milliseconds: 16));
+        controller.acceptAudioRms(0.42, const Duration(milliseconds: 71));
+        await tester.pump();
+
+        final AgentPresencePainter painter =
+            tester
+                    .widget<CustomPaint>(
+                      find.byKey(const Key('agent-presence-canvas')),
+                    )
+                    .painter!
+                as AgentPresencePainter;
+        final _RecordingUniformSink uniforms = _RecordingUniformSink();
+        painter.writeUniforms(uniforms, const Size.square(56));
+
+        expect(uniforms.valueAt(3), 0);
+        expect(uniforms.valueAt(4), 1);
+        expect(uniforms.valueAt(9), 0);
+        expect(uniforms.valueAt(10), 0);
+        expect(find.bySemanticsLabel('Listening'), findsOneWidget);
+        expect(find.text('Listening'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'reduced motion fallback stays semantic and parked after amplitude input',
+      (WidgetTester tester) async {
+        final AgentPresenceController controller = AgentPresenceController();
+        addTearDown(controller.dispose);
+        var paints = 0;
+
+        await tester.pumpWidget(
+          _app(
+            controller: controller,
+            disableAnimations: true,
+            onPaint: () => paints += 1,
+            shaderLoader: () async {
+              throw UnsupportedError('shader unavailable');
+            },
+          ),
+        );
+        await tester.pump();
+        await tester.pump();
+        expect(
+          find.byKey(const Key('agent-presence-fallback')),
+          findsOneWidget,
+        );
+
+        controller.dispatch(
+          AgentPresenceEvent.listeningStarted,
+          const Duration(milliseconds: 1),
+        );
+        controller.acceptAudioRms(0, const Duration(milliseconds: 16));
+        controller.acceptAudioRms(0.42, const Duration(milliseconds: 71));
+        await tester.pump();
+
+        expect(find.bySemanticsLabel('Listening'), findsOneWidget);
+        expect(find.text('Listening'), findsOneWidget);
+        paints = 0;
+        await tester.pump(const Duration(seconds: 1));
+        expect(paints, 0);
+      },
+    );
 
     testWidgets(
       'loaded shader follows a reduced-motion toggle and resumes safely',

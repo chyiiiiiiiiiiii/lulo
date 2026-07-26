@@ -51,7 +51,10 @@ final class AgentPresenceUniformBinder {
     required bool motionEnabled,
     required double colorStrength,
   }) {
-    final AgentPresenceWeights weights = visualInput.snapshot.weightsAt(now);
+    final AgentPresenceSnapshot snapshot = visualInput.snapshot;
+    final AgentPresenceWeights weights = motionEnabled
+        ? snapshot.weightsAt(now)
+        : snapshot.settledAt(now).weightsAt(now);
     final bool hasMotion =
         motionEnabled && visualInput.snapshot.state != AgentPresenceState.error;
     sink
