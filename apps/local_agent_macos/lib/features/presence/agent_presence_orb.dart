@@ -111,15 +111,9 @@ final class _AgentPresenceOrbState extends State<AgentPresenceOrb>
   }
 
   Future<void> _loadShader() async {
+    late final ui.FragmentProgram program;
     try {
-      final ui.FragmentProgram program = await widget.shaderLoader();
-      if (!mounted) {
-        return;
-      }
-      setState(() {
-        _fragmentProgram = program;
-        _shaderLoadPhase = _ShaderLoadPhase.ready;
-      });
+      program = await widget.shaderLoader();
     } on Object catch (error) {
       if (!mounted) {
         return;
@@ -132,7 +126,15 @@ final class _AgentPresenceOrbState extends State<AgentPresenceOrb>
       setState(() {
         _shaderLoadPhase = _ShaderLoadPhase.fallback;
       });
+      return;
     }
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _fragmentProgram = program;
+      _shaderLoadPhase = _ShaderLoadPhase.ready;
+    });
   }
 
   @override

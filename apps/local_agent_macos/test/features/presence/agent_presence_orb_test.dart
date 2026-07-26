@@ -62,6 +62,109 @@ void main() {
       expect(find.text('Agent ready'), findsOneWidget);
     });
 
+    testWidgets('deferred shader success is ignored after the orb unmounts', (
+      WidgetTester tester,
+    ) async {
+      final AgentPresenceController controller = AgentPresenceController();
+      addTearDown(controller.dispose);
+      final Completer<ui.FragmentProgram> load =
+          Completer<ui.FragmentProgram>();
+      final ui.FragmentProgram program = (await tester.runAsync(
+        loadAgentPresenceShader,
+      ))!;
+      var attempts = 0;
+      final List<String> diagnostics = <String>[];
+      final DebugPrintCallback originalDebugPrint = debugPrint;
+      debugPrint = (String? message, {int? wrapWidth}) {
+        diagnostics.add(message ?? '');
+      };
+      addTearDown(() => debugPrint = originalDebugPrint);
+
+      try {
+        await tester.pumpWidget(
+          _app(
+            controller: controller,
+            shaderLoader: () {
+              attempts += 1;
+              return load.future;
+            },
+          ),
+        );
+
+        expect(attempts, 1);
+        expect(
+          tester
+              .widget<CustomPaint>(
+                find.byKey(const Key('agent-presence-canvas')),
+              )
+              .painter,
+          isA<AgentPresenceFallbackPainter>(),
+        );
+
+        await tester.pumpWidget(const SizedBox.shrink());
+        load.complete(program);
+        await tester.pump();
+        await tester.pump();
+
+        expect(tester.takeException(), isNull);
+        expect(diagnostics, isEmpty);
+        expect(attempts, 1);
+      } finally {
+        debugPrint = originalDebugPrint;
+      }
+    });
+
+    testWidgets('deferred shader failure is ignored after the orb unmounts', (
+      WidgetTester tester,
+    ) async {
+      final AgentPresenceController controller = AgentPresenceController();
+      addTearDown(controller.dispose);
+      final Completer<ui.FragmentProgram> load =
+          Completer<ui.FragmentProgram>();
+      var attempts = 0;
+      final List<String> diagnostics = <String>[];
+      final DebugPrintCallback originalDebugPrint = debugPrint;
+      debugPrint = (String? message, {int? wrapWidth}) {
+        diagnostics.add(message ?? '');
+      };
+      addTearDown(() => debugPrint = originalDebugPrint);
+
+      try {
+        await tester.pumpWidget(
+          _app(
+            controller: controller,
+            shaderLoader: () {
+              attempts += 1;
+              return load.future;
+            },
+          ),
+        );
+
+        expect(attempts, 1);
+        expect(
+          tester
+              .widget<CustomPaint>(
+                find.byKey(const Key('agent-presence-canvas')),
+              )
+              .painter,
+          isA<AgentPresenceFallbackPainter>(),
+        );
+
+        await tester.pumpWidget(const SizedBox.shrink());
+        load.completeError(
+          StateError('must not log /private/path, prompt, or audio samples'),
+        );
+        await tester.pump();
+        await tester.pump();
+
+        expect(tester.takeException(), isNull);
+        expect(diagnostics, isEmpty);
+        expect(attempts, 1);
+      } finally {
+        debugPrint = originalDebugPrint;
+      }
+    });
+
     testWidgets('loader exception latches one same-size semantic fallback', (
       WidgetTester tester,
     ) async {
