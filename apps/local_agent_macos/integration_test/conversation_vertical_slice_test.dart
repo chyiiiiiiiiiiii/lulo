@@ -8,7 +8,7 @@ void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
 
   testWidgets(
-    'fake runtime launches, streams partial output, and stops visibly',
+    'fake runtime stops partial output then completes a second response',
     (WidgetTester tester) async {
       final composition = createAppComposition(inferenceRuntime: 'fake');
       await tester.pumpWidget(LocalAgentApp(composition: composition));
@@ -31,6 +31,30 @@ void main() {
 
       expect(find.text('Response stopped'), findsOneWidget);
       expect(find.textContaining('Local inference'), findsOneWidget);
+      expect(
+        find.byKey(const Key('conversation-submit-button')),
+        findsOneWidget,
+      );
+
+      await tester.enterText(
+        find.byKey(const Key('conversation-composer-field')),
+        'Finish a second response',
+      );
+      await tester.pump();
+      await tester.tap(find.byKey(const Key('conversation-submit-button')));
+
+      await tester.pump(const Duration(milliseconds: 250));
+
+      expect(
+        find.text(
+          'Local inference is streaming through the real app pipeline. '
+          'This preview is deterministic and runs without a network '
+          'connection.',
+        ),
+        findsOneWidget,
+      );
+      expect(find.text('Response stopped'), findsOneWidget);
+      expect(find.byKey(const Key('terminal-markdown')), findsNWidgets(2));
       expect(
         find.byKey(const Key('conversation-submit-button')),
         findsOneWidget,
