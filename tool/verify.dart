@@ -30,6 +30,15 @@ Future<void> main() async {
       workingDirectory: _join(workspaceRoot.path, 'packages/agent_core'),
     ),
     _VerificationCommand(
+      name: 'presence frame metrics tests',
+      executable: 'flutter',
+      arguments: const <String>[
+        'test',
+        'test/features/presence/agent_presence_frame_metrics_test.dart',
+      ],
+      workingDirectory: _join(workspaceRoot.path, 'apps/local_agent_macos'),
+    ),
+    _VerificationCommand(
       name: 'Flutter tests',
       executable: 'flutter',
       arguments: const <String>['test'],
