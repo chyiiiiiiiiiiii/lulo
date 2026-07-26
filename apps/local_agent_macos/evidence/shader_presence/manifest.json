@@ -43,6 +43,19 @@
       "raw_report": null,
       "sha256": null,
       "reason": "Hardware reruns stopped after the profile-driver smoke incompatibility."
+    },
+    {
+      "attempt": 5,
+      "status": "accepted",
+      "raw_report": "attempt-5/agent_presence_frame_timing.json",
+      "sha256": "d045001b5061e14cd928fcbe54162870d8514a544448a1e195a3d3b582b06af7",
+      "diagnostics": [
+        {
+          "path": "attempt-5/flutter-drive.log",
+          "sha256": "880b3bf13602bd2e4c39d811fb5fd85074f2e6a0d9cd78466b2c54132e3267dd"
+        }
+      ],
+      "reason": "The strict post-review protocol accepted the real M1 Pro profile run at 120 Hz with the loaded FragmentProgram path and timestamp-window attribution."
     }
   ]
 }
