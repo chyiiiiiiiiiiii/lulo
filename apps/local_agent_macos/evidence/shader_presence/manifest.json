@@ -1,0 +1,48 @@
+{
+  "schema_version": 1,
+  "evidence_root": "01-Projects/Flutter-Local-Agent/evidence/shader-presence",
+  "attempts": [
+    {
+      "attempt": 1,
+      "status": "superseded",
+      "raw_report": "attempt-1/agent_presence_frame_timing.json",
+      "sha256": "026961e43e3e4fe151148abace6b144356df41a74ab662bdab8f0df26c550f39",
+      "reason": "The pump-driven harness produced zero frame samples."
+    },
+    {
+      "attempt": 2,
+      "status": "superseded",
+      "raw_report": "attempt-2/agent_presence_frame_timing.json",
+      "sha256": "25960d928c878a1f7226870a5987c5328845b801beab9b04cb0619c0fa87c724",
+      "reason": "The report predates runtime shader-path proof and timestamp-window attribution."
+    },
+    {
+      "attempt": 3,
+      "status": "blocked",
+      "raw_report": null,
+      "sha256": null,
+      "diagnostics": [
+        {
+          "path": "attempt-3/native-sample.txt",
+          "sha256": "90641271b829a7381e91a8c6b475f71b2cb659a9287a30ffa7f9b8d6ff02294d"
+        },
+        {
+          "path": "attempt-3/sample-command.txt",
+          "sha256": "b6fa16eff2af4cbcf708c4c6b29cba80bee6eb1de69bae0c6f04968a885f3131"
+        },
+        {
+          "path": "attempt-3/profile-driver-smoke-stage.log",
+          "sha256": "87c0005fbbc543b087bddd446945b2d356d693e7fa7e79a26320a27a6546c366"
+        }
+      ],
+      "reason": "The profile Flutter Driver never returned a completed report."
+    },
+    {
+      "attempt": 4,
+      "status": "not_run",
+      "raw_report": null,
+      "sha256": null,
+      "reason": "Hardware reruns stopped after the profile-driver smoke incompatibility."
+    }
+  ]
+}

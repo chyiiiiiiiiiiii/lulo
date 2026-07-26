@@ -6,6 +6,14 @@ const double _singleFrameHardGateMillis = 24;
 const double _jankThresholdMillis = 16.67;
 const double _maximumJankRatio = 0.01;
 const double _minimumSampleCoverageRatio = 0.8;
+const int _schemaVersion = 1;
+const String _hardwareEvidenceKind = 'hardware_profile';
+const String _renderer = 'Impeller/Metal';
+const double _targetRefreshHz = 120;
+const double _refreshToleranceHz = 0.5;
+const int _warmupDurationMillis = 2000;
+const int _stateDurationMillis = 10000;
+const String _shaderPath = 'fragmentProgram';
 
 const List<String> _states = <String>[
   'idle',
@@ -25,13 +33,16 @@ const List<String> _requiredMetadata = <String>[
   'device',
   'display_model',
   'display_refresh_hz',
-  'display_resolution',
+  'physical_display_resolution',
+  'test_surface_resolution',
   'display_scale',
   'power_mode',
   'machine',
   'ambient_workload',
   'warmup_duration_ms',
   'state_duration_ms',
+  'shader_path',
+  'shader_compile_ready',
 ];
 
 /// The two Flutter engine stages that must be measured independently.
@@ -41,6 +52,171 @@ enum AgentPresenceFrameStage {
 
   /// Flutter raster-thread work.
   raster,
+}
+
+/// One raw Flutter engine timing sample keyed by monotonic build-start time.
+final class AgentPresenceRawFrameSample {
+  /// Creates one unaggregated engine frame sample.
+  const AgentPresenceRawFrameSample({
+    required this.timestampMicros,
+    required this.buildMicros,
+    required this.rasterMicros,
+  });
+
+  /// Monotonic engine timestamp at [FramePhase.buildStart].
+  final int timestampMicros;
+
+  /// Flutter UI-thread build duration.
+  final int buildMicros;
+
+  /// Flutter raster-thread duration.
+  final int rasterMicros;
+
+  /// Converts the raw frame to durable report data.
+  Map<String, Object?> toJson() {
+    return <String, Object?>{
+      'timestamp_micros': timestampMicros,
+      'build_micros': buildMicros,
+      'raster_micros': rasterMicros,
+    };
+  }
+}
+
+/// One explicit state window in the engine's monotonic timestamp domain.
+final class AgentPresenceFrameWindow {
+  /// Creates a start-inclusive, end-exclusive attribution window.
+  const AgentPresenceFrameWindow({
+    required this.state,
+    required this.startMicrosInclusive,
+    required this.endMicrosExclusive,
+  });
+
+  /// Presence state whose transition frame begins this window.
+  final String state;
+
+  /// First included frame timestamp.
+  final int startMicrosInclusive;
+
+  /// First excluded frame timestamp, owned by the next window.
+  final int endMicrosExclusive;
+}
+
+/// Timestamp-based attribution result independent of callback delivery order.
+final class AgentPresenceFrameAttribution {
+  /// Creates an immutable attribution result.
+  AgentPresenceFrameAttribution({
+    required Map<String, List<AgentPresenceRawFrameSample>> framesByState,
+    required this.unassignedFrameCount,
+  }) : _framesByState = <String, List<AgentPresenceRawFrameSample>>{
+         for (final MapEntry<String, List<AgentPresenceRawFrameSample>> entry
+             in framesByState.entries)
+           entry.key: List<AgentPresenceRawFrameSample>.unmodifiable(
+             entry.value,
+           ),
+       };
+
+  final Map<String, List<AgentPresenceRawFrameSample>> _framesByState;
+
+  /// Frames outside all explicit measurement windows.
+  final int unassignedFrameCount;
+
+  /// Total frames assigned exactly once to a state window.
+  int get assignedFrameCount => _framesByState.values.fold<int>(
+    0,
+    (int total, List<AgentPresenceRawFrameSample> frames) =>
+        total + frames.length,
+  );
+
+  /// Returns timestamp-sorted frames for [state].
+  List<AgentPresenceRawFrameSample> framesFor(String state) =>
+      _framesByState[state] ?? const <AgentPresenceRawFrameSample>[];
+}
+
+/// Attributes delayed timing batches using timestamps, never callback state.
+AgentPresenceFrameAttribution attributeAgentPresenceFrameSamples({
+  required List<AgentPresenceFrameWindow> windows,
+  required List<AgentPresenceRawFrameSample> frames,
+}) {
+  final List<AgentPresenceFrameWindow> orderedWindows =
+      List<AgentPresenceFrameWindow>.of(windows)..sort(
+        (AgentPresenceFrameWindow left, AgentPresenceFrameWindow right) =>
+            left.startMicrosInclusive.compareTo(right.startMicrosInclusive),
+      );
+  for (var index = 0; index < orderedWindows.length; index += 1) {
+    final AgentPresenceFrameWindow window = orderedWindows[index];
+    if (window.endMicrosExclusive <= window.startMicrosInclusive) {
+      throw ArgumentError.value(
+        windows,
+        'windows',
+        'Window must be non-empty.',
+      );
+    }
+    if (index > 0 &&
+        orderedWindows[index - 1].endMicrosExclusive >
+            window.startMicrosInclusive) {
+      throw ArgumentError.value(
+        windows,
+        'windows',
+        'Windows must not overlap.',
+      );
+    }
+  }
+
+  final Map<String, List<AgentPresenceRawFrameSample>> framesByState =
+      <String, List<AgentPresenceRawFrameSample>>{
+        for (final AgentPresenceFrameWindow window in orderedWindows)
+          window.state: <AgentPresenceRawFrameSample>[],
+      };
+  var unassigned = 0;
+  for (final AgentPresenceRawFrameSample frame in frames) {
+    AgentPresenceFrameWindow? matched;
+    for (final AgentPresenceFrameWindow window in orderedWindows) {
+      if (frame.timestampMicros >= window.startMicrosInclusive &&
+          frame.timestampMicros < window.endMicrosExclusive) {
+        matched = window;
+        break;
+      }
+    }
+    if (matched == null) {
+      unassigned += 1;
+      continue;
+    }
+    framesByState[matched.state]!.add(frame);
+  }
+  for (final List<AgentPresenceRawFrameSample> stateFrames
+      in framesByState.values) {
+    stateFrames.sort(
+      (AgentPresenceRawFrameSample left, AgentPresenceRawFrameSample right) =>
+          left.timestampMicros.compareTo(right.timestampMicros),
+    );
+  }
+  return AgentPresenceFrameAttribution(
+    framesByState: framesByState,
+    unassignedFrameCount: unassigned,
+  );
+}
+
+/// Serializes one window as compact aligned raw sample columns.
+Map<String, Object?> serializeAgentPresenceStateFrames({
+  required AgentPresenceFrameWindow window,
+  required List<AgentPresenceRawFrameSample> frames,
+}) {
+  return <String, Object?>{
+    'state': window.state,
+    'window_start_micros_inclusive': window.startMicrosInclusive,
+    'window_end_micros_exclusive': window.endMicrosExclusive,
+    'frame_timestamps_micros': <int>[
+      for (final AgentPresenceRawFrameSample frame in frames)
+        frame.timestampMicros,
+    ],
+    'build_times_micros': <int>[
+      for (final AgentPresenceRawFrameSample frame in frames) frame.buildMicros,
+    ],
+    'raster_times_micros': <int>[
+      for (final AgentPresenceRawFrameSample frame in frames)
+        frame.rasterMicros,
+    ],
+  };
 }
 
 /// Evaluates raw post-warmup presence samples without using widget timing.
@@ -73,6 +249,12 @@ AgentPresenceFrameEvaluation evaluateAgentPresenceFrameReport(
       }
     }
   }
+  final bool protocolValid = _hasExactHardwareProtocol(
+    report: report,
+    metadata: metadata,
+    rawStates: rawStates,
+    metadataComplete: metadataComplete,
+  );
 
   final List<AgentPresenceStageEvaluation> stageEvaluations =
       <AgentPresenceStageEvaluation>[
@@ -94,6 +276,7 @@ AgentPresenceFrameEvaluation evaluateAgentPresenceFrameReport(
 
   return AgentPresenceFrameEvaluation(
     metadataComplete: metadataComplete,
+    protocolValid: protocolValid,
     minimumSamplesPerStagePerState: minimumSamples,
     stageEvaluations: stageEvaluations,
     displayRefreshHz: refreshRate,
@@ -105,6 +288,7 @@ final class AgentPresenceFrameEvaluation {
   /// Creates one complete report evaluation.
   const AgentPresenceFrameEvaluation({
     required this.metadataComplete,
+    required this.protocolValid,
     required this.minimumSamplesPerStagePerState,
     required this.stageEvaluations,
     required this.displayRefreshHz,
@@ -112,6 +296,9 @@ final class AgentPresenceFrameEvaluation {
 
   /// Whether all environment and measurement metadata is present and valid.
   final bool metadataComplete;
+
+  /// Whether the report is eligible hardware evidence for the current target.
+  final bool protocolValid;
 
   /// Minimum raw samples required for each state and each engine stage.
   final int minimumSamplesPerStagePerState;
@@ -129,7 +316,7 @@ final class AgentPresenceFrameEvaluation {
 
   /// Whether this report proves the approved raw frame-timing gates.
   bool get isAccepted =>
-      metadataComplete &&
+      protocolValid &&
       hasSufficientSamples &&
       stageEvaluations.every(
         (AgentPresenceStageEvaluation stage) => stage.meetsTimingGates,
@@ -150,6 +337,7 @@ final class AgentPresenceFrameEvaluation {
   Map<String, Object?> toJson() {
     return <String, Object?>{
       'metadata_complete': metadataComplete,
+      'protocol_valid': protocolValid,
       'minimum_samples_per_stage_per_state': minimumSamplesPerStagePerState,
       'has_sufficient_samples': hasSufficientSamples,
       'is_accepted': isAccepted,
@@ -298,14 +486,130 @@ bool _hasCompleteMetadata(Map<String, Object?>? metadata) {
       return false;
     }
   }
-  final String? buildMode = metadata['build_mode'] as String?;
-  if (buildMode != 'profile' && buildMode != 'release') {
-    return false;
-  }
   return _positiveDouble(metadata['display_refresh_hz']) != null &&
       _positiveDouble(metadata['display_scale']) != null &&
       _positiveInt(metadata['warmup_duration_ms']) != null &&
       _positiveInt(metadata['state_duration_ms']) != null;
+}
+
+bool _hasExactHardwareProtocol({
+  required Map<String, Object?> report,
+  required Map<String, Object?>? metadata,
+  required Object? rawStates,
+  required bool metadataComplete,
+}) {
+  if (!metadataComplete ||
+      metadata == null ||
+      report['schema_version'] != _schemaVersion ||
+      report['evidence_kind'] != _hardwareEvidenceKind ||
+      metadata['build_mode'] != 'profile' ||
+      metadata['renderer'] != _renderer ||
+      metadata['warmup_duration_ms'] != _warmupDurationMillis ||
+      metadata['state_duration_ms'] != _stateDurationMillis ||
+      metadata['shader_path'] != _shaderPath ||
+      metadata['shader_compile_ready'] != true) {
+    return false;
+  }
+
+  final double? refreshRate = _positiveDouble(metadata['display_refresh_hz']);
+  if (refreshRate == null ||
+      (refreshRate - _targetRefreshHz).abs() > _refreshToleranceHz) {
+    return false;
+  }
+
+  for (final String key in <String>[
+    'flutter_version',
+    'dart_version',
+    'macos_version',
+    'device',
+    'display_model',
+    'physical_display_resolution',
+    'test_surface_resolution',
+    'power_mode',
+    'machine',
+    'ambient_workload',
+  ]) {
+    if (!_isEvidenceString(metadata[key])) {
+      return false;
+    }
+  }
+  if (!_isResolution(metadata['physical_display_resolution']) ||
+      !_isResolution(metadata['test_surface_resolution'])) {
+    return false;
+  }
+
+  if (rawStates is! List<Object?> || rawStates.length != _states.length) {
+    return false;
+  }
+  return _hasValidAttributionProtocol(report, rawStates);
+}
+
+bool _hasValidAttributionProtocol(
+  Map<String, Object?> report,
+  List<Object?> rawStates,
+) {
+  int? previousEnd;
+  var assignedFrames = 0;
+  for (var index = 0; index < rawStates.length; index += 1) {
+    final Map<String, Object?>? state = _stringMap(rawStates[index]);
+    if (state == null || state['state'] != _states[index]) {
+      return false;
+    }
+    final Object? rawStart = state['window_start_micros_inclusive'];
+    final Object? rawEnd = state['window_end_micros_exclusive'];
+    if (rawStart is! int ||
+        rawEnd is! int ||
+        rawEnd <= rawStart ||
+        previousEnd != null && rawStart != previousEnd) {
+      return false;
+    }
+    previousEnd = rawEnd;
+
+    final List<int> timestamps = _samples(state['frame_timestamps_micros']);
+    final List<int> builds = _samples(state['build_times_micros']);
+    final List<int> rasters = _samples(state['raster_times_micros']);
+    if (timestamps.isEmpty ||
+        timestamps.length != builds.length ||
+        timestamps.length != rasters.length) {
+      return false;
+    }
+    for (var sample = 0; sample < timestamps.length; sample += 1) {
+      final int timestamp = timestamps[sample];
+      if (timestamp < rawStart ||
+          timestamp >= rawEnd ||
+          sample > 0 && timestamp <= timestamps[sample - 1]) {
+        return false;
+      }
+    }
+    assignedFrames += timestamps.length;
+  }
+
+  final Map<String, Object?>? attribution = _stringMap(report['attribution']);
+  final Object? rawUnassigned = attribution?['unassigned_frame_count'];
+  return attribution?['timestamp_phase'] == 'buildStart' &&
+      attribution?['window_policy'] == 'startInclusive_endExclusive' &&
+      attribution?['assigned_frame_count'] == assignedFrames &&
+      rawUnassigned is int &&
+      rawUnassigned >= 0;
+}
+
+bool _isEvidenceString(Object? value) {
+  if (value is! String || value.trim().isEmpty) {
+    return false;
+  }
+  return !<String>{
+    'unknown',
+    'placeholder',
+    'n/a',
+    'na',
+    'none',
+    'test',
+    'test display',
+  }.contains(value.trim().toLowerCase());
+}
+
+bool _isResolution(Object? value) {
+  return value is String && RegExp(r'^[1-9]\d*x[1-9]\d*$').hasMatch(value);
 }
 
 Map<String, Object?>? _stringMap(Object? value) {

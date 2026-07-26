@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:math' as math;
 import 'dart:ui';
@@ -23,136 +24,276 @@ void main() {
       IntegrationTestWidgetsFlutterBinding.ensureInitialized();
   binding.framePolicy = LiveTestWidgetsFlutterBindingFramePolicy.fullyLive;
 
-  testWidgets('records raw presence build and raster timings by state', (
-    WidgetTester tester,
-  ) async {
-    final Duration warmup = _isSmoke ? _smokeWarmup : _profileWarmup;
-    final Duration stateDuration = _isSmoke
-        ? _smokeStateDuration
-        : _profileStateDuration;
-    final AgentPresenceController controller = AgentPresenceController();
-    final Stopwatch clock = Stopwatch()..start();
-    addTearDown(() {
-      clock.stop();
-      controller.dispose();
-    });
+  testWidgets(
+    'records raw presence build and raster timings by state',
+    (WidgetTester tester) async {
+      final Duration warmup = _isSmoke ? _smokeWarmup : _profileWarmup;
+      final Duration stateDuration = _isSmoke
+          ? _smokeStateDuration
+          : _profileStateDuration;
+      final AgentPresenceController controller = AgentPresenceController();
+      final Stopwatch clock = Stopwatch()..start();
+      final GlobalKey<_ProfileHarnessState> harnessKey =
+          GlobalKey<_ProfileHarnessState>();
+      AgentPresenceRenderingPath renderingPath =
+          AgentPresenceRenderingPath.loading;
+      final Completer<AgentPresenceRenderingPath> shaderReadiness =
+          Completer<AgentPresenceRenderingPath>();
+      addTearDown(() {
+        clock.stop();
+        controller.dispose();
+      });
 
-    await tester.pumpWidget(_ProfileHarness(controller: controller));
-    await tester.pump();
-    await tester.runAsync(() => Future<void>.delayed(warmup));
-
-    final Map<String, _RawStateSamples> samples = <String, _RawStateSamples>{
-      for (final AgentPresenceState state in AgentPresenceState.values)
-        state.name: _RawStateSamples(state.name),
-    };
-    String? activeState;
-    void timingCallback(List<FrameTiming> timings) {
-      final _RawStateSamples? bucket = samples[activeState];
-      if (bucket == null) {
-        return;
-      }
-      for (final FrameTiming timing in timings) {
-        bucket.buildTimesMicros.add(timing.buildDuration.inMicroseconds);
-        bucket.rasterTimesMicros.add(timing.rasterDuration.inMicroseconds);
-      }
-    }
-
-    binding.addTimingsCallback(timingCallback);
-    addTearDown(() => binding.removeTimingsCallback(timingCallback));
-
-    for (final AgentPresenceState state in AgentPresenceState.values) {
-      _dispatchState(controller, state, clock.elapsed);
-      activeState = state.name;
-      await tester.runAsync(
-        () => _holdState(
-          controller: controller,
-          state: state,
-          clock: clock,
-          duration: stateDuration,
-        ),
+      final _ProfileHarness harness = _ProfileHarness(
+        key: harnessKey,
+        controller: controller,
+        onRenderingPathChanged: (AgentPresenceRenderingPath path) {
+          renderingPath = path;
+          if (path != AgentPresenceRenderingPath.loading &&
+              !shaderReadiness.isCompleted) {
+            shaderReadiness.complete(path);
+          }
+        },
       );
-      activeState = null;
+      runApp(harness);
+      debugPrint('presence_profile_stage=widget_attached');
+      await tester.runAsync(
+        () => shaderReadiness.future.timeout(const Duration(seconds: 5)),
+      );
+      await tester.runAsync(() => Future<void>.delayed(warmup));
+      debugPrint('presence_profile_stage=warmup_complete');
+
+      expect(
+        renderingPath,
+        AgentPresenceRenderingPath.loadedShader,
+        reason: 'Hardware evidence requires the loaded FragmentProgram path.',
+      );
+
+      binding.framePolicy = LiveTestWidgetsFlutterBindingFramePolicy.fullyLive;
+      final List<AgentPresenceRawFrameSample> rawFrames =
+          <AgentPresenceRawFrameSample>[];
+      final _FrameBoundaryCapture boundaryCapture = _FrameBoundaryCapture();
+      void timingCallback(List<FrameTiming> timings) {
+        final List<FrameTiming> orderedTimings = List<FrameTiming>.of(timings)
+          ..sort(
+            (FrameTiming left, FrameTiming right) => left
+                .timestampInMicroseconds(FramePhase.buildStart)
+                .compareTo(
+                  right.timestampInMicroseconds(FramePhase.buildStart),
+                ),
+          );
+        boundaryCapture.accept(orderedTimings);
+        for (final FrameTiming timing in orderedTimings) {
+          rawFrames.add(
+            AgentPresenceRawFrameSample(
+              timestampMicros: timing.timestampInMicroseconds(
+                FramePhase.buildStart,
+              ),
+              buildMicros: timing.buildDuration.inMicroseconds,
+              rasterMicros: timing.rasterDuration.inMicroseconds,
+            ),
+          );
+        }
+      }
+
+      binding.addTimingsCallback(timingCallback);
+      addTearDown(() => binding.removeTimingsCallback(timingCallback));
+
+      final List<({String state, int startMicros})> stateStarts =
+          <({String state, int startMicros})>[];
+      for (final AgentPresenceState state in AgentPresenceState.values) {
+        _dispatchState(controller, state, clock.elapsed);
+        debugPrint('presence_profile_stage=${state.name}_boundary_wait');
+        final int startMicros = await boundaryCapture.next(binding);
+        debugPrint('presence_profile_stage=${state.name}_boundary_ready');
+        stateStarts.add((state: state.name, startMicros: startMicros));
+        final Future<void> heldState = tester.runAsync(
+          () => _holdState(
+            controller: controller,
+            state: state,
+            clock: clock,
+            duration: stateDuration,
+          ),
+        );
+        await _drainTimingBoundary();
+        await heldState;
+        debugPrint('presence_profile_stage=${state.name}_held');
+      }
+      debugPrint('presence_profile_stage=end_boundary_wait');
+      final int measurementEndMicros = await boundaryCapture.next(binding);
+      harnessKey.currentState!.stopFrameDriver();
+      debugPrint('presence_profile_stage=frame_driver_stopped');
+      await _drainTimingCallbacks();
+      debugPrint('presence_profile_stage=timings_drained');
+
+      final List<AgentPresenceFrameWindow> windows = <AgentPresenceFrameWindow>[
+        for (var index = 0; index < stateStarts.length; index += 1)
+          AgentPresenceFrameWindow(
+            state: stateStarts[index].state,
+            startMicrosInclusive: stateStarts[index].startMicros,
+            endMicrosExclusive: index + 1 < stateStarts.length
+                ? stateStarts[index + 1].startMicros
+                : measurementEndMicros,
+          ),
+      ];
+      final AgentPresenceFrameAttribution attribution =
+          attributeAgentPresenceFrameSamples(
+            windows: windows,
+            frames: rawFrames,
+          );
+      final int framesInsideMeasurement = rawFrames
+          .where(
+            (AgentPresenceRawFrameSample frame) =>
+                frame.timestampMicros >= windows.first.startMicrosInclusive &&
+                frame.timestampMicros < windows.last.endMicrosExclusive,
+          )
+          .length;
+
+      expect(renderingPath, AgentPresenceRenderingPath.loadedShader);
+      expect(attribution.assignedFrameCount, framesInsideMeasurement);
+      final FlutterView view =
+          WidgetsBinding.instance.platformDispatcher.views.single;
+      final Map<String, Object?> report = <String, Object?>{
+        'schema_version': 1,
+        'evidence_kind': _isSmoke ? 'smoke' : 'hardware_profile',
+        'metadata': <String, Object?>{
+          'renderer': const String.fromEnvironment(
+            'PRESENCE_RENDERER',
+            defaultValue: 'unknown',
+          ),
+          'flutter_version': const String.fromEnvironment(
+            'PRESENCE_FLUTTER_VERSION',
+            defaultValue: 'unknown',
+          ),
+          'dart_version': const String.fromEnvironment(
+            'PRESENCE_DART_VERSION',
+            defaultValue: 'unknown',
+          ),
+          'build_mode': _buildMode,
+          'macos_version': Platform.operatingSystemVersion,
+          'device': Platform.operatingSystem,
+          'display_model': const String.fromEnvironment(
+            'PRESENCE_DISPLAY_MODEL',
+            defaultValue: 'unknown',
+          ),
+          'display_refresh_hz': view.display.refreshRate,
+          'physical_display_resolution': const String.fromEnvironment(
+            'PRESENCE_PHYSICAL_DISPLAY_RESOLUTION',
+            defaultValue: 'unknown',
+          ),
+          'test_surface_resolution':
+              '${view.physicalSize.width.round()}x'
+              '${view.physicalSize.height.round()}',
+          'display_scale': view.devicePixelRatio,
+          'power_mode': const String.fromEnvironment(
+            'PRESENCE_POWER_MODE',
+            defaultValue: 'unknown',
+          ),
+          'machine': const String.fromEnvironment(
+            'PRESENCE_MACHINE',
+            defaultValue: 'unknown',
+          ),
+          'ambient_workload': const String.fromEnvironment(
+            'PRESENCE_AMBIENT_WORKLOAD',
+            defaultValue: 'controlled, benchmark app foreground',
+          ),
+          'warmup_duration_ms': warmup.inMilliseconds,
+          'state_duration_ms': stateDuration.inMilliseconds,
+          'run_duration_ms':
+              stateDuration.inMilliseconds * AgentPresenceState.values.length,
+          'shader_path':
+              renderingPath == AgentPresenceRenderingPath.loadedShader
+              ? 'fragmentProgram'
+              : 'fallback',
+          'shader_compile_ready':
+              renderingPath == AgentPresenceRenderingPath.loadedShader,
+          'frame_stage_scope': 'Flutter build/raster only',
+          'still_state_frame_driver': 'cached 1px CustomPainter',
+        },
+        'states': <Object?>[
+          for (final AgentPresenceFrameWindow window in windows)
+            serializeAgentPresenceStateFrames(
+              window: window,
+              frames: attribution.framesFor(window.state),
+            ),
+        ],
+        'attribution': <String, Object?>{
+          'timestamp_phase': 'buildStart',
+          'window_policy': 'startInclusive_endExclusive',
+          'assigned_frame_count': attribution.assignedFrameCount,
+          'unassigned_frame_count': attribution.unassignedFrameCount,
+        },
+      };
+      final AgentPresenceFrameEvaluation evaluation =
+          evaluateAgentPresenceFrameReport(report);
+      binding.reportData = <String, dynamic>{
+        'agent_presence_frame_report': report,
+        'agent_presence_frame_evaluation': evaluation.toJson(),
+      };
+      debugPrint('presence_profile_stage=report_ready');
+
+      expect(
+        windows.every(
+          (AgentPresenceFrameWindow window) =>
+              attribution.framesFor(window.state).isNotEmpty,
+        ),
+        isTrue,
+        reason: 'Every state must collect raw engine timing samples.',
+      );
+
+      debugPrint('presence_profile_stage=before_unmount_pump');
+      runApp(const SizedBox.shrink());
+      debugPrint('presence_profile_stage=after_unmount_pump');
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 50)),
+      );
+      debugPrint('presence_profile_stage=body_complete');
+      report['harness_completion_stage'] = 'complete';
+    },
+    timeout: Timeout(
+      _isSmoke ? const Duration(seconds: 20) : const Duration(seconds: 90),
+    ),
+  );
+}
+
+Future<void> _drainTimingBoundary() =>
+    Future<void>.delayed(const Duration(milliseconds: 50));
+
+Future<void> _drainTimingCallbacks() =>
+    Future<void>.delayed(const Duration(milliseconds: 250));
+
+final class _FrameBoundaryCapture {
+  Completer<int>? _pendingBoundary;
+  int _timestampFloorMicros = -1;
+
+  Future<int> next(IntegrationTestWidgetsFlutterBinding binding) {
+    if (_pendingBoundary != null) {
+      throw StateError('A frame boundary request is already pending.');
     }
-    final FlutterView view =
-        WidgetsBinding.instance.platformDispatcher.views.single;
-    final Map<String, Object?> report = <String, Object?>{
-      'schema_version': 1,
-      'evidence_kind': _isSmoke ? 'integration_smoke' : 'hardware_profile',
-      'metadata': <String, Object?>{
-        'renderer': const String.fromEnvironment(
-          'PRESENCE_RENDERER',
-          defaultValue: 'unknown',
-        ),
-        'flutter_version': const String.fromEnvironment(
-          'PRESENCE_FLUTTER_VERSION',
-          defaultValue: 'unknown',
-        ),
-        'dart_version': const String.fromEnvironment(
-          'PRESENCE_DART_VERSION',
-          defaultValue: 'unknown',
-        ),
-        'build_mode': _buildMode,
-        'macos_version': Platform.operatingSystemVersion,
-        'device': Platform.operatingSystem,
-        'display_model': const String.fromEnvironment(
-          'PRESENCE_DISPLAY_MODEL',
-          defaultValue: 'unknown',
-        ),
-        'display_refresh_hz': view.display.refreshRate,
-        'display_resolution':
-            '${view.physicalSize.width.round()}x'
-            '${view.physicalSize.height.round()}',
-        'display_scale': view.devicePixelRatio,
-        'power_mode': const String.fromEnvironment(
-          'PRESENCE_POWER_MODE',
-          defaultValue: 'unknown',
-        ),
-        'machine': const String.fromEnvironment(
-          'PRESENCE_MACHINE',
-          defaultValue: 'unknown',
-        ),
-        'ambient_workload': const String.fromEnvironment(
-          'PRESENCE_AMBIENT_WORKLOAD',
-          defaultValue: 'controlled, benchmark app foreground',
-        ),
-        'warmup_duration_ms': warmup.inMilliseconds,
-        'state_duration_ms': stateDuration.inMilliseconds,
-        'run_duration_ms':
-            stateDuration.inMilliseconds * AgentPresenceState.values.length,
-      },
-      'states': <Object?>[
-        for (final AgentPresenceState state in AgentPresenceState.values)
-          samples[state.name]!.toJson(),
-      ],
-    };
-    final AgentPresenceFrameEvaluation evaluation =
-        evaluateAgentPresenceFrameReport(report);
-    binding.reportData = <String, dynamic>{
-      'agent_presence_frame_report': report,
-      'agent_presence_frame_evaluation': evaluation.toJson(),
-    };
+    _timestampFloorMicros = binding.currentSystemFrameTimeStamp.inMicroseconds;
+    final Completer<int> boundary = Completer<int>();
+    _pendingBoundary = boundary;
+    binding.scheduleFrame();
+    return boundary.future.timeout(const Duration(seconds: 2));
+  }
 
-    expect(samples.keys, hasLength(AgentPresenceState.values.length));
-    expect(
-      samples.values.every(
-        (_RawStateSamples value) =>
-            value.buildTimesMicros.length == value.rasterTimesMicros.length,
-      ),
-      isTrue,
-    );
-    expect(
-      samples.values.every(
-        (_RawStateSamples value) =>
-            value.buildTimesMicros.isNotEmpty &&
-            value.rasterTimesMicros.isNotEmpty,
-      ),
-      isTrue,
-      reason: 'Every state must collect raw engine timing samples.',
-    );
-
-    await tester.pumpWidget(const SizedBox.shrink());
-    await tester.pump();
-  });
+  void accept(List<FrameTiming> timings) {
+    final Completer<int>? boundary = _pendingBoundary;
+    if (boundary == null) {
+      return;
+    }
+    for (final FrameTiming timing in timings) {
+      final int timestampMicros = timing.timestampInMicroseconds(
+        FramePhase.buildStart,
+      );
+      if (timestampMicros <= _timestampFloorMicros) {
+        continue;
+      }
+      _pendingBoundary = null;
+      boundary.complete(timestampMicros);
+      return;
+    }
+  }
 }
 
 String get _buildMode {
@@ -218,26 +359,15 @@ void _dispatchState(
   }
 }
 
-final class _RawStateSamples {
-  _RawStateSamples(this.state);
-
-  final String state;
-  final List<int> buildTimesMicros = <int>[];
-  final List<int> rasterTimesMicros = <int>[];
-
-  Map<String, Object?> toJson() {
-    return <String, Object?>{
-      'state': state,
-      'build_times_micros': buildTimesMicros,
-      'raster_times_micros': rasterTimesMicros,
-    };
-  }
-}
-
 final class _ProfileHarness extends StatefulWidget {
-  const _ProfileHarness({required this.controller});
+  const _ProfileHarness({
+    required this.controller,
+    required this.onRenderingPathChanged,
+    super.key,
+  });
 
   final AgentPresenceController controller;
+  final ValueChanged<AgentPresenceRenderingPath> onRenderingPathChanged;
 
   @override
   State<_ProfileHarness> createState() => _ProfileHarnessState();
@@ -260,6 +390,10 @@ final class _ProfileHarnessState extends State<_ProfileHarness>
     super.dispose();
   }
 
+  void stopFrameDriver() {
+    _framePump.stop();
+  }
+
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
@@ -272,7 +406,10 @@ final class _ProfileHarnessState extends State<_ProfileHarness>
               size: const Size.square(1),
               painter: _BenchmarkFrameDriverPainter(repaint: _framePump),
             ),
-            AgentPresenceOrb(controller: widget.controller),
+            AgentPresenceOrb(
+              controller: widget.controller,
+              onRenderingPathChanged: widget.onRenderingPathChanged,
+            ),
           ],
         ),
       ),

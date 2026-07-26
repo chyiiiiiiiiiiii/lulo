@@ -6,8 +6,21 @@ import 'package:integration_test/integration_test_driver.dart';
 Future<void> main() {
   return integrationDriver(
     responseDataCallback: (Map<String, dynamic>? data) async {
-      const String destination = 'build/agent_presence_profile';
-      const String filename = 'agent_presence_frame_timing';
+      final Object? rawReport = data?['agent_presence_frame_report'];
+      final Map<Object?, Object?>? reportData =
+          rawReport is Map<Object?, Object?> ? rawReport : null;
+      if (reportData?['harness_completion_stage'] != 'complete') {
+        throw StateError(
+          'Presence profile did not reach the completed harness stage.',
+        );
+      }
+      final bool isSmoke = reportData?['evidence_kind'] == 'smoke';
+      final String destination = isSmoke
+          ? 'build/agent_presence_profile/smoke'
+          : 'build/agent_presence_profile';
+      final String filename = isSmoke
+          ? 'agent_presence_frame_timing_smoke'
+          : 'agent_presence_frame_timing';
       await writeResponseData(
         data,
         testOutputFilename: filename,

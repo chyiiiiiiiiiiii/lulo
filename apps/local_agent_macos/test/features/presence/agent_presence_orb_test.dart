@@ -70,6 +70,26 @@ void main() {
       expect(find.text('Agent ready'), findsOneWidget);
     });
 
+    testWidgets('reports loaded shader readiness before profile recording', (
+      WidgetTester tester,
+    ) async {
+      final AgentPresenceController controller = AgentPresenceController();
+      addTearDown(controller.dispose);
+      final List<AgentPresenceRenderingPath> paths =
+          <AgentPresenceRenderingPath>[];
+
+      await tester.pumpWidget(
+        _app(controller: controller, onRenderingPathChanged: paths.add),
+      );
+      await tester.pump();
+      await tester.pump();
+
+      expect(paths, <AgentPresenceRenderingPath>[
+        AgentPresenceRenderingPath.loading,
+        AgentPresenceRenderingPath.loadedShader,
+      ]);
+    });
+
     testWidgets('deferred shader success is ignored after the orb unmounts', (
       WidgetTester tester,
     ) async {
@@ -648,6 +668,7 @@ Widget _app({
   AgentPresenceShaderLoader shaderLoader = loadAgentPresenceShader,
   AgentPresenceShaderBackendFactory shaderBackendFactory =
       createAgentPresenceShaderBackend,
+  ValueChanged<AgentPresenceRenderingPath>? onRenderingPathChanged,
   Key? orbKey,
 }) {
   return MaterialApp(
@@ -661,6 +682,7 @@ Widget _app({
           onSemanticBuild: onSemanticBuild,
           shaderLoader: shaderLoader,
           shaderBackendFactory: shaderBackendFactory,
+          onRenderingPathChanged: onRenderingPathChanged,
         ),
       ),
     ),

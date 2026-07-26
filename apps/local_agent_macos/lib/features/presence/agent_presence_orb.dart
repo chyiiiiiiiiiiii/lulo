@@ -18,6 +18,18 @@ typedef AgentPresenceShaderLoader = Future<ui.FragmentProgram> Function();
 Future<ui.FragmentProgram> loadAgentPresenceShader() =>
     ui.FragmentProgram.fromAsset('shaders/agent_presence.frag');
 
+/// Observable rendering path used by integration evidence and focused tests.
+enum AgentPresenceRenderingPath {
+  /// The bundled fragment program has not resolved yet.
+  loading,
+
+  /// The bundled fragment program loaded and its painter was constructed.
+  loadedShader,
+
+  /// This mounted orb latched the Canvas fallback.
+  fallback,
+}
+
 /// The local repaint and animation boundary for agent-presence visuals.
 final class AgentPresenceOrb extends StatefulWidget {
   /// Creates an orb driven by one feature-local [controller].
@@ -27,6 +39,7 @@ final class AgentPresenceOrb extends StatefulWidget {
     this.onSemanticBuild,
     this.shaderLoader = loadAgentPresenceShader,
     this.shaderBackendFactory = createAgentPresenceShaderBackend,
+    this.onRenderingPathChanged,
     super.key,
   });
 
@@ -44,6 +57,9 @@ final class AgentPresenceOrb extends StatefulWidget {
 
   /// Creates one shader backend for this mounted orb.
   final AgentPresenceShaderBackendFactory shaderBackendFactory;
+
+  /// Reports rendering readiness without exposing shader ownership.
+  final ValueChanged<AgentPresenceRenderingPath>? onRenderingPathChanged;
 
   @override
   State<AgentPresenceOrb> createState() => _AgentPresenceOrbState();
@@ -79,6 +95,7 @@ final class _AgentPresenceOrbState extends State<AgentPresenceOrb>
       repaint: _repaint,
       onPaint: widget.onPaint,
     );
+    widget.onRenderingPathChanged?.call(AgentPresenceRenderingPath.loading);
     widget.controller.semanticStateListenable.addListener(
       _updateMotionLifecycle,
     );
@@ -137,6 +154,7 @@ final class _AgentPresenceOrbState extends State<AgentPresenceOrb>
       setState(() {
         _shaderLoadPhase = _ShaderLoadPhase.fallback;
       });
+      widget.onRenderingPathChanged?.call(AgentPresenceRenderingPath.fallback);
       return;
     }
     if (!mounted) {
@@ -159,6 +177,9 @@ final class _AgentPresenceOrbState extends State<AgentPresenceOrb>
         _shaderPainter = painter;
         _shaderLoadPhase = _ShaderLoadPhase.ready;
       });
+      widget.onRenderingPathChanged?.call(
+        AgentPresenceRenderingPath.loadedShader,
+      );
     } on Object catch (error) {
       if (!mounted) {
         return;
@@ -171,6 +192,7 @@ final class _AgentPresenceOrbState extends State<AgentPresenceOrb>
       setState(() {
         _shaderLoadPhase = _ShaderLoadPhase.fallback;
       });
+      widget.onRenderingPathChanged?.call(AgentPresenceRenderingPath.fallback);
     }
   }
 
@@ -186,6 +208,7 @@ final class _AgentPresenceOrbState extends State<AgentPresenceOrb>
     setState(() {
       _shaderLoadPhase = _ShaderLoadPhase.fallback;
     });
+    widget.onRenderingPathChanged?.call(AgentPresenceRenderingPath.fallback);
   }
 
   @override
