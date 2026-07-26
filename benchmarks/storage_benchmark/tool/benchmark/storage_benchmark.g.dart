@@ -1199,7 +1199,7 @@ abstract class _$_BenchmarkDatabase extends GeneratedDatabase {
       $BenchmarkGenerationsTable(this);
   late final Index conversationsByUpdated = Index(
     'conversations_by_updated',
-    'CREATE INDEX conversations_by_updated ON conversations (updated_at_ms, id)',
+    'CREATE INDEX conversations_by_updated ON conversations (updated_at_ms DESC, id DESC)',
   );
   late final Index generationsByConversationTurn = Index(
     'generations_by_conversation_turn',

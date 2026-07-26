@@ -88,6 +88,115 @@ abstract interface class StorageBenchmarkAdapter {
   Future<void> close();
 }
 
+abstract interface class PersistentPreparedStatementDiagnostics {
+  int get totalPreparedStatements;
+  int get activePreparedStatements;
+}
+
+final class BenchmarkSchemaSnapshot {
+  const BenchmarkSchemaSnapshot({
+    required this.tables,
+    required this.foreignKeys,
+    required this.indexes,
+    required this.tableConstraints,
+  });
+
+  final Map<String, List<String>> tables;
+  final Map<String, List<String>> foreignKeys;
+  final Map<String, List<String>> indexes;
+  final Map<String, List<String>> tableConstraints;
+
+  String get _signature => jsonEncode(<String, Object?>{
+    'tables': tables,
+    'foreignKeys': foreignKeys,
+    'indexes': indexes,
+    'tableConstraints': tableConstraints,
+  });
+
+  @override
+  bool operator ==(Object other) =>
+      other is BenchmarkSchemaSnapshot && _signature == other._signature;
+
+  @override
+  int get hashCode => _signature.hashCode;
+
+  @override
+  String toString() => _signature;
+}
+
+BenchmarkSchemaSnapshot readBenchmarkSchemaSnapshot(String path) {
+  final database = sqlite.sqlite3.open(path);
+  try {
+    final tableNames = database
+        .select(
+          "SELECT name FROM sqlite_master WHERE type = 'table' "
+          "AND name NOT LIKE 'sqlite_%' ORDER BY name",
+        )
+        .map((row) => row['name']! as String)
+        .toList(growable: false);
+    final tables = <String, List<String>>{};
+    final foreignKeys = <String, List<String>>{};
+    final constraints = <String, List<String>>{};
+    for (final table in tableNames) {
+      tables[table] = database
+          .select('PRAGMA table_info("$table")')
+          .map(
+            (row) =>
+                '${row['name']}:${row['type']}:${row['notnull']}:'
+                '${row['dflt_value']}:${row['pk']}',
+          )
+          .toList(growable: false);
+      foreignKeys[table] =
+          database
+              .select('PRAGMA foreign_key_list("$table")')
+              .map(
+                (row) =>
+                    '${row['id']}:${row['seq']}:${row['table']}:'
+                    '${row['from']}:${row['to']}:${row['on_update']}:'
+                    '${row['on_delete']}',
+              )
+              .toList(growable: false)
+            ..sort();
+      final sql =
+          database.select(
+                "SELECT sql FROM sqlite_master WHERE type = 'table' "
+                'AND name = ?',
+                <Object?>[table],
+              ).single['sql']
+              as String;
+      final normalized = sql.toUpperCase().replaceAll(RegExp(r'\s+'), ' ');
+      constraints[table] = <String>[
+        if (normalized.contains('WITHOUT ROWID')) 'WITHOUT ROWID',
+        if (normalized.contains('CHECK (ROLE IN (0, 1))')) 'ROLE_CHECK',
+        if (normalized.contains('CHECK (STATUS IN (1, 2, 3))')) 'STATUS_CHECK',
+      ];
+    }
+    final indexes = <String, List<String>>{};
+    for (final row in database.select(
+      "SELECT name FROM sqlite_master WHERE type = 'index' "
+      "AND name NOT LIKE 'sqlite_%' ORDER BY name",
+    )) {
+      final name = row['name']! as String;
+      indexes[name] = database
+          .select('PRAGMA index_xinfo("$name")')
+          .where((column) => column['key'] == 1 && (column['cid'] as int) >= 0)
+          .map(
+            (column) =>
+                '${column['name']} ${column['desc'] == 1 ? 'DESC' : 'ASC'}',
+          )
+          .toList(growable: false);
+    }
+    return BenchmarkSchemaSnapshot(
+      tables: tables,
+      foreignKeys: foreignKeys,
+      indexes: indexes,
+      tableConstraints: constraints,
+    );
+  } finally {
+    database.close();
+  }
+}
+
 StorageBenchmarkAdapter createStorageBenchmarkAdapter(
   StorageCandidate candidate,
 ) => switch (candidate) {
@@ -135,6 +244,7 @@ final class BenchmarkRunManifest {
     required this.schemaVersion,
     required this.runId,
     required this.sourceRevision,
+    required this.contentFingerprint,
     required this.candidate,
     required this.accessStyle,
     required this.executor,
@@ -145,6 +255,7 @@ final class BenchmarkRunManifest {
     required this.synchronousMode,
     required this.checkpointPolicy,
     required this.preparationPolicy,
+    required this.transactionMode,
     required this.transactionSize,
     required this.buildMode,
     required this.packageVersions,
@@ -161,10 +272,27 @@ final class BenchmarkRunManifest {
 
     final rawVersions =
         requireValue('packageVersions') as Map<Object?, Object?>;
+    final sourceRevision = requireValue('sourceRevision') as String;
+    final contentFingerprint = requireValue('contentFingerprint') as String;
+    final buildMode = requireValue('buildMode') as String;
+    if (sourceRevision.isEmpty || sourceRevision == 'working-tree') {
+      throw const FormatException(
+        'sourceRevision must identify the measured source.',
+      );
+    }
+    if (contentFingerprint.isEmpty) {
+      throw const FormatException('contentFingerprint must not be empty.');
+    }
+    if (buildMode != 'aot' &&
+        buildMode != 'profile' &&
+        buildMode != 'release') {
+      throw FormatException('Unsupported concrete buildMode: $buildMode');
+    }
     return BenchmarkRunManifest(
       schemaVersion: requireValue('schemaVersion') as int,
       runId: requireValue('runId') as String,
-      sourceRevision: requireValue('sourceRevision') as String,
+      sourceRevision: sourceRevision,
+      contentFingerprint: contentFingerprint,
       candidate: requireValue('candidate') as String,
       accessStyle: requireValue('accessStyle') as String,
       executor: requireValue('executor') as String,
@@ -175,8 +303,9 @@ final class BenchmarkRunManifest {
       synchronousMode: requireValue('synchronousMode') as String,
       checkpointPolicy: requireValue('checkpointPolicy') as String,
       preparationPolicy: requireValue('preparationPolicy') as String,
+      transactionMode: requireValue('transactionMode') as String,
       transactionSize: requireValue('transactionSize') as int,
-      buildMode: requireValue('buildMode') as String,
+      buildMode: buildMode,
       packageVersions: rawVersions.map(
         (key, value) => MapEntry(key! as String, value! as String),
       ),
@@ -186,6 +315,7 @@ final class BenchmarkRunManifest {
   final int schemaVersion;
   final String runId;
   final String sourceRevision;
+  final String contentFingerprint;
   final String candidate;
   final String accessStyle;
   final String executor;
@@ -196,6 +326,7 @@ final class BenchmarkRunManifest {
   final String synchronousMode;
   final String checkpointPolicy;
   final String preparationPolicy;
+  final String transactionMode;
   final int transactionSize;
   final String buildMode;
   final Map<String, String> packageVersions;
@@ -204,6 +335,7 @@ final class BenchmarkRunManifest {
     'schemaVersion': schemaVersion,
     'runId': runId,
     'sourceRevision': sourceRevision,
+    'contentFingerprint': contentFingerprint,
     'candidate': candidate,
     'accessStyle': accessStyle,
     'executor': executor,
@@ -214,6 +346,7 @@ final class BenchmarkRunManifest {
     'synchronousMode': synchronousMode,
     'checkpointPolicy': checkpointPolicy,
     'preparationPolicy': preparationPolicy,
+    'transactionMode': transactionMode,
     'transactionSize': transactionSize,
     'buildMode': buildMode,
     'packageVersions': packageVersions,
@@ -247,15 +380,15 @@ abstract final class BenchmarkEvidenceValidator {
     required BenchmarkRunManifest manifest,
     required List<StorageBenchmarkSample> samples,
   }) {
-    final hasCrashEvidence = samples.any(
+    bool hasPassingEvidence(String operation) => samples.any(
       (sample) =>
-          sample.operation == 'crash_terminal' ||
-          sample.operation == 'crash_migration',
+          sample.operation == operation && sample.correctnessOutcome == 'pass',
     );
-    if (!hasCrashEvidence) {
+    if (!hasPassingEvidence('crash_terminal') ||
+        !hasPassingEvidence('crash_migration')) {
       throw StateError(
-        'Decision evidence for ${manifest.runId} is missing '
-        'crash-consistency results.',
+        'Decision evidence for ${manifest.runId} requires passing '
+        'crash-consistency results for terminal writes and migrations.',
       );
     }
   }
@@ -271,9 +404,9 @@ final class _BenchmarkDatabase extends _$_BenchmarkDatabase {
   int get schemaVersion => 1;
 }
 
-@TableIndex(
-  name: 'conversations_by_updated',
-  columns: <Symbol>{#updatedAtMs, #id},
+@TableIndex.sql(
+  'CREATE INDEX conversations_by_updated '
+  'ON conversations (updated_at_ms DESC, id DESC)',
 )
 class BenchmarkConversations extends Table {
   @override
@@ -381,6 +514,24 @@ abstract base class _DriftAdapterBase implements StorageBenchmarkAdapter {
         .get();
     if (foreignKeys.isNotEmpty) {
       errors.add('foreign_key_check failed');
+    }
+    final semantic = await database
+        .customSelect(
+          'SELECT '
+          '(SELECT count(*) FROM turns WHERE role = 1) assistant_count, '
+          '(SELECT count(*) FROM generations) generation_count, '
+          '(SELECT count(*) FROM turns) turn_count, '
+          '(SELECT coalesce(sum(turn_count), 0) FROM conversations) '
+          'metadata_turn_count',
+        )
+        .getSingle();
+    if (semantic.read<int>('assistant_count') !=
+        semantic.read<int>('generation_count')) {
+      errors.add('assistant/generation ownership mismatch');
+    }
+    if (semantic.read<int>('turn_count') !=
+        semantic.read<int>('metadata_turn_count')) {
+      errors.add('conversation turn_count mismatch');
     }
     return errors;
   }
@@ -641,8 +792,23 @@ final class _CustomDriftAdapter extends _DriftAdapterBase {
   }
 }
 
-final class _Sqlite3PreparedAdapter implements StorageBenchmarkAdapter {
+final class _Sqlite3PreparedAdapter
+    implements StorageBenchmarkAdapter, PersistentPreparedStatementDiagnostics {
   sqlite.Database? _database;
+  final List<sqlite.PreparedStatement> _statements =
+      <sqlite.PreparedStatement>[];
+  sqlite.PreparedStatement? _createConversation;
+  sqlite.PreparedStatement? _nextSequence;
+  sqlite.PreparedStatement? _insertTurnStatement;
+  sqlite.PreparedStatement? _updateConversation;
+  sqlite.PreparedStatement? _insertGeneration;
+  sqlite.PreparedStatement? _loadTurns;
+
+  @override
+  int totalPreparedStatements = 0;
+
+  @override
+  int get activePreparedStatements => _statements.length;
 
   sqlite.Database get database =>
       _database ??
@@ -658,27 +824,50 @@ final class _Sqlite3PreparedAdapter implements StorageBenchmarkAdapter {
     }
     _database = sqlite.sqlite3.open(config.path);
     database.execute(_schemaSql);
+    _createConversation = _prepare(
+      'INSERT INTO conversations '
+      '(id, created_at_ms, updated_at_ms, title) VALUES (?, ?, ?, ?)',
+    );
+    _nextSequence = _prepare(
+      'SELECT last_turn_sequence FROM conversations WHERE id = ?',
+    );
+    _insertTurnStatement = _prepare(
+      'INSERT INTO turns '
+      '(conversation_id, sequence, role, status, text, created_at_ms) '
+      'VALUES (?, ?, ?, ?, ?, ?)',
+    );
+    _updateConversation = _prepare(
+      'UPDATE conversations SET updated_at_ms = ?, '
+      'turn_count = turn_count + 1, last_turn_sequence = ? WHERE id = ?',
+    );
+    _insertGeneration = _prepare(
+      'INSERT INTO generations '
+      '(id, conversation_id, assistant_turn_sequence, request_prompt) '
+      'VALUES (?, ?, ?, ?)',
+    );
+    _loadTurns = _prepare(
+      'SELECT sequence, role, status, text FROM turns '
+      'WHERE conversation_id = ? ORDER BY sequence ASC',
+    );
+  }
+
+  sqlite.PreparedStatement _prepare(String sql) {
+    final statement = database.prepare(sql, persistent: true);
+    _statements.add(statement);
+    totalPreparedStatements++;
+    return statement;
   }
 
   @override
   Future<void> createConversation(
     StorageBenchmarkConversation conversation,
   ) async {
-    final statement = database.prepare(
-      'INSERT INTO conversations '
-      '(id, created_at_ms, updated_at_ms, title) VALUES (?, ?, ?, ?)',
-      persistent: true,
-    );
-    try {
-      statement.execute(<Object?>[
-        conversation.id,
-        conversation.createdAtMs,
-        conversation.createdAtMs,
-        conversation.title,
-      ]);
-    } finally {
-      statement.close();
-    }
+    _createConversation!.execute(<Object?>[
+      conversation.id,
+      conversation.createdAtMs,
+      conversation.createdAtMs,
+      conversation.title,
+    ]);
   }
 
   @override
@@ -715,12 +904,12 @@ final class _Sqlite3PreparedAdapter implements StorageBenchmarkAdapter {
         status,
         createdAtMs,
       );
-      database.execute(
-        'INSERT INTO generations '
-        '(id, conversation_id, assistant_turn_sequence, request_prompt) '
-        'VALUES (?, ?, ?, ?)',
-        <Object?>[generationId, conversationId, sequence, requestPrompt],
-      );
+      _insertGeneration!.execute(<Object?>[
+        generationId,
+        conversationId,
+        sequence,
+        requestPrompt,
+      ]);
     });
   }
 
@@ -731,29 +920,21 @@ final class _Sqlite3PreparedAdapter implements StorageBenchmarkAdapter {
     BenchmarkTurnStatus status,
     int createdAtMs,
   ) {
-    final result = database.select(
-      'SELECT last_turn_sequence FROM conversations WHERE id = ?',
-      <Object?>[conversationId],
-    );
+    final result = _nextSequence!.select(<Object?>[conversationId]);
     final sequence = (result.single['last_turn_sequence'] as int) + 1;
-    database.execute(
-      'INSERT INTO turns '
-      '(conversation_id, sequence, role, status, text, created_at_ms) '
-      'VALUES (?, ?, ?, ?, ?, ?)',
-      <Object?>[
-        conversationId,
-        sequence,
-        role.index,
-        status.index + 1,
-        text,
-        createdAtMs,
-      ],
-    );
-    database.execute(
-      'UPDATE conversations SET updated_at_ms = ?, '
-      'turn_count = turn_count + 1, last_turn_sequence = ? WHERE id = ?',
-      <Object?>[createdAtMs, sequence, conversationId],
-    );
+    _insertTurnStatement!.execute(<Object?>[
+      conversationId,
+      sequence,
+      role.index,
+      status.index + 1,
+      text,
+      createdAtMs,
+    ]);
+    _updateConversation!.execute(<Object?>[
+      createdAtMs,
+      sequence,
+      conversationId,
+    ]);
     return sequence;
   }
 
@@ -770,12 +951,8 @@ final class _Sqlite3PreparedAdapter implements StorageBenchmarkAdapter {
 
   @override
   Future<List<StorageBenchmarkTurn>> loadTurns(String conversationId) async =>
-      database
-          .select(
-            'SELECT sequence, role, status, text FROM turns '
-            'WHERE conversation_id = ? ORDER BY sequence ASC',
-            <Object?>[conversationId],
-          )
+      _loadTurns!
+          .select(<Object?>[conversationId])
           .map(
             (row) => StorageBenchmarkTurn(
               sequence: row['sequence'] as int,
@@ -796,11 +973,37 @@ final class _Sqlite3PreparedAdapter implements StorageBenchmarkAdapter {
     if (database.select('PRAGMA foreign_key_check').isNotEmpty) {
       errors.add('foreign_key_check failed');
     }
+    final semantic = database
+        .select(
+          'SELECT '
+          '(SELECT count(*) FROM turns WHERE role = 1) assistant_count, '
+          '(SELECT count(*) FROM generations) generation_count, '
+          '(SELECT count(*) FROM turns) turn_count, '
+          '(SELECT coalesce(sum(turn_count), 0) FROM conversations) '
+          'metadata_turn_count',
+        )
+        .single;
+    if (semantic['assistant_count'] != semantic['generation_count']) {
+      errors.add('assistant/generation ownership mismatch');
+    }
+    if (semantic['turn_count'] != semantic['metadata_turn_count']) {
+      errors.add('conversation turn_count mismatch');
+    }
     return errors;
   }
 
   @override
   Future<void> close() async {
+    for (final statement in _statements.reversed) {
+      statement.close();
+    }
+    _statements.clear();
+    _createConversation = null;
+    _nextSequence = null;
+    _insertTurnStatement = null;
+    _updateConversation = null;
+    _insertGeneration = null;
+    _loadTurns = null;
     final current = _database;
     _database = null;
     current?.close();
@@ -856,6 +1059,8 @@ final class StorageSmokeSuiteResult {
 Future<StorageSmokeSuiteResult> runStorageSmokeSuite({
   required File output,
   required String sourceRevision,
+  required String contentFingerprint,
+  required String buildMode,
   int iterations = 30,
 }) async {
   await output.parent.create(recursive: true);
@@ -873,6 +1078,7 @@ Future<StorageSmokeSuiteResult> runStorageSmokeSuite({
         schemaVersion: 1,
         runId: 'smoke-${candidate.id}',
         sourceRevision: sourceRevision,
+        contentFingerprint: contentFingerprint,
         candidate: candidate.id,
         accessStyle: candidate.id,
         executor: BenchmarkExecutor.main.name,
@@ -886,7 +1092,8 @@ Future<StorageSmokeSuiteResult> runStorageSmokeSuite({
             ? 'persistent_reuse'
             : 'executor_reuse',
         transactionSize: 1,
-        buildMode: 'aot_or_jit_reported_by_runner',
+        transactionMode: 'begin_immediate',
+        buildMode: buildMode,
         packageVersions: const <String, String>{
           'drift': '2.34.2',
           'drift_dev': '2.34.0',
@@ -909,23 +1116,36 @@ Future<StorageSmokeSuiteResult> runStorageSmokeSuite({
           ),
         );
         for (var iteration = 0; iteration < iterations; iteration++) {
-          final stopwatch = Stopwatch()..start();
           await adapter.saveUserTurn(
             conversationId: 'conversation-${candidate.id}',
-            text: 'synthetic turn $iteration',
-            createdAtMs: iteration + 2,
+            text: 'synthetic user turn $iteration',
+            createdAtMs: iteration * 2 + 2,
+          );
+          final stopwatch = Stopwatch()..start();
+          await adapter.saveTerminalAssistantTurn(
+            conversationId: 'conversation-${candidate.id}',
+            generationId: 'generation-${candidate.id}-$iteration',
+            requestPrompt: 'synthetic prompt $iteration',
+            text: 'synthetic assistant turn $iteration',
+            status: BenchmarkTurnStatus.completed,
+            createdAtMs: iteration * 2 + 3,
           );
           stopwatch.stop();
           sink.writeln(
             jsonEncode(
               StorageBenchmarkSample(
-                operation: 'save_user_1',
+                operation: 'save_terminal_1',
                 iteration: iteration,
                 durationMicros: stopwatch.elapsedMicroseconds,
                 correctnessOutcome: 'pass',
               ).toJson(),
             ),
           );
+        }
+        final turns = await adapter.loadTurns('conversation-${candidate.id}');
+        if (turns.length != iterations * 2 ||
+            turns.last.text != 'synthetic assistant turn ${iterations - 1}') {
+          throw StateError('terminal round-trip did not match the fixture');
         }
         final validationErrors = await adapter.validate();
         if (validationErrors.isNotEmpty) {
@@ -970,7 +1190,13 @@ Future<void> main(List<String> arguments) async {
   }
   final result = await runStorageSmokeSuite(
     output: File(outputPath),
-    sourceRevision: option('--source-revision') ?? 'working-tree',
+    sourceRevision:
+        option('--source-revision') ??
+        (throw const FormatException('--source-revision is required.')),
+    contentFingerprint:
+        option('--content-fingerprint') ??
+        (throw const FormatException('--content-fingerprint is required.')),
+    buildMode: option('--build-mode') ?? 'aot',
   );
   if (result.failedConfigurations.isNotEmpty) {
     stderr.writeln(result.failedConfigurations.join('\n'));

@@ -9,14 +9,10 @@ environment:
 
 dependencies:
   agent_core: ^0.1.0
-  drift: 2.34.2
   flutter:
     sdk: flutter
-  sqlite3: 3.5.0
 
 dev_dependencies:
-  build_runner: ^2.15.0
-  drift_dev: 2.34.0
   flutter_test:
     sdk: flutter
   integration_test:

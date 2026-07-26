@@ -1,0 +1,16 @@
+name: storage_benchmark
+description: Isolated SQLite candidate benchmark for Flutter Local Agent.
+publish_to: none
+resolution: workspace
+
+environment:
+  sdk: ^3.12.0
+
+dependencies:
+  drift: 2.34.2
+  sqlite3: 3.5.0
+
+dev_dependencies:
+  build_runner: ^2.15.0
+  drift_dev: 2.34.0
+  test: ^1.26.3
