@@ -28,12 +28,26 @@ final class ConversationViewModel extends ChangeNotifier {
   GenerationId? _activeGenerationId;
   bool _stopRequested = false;
   bool _disposed = false;
+  final ValueNotifier<List<Turn>> _completedTurns = ValueNotifier<List<Turn>>(
+    const <Turn>[],
+  );
+  final ValueNotifier<Turn?> _activeTurn = ValueNotifier<Turn?>(null);
+  final ValueNotifier<bool> _canSubmit = ValueNotifier<bool>(true);
 
   /// Immutable state consumed by the conversation view.
   ConversationProjection get projection => _projection;
 
   /// Whether a new user message may be submitted.
   bool get canSubmit => _operationSubscription == null;
+
+  /// Stable listenable for history; token deltas never notify it.
+  ValueListenable<List<Turn>> get completedTurnsListenable => _completedTurns;
+
+  /// Stable listenable for the streaming assistant turn.
+  ValueListenable<Turn?> get activeTurnListenable => _activeTurn;
+
+  /// Stable listenable for composer availability.
+  ValueListenable<bool> get canSubmitListenable => _canSubmit;
 
   /// Starts generation for a normalized non-empty user message.
   Future<void> submit(String text) async {
@@ -52,6 +66,7 @@ final class ConversationViewModel extends ChangeNotifier {
     _projection = ConversationProjection(
       completedTurns: <Turn>[..._projection.completedTurns, userTurn],
     );
+    _completedTurns.value = _projection.completedTurns;
     notifyListeners();
 
     _operationSubscription = _repository
@@ -63,6 +78,7 @@ final class ConversationViewModel extends ChangeNotifier {
           ),
         )
         .listen(_onEvent, onError: _onOperationError, onDone: _onOperationDone);
+    _canSubmit.value = false;
   }
 
   void _onEvent(GenerationEvent event) {
@@ -83,6 +99,7 @@ final class ConversationViewModel extends ChangeNotifier {
             status: TurnStatus.streaming,
           ),
         );
+        _activeTurn.value = _projection.activeTurn;
         notifyListeners();
       case GenerationDelta(:final GenerationId generationId, :final delta):
         final Turn? activeTurn = _projection.activeTurn;
@@ -93,6 +110,7 @@ final class ConversationViewModel extends ChangeNotifier {
           completedTurns: _projection.completedTurns,
           activeTurn: activeTurn.append(delta),
         );
+        _activeTurn.value = _projection.activeTurn;
         notifyListeners();
       case GenerationCompleted(:final GenerationId generationId):
         if (generationId != _activeGenerationId) {
@@ -136,6 +154,8 @@ final class ConversationViewModel extends ChangeNotifier {
         activeTurn.copyWith(status: status),
       ],
     );
+    _completedTurns.value = _projection.completedTurns;
+    _activeTurn.value = null;
     _activeGenerationId = null;
     notifyListeners();
   }
@@ -152,6 +172,7 @@ final class ConversationViewModel extends ChangeNotifier {
       return;
     }
     _operationSubscription = null;
+    _canSubmit.value = true;
     notifyListeners();
   }
 
@@ -182,6 +203,9 @@ final class ConversationViewModel extends ChangeNotifier {
     _disposed = true;
     unawaited(_operationSubscription?.cancel());
     _operationSubscription = null;
+    _completedTurns.dispose();
+    _activeTurn.dispose();
+    _canSubmit.dispose();
     super.dispose();
   }
 }
