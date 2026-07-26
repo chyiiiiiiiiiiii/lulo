@@ -48,34 +48,44 @@ final class _ConversationListState extends State<ConversationList> {
   @override
   Widget build(BuildContext context) {
     widget.onBuild?.call();
-    return ValueListenableBuilder<List<Turn>>(
-      valueListenable: widget.completedTurns,
-      builder: (BuildContext context, List<Turn> turns, Widget? active) {
-        widget.onCompletedTurnsBuild?.call();
-        return Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 24),
+    return LayoutBuilder(
+      builder: (BuildContext context, BoxConstraints constraints) {
+        return SingleChildScrollView(
+          key: const Key('conversation-scroll-surface'),
+          controller: _scrollController,
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
           child: Column(
             children: <Widget>[
-              Expanded(
-                child: turns.isEmpty
-                    ? const _EmptyConversation()
-                    : ListView.builder(
-                        controller: _scrollController,
-                        padding: const EdgeInsets.symmetric(vertical: 20),
-                        itemCount: turns.length,
-                        itemBuilder: (BuildContext context, int index) =>
-                            CompletedTurn(turn: turns[index]),
-                      ),
+              ValueListenableBuilder<List<Turn>>(
+                valueListenable: widget.completedTurns,
+                builder:
+                    (BuildContext context, List<Turn> turns, Widget? child) {
+                      widget.onCompletedTurnsBuild?.call();
+                      if (turns.isEmpty) {
+                        return SizedBox(
+                          height: (constraints.maxHeight - 40).clamp(
+                            0,
+                            double.infinity,
+                          ),
+                          child: const _EmptyConversation(),
+                        );
+                      }
+                      return Column(
+                        children: <Widget>[
+                          for (final Turn turn in turns)
+                            CompletedTurn(turn: turn),
+                        ],
+                      );
+                    },
               ),
-              active!,
+              ActiveStreamingTurn(
+                activeTurn: widget.activeTurn,
+                onBuild: widget.onActiveTurnBuild,
+              ),
             ],
           ),
         );
       },
-      child: ActiveStreamingTurn(
-        activeTurn: widget.activeTurn,
-        onBuild: widget.onActiveTurnBuild,
-      ),
     );
   }
 }

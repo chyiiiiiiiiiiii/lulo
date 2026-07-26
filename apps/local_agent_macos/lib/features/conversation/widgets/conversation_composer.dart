@@ -20,7 +20,7 @@ final class ConversationComposer extends StatefulWidget {
   final ValueChanged<String> onSubmit;
 
   /// Called when the active response should stop.
-  final VoidCallback onStop;
+  final Future<void> Function() onStop;
 
   /// Optional render instrumentation used by tests.
   final VoidCallback? onBuild;
@@ -64,6 +64,13 @@ final class _ConversationComposerState extends State<ConversationComposer> {
       text: _controller.text.replaceRange(start, end, '\n'),
       selection: TextSelection.collapsed(offset: start + 1),
     );
+  }
+
+  Future<void> _stop() async {
+    await widget.onStop();
+    if (mounted) {
+      _focusNode.requestFocus();
+    }
   }
 
   @override
@@ -118,7 +125,7 @@ final class _ConversationComposerState extends State<ConversationComposer> {
                         : IconButton(
                             key: const Key('conversation-stop-button'),
                             tooltip: 'Stop response',
-                            onPressed: widget.onStop,
+                            onPressed: _stop,
                             icon: const Icon(Icons.stop_rounded),
                           ),
                   ),

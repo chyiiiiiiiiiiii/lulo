@@ -44,6 +44,7 @@ final class ActiveStreamingTurn extends StatelessWidget {
                   borderRadius: BorderRadius.circular(18),
                 ),
                 child: SelectableText(
+                  key: const Key('active-streaming-plain-text'),
                   turn.text.isEmpty ? 'Thinking…' : turn.text,
                 ),
               ),

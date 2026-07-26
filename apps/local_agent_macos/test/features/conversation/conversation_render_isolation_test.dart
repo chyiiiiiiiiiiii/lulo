@@ -23,6 +23,8 @@ void main() {
       idFactory: () => const ConversationId('conversation-1'),
     );
     final ConversationBuildObserver observer = ConversationBuildObserver();
+    int broadNotifications = 0;
+    viewModel.addListener(() => broadNotifications += 1);
     await tester.pumpWidget(
       MaterialApp(
         home: ConversationView(
@@ -46,6 +48,7 @@ void main() {
     );
     await tester.pump();
     observer.reset();
+    broadNotifications = 0;
 
     inference.emit(
       const GenerationDelta(
@@ -61,10 +64,98 @@ void main() {
     expect(observer.conversationListBuilds, 0);
     expect(observer.chromeBuilds, 0);
     expect(observer.modelStatusBuilds, 0);
+    expect(broadNotifications, 0);
     expect(find.text('A'), findsOneWidget);
 
     inference.emit(const GenerationCompleted(GenerationId('generation-1')));
     await tester.pumpAndSettle();
     await tester.pumpWidget(const SizedBox.shrink());
   });
+
+  testWidgets('long streaming output stays inside the bounded scroll surface', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(640, 420));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final _ViewHarness harness = _ViewHarness();
+    await tester.pumpWidget(harness.app());
+    await harness.start();
+
+    harness.inference.emit(
+      GenerationDelta(
+        generationId: const GenerationId('generation-1'),
+        delta: List<String>.generate(
+          120,
+          (int index) => 'Streaming line $index',
+        ).join('\n'),
+      ),
+    );
+    await tester.pump();
+
+    expect(tester.takeException(), isNull);
+    expect(
+      find.ancestor(
+        of: find.byKey(const Key('active-streaming-plain-text')),
+        matching: find.byType(Scrollable),
+      ),
+      findsOneWidget,
+    );
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets('long streaming output fits a desktop window', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(1280, 800));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final _ViewHarness harness = _ViewHarness();
+    await tester.pumpWidget(harness.app());
+    await harness.start();
+
+    harness.inference.emit(
+      GenerationDelta(
+        generationId: const GenerationId('generation-1'),
+        delta: List<String>.filled(160, 'A local response line').join('\n'),
+      ),
+    );
+    await tester.pump();
+
+    expect(tester.takeException(), isNull);
+    expect(
+      find.byKey(const Key('conversation-scroll-surface')),
+      findsOneWidget,
+    );
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+}
+
+final class _ViewHarness {
+  final RecordingConversationStorageService storage =
+      RecordingConversationStorageService();
+  final ControlledInferenceService inference = ControlledInferenceService();
+  late final ConversationRepository repository = ConversationRepository(
+    storageService: storage,
+    inferenceService: inference,
+  );
+  late final ConversationViewModel viewModel = ConversationViewModel(
+    repository: repository,
+    idFactory: () => const ConversationId('conversation-1'),
+  );
+
+  Widget app() =>
+      MaterialApp(home: ConversationView(viewModelFactory: () => viewModel));
+
+  Future<void> start() async {
+    await viewModel.submit('Hello');
+    await inference.requestReceived;
+    inference.emit(
+      GenerationStarted(
+        const Generation(
+          id: GenerationId('generation-1'),
+          request: GenerationRequest(
+            conversationId: ConversationId('conversation-1'),
+            prompt: 'Hello',
+          ),
+        ),
+      ),
+    );
+  }
 }

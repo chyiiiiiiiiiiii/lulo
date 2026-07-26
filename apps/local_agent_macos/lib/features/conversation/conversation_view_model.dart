@@ -27,6 +27,7 @@ final class ConversationViewModel extends ChangeNotifier {
   ConversationId? _conversationId;
   GenerationId? _activeGenerationId;
   bool _stopRequested = false;
+  Future<void>? _stopOperation;
   bool _disposed = false;
   final ValueNotifier<List<Turn>> _completedTurns = ValueNotifier<List<Turn>>(
     const <Turn>[],
@@ -56,6 +57,7 @@ final class ConversationViewModel extends ChangeNotifier {
       return;
     }
     _stopRequested = false;
+    _stopOperation = null;
 
     final ConversationId conversationId = _conversationId ??= _idFactory();
     final Turn userTurn = Turn(
@@ -111,7 +113,6 @@ final class ConversationViewModel extends ChangeNotifier {
           activeTurn: activeTurn.append(delta),
         );
         _activeTurn.value = _projection.activeTurn;
-        notifyListeners();
       case GenerationCompleted(:final GenerationId generationId):
         if (generationId != _activeGenerationId) {
           return;
@@ -177,7 +178,9 @@ final class ConversationViewModel extends ChangeNotifier {
   }
 
   /// Stops the active generation.
-  Future<void> stop() async {
+  Future<void> stop() => _stopOperation ??= _stop();
+
+  Future<void> _stop() async {
     final GenerationId? generationId = _activeGenerationId;
     if (generationId != null) {
       await _repository.stop(generationId);

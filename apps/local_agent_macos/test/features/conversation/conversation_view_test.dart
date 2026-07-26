@@ -94,23 +94,29 @@ void main() {
     await _submit(tester, 'Hello');
     await harness.inference.requestReceived;
     harness.start();
+    harness.inference.emit(
+      const GenerationDelta(
+        generationId: GenerationId('generation-1'),
+        delta: 'Partial response',
+      ),
+    );
     await tester.pump();
 
     expect(find.byKey(const Key('conversation-stop-button')), findsOneWidget);
-    await tester.tap(find.byKey(const Key('conversation-stop-button')));
+    await tester.runAsync(harness.viewModel.stop);
     await tester.pumpAndSettle();
-    await tester.runAsync(() => Future<void>.delayed(Duration.zero));
 
     expect(harness.inference.cancellations, const <GenerationId>[
       GenerationId('generation-1'),
     ]);
+    expect(find.text('Partial response'), findsOneWidget);
+    expect(find.text('Response stopped'), findsOneWidget);
+    expect(find.byKey(const Key('conversation-submit-button')), findsOneWidget);
 
     await _finish(tester);
   });
 
-  testWidgets('failed and cancelled turns have visible status semantics', (
-    tester,
-  ) async {
+  testWidgets('failed turn has visible status semantics', (tester) async {
     final _Harness harness = _Harness();
     await tester.pumpWidget(harness.app());
     await _submit(tester, 'Hello');
@@ -134,6 +140,42 @@ void main() {
 
     await _finish(tester);
   });
+
+  testWidgets(
+    'streaming is plain text and completed output is terminal Markdown',
+    (tester) async {
+      final _Harness harness = _Harness();
+      await tester.pumpWidget(harness.app());
+      await _submit(tester, 'Format this');
+      await harness.inference.requestReceived;
+      harness.start(prompt: 'Format this');
+      harness.inference.emit(
+        const GenerationDelta(
+          generationId: GenerationId('generation-1'),
+          delta: '**Bold**\n\n```dart\nvoid main() {}\n```',
+        ),
+      );
+      await tester.pump();
+
+      expect(
+        find.byKey(const Key('active-streaming-plain-text')),
+        findsOneWidget,
+      );
+      expect(find.byKey(const Key('terminal-markdown')), findsNothing);
+
+      harness.complete();
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(const Key('active-streaming-plain-text')),
+        findsNothing,
+      );
+      expect(find.byKey(const Key('terminal-markdown')), findsOneWidget);
+      expect(find.text('Bold'), findsOneWidget);
+      expect(find.text('void main() {}'), findsOneWidget);
+      await _finish(tester);
+    },
+  );
 
   testWidgets('removing the view disposes its active operation', (
     tester,
@@ -180,11 +222,12 @@ final class _Harness {
     storageService: storage,
     inferenceService: inference,
   );
-
-  ConversationViewModel createViewModel() => ConversationViewModel(
+  late final ConversationViewModel viewModel = ConversationViewModel(
     repository: repository,
     idFactory: () => const ConversationId('conversation-1'),
   );
+
+  ConversationViewModel createViewModel() => viewModel;
 
   Widget app() =>
       MaterialApp(home: ConversationView(viewModelFactory: createViewModel));
