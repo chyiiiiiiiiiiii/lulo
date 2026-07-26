@@ -8,4 +8,17 @@ void main() {
     expect(config.localOnly, isTrue);
     expect(config.targetFrameRate, 120);
   });
+
+  test('bootstrap rejects an unsupported inference runtime', () {
+    expect(
+      () => createAppComposition(inferenceRuntime: 'remote'),
+      throwsA(
+        isA<UnsupportedError>().having(
+          (UnsupportedError error) => error.message,
+          'message',
+          contains('remote'),
+        ),
+      ),
+    );
+  });
 }

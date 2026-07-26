@@ -1,0 +1,47 @@
+import 'dart:async';
+
+import 'package:agent_core/agent_core.dart';
+
+import '../features/conversation/conversation_repository.dart';
+import '../features/conversation/conversation_storage_service.dart';
+import '../features/conversation/conversation_view_model.dart';
+import '../features/conversation/inference_service.dart';
+
+/// Owns app-scoped dependencies and creates feature-scoped ViewModels.
+final class AppComposition {
+  /// Creates the application graph from explicit app-scoped dependencies.
+  AppComposition(
+    this._disposeServices, {
+    required ConversationStorageService storageService,
+    required InferenceService inferenceService,
+  }) : _conversationRepository = ConversationRepository(
+         storageService: storageService,
+         inferenceService: inferenceService,
+       );
+
+  final FutureOr<void> Function() _disposeServices;
+  final ConversationRepository _conversationRepository;
+  int _nextConversation = 1;
+  bool _disposed = false;
+
+  /// Creates one ViewModel owned by one conversation View.
+  ConversationViewModel createConversationViewModel() {
+    if (_disposed) {
+      throw StateError('The application composition is disposed.');
+    }
+    return ConversationViewModel(
+      repository: _conversationRepository,
+      idFactory: () =>
+          ConversationId('session-conversation-${_nextConversation++}'),
+    );
+  }
+
+  /// Releases app-scoped services.
+  Future<void> dispose() async {
+    if (_disposed) {
+      return;
+    }
+    _disposed = true;
+    await _disposeServices();
+  }
+}

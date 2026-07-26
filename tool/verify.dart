@@ -36,6 +36,17 @@ Future<void> main() async {
       workingDirectory: _join(workspaceRoot.path, 'apps/local_agent_macos'),
     ),
     _VerificationCommand(
+      name: 'macOS fake-runtime integration test',
+      executable: 'flutter',
+      arguments: const <String>[
+        'test',
+        'integration_test/conversation_vertical_slice_test.dart',
+        '-d',
+        'macos',
+      ],
+      workingDirectory: _join(workspaceRoot.path, 'apps/local_agent_macos'),
+    ),
+    _VerificationCommand(
       name: 'macOS profile build',
       executable: 'flutter',
       arguments: const <String>['build', 'macos', '--profile'],
@@ -56,9 +67,10 @@ Future<void> main() async {
     );
   }
 
-  final List<_VerificationResult> results = await Future.wait(
-    commands.map(_runCommand),
-  );
+  final List<_VerificationResult> results = <_VerificationResult>[];
+  for (final _VerificationCommand command in commands) {
+    results.add(await _runCommand(command));
+  }
   final List<_VerificationResult> failures = results
       .where((_VerificationResult result) => result.exitCode != 0)
       .toList();
