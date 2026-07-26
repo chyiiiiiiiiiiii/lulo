@@ -55,4 +55,73 @@ void main() {
     // the same stable generation value fail to match across boundaries.
     expect(GenerationId('generation-1'), equals(GenerationId('generation-1')));
   });
+
+  test(
+    'projection rejects streaming history and owns an immutable snapshot',
+    () {
+      // Mutation caught: accepting streaming history would make completed state
+      // contradictory; retaining or exposing the caller list would let later
+      // mutations rewrite completed history.
+      const Turn streamingTurn = Turn(
+        role: TurnRole.assistant,
+        text: 'Working',
+        status: TurnStatus.streaming,
+      );
+
+      expect(
+        () => ConversationProjection(completedTurns: <Turn>[streamingTurn]),
+        throwsA(isA<ArgumentError>()),
+      );
+
+      final List<Turn> callerTurns = <Turn>[
+        const Turn(
+          role: TurnRole.user,
+          text: 'Keep this.',
+          status: TurnStatus.completed,
+        ),
+      ];
+      final ConversationProjection projection = ConversationProjection(
+        completedTurns: callerTurns,
+      );
+
+      callerTurns.add(
+        const Turn(
+          role: TurnRole.assistant,
+          text: 'Do not leak this.',
+          status: TurnStatus.cancelled,
+        ),
+      );
+
+      expect(projection.completedTurns, hasLength(1));
+      expect(projection.completedTurns.single.text, 'Keep this.');
+      expect(
+        () => projection.completedTurns.add(streamingTurn),
+        throwsUnsupportedError,
+      );
+    },
+  );
+
+  test('projection rejects terminal turns as active state', () {
+    // Mutation caught: dropping active-turn status validation would allow a
+    // completed, cancelled, or failed response to be represented as streaming.
+    for (final TurnStatus terminalStatus in <TurnStatus>[
+      TurnStatus.completed,
+      TurnStatus.cancelled,
+      TurnStatus.failed,
+    ]) {
+      final Turn terminalTurn = Turn(
+        role: TurnRole.assistant,
+        text: 'Already terminal.',
+        status: terminalStatus,
+      );
+
+      expect(
+        () => ConversationProjection(
+          completedTurns: const <Turn>[],
+          activeTurn: terminalTurn,
+        ),
+        throwsA(isA<ArgumentError>()),
+      );
+    }
+  });
 }
