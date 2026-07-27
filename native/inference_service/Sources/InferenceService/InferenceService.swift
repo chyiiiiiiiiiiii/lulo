@@ -387,6 +387,10 @@ public final class GenerationEventBridge:
   }
 
   private func cancelGenerationSerialized(generationId: String) {
+    guard lifecycle != .disposed else {
+      return
+    }
+    recordStaleGeneration(generationId)
     guard
       case let .active(activeGenerationId, _) = lifecycle,
       activeGenerationId == generationId
@@ -408,7 +412,6 @@ public final class GenerationEventBridge:
         message: "The response was cancelled."
       )
     )
-    recordStaleGeneration(generationId)
     self.generationId = nil
     lastSequence = nil
     lifecycle = .idle
@@ -451,6 +454,9 @@ public final class GenerationEventBridge:
   }
 
   private func recordStaleGeneration(_ generationId: String) {
+    guard !staleGenerationIds.contains(generationId) else {
+      return
+    }
     staleGenerationIds.append(generationId)
     if staleGenerationIds.count > staleGenerationCapacity {
       staleGenerationIds.removeFirst()

@@ -195,30 +195,62 @@ final class LocalModelRuntimeTests: XCTestCase {
         }
       ),
     ]
-    let invalidRequest = RuntimeRequestEnvelope(
-      schemaVersion: 3,
-      requestId: "request-1",
-      timestampMicros: 1
-    )
-
-    for operation in operations {
-      let backend = RecordingLocalModelRuntimeBackend()
-      let coordinator = LocalModelRuntimeCoordinator(
-        supportedSchemaVersion: 2,
-        backend: backend
-      )
-
-      XCTAssertThrowsError(
-        try operation.invoke(coordinator, invalidRequest),
-        operation.name
-      ) { error in
-        XCTAssertEqual(
-          error as? RuntimeBoundaryError,
-          .protocolMismatch,
-          operation.name
+    let invalidRequests: [(name: String, request: RuntimeRequestEnvelope)] = [
+      (
+        "schema mismatch",
+        RuntimeRequestEnvelope(
+          schemaVersion: 3,
+          requestId: "request-1",
+          timestampMicros: 1
         )
+      ),
+      (
+        "empty request ID",
+        RuntimeRequestEnvelope(
+          schemaVersion: 2,
+          requestId: "",
+          timestampMicros: 1
+        )
+      ),
+      (
+        "zero timestamp",
+        RuntimeRequestEnvelope(
+          schemaVersion: 2,
+          requestId: "request-1",
+          timestampMicros: 0
+        )
+      ),
+      (
+        "negative timestamp",
+        RuntimeRequestEnvelope(
+          schemaVersion: 2,
+          requestId: "request-1",
+          timestampMicros: -1
+        )
+      ),
+    ]
+
+    for invalidRequest in invalidRequests {
+      for operation in operations {
+        let backend = RecordingLocalModelRuntimeBackend()
+        let coordinator = LocalModelRuntimeCoordinator(
+          supportedSchemaVersion: 2,
+          backend: backend
+        )
+        let context = "\(invalidRequest.name): \(operation.name)"
+
+        XCTAssertThrowsError(
+          try operation.invoke(coordinator, invalidRequest.request),
+          context
+        ) { error in
+          XCTAssertEqual(
+            error as? RuntimeBoundaryError,
+            .protocolMismatch,
+            context
+          )
+        }
+        XCTAssertEqual(backend.invocations, [], context)
       }
-      XCTAssertEqual(backend.invocations, [], operation.name)
     }
   }
 
@@ -493,6 +525,233 @@ final class LocalModelRuntimeTests: XCTestCase {
       ]
     )
     XCTAssertEqual(scheduler.cancelledTaskCount, 1)
+  }
+
+  func testAcknowledgedCancellationBeforeStartFencesThatGeneration() throws {
+    let sink = RecordingGenerationEventSink()
+    let scheduler = ManualRuntimeEventScheduler()
+    let bridge = GenerationEventBridge(
+      sink: sink,
+      scheduler: scheduler,
+      coalescingMilliseconds: 10
+    )
+    let coordinator = LocalModelRuntimeCoordinator(
+      supportedSchemaVersion: 2,
+      backend: RecordingLocalModelRuntimeBackend(),
+      cancellationFence: bridge
+    )
+    let request = RuntimeRequestEnvelope(
+      schemaVersion: 2,
+      requestId: "request-1",
+      timestampMicros: 1
+    )
+
+    XCTAssertEqual(
+      try coordinator.cancelGeneration(
+        request: request,
+        generationId: "generation-1"
+      ),
+      RuntimeCancellationAcknowledgement(
+        generationId: "generation-1",
+        acknowledged: true
+      )
+    )
+
+    bridge.receive(
+      RuntimeGenerationEvent(
+        generationId: "generation-1",
+        sequence: 0,
+        kind: .started
+      )
+    )
+    bridge.receive(
+      RuntimeGenerationEvent(
+        generationId: "generation-1",
+        sequence: 1,
+        kind: .delta,
+        delta: "late"
+      )
+    )
+    bridge.receive(
+      RuntimeGenerationEvent(
+        generationId: "generation-1",
+        sequence: 2,
+        kind: .completed
+      )
+    )
+    bridge.receive(
+      RuntimeGenerationEvent(
+        generationId: "generation-2",
+        sequence: 0,
+        kind: .started
+      )
+    )
+    bridge.receive(
+      RuntimeGenerationEvent(
+        generationId: "generation-2",
+        sequence: 1,
+        kind: .delta,
+        delta: "next"
+      )
+    )
+    bridge.receive(
+      RuntimeGenerationEvent(
+        generationId: "generation-2",
+        sequence: 2,
+        kind: .completed
+      )
+    )
+
+    XCTAssertEqual(
+      sink.events,
+      [
+        RuntimeGenerationEvent(
+          generationId: "generation-2",
+          sequence: 0,
+          kind: .started
+        ),
+        RuntimeGenerationEvent(
+          generationId: "generation-2",
+          sequence: 1,
+          kind: .delta,
+          delta: "next"
+        ),
+        RuntimeGenerationEvent(
+          generationId: "generation-2",
+          sequence: 2,
+          kind: .completed
+        ),
+      ]
+    )
+  }
+
+  func testAcknowledgedDifferentGenerationIsFencedWithoutAffectingActive() throws {
+    let sink = RecordingGenerationEventSink()
+    let scheduler = ManualRuntimeEventScheduler()
+    let bridge = GenerationEventBridge(
+      sink: sink,
+      scheduler: scheduler,
+      coalescingMilliseconds: 10
+    )
+    let coordinator = LocalModelRuntimeCoordinator(
+      supportedSchemaVersion: 2,
+      backend: RecordingLocalModelRuntimeBackend(),
+      cancellationFence: bridge
+    )
+    let request = RuntimeRequestEnvelope(
+      schemaVersion: 2,
+      requestId: "request-1",
+      timestampMicros: 1
+    )
+
+    bridge.receive(
+      RuntimeGenerationEvent(
+        generationId: "generation-1",
+        sequence: 0,
+        kind: .started
+      )
+    )
+    bridge.receive(
+      RuntimeGenerationEvent(
+        generationId: "generation-1",
+        sequence: 1,
+        kind: .delta,
+        delta: "kept"
+      )
+    )
+    XCTAssertEqual(
+      try coordinator.cancelGeneration(
+        request: request,
+        generationId: "generation-2"
+      ),
+      RuntimeCancellationAcknowledgement(
+        generationId: "generation-2",
+        acknowledged: true
+      )
+    )
+    bridge.receive(
+      RuntimeGenerationEvent(
+        generationId: "generation-1",
+        sequence: 2,
+        kind: .delta,
+        delta: " going"
+      )
+    )
+    bridge.receive(
+      RuntimeGenerationEvent(
+        generationId: "generation-1",
+        sequence: 3,
+        kind: .completed
+      )
+    )
+    bridge.receive(
+      RuntimeGenerationEvent(
+        generationId: "generation-2",
+        sequence: 0,
+        kind: .started
+      )
+    )
+    bridge.receive(
+      RuntimeGenerationEvent(
+        generationId: "generation-2",
+        sequence: 1,
+        kind: .delta,
+        delta: "late"
+      )
+    )
+    bridge.receive(
+      RuntimeGenerationEvent(
+        generationId: "generation-2",
+        sequence: 2,
+        kind: .completed
+      )
+    )
+    bridge.receive(
+      RuntimeGenerationEvent(
+        generationId: "generation-3",
+        sequence: 0,
+        kind: .started
+      )
+    )
+    bridge.receive(
+      RuntimeGenerationEvent(
+        generationId: "generation-3",
+        sequence: 1,
+        kind: .completed
+      )
+    )
+
+    XCTAssertEqual(
+      sink.events,
+      [
+        RuntimeGenerationEvent(
+          generationId: "generation-1",
+          sequence: 0,
+          kind: .started
+        ),
+        RuntimeGenerationEvent(
+          generationId: "generation-1",
+          sequence: 2,
+          kind: .delta,
+          delta: "kept going"
+        ),
+        RuntimeGenerationEvent(
+          generationId: "generation-1",
+          sequence: 3,
+          kind: .completed
+        ),
+        RuntimeGenerationEvent(
+          generationId: "generation-3",
+          sequence: 0,
+          kind: .started
+        ),
+        RuntimeGenerationEvent(
+          generationId: "generation-3",
+          sequence: 1,
+          kind: .completed
+        ),
+      ]
+    )
   }
 
   func testUnacknowledgedCancellationLeavesActiveGenerationUnfenced() throws {
