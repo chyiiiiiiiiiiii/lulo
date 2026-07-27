@@ -402,10 +402,81 @@ void main() {
       await tester.pump();
       paints = 0;
 
-      await tester.pump(const Duration(milliseconds: 100));
+      await tester.pump(const Duration(milliseconds: 220));
 
       expect(paints, greaterThan(0));
     });
+
+    testWidgets(
+      'idle breathing does not retain a display-rate frame callback',
+      (WidgetTester tester) async {
+        final AgentPresenceController controller = AgentPresenceController();
+        addTearDown(controller.dispose);
+        var paints = 0;
+
+        await tester.pumpWidget(
+          _app(controller: controller, onPaint: () => paints += 1),
+        );
+        await tester.pump();
+        paints = 0;
+
+        expect(tester.binding.transientCallbackCount, 0);
+        await tester.pump(const Duration(milliseconds: 220));
+        expect(paints, greaterThan(0));
+        expect(tester.binding.transientCallbackCount, 0);
+      },
+    );
+
+    testWidgets('ticker-muted idle stops and resumes its periodic paints', (
+      WidgetTester tester,
+    ) async {
+      final AgentPresenceController controller = AgentPresenceController();
+      addTearDown(controller.dispose);
+      var paints = 0;
+
+      await tester.pumpWidget(
+        _app(controller: controller, onPaint: () => paints += 1),
+      );
+      await tester.pump();
+      await tester.pumpWidget(
+        _app(
+          controller: controller,
+          tickerEnabled: false,
+          onPaint: () => paints += 1,
+        ),
+      );
+      paints = 0;
+
+      await tester.pump(const Duration(milliseconds: 440));
+      expect(paints, 0);
+
+      await tester.pumpWidget(
+        _app(controller: controller, onPaint: () => paints += 1),
+      );
+      paints = 0;
+      await tester.pump(const Duration(milliseconds: 220));
+      expect(paints, greaterThan(0));
+    });
+
+    for (final AgentPresenceState state in <AgentPresenceState>[
+      AgentPresenceState.listening,
+      AgentPresenceState.thinking,
+      AgentPresenceState.speaking,
+      AgentPresenceState.working,
+    ]) {
+      testWidgets('${state.name} retains display-rate rendering capability', (
+        WidgetTester tester,
+      ) async {
+        final AgentPresenceController controller = AgentPresenceController();
+        addTearDown(controller.dispose);
+        _dispatchState(controller, state);
+
+        await tester.pumpWidget(_app(controller: controller));
+        await tester.pump();
+
+        expect(tester.binding.transientCallbackCount, greaterThan(0));
+      });
+    }
 
     testWidgets('reduced motion retains state semantics and visible text', (
       WidgetTester tester,
@@ -663,6 +734,7 @@ void main() {
 Widget _app({
   required AgentPresenceController controller,
   bool disableAnimations = false,
+  bool tickerEnabled = true,
   VoidCallback? onPaint,
   VoidCallback? onSemanticBuild,
   AgentPresenceShaderLoader shaderLoader = loadAgentPresenceShader,
@@ -674,15 +746,18 @@ Widget _app({
   return MaterialApp(
     home: MediaQuery(
       data: MediaQueryData(disableAnimations: disableAnimations),
-      child: Scaffold(
-        body: AgentPresenceOrb(
-          key: orbKey,
-          controller: controller,
-          onPaint: onPaint,
-          onSemanticBuild: onSemanticBuild,
-          shaderLoader: shaderLoader,
-          shaderBackendFactory: shaderBackendFactory,
-          onRenderingPathChanged: onRenderingPathChanged,
+      child: TickerMode(
+        enabled: tickerEnabled,
+        child: Scaffold(
+          body: AgentPresenceOrb(
+            key: orbKey,
+            controller: controller,
+            onPaint: onPaint,
+            onSemanticBuild: onSemanticBuild,
+            shaderLoader: shaderLoader,
+            shaderBackendFactory: shaderBackendFactory,
+            onRenderingPathChanged: onRenderingPathChanged,
+          ),
         ),
       ),
     ),

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart';
@@ -68,6 +69,7 @@ final class AgentPresenceOrb extends StatefulWidget {
 final class _AgentPresenceOrbState extends State<AgentPresenceOrb>
     with SingleTickerProviderStateMixin {
   static const Duration _placeholderCycle = Duration(milliseconds: 5600);
+  static const Duration _idleFrameInterval = Duration(milliseconds: 200);
   static const double _orbExtent = 56;
 
   late final AnimationController _motion;
@@ -76,7 +78,9 @@ final class _AgentPresenceOrbState extends State<AgentPresenceOrb>
   late final Stopwatch _clock;
   late final AgentPresenceFallbackPainter _fallbackPainter;
   AgentPresencePainter? _shaderPainter;
+  Timer? _idleFrameTimer;
   bool _disableAnimations = false;
+  bool _tickerModeEnabled = true;
   _ShaderLoadPhase _shaderLoadPhase = _ShaderLoadPhase.pending;
 
   @override
@@ -108,6 +112,7 @@ final class _AgentPresenceOrbState extends State<AgentPresenceOrb>
   void didChangeDependencies() {
     super.didChangeDependencies();
     _disableAnimations = MediaQuery.disableAnimationsOf(context);
+    _tickerModeEnabled = TickerMode.valuesOf(context).enabled;
     _motionEnabled.value = !_disableAnimations;
     _updateMotionLifecycle();
   }
@@ -118,6 +123,7 @@ final class _AgentPresenceOrbState extends State<AgentPresenceOrb>
       _updateMotionLifecycle,
     );
     _motion.dispose();
+    _idleFrameTimer?.cancel();
     _motionEnabled.dispose();
     _clock.stop();
     super.dispose();
@@ -126,16 +132,42 @@ final class _AgentPresenceOrbState extends State<AgentPresenceOrb>
   void _updateMotionLifecycle() {
     final AgentPresenceState state =
         widget.controller.semanticStateListenable.value;
-    final bool shouldAnimate =
-        !_disableAnimations && state != AgentPresenceState.error;
-    if (shouldAnimate) {
-      if (!_motion.isAnimating) {
-        _motion.repeat(min: 0, max: 1, period: _placeholderCycle);
-      }
+    if (!_tickerModeEnabled ||
+        _disableAnimations ||
+        state == AgentPresenceState.error) {
+      _idleFrameTimer?.cancel();
+      _idleFrameTimer = null;
+      _motion.stop();
+      _motion.value = 0;
       return;
     }
-    _motion.stop();
-    _motion.value = 0;
+    if (state == AgentPresenceState.idle) {
+      _motion.stop();
+      _updateIdlePhase();
+      _idleFrameTimer ??= Timer.periodic(
+        _idleFrameInterval,
+        (_) => _updateIdlePhase(),
+      );
+      return;
+    }
+    _idleFrameTimer?.cancel();
+    _idleFrameTimer = null;
+    if (!_motion.isAnimating) {
+      _motion.repeat(min: 0, max: 1, period: _placeholderCycle);
+    }
+  }
+
+  void _updateIdlePhase() {
+    if (!mounted ||
+        _disableAnimations ||
+        !_tickerModeEnabled ||
+        widget.controller.semanticStateListenable.value !=
+            AgentPresenceState.idle) {
+      return;
+    }
+    final int cycleMicros = _placeholderCycle.inMicroseconds;
+    final int elapsedMicros = _clock.elapsedMicroseconds % cycleMicros;
+    _motion.value = elapsedMicros / cycleMicros;
   }
 
   Future<void> _loadShader() async {
