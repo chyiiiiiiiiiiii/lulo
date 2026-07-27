@@ -1,6 +1,7 @@
 import Cocoa
 import Carbon
 import FlutterMacOS
+import InferenceService
 
 @main
 class AppDelegate: FlutterAppDelegate {
@@ -52,7 +53,8 @@ class AppDelegate: FlutterAppDelegate {
     )
     let coordinator = LocalModelRuntimeCoordinator(
       supportedSchemaVersion: 2,
-      backend: backend
+      backend: backend,
+      cancellationFence: eventBridge
     )
     let desktopHostApi = LocalRuntimeDesktopHostApi(
       panelController: panelController,

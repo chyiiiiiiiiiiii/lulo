@@ -1,3 +1,6 @@
+import Dispatch
+import Foundation
+
 public struct RuntimeRequestEnvelope: Equatable, Sendable {
   public init(
     schemaVersion: Int64,
@@ -188,7 +191,65 @@ public protocol RuntimeEventScheduling: AnyObject {
   ) -> RuntimeScheduledTask
 }
 
-public final class GenerationEventBridge {
+public protocol RuntimeEventDispatching: AnyObject {
+  func dispatch(_ operation: @escaping () -> Void)
+}
+
+public final class MainQueueRuntimeEventDispatcher:
+  RuntimeEventDispatching
+{
+  public convenience init() {
+    self.init(
+      isMainThread: { Thread.isMainThread },
+      enqueueOnMain: { operation in
+        let operationBox = RuntimeEventOperationBox(operation)
+        DispatchQueue.main.async {
+          operationBox.run()
+        }
+      }
+    )
+  }
+
+  init(
+    isMainThread: @escaping () -> Bool,
+    enqueueOnMain: @escaping (@escaping () -> Void) -> Void
+  ) {
+    self.isMainThread = isMainThread
+    self.enqueueOnMain = enqueueOnMain
+  }
+
+  private let isMainThread: () -> Bool
+  private let enqueueOnMain: (@escaping () -> Void) -> Void
+
+  public func dispatch(_ operation: @escaping () -> Void) {
+    if isMainThread() {
+      operation()
+    } else {
+      enqueueOnMain(operation)
+    }
+  }
+}
+
+private final class RuntimeEventOperationBox: @unchecked Sendable {
+  init(_ operation: @escaping () -> Void) {
+    self.operation = operation
+  }
+
+  private let operation: () -> Void
+
+  func run() {
+    operation()
+  }
+}
+
+public protocol RuntimeGenerationCancellationFencing: AnyObject {
+  func cancelGeneration(generationId: String)
+}
+
+public final class GenerationEventBridge:
+  RuntimeGenerationCancellationFencing,
+  @unchecked Sendable
+{
   public init(
     sink: RuntimeGenerationEventSink,
     scheduler: RuntimeEventScheduling,
@@ -198,8 +259,17 @@ public final class GenerationEventBridge {
     self.sink = sink
     self.scheduler = scheduler
     self.coalescingMilliseconds = coalescingMilliseconds
+    transitionQueue.setSpecific(
+      key: transitionQueueKey,
+      value: transitionQueueIdentity
+    )
   }
 
+  private let transitionQueue = DispatchQueue(
+    label: "com.flutterlocalagent.inference-service.event-bridge"
+  )
+  private let transitionQueueKey = DispatchSpecificKey<UInt8>()
+  private let transitionQueueIdentity: UInt8 = 1
   private var sink: RuntimeGenerationEventSink?
   private let scheduler: RuntimeEventScheduling
   private let coalescingMilliseconds: Int
@@ -208,30 +278,58 @@ public final class GenerationEventBridge {
   private var pendingDelta = ""
   private var pendingDeltaSequence: Int64?
   private var scheduledFlush: RuntimeScheduledTask?
-  private var isTerminal = false
-  private var isDisposed = false
+  private var lifecycle = Lifecycle.idle
+  private var nextGenerationToken: UInt64 = 0
+  private var staleGenerationIds: [String] = []
 
   public func receive(_ event: RuntimeGenerationEvent) {
-    guard !isDisposed, !isTerminal else {
-      return
+    withSerializedTransition {
+      receiveSerialized(event)
     }
-    if let generationId {
+  }
+
+  public func dispose() {
+    withSerializedTransition {
+      disposeSerialized()
+    }
+  }
+
+  public func cancelGeneration(generationId: String) {
+    withSerializedTransition {
+      cancelGenerationSerialized(generationId: generationId)
+    }
+  }
+
+  private func receiveSerialized(_ event: RuntimeGenerationEvent) {
+    let generationToken: UInt64
+    switch lifecycle {
+    case .disposed:
+      return
+    case let .active(activeGenerationId, activeGenerationToken):
       guard
-        event.generationId == generationId,
+        event.generationId == activeGenerationId,
         event.kind != .started,
         event.sequence > (lastSequence ?? -1)
       else {
         return
       }
-    } else {
+      generationToken = activeGenerationToken
+    case .idle:
       guard
         event.kind == .started,
         !event.generationId.isEmpty,
-        event.sequence >= 0
+        event.sequence >= 0,
+        !staleGenerationIds.contains(event.generationId)
       else {
         return
       }
       generationId = event.generationId
+      nextGenerationToken &+= 1
+      generationToken = nextGenerationToken
+      lifecycle = .active(
+        generationId: event.generationId,
+        token: generationToken
+      )
     }
 
     if event.kind == .delta {
@@ -242,11 +340,20 @@ public final class GenerationEventBridge {
       pendingDelta.append(delta)
       pendingDeltaSequence = event.sequence
       if scheduledFlush == nil {
-        scheduledFlush = scheduler.schedule(
+        let task = scheduler.schedule(
           afterMilliseconds: coalescingMilliseconds
         ) { [weak self] in
-          self?.scheduledFlush = nil
-          self?.emitPendingDelta()
+          self?.flushScheduledDelta(generationToken: generationToken)
+        }
+        if
+          case let .active(_, activeGenerationToken) = lifecycle,
+          activeGenerationToken == generationToken,
+          !pendingDelta.isEmpty,
+          scheduledFlush == nil
+        {
+          scheduledFlush = task
+        } else {
+          task.cancel()
         }
       }
       return
@@ -259,14 +366,19 @@ public final class GenerationEventBridge {
     }
     lastSequence = event.sequence
     sink?.send(event)
-    isTerminal = isTerminalEvent(event.kind)
+    if isTerminalEvent(event.kind) {
+      recordStaleGeneration(event.generationId)
+      generationId = nil
+      lastSequence = nil
+      lifecycle = .idle
+    }
   }
 
-  public func dispose() {
-    guard !isDisposed else {
+  private func disposeSerialized() {
+    guard lifecycle != .disposed else {
       return
     }
-    isDisposed = true
+    lifecycle = .disposed
     scheduledFlush?.cancel()
     scheduledFlush = nil
     pendingDelta = ""
@@ -274,9 +386,37 @@ public final class GenerationEventBridge {
     sink = nil
   }
 
+  private func cancelGenerationSerialized(generationId: String) {
+    guard
+      case let .active(activeGenerationId, _) = lifecycle,
+      activeGenerationId == generationId
+    else {
+      return
+    }
+    scheduledFlush?.cancel()
+    scheduledFlush = nil
+    pendingDelta = ""
+    pendingDeltaSequence = nil
+    let cancellationSequence = (lastSequence ?? -1) + 1
+    lastSequence = cancellationSequence
+    sink?.send(
+      RuntimeGenerationEvent(
+        generationId: generationId,
+        sequence: cancellationSequence,
+        kind: .cancelled,
+        failureCode: .cancelled,
+        message: "The response was cancelled."
+      )
+    )
+    recordStaleGeneration(generationId)
+    self.generationId = nil
+    lastSequence = nil
+    lifecycle = .idle
+  }
+
   private func emitPendingDelta() {
     guard
-      !isDisposed,
+      lifecycle != .disposed,
       !pendingDelta.isEmpty,
       let generationId,
       let pendingDeltaSequence,
@@ -297,6 +437,26 @@ public final class GenerationEventBridge {
     )
   }
 
+  private func flushScheduledDelta(generationToken: UInt64) {
+    withSerializedTransition {
+      guard
+        case let .active(_, activeGenerationToken) = lifecycle,
+        activeGenerationToken == generationToken
+      else {
+        return
+      }
+      scheduledFlush = nil
+      emitPendingDelta()
+    }
+  }
+
+  private func recordStaleGeneration(_ generationId: String) {
+    staleGenerationIds.append(generationId)
+    if staleGenerationIds.count > staleGenerationCapacity {
+      staleGenerationIds.removeFirst()
+    }
+  }
+
   private func isTerminalEvent(_ kind: RuntimeGenerationEventKind) -> Bool {
     switch kind {
     case .completed, .cancelled, .failed:
@@ -305,10 +465,92 @@ public final class GenerationEventBridge {
       false
     }
   }
+
+  private enum Lifecycle: Equatable {
+    case idle
+    case active(generationId: String, token: UInt64)
+    case disposed
+  }
+
+  private let staleGenerationCapacity = 32
+
+  private func withSerializedTransition<T>(
+    _ operation: () throws -> T
+  ) rethrows -> T {
+    if
+      DispatchQueue.getSpecific(key: transitionQueueKey)
+        == transitionQueueIdentity
+    {
+      return try operation()
+    }
+    return try transitionQueue.sync(execute: operation)
+  }
 }
 
 public enum RuntimeBoundaryError: Error, Equatable, Sendable {
+  case modelNotInstalled
+  case modelLoadFailed
+  case runtimeUnavailable
+  case generationBusy
+  case generationFailed
+  case cancelled
   case protocolMismatch
+}
+
+public struct RuntimeSafeFailure: Equatable, Sendable {
+  public init(code: String, message: String) {
+    self.code = code
+    self.message = message
+  }
+
+  public let code: String
+  public let message: String
+}
+
+public func safeRuntimeFailure(for error: Error) -> RuntimeSafeFailure {
+  guard let boundaryError = error as? RuntimeBoundaryError else {
+    return RuntimeSafeFailure(
+      code: "runtimeUnavailable",
+      message: "Local inference is unavailable."
+    )
+  }
+  switch boundaryError {
+  case .modelNotInstalled:
+    return RuntimeSafeFailure(
+      code: "modelNotInstalled",
+      message: "The local model is not installed."
+    )
+  case .modelLoadFailed:
+    return RuntimeSafeFailure(
+      code: "modelLoadFailed",
+      message: "The local model could not be loaded."
+    )
+  case .runtimeUnavailable:
+    return RuntimeSafeFailure(
+      code: "runtimeUnavailable",
+      message: "Local inference is unavailable."
+    )
+  case .generationBusy:
+    return RuntimeSafeFailure(
+      code: "generationBusy",
+      message: "Another response is already being generated."
+    )
+  case .generationFailed:
+    return RuntimeSafeFailure(
+      code: "generationFailed",
+      message: "Local inference failed."
+    )
+  case .cancelled:
+    return RuntimeSafeFailure(
+      code: "cancelled",
+      message: "The response was cancelled."
+    )
+  case .protocolMismatch:
+    return RuntimeSafeFailure(
+      code: "protocolMismatch",
+      message: "The desktop host protocol is incompatible."
+    )
+  }
 }
 
 public protocol LocalModelRuntimeBackend: AnyObject {
@@ -331,14 +573,17 @@ public protocol LocalModelRuntimeBackend: AnyObject {
 public final class LocalModelRuntimeCoordinator {
   public init(
     supportedSchemaVersion: Int64,
-    backend: LocalModelRuntimeBackend
+    backend: LocalModelRuntimeBackend,
+    cancellationFence: RuntimeGenerationCancellationFencing? = nil
   ) {
     self.supportedSchemaVersion = supportedSchemaVersion
     self.backend = backend
+    self.cancellationFence = cancellationFence
   }
 
   private let supportedSchemaVersion: Int64
   private let backend: LocalModelRuntimeBackend
+  private let cancellationFence: RuntimeGenerationCancellationFencing?
 
   public func handshake(
     request: RuntimeRequestEnvelope
@@ -374,7 +619,13 @@ public final class LocalModelRuntimeCoordinator {
     generationId: String
   ) throws -> RuntimeCancellationAcknowledgement {
     try validate(request)
-    return try backend.cancelGeneration(generationId: generationId)
+    let acknowledgement = try backend.cancelGeneration(
+      generationId: generationId
+    )
+    if acknowledgement.acknowledged {
+      cancellationFence?.cancelGeneration(generationId: generationId)
+    }
+    return acknowledgement
   }
 
   public func resetSession(

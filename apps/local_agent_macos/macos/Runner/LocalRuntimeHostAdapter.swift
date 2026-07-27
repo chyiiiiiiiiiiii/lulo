@@ -1,5 +1,6 @@
 import Dispatch
 import Foundation
+import InferenceService
 
 final class LocalRuntimeDesktopHostApi: DesktopHostApi {
   init(
@@ -130,8 +131,8 @@ final class LocalRuntimeDesktopHostApi: DesktopHostApi {
   private func translate<T>(_ operation: () throws -> T) throws -> T {
     do {
       return try operation()
-    } catch RuntimeBoundaryError.protocolMismatch {
-      throw protocolMismatchError()
+    } catch {
+      throw pigeonError(for: error)
     }
   }
 
@@ -141,14 +142,15 @@ final class LocalRuntimeDesktopHostApi: DesktopHostApi {
       !request.requestId.isEmpty,
       request.timestampMicros > 0
     else {
-      throw protocolMismatchError()
+      throw pigeonError(for: RuntimeBoundaryError.protocolMismatch)
     }
   }
 
-  private func protocolMismatchError() -> PigeonError {
-    PigeonError(
-      code: "protocolMismatch",
-      message: "The desktop host request schema is incompatible.",
+  private func pigeonError(for error: Error) -> PigeonError {
+    let failure = safeRuntimeFailure(for: error)
+    return PigeonError(
+      code: failure.code,
+      message: failure.message,
       details: nil
     )
   }
@@ -163,13 +165,24 @@ final class LocalRuntimeDesktopHostApi: DesktopHostApi {
 }
 
 final class PigeonGenerationEventSink: RuntimeGenerationEventSink {
-  init(api: DesktopHostEventApi) {
+  init(
+    api: DesktopHostEventApi,
+    dispatcher: RuntimeEventDispatching = MainQueueRuntimeEventDispatcher()
+  ) {
     self.api = api
+    self.dispatcher = dispatcher
   }
 
   private let api: DesktopHostEventApi
+  private let dispatcher: RuntimeEventDispatching
 
   func send(_ event: RuntimeGenerationEvent) {
+    dispatcher.dispatch { [weak self] in
+      self?.sendOnMain(event)
+    }
+  }
+
+  private func sendOnMain(_ event: RuntimeGenerationEvent) {
     api.onGenerationEvent(
       event: HostGenerationEvent(
         schemaVersion: 2,

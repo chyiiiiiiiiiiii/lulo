@@ -4,7 +4,7 @@ import PackageDescription
 
 let package = Package(
   name: "InferenceService",
-  platforms: [.macOS(.v13)],
+  platforms: [.macOS(.v10_15)],
   products: [
     .library(name: "InferenceService", targets: ["InferenceService"]),
   ],
