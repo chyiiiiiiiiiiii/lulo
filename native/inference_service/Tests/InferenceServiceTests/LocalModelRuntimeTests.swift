@@ -284,7 +284,9 @@ final class LocalModelRuntimeTests: XCTestCase {
     await admissionGate.waitUntilAllArrive()
     await admissionGate.open()
     await backend.waitForLoadCall()
-    await backend.completeLoad(
+    let inFlightLoadCount = await backend.loadCallCount
+    XCTAssertEqual(inFlightLoadCount, 1)
+    await backend.completeLoads(
       with: RuntimeModelLoadResult(modelId: model.modelId, loaded: true)
     )
 
@@ -295,6 +297,385 @@ final class LocalModelRuntimeTests: XCTestCase {
     ])
     let loadCallCount = await backend.loadCallCount
     XCTAssertEqual(loadCallCount, 1)
+  }
+
+  func testSecondGenerationIsRejectedWhileFirstStartIsInFlight() async throws {
+    let backend = RuntimeBackendSpy()
+    let coordinator = InferenceCoordinator(
+      supportedSchemaVersion: 2,
+      backend: backend
+    )
+    let request = RuntimeRequestEnvelope(
+      schemaVersion: 2,
+      requestId: "request-1",
+      timestampMicros: 1
+    )
+    let model = RuntimeModelRequest(
+      modelId: "model-1",
+      modelPath: "/models/model-1.bin",
+      contextSize: 4096
+    )
+    let firstGeneration = RuntimeGenerationRequest(
+      generationId: "generation-1",
+      sessionId: "session-1",
+      prompt: "first",
+      context: [],
+      temperature: 0.25,
+      topP: 0.9,
+      maxTokens: 128,
+      seed: 1
+    )
+    let secondGeneration = RuntimeGenerationRequest(
+      generationId: "generation-2",
+      sessionId: "session-1",
+      prompt: "second",
+      context: [],
+      temperature: 0.25,
+      topP: 0.9,
+      maxTokens: 128,
+      seed: 2
+    )
+    async let loadResult = coordinator.loadModel(request: request, model: model)
+    await backend.waitForLoadCall()
+    await backend.completeLoads(
+      with: RuntimeModelLoadResult(modelId: model.modelId, loaded: true)
+    )
+    _ = try await loadResult
+
+    async let firstAcknowledgement = coordinator.startGeneration(
+      request: request,
+      generation: firstGeneration
+    )
+    await backend.waitForStartCall(count: 1)
+
+    do {
+      _ = try await coordinator.startGeneration(
+        request: request,
+        generation: secondGeneration
+      )
+      XCTFail("Expected the second generation to be rejected")
+    } catch {
+      XCTAssertEqual(error as? RuntimeBoundaryError, .generationBusy)
+    }
+
+    await backend.completeStart(
+      generationId: firstGeneration.generationId,
+      with: RuntimeGenerationAcknowledgement(
+        generationId: firstGeneration.generationId,
+        accepted: true
+      )
+    )
+    let acknowledgement = try await firstAcknowledgement
+    XCTAssertEqual(
+      acknowledgement,
+      RuntimeGenerationAcknowledgement(
+        generationId: firstGeneration.generationId,
+        accepted: true
+      )
+    )
+    let startCallCount = await backend.startCallCount
+    XCTAssertEqual(startCallCount, 1)
+  }
+
+  func testTerminalEventReleasesGenerationSlotForNextRequest() async throws {
+    let backend = RuntimeBackendSpy()
+    let coordinator = InferenceCoordinator(
+      supportedSchemaVersion: 2,
+      backend: backend
+    )
+    let request = RuntimeRequestEnvelope(
+      schemaVersion: 2,
+      requestId: "request-1",
+      timestampMicros: 1
+    )
+    let model = RuntimeModelRequest(
+      modelId: "model-1",
+      modelPath: "/models/model-1.bin",
+      contextSize: 4096
+    )
+    let firstGeneration = RuntimeGenerationRequest(
+      generationId: "generation-1",
+      sessionId: "session-1",
+      prompt: "first",
+      context: [],
+      temperature: 0.25,
+      topP: 0.9,
+      maxTokens: 128,
+      seed: 1
+    )
+    let secondGeneration = RuntimeGenerationRequest(
+      generationId: "generation-2",
+      sessionId: "session-1",
+      prompt: "second",
+      context: [],
+      temperature: 0.25,
+      topP: 0.9,
+      maxTokens: 128,
+      seed: 2
+    )
+    async let loadResult = coordinator.loadModel(request: request, model: model)
+    await backend.waitForLoadCall()
+    await backend.completeLoads(
+      with: RuntimeModelLoadResult(modelId: model.modelId, loaded: true)
+    )
+    _ = try await loadResult
+
+    async let firstAcknowledgement = coordinator.startGeneration(
+      request: request,
+      generation: firstGeneration
+    )
+    await backend.waitForStartCall(count: 1)
+    await backend.completeStart(
+      generationId: firstGeneration.generationId,
+      with: RuntimeGenerationAcknowledgement(
+        generationId: firstGeneration.generationId,
+        accepted: true
+      )
+    )
+    _ = try await firstAcknowledgement
+
+    await coordinator.receiveGenerationEvent(
+      RuntimeGenerationEvent(
+        generationId: firstGeneration.generationId,
+        sequence: 1,
+        kind: .completed
+      )
+    )
+
+    async let secondAcknowledgement = coordinator.startGeneration(
+      request: request,
+      generation: secondGeneration
+    )
+    await backend.waitForStartCall(count: 2)
+    await backend.completeStart(
+      generationId: secondGeneration.generationId,
+      with: RuntimeGenerationAcknowledgement(
+        generationId: secondGeneration.generationId,
+        accepted: true
+      )
+    )
+    let acknowledgement = try await secondAcknowledgement
+    XCTAssertEqual(
+      acknowledgement,
+      RuntimeGenerationAcknowledgement(
+        generationId: secondGeneration.generationId,
+        accepted: true
+      )
+    )
+    let startCallCount = await backend.startCallCount
+    XCTAssertEqual(startCallCount, 2)
+  }
+
+  func testTerminalBeforeStartAcknowledgementDoesNotResurrectGeneration()
+    async throws
+  {
+    let backend = RuntimeBackendSpy()
+    let coordinator = InferenceCoordinator(
+      supportedSchemaVersion: 2,
+      backend: backend
+    )
+    let request = RuntimeRequestEnvelope(
+      schemaVersion: 2,
+      requestId: "request-1",
+      timestampMicros: 1
+    )
+    let model = RuntimeModelRequest(
+      modelId: "model-1",
+      modelPath: "/models/model-1.bin",
+      contextSize: 4096
+    )
+    let firstGeneration = RuntimeGenerationRequest(
+      generationId: "generation-1",
+      sessionId: "session-1",
+      prompt: "first",
+      context: [],
+      temperature: 0.25,
+      topP: 0.9,
+      maxTokens: 128,
+      seed: 1
+    )
+    let secondGeneration = RuntimeGenerationRequest(
+      generationId: "generation-2",
+      sessionId: "session-1",
+      prompt: "second",
+      context: [],
+      temperature: 0.25,
+      topP: 0.9,
+      maxTokens: 128,
+      seed: 2
+    )
+    let thirdGeneration = RuntimeGenerationRequest(
+      generationId: "generation-3",
+      sessionId: "session-1",
+      prompt: "third",
+      context: [],
+      temperature: 0.25,
+      topP: 0.9,
+      maxTokens: 128,
+      seed: 3
+    )
+
+    async let loadResult = coordinator.loadModel(request: request, model: model)
+    await backend.waitForLoadCall()
+    await backend.completeLoads(
+      with: RuntimeModelLoadResult(modelId: model.modelId, loaded: true)
+    )
+    _ = try await loadResult
+
+    async let firstAcknowledgement = coordinator.startGeneration(
+      request: request,
+      generation: firstGeneration
+    )
+    await backend.waitForStartCall(count: 1)
+    await coordinator.receiveGenerationEvent(
+      RuntimeGenerationEvent(
+        generationId: firstGeneration.generationId,
+        sequence: 1,
+        kind: .completed
+      )
+    )
+
+    await backend.automaticallyAcknowledgeStarts()
+    let acknowledgement: RuntimeGenerationAcknowledgement?
+    do {
+      acknowledgement = try await coordinator.startGeneration(
+        request: request,
+        generation: secondGeneration
+      )
+    } catch {
+      acknowledgement = nil
+      XCTFail("Terminal should release ownership before acknowledgement: \(error)")
+    }
+
+    await backend.completeStart(
+      generationId: firstGeneration.generationId,
+      with: RuntimeGenerationAcknowledgement(
+        generationId: firstGeneration.generationId,
+        accepted: true
+      )
+    )
+    _ = try await firstAcknowledgement
+
+    guard let acknowledgement else {
+      return
+    }
+    XCTAssertEqual(
+      acknowledgement,
+      RuntimeGenerationAcknowledgement(
+        generationId: secondGeneration.generationId,
+        accepted: true
+      )
+    )
+    do {
+      _ = try await coordinator.startGeneration(
+        request: request,
+        generation: thirdGeneration
+      )
+      XCTFail("Expected the active second generation to retain ownership")
+    } catch {
+      XCTAssertEqual(error as? RuntimeBoundaryError, .generationBusy)
+    }
+    let startCallCount = await backend.startCallCount
+    XCTAssertEqual(startCallCount, 2)
+  }
+
+  func testLateStartFailureDoesNotReleaseNewGenerationOwnership() async throws {
+    let backend = RuntimeBackendSpy()
+    let coordinator = InferenceCoordinator(
+      supportedSchemaVersion: 2,
+      backend: backend
+    )
+    let request = RuntimeRequestEnvelope(
+      schemaVersion: 2,
+      requestId: "request-1",
+      timestampMicros: 1
+    )
+    let model = RuntimeModelRequest(
+      modelId: "model-1",
+      modelPath: "/models/model-1.bin",
+      contextSize: 4096
+    )
+    let firstGeneration = RuntimeGenerationRequest(
+      generationId: "generation-1",
+      sessionId: "session-1",
+      prompt: "first",
+      context: [],
+      temperature: 0.25,
+      topP: 0.9,
+      maxTokens: 128,
+      seed: 1
+    )
+    let secondGeneration = RuntimeGenerationRequest(
+      generationId: "generation-2",
+      sessionId: "session-1",
+      prompt: "second",
+      context: [],
+      temperature: 0.25,
+      topP: 0.9,
+      maxTokens: 128,
+      seed: 2
+    )
+    let thirdGeneration = RuntimeGenerationRequest(
+      generationId: "generation-3",
+      sessionId: "session-1",
+      prompt: "third",
+      context: [],
+      temperature: 0.25,
+      topP: 0.9,
+      maxTokens: 128,
+      seed: 3
+    )
+
+    async let loadResult = coordinator.loadModel(request: request, model: model)
+    await backend.waitForLoadCall()
+    await backend.completeLoads(
+      with: RuntimeModelLoadResult(modelId: model.modelId, loaded: true)
+    )
+    _ = try await loadResult
+
+    async let firstAcknowledgement = coordinator.startGeneration(
+      request: request,
+      generation: firstGeneration
+    )
+    await backend.waitForStartCall(count: 1)
+    await coordinator.receiveGenerationEvent(
+      RuntimeGenerationEvent(
+        generationId: firstGeneration.generationId,
+        sequence: 1,
+        kind: .failed,
+        failureCode: .generationFailed,
+        message: "Local inference failed."
+      )
+    )
+
+    await backend.automaticallyAcknowledgeStarts()
+    _ = try await coordinator.startGeneration(
+      request: request,
+      generation: secondGeneration
+    )
+
+    await backend.failStart(
+      generationId: firstGeneration.generationId,
+      with: RuntimeBoundaryError.generationFailed
+    )
+    do {
+      _ = try await firstAcknowledgement
+      XCTFail("Expected the stale first start to fail")
+    } catch {
+      XCTAssertEqual(error as? RuntimeBoundaryError, .generationFailed)
+    }
+
+    do {
+      _ = try await coordinator.startGeneration(
+        request: request,
+        generation: thirdGeneration
+      )
+      XCTFail("Expected the active second generation to retain ownership")
+    } catch {
+      XCTAssertEqual(error as? RuntimeBoundaryError, .generationBusy)
+    }
+    let startCallCount = await backend.startCallCount
+    XCTAssertEqual(startCallCount, 2)
   }
 
   func testEventBridgePreservesIdentitySequenceAndOneTerminal() {
@@ -1357,8 +1738,15 @@ private actor RuntimeBackendSpy: RuntimeBackend {
   )
 
   private(set) var loadCallCount = 0
+  private(set) var startCallCount = 0
   private var loadCallContinuations: [CheckedContinuation<Void, Never>] = []
-  private var loadContinuation: CheckedContinuation<RuntimeModelLoadResult, Error>?
+  private var startCallContinuations: [CheckedContinuation<Void, Never>] = []
+  private var loadContinuations:
+    [CheckedContinuation<RuntimeModelLoadResult, Error>] = []
+  private var startContinuations: [
+    String: CheckedContinuation<RuntimeGenerationAcknowledgement, Error>
+  ] = [:]
+  private var shouldAutomaticallyAcknowledgeStarts = false
 
   func loadModel(_ model: RuntimeModelRequest) async throws
     -> RuntimeModelLoadResult {
@@ -1366,7 +1754,7 @@ private actor RuntimeBackendSpy: RuntimeBackend {
     loadCallContinuations.forEach { $0.resume() }
     loadCallContinuations.removeAll()
     return try await withCheckedThrowingContinuation { continuation in
-      loadContinuation = continuation
+      loadContinuations.append(continuation)
     }
   }
 
@@ -1379,17 +1767,53 @@ private actor RuntimeBackendSpy: RuntimeBackend {
     }
   }
 
-  func completeLoad(with result: RuntimeModelLoadResult) {
-    loadContinuation?.resume(returning: result)
-    loadContinuation = nil
+  func completeLoads(with result: RuntimeModelLoadResult) {
+    loadContinuations.forEach { $0.resume(returning: result) }
+    loadContinuations.removeAll()
   }
 
   func startGeneration(_ generation: RuntimeGenerationRequest) async throws
     -> RuntimeGenerationAcknowledgement {
-    RuntimeGenerationAcknowledgement(
-      generationId: generation.generationId,
-      accepted: true
+    startCallCount += 1
+    startCallContinuations.forEach { $0.resume() }
+    startCallContinuations.removeAll()
+    if shouldAutomaticallyAcknowledgeStarts {
+      return RuntimeGenerationAcknowledgement(
+        generationId: generation.generationId,
+        accepted: true
+      )
+    }
+    return try await withCheckedThrowingContinuation { continuation in
+      startContinuations[generation.generationId] = continuation
+    }
+  }
+
+  func waitForStartCall(count: Int) async {
+    guard startCallCount < count else {
+      return
+    }
+    await withCheckedContinuation { continuation in
+      startCallContinuations.append(continuation)
+    }
+  }
+
+  func completeStart(
+    generationId: String,
+    with result: RuntimeGenerationAcknowledgement
+  ) {
+    startContinuations.removeValue(forKey: generationId)?.resume(
+      returning: result
     )
+  }
+
+  func failStart(generationId: String, with error: Error) {
+    startContinuations.removeValue(forKey: generationId)?.resume(
+      throwing: error
+    )
+  }
+
+  func automaticallyAcknowledgeStarts() {
+    shouldAutomaticallyAcknowledgeStarts = true
   }
 
   func cancelGeneration(generationId: String) async throws

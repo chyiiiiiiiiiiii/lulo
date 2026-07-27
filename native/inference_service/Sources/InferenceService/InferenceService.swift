@@ -615,9 +615,21 @@ public actor InferenceCoordinator {
     )
   }
 
+  private enum GenerationState {
+    case idle
+    case starting(
+      generationId: String,
+      token: UInt64,
+      task: Task<RuntimeGenerationAcknowledgement, Error>
+    )
+    case active(generationId: String, token: UInt64)
+  }
+
   private let supportedSchemaVersion: Int64
   private let backend: any RuntimeBackend
   private var modelState = ModelState.idle
+  private var generationState = GenerationState.idle
+  private var nextGenerationToken: UInt64 = 0
 
   public func loadModel(
     request: RuntimeRequestEnvelope,
@@ -649,6 +661,81 @@ public actor InferenceCoordinator {
         modelState = .idle
         throw error
       }
+    }
+  }
+
+  public func startGeneration(
+    request: RuntimeRequestEnvelope,
+    generation: RuntimeGenerationRequest
+  ) async throws -> RuntimeGenerationAcknowledgement {
+    try validate(request)
+    guard case .idle = generationState else {
+      throw RuntimeBoundaryError.generationBusy
+    }
+
+    let task = Task {
+      try await backend.startGeneration(generation)
+    }
+    let token = nextGenerationToken
+    nextGenerationToken &+= 1
+    generationState = .starting(
+      generationId: generation.generationId,
+      token: token,
+      task: task
+    )
+    do {
+      let acknowledgement = try await task.value
+      if
+        case .starting(
+          let generationId,
+          let activeToken,
+          _
+        ) = generationState,
+        generationId == generation.generationId,
+        activeToken == token
+      {
+        generationState = acknowledgement.accepted
+          ? .active(generationId: generation.generationId, token: token)
+          : .idle
+      }
+      return acknowledgement
+    } catch {
+      if
+        case .starting(
+          let generationId,
+          let activeToken,
+          _
+        ) = generationState,
+        generationId == generation.generationId,
+        activeToken == token
+      {
+        generationState = .idle
+      }
+      throw error
+    }
+  }
+
+  public func receiveGenerationEvent(_ event: RuntimeGenerationEvent) {
+    guard isTerminal(event.kind) else {
+      return
+    }
+    switch generationState {
+    case .starting(let generationId, _, _)
+      where generationId == event.generationId:
+      generationState = .idle
+    case .active(let generationId, _) where generationId == event.generationId:
+      generationState = .idle
+    case .idle, .starting, .active:
+      break
+    }
+  }
+
+  private func isTerminal(_ kind: RuntimeGenerationEventKind) -> Bool {
+    switch kind {
+    case .completed, .cancelled, .failed:
+      true
+    case .started, .delta:
+      false
     }
   }
 
