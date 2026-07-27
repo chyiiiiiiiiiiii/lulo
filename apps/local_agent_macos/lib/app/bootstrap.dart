@@ -1,3 +1,4 @@
+import '../features/conversation/pigeon_inference_service.dart';
 import '../platform/pigeon_desktop_host_service.dart';
 import 'app_composition.dart';
 import 'fake_runtime.dart';
@@ -28,16 +29,52 @@ AppComposition createAppComposition({
     'INFERENCE_RUNTIME',
     defaultValue: 'fake',
   ),
+  String localModelPath = const String.fromEnvironment('LOCAL_MODEL_PATH'),
 }) {
-  if (inferenceRuntime != 'fake') {
+  if (inferenceRuntime != 'fake' && inferenceRuntime != 'litert') {
     throw UnsupportedError(
       'Unsupported INFERENCE_RUNTIME "$inferenceRuntime". '
-      'The testable preview currently supports only "fake".',
+      'Supported runtimes are "fake" and "litert".',
     );
   }
 
   final InMemoryConversationStorageService storageService =
       InMemoryConversationStorageService();
+  if (inferenceRuntime == 'litert') {
+    final String modelPath = localModelPath.trim();
+    if (modelPath.isEmpty) {
+      storageService.dispose();
+      throw ArgumentError.value(
+        localModelPath,
+        'localModelPath',
+        'A LiteRT-LM model path is required.',
+      );
+    }
+    final PigeonDesktopHostService desktopHostService =
+        PigeonDesktopHostService();
+    final PigeonInferenceService inferenceService = PigeonInferenceService(
+      desktopHostService: desktopHostService,
+      config: LocalModelConfig(
+        modelId: 'gemma-4-E4B-it',
+        modelPath: modelPath,
+        contextSize: 4096,
+        temperature: 0.7,
+        topP: 0.95,
+        maxTokens: 512,
+        seed: 7,
+      ),
+    );
+    return AppComposition(
+      () async {
+        await inferenceService.dispose();
+        storageService.dispose();
+        await desktopHostService.dispose();
+      },
+      storageService: storageService,
+      inferenceService: inferenceService,
+    );
+  }
+
   final DeterministicFakeInferenceService inferenceService =
       DeterministicFakeInferenceService();
   final PigeonDesktopHostService desktopHostService =
