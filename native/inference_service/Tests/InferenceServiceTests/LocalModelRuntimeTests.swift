@@ -1340,6 +1340,205 @@ final class LocalModelRuntimeTests: XCTestCase {
     XCTAssertEqual(sequences, [0, 1])
   }
 
+  func testUnloadWaitsForCancellationThenReleasesModelForReload() async throws {
+    let backend = RuntimeBackendSpy(
+      blockCancellations: true,
+      blockUnloads: true
+    )
+    let coordinator = InferenceCoordinator(
+      supportedSchemaVersion: 2,
+      backend: backend
+    )
+    let request = RuntimeRequestEnvelope(
+      schemaVersion: 2,
+      requestId: "request-1",
+      timestampMicros: 1
+    )
+    let model = RuntimeModelRequest(
+      modelId: "model-1",
+      modelPath: "/models/model-1.bin",
+      contextSize: 4096
+    )
+    let generation = RuntimeGenerationRequest(
+      generationId: "generation-1",
+      sessionId: "session-1",
+      prompt: "first",
+      context: [],
+      temperature: 0.25,
+      topP: 0.9,
+      maxTokens: 128,
+      seed: 1
+    )
+
+    async let initialLoad = coordinator.loadModel(
+      request: request,
+      model: model
+    )
+    await backend.waitForLoadCall()
+    await backend.completeLoads(
+      with: RuntimeModelLoadResult(modelId: model.modelId, loaded: true)
+    )
+    _ = try await initialLoad
+    await backend.automaticallyAcknowledgeStarts()
+    _ = try await coordinator.startGeneration(
+      request: request,
+      generation: generation
+    )
+
+    async let unloadResult = coordinator.unloadModel(request: request)
+    await backend.waitForCancelCall()
+    let unloadCountBeforeCancellation = await backend.unloadCallCount
+    XCTAssertEqual(unloadCountBeforeCancellation, 0)
+
+    await backend.completeCancellations(
+      with: RuntimeCancellationAcknowledgement(
+        generationId: generation.generationId,
+        acknowledged: true
+      )
+    )
+    await backend.waitForUnloadCall()
+    await backend.completeUnloads(
+      with: RuntimeOperationCompletion(completed: true)
+    )
+    let unloadCompletion = try await unloadResult
+    XCTAssertEqual(
+      unloadCompletion,
+      RuntimeOperationCompletion(completed: true)
+    )
+
+    async let reload = coordinator.loadModel(request: request, model: model)
+    await backend.waitForLoadCall(count: 2)
+    await backend.completeLoads(
+      with: RuntimeModelLoadResult(modelId: model.modelId, loaded: true)
+    )
+    let reloadResult = try await reload
+    XCTAssertEqual(
+      reloadResult,
+      RuntimeModelLoadResult(modelId: model.modelId, loaded: true)
+    )
+    let unloadCallCount = await backend.unloadCallCount
+    XCTAssertEqual(unloadCallCount, 1)
+  }
+
+  func testUnloadBlocksNewLoadAndGenerationUntilCompletion() async throws {
+    let backend = RuntimeBackendSpy(blockUnloads: true)
+    let coordinator = InferenceCoordinator(
+      supportedSchemaVersion: 2,
+      backend: backend
+    )
+    let request = RuntimeRequestEnvelope(
+      schemaVersion: 2,
+      requestId: "request-1",
+      timestampMicros: 1
+    )
+    let model = RuntimeModelRequest(
+      modelId: "model-1",
+      modelPath: "/models/model-1.bin",
+      contextSize: 4096
+    )
+    let generation = RuntimeGenerationRequest(
+      generationId: "generation-1",
+      sessionId: "session-1",
+      prompt: "first",
+      context: [],
+      temperature: 0.25,
+      topP: 0.9,
+      maxTokens: 128,
+      seed: 1
+    )
+
+    async let initialLoad = coordinator.loadModel(
+      request: request,
+      model: model
+    )
+    await backend.waitForLoadCall()
+    await backend.completeLoads(
+      with: RuntimeModelLoadResult(modelId: model.modelId, loaded: true)
+    )
+    _ = try await initialLoad
+    await backend.automaticallyAcknowledgeStarts()
+
+    async let unloadResult = coordinator.unloadModel(request: request)
+    await backend.waitForUnloadCall()
+
+    do {
+      _ = try await coordinator.loadModel(request: request, model: model)
+      XCTFail("Expected model load to be rejected during unload")
+    } catch {
+      XCTAssertEqual(error as? RuntimeBoundaryError, .runtimeUnavailable)
+    }
+    do {
+      _ = try await coordinator.startGeneration(
+        request: request,
+        generation: generation
+      )
+      XCTFail("Expected generation to be rejected during unload")
+    } catch {
+      XCTAssertEqual(error as? RuntimeBoundaryError, .runtimeUnavailable)
+    }
+
+    await backend.completeUnloads(
+      with: RuntimeOperationCompletion(completed: true)
+    )
+    _ = try await unloadResult
+    let startCallCount = await backend.startCallCount
+    XCTAssertEqual(startCallCount, 0)
+  }
+
+  func testUnloadWaitsForInFlightModelLoadAndFencesLateCompletion()
+    async throws
+  {
+    let backend = RuntimeBackendSpy(blockUnloads: true)
+    let coordinator = InferenceCoordinator(
+      supportedSchemaVersion: 2,
+      backend: backend
+    )
+    let request = RuntimeRequestEnvelope(
+      schemaVersion: 2,
+      requestId: "request-1",
+      timestampMicros: 1
+    )
+    let model = RuntimeModelRequest(
+      modelId: "model-1",
+      modelPath: "/models/model-1.bin",
+      contextSize: 4096
+    )
+
+    async let initialLoad = coordinator.loadModel(
+      request: request,
+      model: model
+    )
+    await backend.waitForLoadCall()
+
+    let unloadAdmissionGate = AsyncAdmissionGate(requiredArrivals: 1)
+    let unloadTask = Task(priority: .high) {
+      await unloadAdmissionGate.arriveAndWait()
+      return try await coordinator.unloadModel(request: request)
+    }
+    await unloadAdmissionGate.waitUntilAllArrive()
+    await unloadAdmissionGate.open()
+    for _ in 0..<64 {
+      await Task.yield()
+    }
+    let unloadCountBeforeLoadFinishes = await backend.unloadCallCount
+    XCTAssertEqual(unloadCountBeforeLoadFinishes, 0)
+
+    await backend.completeLoads(
+      with: RuntimeModelLoadResult(modelId: model.modelId, loaded: true)
+    )
+    await backend.waitForUnloadCall()
+    await backend.completeUnloads(
+      with: RuntimeOperationCompletion(completed: true)
+    )
+    _ = try await initialLoad
+    _ = try await unloadTask.value
+
+    await backend.automaticallyCompleteLoads()
+    _ = try await coordinator.loadModel(request: request, model: model)
+    let loadCallCount = await backend.loadCallCount
+    XCTAssertEqual(loadCallCount, 2)
+  }
+
   func testEventBridgePreservesIdentitySequenceAndOneTerminal() {
     let sink = RecordingGenerationEventSink()
     let bridge = GenerationEventBridge(
@@ -2395,9 +2594,11 @@ private actor AsyncAdmissionGate {
 private actor RuntimeBackendSpy: RuntimeBackend {
   init(
     blockCancellations: Bool = false,
+    blockUnloads: Bool = false,
     cancelAcknowledgementGenerationId: String? = nil
   ) {
     self.blockCancellations = blockCancellations
+    self.blockUnloads = blockUnloads
     self.cancelAcknowledgementGenerationId =
       cancelAcknowledgementGenerationId
   }
@@ -2411,6 +2612,7 @@ private actor RuntimeBackendSpy: RuntimeBackend {
   private(set) var loadCallCount = 0
   private(set) var startCallCount = 0
   private(set) var cancelCallCount = 0
+  private(set) var unloadCallCount = 0
   private var loadCallContinuations: [CheckedContinuation<Void, Never>] = []
   private var startCallContinuations: [CheckedContinuation<Void, Never>] = []
   private var loadContinuations:
@@ -2419,24 +2621,32 @@ private actor RuntimeBackendSpy: RuntimeBackend {
     String: CheckedContinuation<RuntimeGenerationAcknowledgement, Error>
   ] = [:]
   private var shouldAutomaticallyAcknowledgeStarts = false
+  private var shouldAutomaticallyCompleteLoads = false
   private let blockCancellations: Bool
+  private let blockUnloads: Bool
   private let cancelAcknowledgementGenerationId: String?
   private var cancelCallContinuations: [CheckedContinuation<Void, Never>] = []
   private var cancelContinuations:
     [CheckedContinuation<RuntimeCancellationAcknowledgement, Error>] = []
+  private var unloadCallContinuations: [CheckedContinuation<Void, Never>] = []
+  private var unloadContinuations:
+    [CheckedContinuation<RuntimeOperationCompletion, Error>] = []
 
   func loadModel(_ model: RuntimeModelRequest) async throws
     -> RuntimeModelLoadResult {
     loadCallCount += 1
     loadCallContinuations.forEach { $0.resume() }
     loadCallContinuations.removeAll()
+    if shouldAutomaticallyCompleteLoads {
+      return RuntimeModelLoadResult(modelId: model.modelId, loaded: true)
+    }
     return try await withCheckedThrowingContinuation { continuation in
       loadContinuations.append(continuation)
     }
   }
 
-  func waitForLoadCall() async {
-    guard loadCallCount == 0 else {
+  func waitForLoadCall(count: Int = 1) async {
+    guard loadCallCount < count else {
       return
     }
     await withCheckedContinuation { continuation in
@@ -2447,6 +2657,10 @@ private actor RuntimeBackendSpy: RuntimeBackend {
   func completeLoads(with result: RuntimeModelLoadResult) {
     loadContinuations.forEach { $0.resume(returning: result) }
     loadContinuations.removeAll()
+  }
+
+  func automaticallyCompleteLoads() {
+    shouldAutomaticallyCompleteLoads = true
   }
 
   func startGeneration(_ generation: RuntimeGenerationRequest) async throws
@@ -2530,7 +2744,29 @@ private actor RuntimeBackendSpy: RuntimeBackend {
   }
 
   func unloadModel() async throws -> RuntimeOperationCompletion {
-    RuntimeOperationCompletion(completed: true)
+    unloadCallCount += 1
+    unloadCallContinuations.forEach { $0.resume() }
+    unloadCallContinuations.removeAll()
+    if blockUnloads {
+      return try await withCheckedThrowingContinuation { continuation in
+        unloadContinuations.append(continuation)
+      }
+    }
+    return RuntimeOperationCompletion(completed: true)
+  }
+
+  func waitForUnloadCall() async {
+    guard unloadCallCount == 0 else {
+      return
+    }
+    await withCheckedContinuation { continuation in
+      unloadCallContinuations.append(continuation)
+    }
+  }
+
+  func completeUnloads(with result: RuntimeOperationCompletion) {
+    unloadContinuations.forEach { $0.resume(returning: result) }
+    unloadContinuations.removeAll()
   }
 }
 

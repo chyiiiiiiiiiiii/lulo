@@ -609,11 +609,13 @@ public actor InferenceCoordinator {
     case idle
     case loading(
       request: RuntimeModelRequest,
+      token: UInt64,
       task: Task<RuntimeModelLoadResult, Error>
     )
     case loaded(
       request: RuntimeModelRequest,
-      result: RuntimeModelLoadResult
+      result: RuntimeModelLoadResult,
+      token: UInt64
     )
   }
 
@@ -634,15 +636,23 @@ public actor InferenceCoordinator {
     let task: Task<RuntimeCancellationAcknowledgement, Error>
   }
 
+  private struct UnloadOperation {
+    let token: UInt64
+    let task: Task<RuntimeOperationCompletion, Error>
+  }
+
   private let supportedSchemaVersion: Int64
   private let backend: any RuntimeBackend
   private let eventHandler:
     @Sendable (RuntimeGenerationEvent) -> Void
   private var modelState = ModelState.idle
+  private var nextModelToken: UInt64 = 0
   private var generationState = GenerationState.idle
   private var nextGenerationToken: UInt64 = 0
   private var nextCancellationToken: UInt64 = 0
   private var cancellationOperation: CancellationOperation?
+  private var nextUnloadToken: UInt64 = 0
+  private var unloadOperation: UnloadOperation?
   private var lastGenerationSequence: Int64?
   private var cancelledGenerationIds: [String] = []
 
@@ -651,29 +661,48 @@ public actor InferenceCoordinator {
     model: RuntimeModelRequest
   ) async throws -> RuntimeModelLoadResult {
     try validate(request)
+    guard unloadOperation == nil else {
+      throw RuntimeBoundaryError.runtimeUnavailable
+    }
 
     switch modelState {
-    case .loaded(let loadedRequest, let result):
+    case .loaded(let loadedRequest, let result, _):
       guard loadedRequest == model else {
         throw RuntimeBoundaryError.modelLoadFailed
       }
       return result
-    case .loading(let loadingRequest, let task):
+    case .loading(let loadingRequest, _, let task):
       guard loadingRequest == model else {
         throw RuntimeBoundaryError.modelLoadFailed
       }
       return try await task.value
     case .idle:
+      let token = nextModelToken
+      nextModelToken &+= 1
       let task = Task {
         try await backend.loadModel(model)
       }
-      modelState = .loading(request: model, task: task)
+      modelState = .loading(request: model, token: token, task: task)
       do {
         let result = try await task.value
-        modelState = .loaded(request: model, result: result)
+        if
+          case .loading(_, let activeToken, _) = modelState,
+          activeToken == token
+        {
+          modelState = .loaded(
+            request: model,
+            result: result,
+            token: token
+          )
+        }
         return result
       } catch {
-        modelState = .idle
+        if
+          case .loading(_, let activeToken, _) = modelState,
+          activeToken == token
+        {
+          modelState = .idle
+        }
         throw error
       }
     }
@@ -684,6 +713,9 @@ public actor InferenceCoordinator {
     generation: RuntimeGenerationRequest
   ) async throws -> RuntimeGenerationAcknowledgement {
     try validate(request)
+    guard unloadOperation == nil else {
+      throw RuntimeBoundaryError.runtimeUnavailable
+    }
     guard !cancelledGenerationIds.contains(generation.generationId) else {
       throw RuntimeBoundaryError.protocolMismatch
     }
@@ -816,6 +848,87 @@ public actor InferenceCoordinator {
     }
   }
 
+  public func unloadModel(
+    request: RuntimeRequestEnvelope
+  ) async throws -> RuntimeOperationCompletion {
+    try validate(request)
+    if let unloadOperation {
+      return try await finishUnload(unloadOperation)
+    }
+
+    let token = nextUnloadToken
+    nextUnloadToken &+= 1
+    let task = Task {
+      try await self.performUnload(request: request)
+    }
+    let operation = UnloadOperation(token: token, task: task)
+    unloadOperation = operation
+    return try await finishUnload(operation)
+  }
+
+  private func performUnload(
+    request: RuntimeRequestEnvelope
+  ) async throws -> RuntimeOperationCompletion {
+    if
+      case .loading(let modelRequest, let token, let task) = modelState
+    {
+      do {
+        let result = try await task.value
+        if
+          case .loading(_, let activeToken, _) = modelState,
+          activeToken == token
+        {
+          modelState = .loaded(
+            request: modelRequest,
+            result: result,
+            token: token
+          )
+        }
+      } catch {
+        if
+          case .loading(_, let activeToken, _) = modelState,
+          activeToken == token
+        {
+          modelState = .idle
+        }
+        throw error
+      }
+    }
+    if let generationId = currentGenerationId {
+      let acknowledgement = try await cancelGeneration(
+        request: request,
+        generationId: generationId
+      )
+      guard acknowledgement.acknowledged else {
+        throw RuntimeBoundaryError.generationBusy
+      }
+    }
+    return try await backend.unloadModel()
+  }
+
+  private func finishUnload(
+    _ operation: UnloadOperation
+  ) async throws -> RuntimeOperationCompletion {
+    do {
+      let completion = try await operation.task.value
+      guard unloadOperation?.token == operation.token else {
+        return completion
+      }
+      unloadOperation = nil
+      if completion.completed {
+        modelState = .idle
+        generationState = .idle
+        lastGenerationSequence = nil
+      }
+      return completion
+    } catch {
+      if unloadOperation?.token == operation.token {
+        unloadOperation = nil
+      }
+      throw error
+    }
+  }
+
   public func receiveGenerationEvent(_ event: RuntimeGenerationEvent) async {
     guard generationToken(for: event.generationId) != nil else {
       return
@@ -839,6 +952,16 @@ public actor InferenceCoordinator {
     case .starting(let activeGenerationId, let token, _),
       .active(let activeGenerationId, let token):
       activeGenerationId == generationId ? token : nil
+    case .idle:
+      nil
+    }
+  }
+
+  private var currentGenerationId: String? {
+    switch generationState {
+    case .starting(let generationId, _, _),
+      .active(let generationId, _):
+      generationId
     case .idle:
       nil
     }
