@@ -16,7 +16,12 @@ let package = Package(
     .package(path: "../vendor/litert_lm"),
   ],
   targets: [
-    .target(name: "InferenceService"),
+    .target(
+      name: "InferenceService",
+      dependencies: [
+        .product(name: "LiteRTLM", package: "litert_lm"),
+      ]
+    ),
     .executableTarget(
       name: "LiteRTLMCompileSmoke",
       dependencies: [

@@ -514,8 +514,12 @@ void _validateInferencePackage(
     'InferenceService must remain a regular target.',
   );
   _require(
-    _asList(inferenceTarget['dependencies']).isEmpty,
-    'InferenceService target must not add dependencies.',
+    _deepEquals(inferenceTarget['dependencies'], <Map<String, dynamic>>[
+      <String, dynamic>{
+        'product': <dynamic>['LiteRTLM', 'litert_lm', null, null],
+      },
+    ]),
+    'InferenceService target must depend exactly on local LiteRTLM.',
   );
   _require(
     _asList(inferenceTarget['settings']).isEmpty,
@@ -874,28 +878,52 @@ Future<void> _runSelfTests(List<String> arguments) async {
               'targets: ["LiteRTLMCompileSmoke"])',
         );
       }),
-      _MutationCase('inference target dependency', (Directory fixture) {
+      _MutationCase('inference target dependency removal', (Directory fixture) {
         _mutateFile(
           File(_join(fixture.path, 'native/inference_service/Package.swift')),
-          '.target(name: "InferenceService"),',
-          '''
-.target(
-      name: "InferenceService",
-      dependencies: [
-        .product(name: "LiteRTLM", package: "litert_lm"),
-      ]
-    ),''',
+          '    .target(\n'
+              '      name: "InferenceService",\n'
+              '      dependencies: [\n'
+              '        .product(name: "LiteRTLM", package: "litert_lm"),\n'
+              '      ]\n'
+              '    ),',
+          '    .target(name: "InferenceService"),',
+        );
+      }),
+      _MutationCase('inference target extra dependency', (Directory fixture) {
+        _mutateFile(
+          File(_join(fixture.path, 'native/inference_service/Package.swift')),
+          '    .target(\n'
+              '      name: "InferenceService",\n'
+              '      dependencies: [\n'
+              '        .product(name: "LiteRTLM", package: "litert_lm"),\n'
+              '      ]\n'
+              '    ),',
+          '    .target(\n'
+              '      name: "InferenceService",\n'
+              '      dependencies: [\n'
+              '        .product(name: "LiteRTLM", package: "litert_lm"),\n'
+              '        "LiteRTLMCompileSmoke",\n'
+              '      ]\n'
+              '    ),',
         );
       }),
       _MutationCase('inference target settings', (Directory fixture) {
         _mutateFile(
           File(_join(fixture.path, 'native/inference_service/Package.swift')),
-          '.target(name: "InferenceService"),',
-          '''
-.target(
-      name: "InferenceService",
-      swiftSettings: [.unsafeFlags(["-DUNSAFE"])]
-    ),''',
+          '    .target(\n'
+              '      name: "InferenceService",\n'
+              '      dependencies: [\n'
+              '        .product(name: "LiteRTLM", package: "litert_lm"),\n'
+              '      ]\n'
+              '    ),',
+          '    .target(\n'
+              '      name: "InferenceService",\n'
+              '      dependencies: [\n'
+              '        .product(name: "LiteRTLM", package: "litert_lm"),\n'
+              '      ],\n'
+              '      swiftSettings: [.unsafeFlags(["-DUNSAFE"])]\n'
+              '    ),',
         );
       }),
       _MutationCase('inference test dependency', (Directory fixture) {

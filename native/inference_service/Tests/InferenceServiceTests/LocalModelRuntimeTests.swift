@@ -41,6 +41,232 @@ final class LocalModelRuntimeTests: XCTestCase {
     }
   }
 
+  func testLiteRTLMBackendMapsLoadRequestAndRejectsMissingModel() async throws {
+    let modelDirectory = FileManager.default.temporaryDirectory
+      .appendingPathComponent(UUID().uuidString, isDirectory: true)
+    try FileManager.default.createDirectory(
+      at: modelDirectory,
+      withIntermediateDirectories: true
+    )
+    defer { try? FileManager.default.removeItem(at: modelDirectory) }
+    let modelURL = modelDirectory.appendingPathComponent("model.litertlm")
+    XCTAssertTrue(FileManager.default.createFile(atPath: modelURL.path, contents: Data([0])))
+    let driver = LiteRTLMRuntimeDriverSpy()
+    let backend = LiteRTLMRuntimeBackend(
+      configuration: LiteRTLMRuntimeConfiguration(
+        primaryBackend: .gpu,
+        enableCPUFallback: true,
+        cpuFallbackThreadCount: 4,
+        cacheDirectory: "/tmp/litert-runtime-tests",
+        topK: 32
+      ),
+      eventRelay: RuntimeGenerationEventRelay(),
+      driverFactory: FixedLiteRTLMRuntimeDriverFactory(driver: driver)
+    )
+
+    let result = try await backend.loadModel(
+      RuntimeModelRequest(
+        modelId: "gemma",
+        modelPath: modelURL.path,
+        contextSize: 4096
+      )
+    )
+
+    XCTAssertEqual(
+      result,
+      RuntimeModelLoadResult(modelId: "gemma", loaded: true)
+    )
+    let loadRequests = await driver.loadRequests
+    XCTAssertEqual(
+      loadRequests,
+      [
+        LiteRTLMDriverLoadRequest(
+          modelPath: modelURL.path,
+          backend: .gpu,
+          maxNumTokens: 4096,
+          cacheDirectory: "/tmp/litert-runtime-tests"
+        )
+      ]
+    )
+
+    do {
+      _ = try await backend.unloadModel()
+      _ = try await backend.loadModel(
+        RuntimeModelRequest(
+          modelId: "missing",
+          modelPath: modelDirectory
+            .appendingPathComponent("missing.litertlm").path,
+          contextSize: 4096
+        )
+      )
+      XCTFail("Expected a missing model to be rejected")
+    } catch {
+      XCTAssertEqual(error as? RuntimeBoundaryError, .modelNotInstalled)
+    }
+    let finalLoadRequestCount = await driver.loadRequests.count
+    XCTAssertEqual(finalLoadRequestCount, 1)
+  }
+
+  func testLiteRTLMBackendStartsPromptlyAndEmitsOrderedEvents() async throws {
+    let harness = try await makeLiteRTLMBackendHarness()
+    defer { try? FileManager.default.removeItem(at: harness.modelDirectory) }
+    let generation = RuntimeGenerationRequest(
+      generationId: "generation-1",
+      sessionId: "session-7",
+      prompt: "Hello",
+      context: ["system fact", "prior turn"],
+      temperature: 0.25,
+      topP: 0.9,
+      maxTokens: 16,
+      seed: 7
+    )
+
+    let acknowledgement = try await harness.backend.startGeneration(generation)
+
+    XCTAssertEqual(
+      acknowledgement,
+      RuntimeGenerationAcknowledgement(
+        generationId: "generation-1",
+        accepted: true
+      )
+    )
+    await harness.driver.waitForGenerationCall()
+    let generationRequests = await harness.driver.generationRequests
+    XCTAssertEqual(
+      generationRequests,
+      [
+        LiteRTLMDriverGenerationRequest(
+          sessionId: "session-7",
+          prompt: "Hello",
+          extraContext: ["context": ["system fact", "prior turn"]],
+          sampler: LiteRTLMSamplerFingerprint(
+            topK: 32,
+            topP: 0.9,
+            temperature: 0.25,
+            seed: 7
+          ),
+          maxOutputTokens: 16
+        )
+      ]
+    )
+    let completedBeforeRelease = await harness.driver.generationCompleted
+    XCTAssertFalse(completedBeforeRelease)
+
+    await harness.driver.emitChunk("Hel")
+    await harness.driver.emitChunk("lo")
+    await harness.driver.finishGeneration()
+    await harness.events.waitForCount(4)
+
+    let orderedEvents = await harness.events.events
+    XCTAssertEqual(orderedEvents, [
+      RuntimeGenerationEvent(
+        generationId: "generation-1",
+        sequence: 0,
+        kind: .started
+      ),
+      RuntimeGenerationEvent(
+        generationId: "generation-1",
+        sequence: 1,
+        kind: .delta,
+        delta: "Hel"
+      ),
+      RuntimeGenerationEvent(
+        generationId: "generation-1",
+        sequence: 2,
+        kind: .delta,
+        delta: "lo"
+      ),
+      RuntimeGenerationEvent(
+        generationId: "generation-1",
+        sequence: 3,
+        kind: .completed
+      ),
+    ])
+  }
+
+  func testLiteRTLMBackendCancellationFencesLateChunks() async throws {
+    let harness = try await makeLiteRTLMBackendHarness()
+    defer { try? FileManager.default.removeItem(at: harness.modelDirectory) }
+    let generation = RuntimeGenerationRequest(
+      generationId: "generation-1",
+      sessionId: "session-1",
+      prompt: "Hello",
+      context: [],
+      temperature: 0.25,
+      topP: 0.9,
+      maxTokens: 16,
+      seed: 7
+    )
+    _ = try await harness.backend.startGeneration(generation)
+    await harness.driver.waitForGenerationCall()
+    await harness.driver.emitChunk("kept")
+    await harness.events.waitForCount(2)
+
+    let acknowledgement = try await harness.backend.cancelGeneration(
+      generationId: "generation-1"
+    )
+    await harness.driver.emitChunk("late")
+    await Task.yield()
+
+    XCTAssertEqual(
+      acknowledgement,
+      RuntimeCancellationAcknowledgement(
+        generationId: "generation-1",
+        acknowledged: true
+      )
+    )
+    let cancelledSessionIds = await harness.driver.cancelledSessionIds
+    let deliveredDeltas = await harness.events.events.compactMap(\.delta)
+    XCTAssertEqual(cancelledSessionIds, ["session-1"])
+    XCTAssertEqual(
+      deliveredDeltas,
+      ["kept"]
+    )
+  }
+
+  private func makeLiteRTLMBackendHarness() async throws
+    -> LiteRTLMBackendTestHarness
+  {
+    let modelDirectory = FileManager.default.temporaryDirectory
+      .appendingPathComponent(UUID().uuidString, isDirectory: true)
+    try FileManager.default.createDirectory(
+      at: modelDirectory,
+      withIntermediateDirectories: true
+    )
+    let modelURL = modelDirectory.appendingPathComponent("model.litertlm")
+    XCTAssertTrue(FileManager.default.createFile(atPath: modelURL.path, contents: Data([0])))
+    let driver = LiteRTLMRuntimeDriverSpy()
+    let relay = RuntimeGenerationEventRelay()
+    let events = AsyncRuntimeEventRecorder()
+    await relay.attach { event in
+      await events.record(event)
+    }
+    let backend = LiteRTLMRuntimeBackend(
+      configuration: LiteRTLMRuntimeConfiguration(
+        primaryBackend: .gpu,
+        enableCPUFallback: true,
+        cpuFallbackThreadCount: 4,
+        cacheDirectory: "/tmp/litert-runtime-tests",
+        topK: 32
+      ),
+      eventRelay: relay,
+      driverFactory: FixedLiteRTLMRuntimeDriverFactory(driver: driver)
+    )
+    _ = try await backend.loadModel(
+      RuntimeModelRequest(
+        modelId: "gemma",
+        modelPath: modelURL.path,
+        contextSize: 64
+      )
+    )
+    return LiteRTLMBackendTestHarness(
+      backend: backend,
+      driver: driver,
+      events: events,
+      modelDirectory: modelDirectory
+    )
+  }
+
   func testMainQueueDispatcherQueuesOffMainWorkInOrder() {
     var queued: [() -> Void] = []
     var delivered: [Int] = []
@@ -4239,5 +4465,118 @@ private final class ManualRuntimeScheduledTask: RuntimeScheduledTask {
 
   func run() {
     operation()
+  }
+}
+
+private struct LiteRTLMBackendTestHarness {
+  let backend: LiteRTLMRuntimeBackend
+  let driver: LiteRTLMRuntimeDriverSpy
+  let events: AsyncRuntimeEventRecorder
+  let modelDirectory: URL
+
+  init(
+    backend: LiteRTLMRuntimeBackend,
+    driver: LiteRTLMRuntimeDriverSpy,
+    events: AsyncRuntimeEventRecorder,
+    modelDirectory: URL
+  ) {
+    self.backend = backend
+    self.driver = driver
+    self.events = events
+    self.modelDirectory = modelDirectory
+  }
+}
+
+private struct FixedLiteRTLMRuntimeDriverFactory:
+  LiteRTLMRuntimeDriverFactory
+{
+  let driver: LiteRTLMRuntimeDriverSpy
+
+  func makeDriver() -> any LiteRTLMRuntimeDriving {
+    driver
+  }
+}
+
+private actor LiteRTLMRuntimeDriverSpy: LiteRTLMRuntimeDriving {
+  private(set) var loadRequests: [LiteRTLMDriverLoadRequest] = []
+  private(set) var generationRequests: [LiteRTLMDriverGenerationRequest] = []
+  private(set) var cancelledSessionIds: [String] = []
+  private(set) var resetSessionIds: [String] = []
+  private(set) var unloadCount = 0
+  private(set) var generationCompleted = false
+
+  private var generationHandler:
+    (@Sendable (String) async -> Void)?
+  private var generationContinuation: CheckedContinuation<Void, Error>?
+  private var generationCallWaiters: [CheckedContinuation<Void, Never>] = []
+
+  func load(_ request: LiteRTLMDriverLoadRequest) async throws {
+    loadRequests.append(request)
+  }
+
+  func generate(
+    _ request: LiteRTLMDriverGenerationRequest,
+    onChunk: @escaping @Sendable (String) async -> Void
+  ) async throws {
+    generationRequests.append(request)
+    generationHandler = onChunk
+    generationCallWaiters.forEach { $0.resume() }
+    generationCallWaiters.removeAll()
+    try await withCheckedThrowingContinuation { continuation in
+      generationContinuation = continuation
+    }
+    generationCompleted = true
+  }
+
+  func cancel(sessionId: String) async throws {
+    cancelledSessionIds.append(sessionId)
+  }
+
+  func resetSession(sessionId: String) async throws {
+    resetSessionIds.append(sessionId)
+  }
+
+  func unload() async {
+    unloadCount += 1
+  }
+
+  func waitForGenerationCall() async {
+    guard generationRequests.isEmpty else {
+      return
+    }
+    await withCheckedContinuation { continuation in
+      generationCallWaiters.append(continuation)
+    }
+  }
+
+  func emitChunk(_ chunk: String) async {
+    await generationHandler?(chunk)
+  }
+
+  func finishGeneration() {
+    generationContinuation?.resume()
+    generationContinuation = nil
+  }
+}
+
+private actor AsyncRuntimeEventRecorder {
+  private(set) var events: [RuntimeGenerationEvent] = []
+  private var waiters:
+    [(count: Int, continuation: CheckedContinuation<Void, Never>)] = []
+
+  func record(_ event: RuntimeGenerationEvent) {
+    events.append(event)
+    let ready = waiters.filter { events.count >= $0.count }
+    waiters.removeAll { events.count >= $0.count }
+    ready.forEach { $0.continuation.resume() }
+  }
+
+  func waitForCount(_ count: Int) async {
+    guard events.count < count else {
+      return
+    }
+    await withCheckedContinuation { continuation in
+      waiters.append((count, continuation))
+    }
   }
 }
