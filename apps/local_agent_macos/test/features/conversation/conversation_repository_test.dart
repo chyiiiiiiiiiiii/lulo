@@ -117,6 +117,36 @@ void main() {
     },
   );
 
+  test('emits one cancellation terminal when its persistence fails', () async {
+    final RecordingConversationStorageService storage =
+        RecordingConversationStorageService()
+          ..terminalSaveError = StateError('disk write failed');
+    final ControlledInferenceService inference = ControlledInferenceService();
+    final ConversationRepository repository = ConversationRepository(
+      storageService: storage,
+      inferenceService: inference,
+    );
+    final List<GenerationEvent> visibleEvents = <GenerationEvent>[];
+    final StreamSubscription<GenerationEvent> subscription = repository
+        .startGeneration(userTurn: userTurn, request: request)
+        .listen(visibleEvents.add);
+
+    await inference.requestReceived;
+    inference.emit(GenerationStarted(generation));
+    await Future<void>.delayed(Duration.zero);
+
+    await expectLater(
+      repository.stop(const GenerationId('generation-1')),
+      throwsA(isA<StateError>()),
+    );
+    await Future<void>.delayed(Duration.zero);
+
+    expect(visibleEvents.whereType<GenerationCancelled>(), hasLength(1));
+
+    await subscription.cancel();
+    await inference.dispose();
+  });
+
   test(
     'releases the active operation when its listener is cancelled',
     () async {

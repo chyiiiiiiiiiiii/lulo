@@ -49,6 +49,37 @@ enum DesktopHostFailureCode {
   /// Stable code serialized across the platform boundary.
   final String pigeonCode;
 
+  /// Stable user-safe message that never includes native diagnostic text.
+  String get userSafeMessage {
+    return switch (this) {
+      DesktopHostFailureCode.modelNotInstalled =>
+        'The local model is not installed.',
+      DesktopHostFailureCode.modelLoadFailed =>
+        'The local model could not be loaded.',
+      DesktopHostFailureCode.runtimeUnavailable =>
+        'Local inference is unavailable.',
+      DesktopHostFailureCode.generationBusy =>
+        'Another response is already being generated.',
+      DesktopHostFailureCode.generationFailed => 'Local inference failed.',
+      DesktopHostFailureCode.cancelled => 'The response was cancelled.',
+      DesktopHostFailureCode.protocolMismatch =>
+        'The desktop host protocol is incompatible.',
+    };
+  }
+
+  /// Whether product behavior can offer retry or corrective action.
+  bool get isRecoverable {
+    return switch (this) {
+      DesktopHostFailureCode.modelNotInstalled ||
+      DesktopHostFailureCode.modelLoadFailed ||
+      DesktopHostFailureCode.runtimeUnavailable ||
+      DesktopHostFailureCode.generationBusy ||
+      DesktopHostFailureCode.generationFailed => true,
+      DesktopHostFailureCode.cancelled ||
+      DesktopHostFailureCode.protocolMismatch => false,
+    };
+  }
+
   /// Maps a serialized Pigeon [code] to an application failure category.
   static DesktopHostFailureCode fromPigeonCode(String code) {
     return DesktopHostFailureCode.values.firstWhere(
@@ -68,6 +99,9 @@ final class DesktopHostFailure implements Exception {
 
   /// Safe diagnostic text without a native stack trace.
   final String message;
+
+  /// Whether product behavior can offer retry or corrective action.
+  bool get isRecoverable => code.isRecoverable;
 
   @override
   String toString() => 'DesktopHostFailure(${code.pigeonCode}): $message';

@@ -165,10 +165,10 @@ final class _GenerationOperation {
           generation: generation,
           status: TurnStatus.cancelled,
         );
+      } finally {
         if (publishCancellation && !_controller.isClosed) {
           _controller.add(GenerationCancelled(generation.id));
         }
-      } finally {
         await _finish();
       }
     }
