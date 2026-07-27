@@ -1539,6 +1539,1112 @@ final class LocalModelRuntimeTests: XCTestCase {
     XCTAssertEqual(loadCallCount, 2)
   }
 
+  func testShutdownDeadlineDisposesWhenCancellationNeverAcknowledges()
+    async throws
+  {
+    let backend = RuntimeBackendSpy(blockCancellations: true)
+    let deadline = ManualShutdownDeadline()
+    let recorder = RuntimeEventRecorder()
+    let coordinator = InferenceCoordinator(
+      supportedSchemaVersion: 2,
+      backend: backend,
+      eventHandler: { event in
+        recorder.record(event)
+      },
+      shutdownDeadlineFactory: ManualShutdownDeadlineFactory(deadline: deadline)
+    )
+    let request = RuntimeRequestEnvelope(
+      schemaVersion: 2,
+      requestId: "request-1",
+      timestampMicros: 1
+    )
+    let model = RuntimeModelRequest(
+      modelId: "model-1",
+      modelPath: "/models/model-1.bin",
+      contextSize: 4096
+    )
+    let generation = RuntimeGenerationRequest(
+      generationId: "generation-1",
+      sessionId: "session-1",
+      prompt: "first",
+      context: [],
+      temperature: 0.25,
+      topP: 0.9,
+      maxTokens: 128,
+      seed: 1
+    )
+
+    async let load = coordinator.loadModel(request: request, model: model)
+    await backend.waitForLoadCall()
+    await backend.completeLoads(
+      with: RuntimeModelLoadResult(modelId: model.modelId, loaded: true)
+    )
+    _ = try await load
+    await backend.automaticallyAcknowledgeStarts()
+    _ = try await coordinator.startGeneration(
+      request: request,
+      generation: generation
+    )
+
+    async let shutdown = coordinator.shutdown()
+    await backend.waitForCancelCall()
+    await deadline.waitUntilArmed()
+    await deadline.fire()
+
+    do {
+      _ = try await shutdown
+      XCTFail("Expected the shutdown deadline to fail closed")
+    } catch {
+      XCTAssertEqual(error as? RuntimeBoundaryError, .runtimeUnavailable)
+    }
+    do {
+      _ = try await coordinator.loadModel(request: request, model: model)
+      XCTFail("Expected a disposed coordinator to reject model loading")
+    } catch {
+      XCTAssertEqual(error as? RuntimeBoundaryError, .runtimeUnavailable)
+    }
+    await coordinator.receiveGenerationEvent(
+      RuntimeGenerationEvent(
+        generationId: generation.generationId,
+        sequence: 0,
+        kind: .delta,
+        delta: "late"
+      )
+    )
+
+    let cancelCallCount = await backend.cancelCallCount
+    XCTAssertEqual(cancelCallCount, 1)
+    XCTAssertTrue(recorder.events.isEmpty)
+  }
+
+  func testConcurrentShutdownCallsShareOneSuccessfulCancellationAndUnload()
+    async throws
+  {
+    let backend = RuntimeBackendSpy(blockUnloads: true)
+    let deadline = ManualShutdownDeadline()
+    let coordinator = InferenceCoordinator(
+      supportedSchemaVersion: 2,
+      backend: backend,
+      shutdownDeadlineFactory: ManualShutdownDeadlineFactory(deadline: deadline)
+    )
+    let request = RuntimeRequestEnvelope(
+      schemaVersion: 2,
+      requestId: "request-1",
+      timestampMicros: 1
+    )
+    let model = RuntimeModelRequest(
+      modelId: "model-1",
+      modelPath: "/models/model-1.bin",
+      contextSize: 4096
+    )
+    let generation = RuntimeGenerationRequest(
+      generationId: "generation-1",
+      sessionId: "session-1",
+      prompt: "first",
+      context: [],
+      temperature: 0.25,
+      topP: 0.9,
+      maxTokens: 128,
+      seed: 1
+    )
+    await backend.automaticallyCompleteLoads()
+    await backend.automaticallyAcknowledgeStarts()
+    _ = try await coordinator.loadModel(request: request, model: model)
+    _ = try await coordinator.startGeneration(
+      request: request,
+      generation: generation
+    )
+
+    async let firstShutdown = coordinator.shutdown()
+    await backend.waitForCancelCall()
+    async let secondShutdown = coordinator.shutdown()
+    await backend.waitForUnloadCall()
+    await backend.completeUnloads(
+      with: RuntimeOperationCompletion(completed: true)
+    )
+
+    let firstCompletion = try await firstShutdown
+    let secondCompletion = try await secondShutdown
+    XCTAssertEqual(firstCompletion, RuntimeOperationCompletion(completed: true))
+    XCTAssertEqual(secondCompletion, RuntimeOperationCompletion(completed: true))
+    let cancelCallCount = await backend.cancelCallCount
+    let unloadCallCount = await backend.unloadCallCount
+    XCTAssertEqual(cancelCallCount, 1)
+    XCTAssertEqual(unloadCallCount, 1)
+  }
+
+  func testShutdownDeadlineDisposesWhenUnloadNeverCompletes() async throws {
+    let backend = RuntimeBackendSpy(blockUnloads: true)
+    let deadline = ManualShutdownDeadline()
+    let coordinator = InferenceCoordinator(
+      supportedSchemaVersion: 2,
+      backend: backend,
+      shutdownDeadlineFactory: ManualShutdownDeadlineFactory(deadline: deadline)
+    )
+    let request = RuntimeRequestEnvelope(
+      schemaVersion: 2,
+      requestId: "request-1",
+      timestampMicros: 1
+    )
+    let model = RuntimeModelRequest(
+      modelId: "model-1",
+      modelPath: "/models/model-1.bin",
+      contextSize: 4096
+    )
+    await backend.automaticallyCompleteLoads()
+    _ = try await coordinator.loadModel(request: request, model: model)
+
+    async let shutdown = coordinator.shutdown()
+    await backend.waitForUnloadCall()
+    await deadline.waitUntilArmed()
+    await deadline.fire()
+
+    do {
+      _ = try await shutdown
+      XCTFail("Expected the shutdown deadline to fail closed")
+    } catch {
+      XCTAssertEqual(error as? RuntimeBoundaryError, .runtimeUnavailable)
+    }
+    await backend.completeUnloads(
+      with: RuntimeOperationCompletion(completed: true)
+    )
+    do {
+      _ = try await coordinator.unloadModel(request: request)
+      XCTFail("Expected a disposed coordinator to reject model unloading")
+    } catch {
+      XCTAssertEqual(error as? RuntimeBoundaryError, .runtimeUnavailable)
+    }
+  }
+
+  func testShutdownDeadlineDoesNotRetainCoordinator() async throws {
+    let backend = RuntimeBackendSpy(blockUnloads: true)
+    let deadline = ManualShutdownDeadline()
+    var coordinator: InferenceCoordinator? = InferenceCoordinator(
+      supportedSchemaVersion: 2,
+      backend: backend,
+      shutdownDeadlineFactory: ManualShutdownDeadlineFactory(deadline: deadline)
+    )
+    weak let releasedCoordinator = coordinator
+
+    let shutdownTask = Task { [coordinator] in
+      try await coordinator!.shutdown()
+    }
+    await backend.waitForUnloadCall()
+    await deadline.waitUntilArmed()
+    await deadline.fire()
+    do {
+      _ = try await shutdownTask.value
+      XCTFail("Expected the shutdown deadline to fail closed")
+    } catch {
+      XCTAssertEqual(error as? RuntimeBoundaryError, .runtimeUnavailable)
+    }
+    coordinator = nil
+    for _ in 0..<8 {
+      await Task.yield()
+    }
+
+    XCTAssertNil(releasedCoordinator)
+  }
+
+  func testShutdownDeadlineDiscardsLateModelLoadCompletion() async throws {
+    let backend = RuntimeBackendSpy(blockUnloads: true)
+    let deadline = ManualShutdownDeadline()
+    let coordinator = InferenceCoordinator(
+      supportedSchemaVersion: 2,
+      backend: backend,
+      shutdownDeadlineFactory: ManualShutdownDeadlineFactory(deadline: deadline)
+    )
+    let request = RuntimeRequestEnvelope(
+      schemaVersion: 2,
+      requestId: "request-1",
+      timestampMicros: 1
+    )
+    let model = RuntimeModelRequest(
+      modelId: "model-1",
+      modelPath: "/models/model-1.bin",
+      contextSize: 4096
+    )
+
+    async let load = coordinator.loadModel(request: request, model: model)
+    await backend.waitForLoadCall()
+    async let shutdown = coordinator.shutdown()
+    await deadline.waitUntilArmed()
+    await deadline.fire()
+    do {
+      _ = try await shutdown
+      XCTFail("Expected the shutdown deadline to fail closed")
+    } catch {
+      XCTAssertEqual(error as? RuntimeBoundaryError, .runtimeUnavailable)
+    }
+
+    await backend.completeLoads(
+      with: RuntimeModelLoadResult(modelId: model.modelId, loaded: true)
+    )
+    _ = try? await load
+    for _ in 0..<8 {
+      await Task.yield()
+    }
+    let unloadCallCount = await backend.unloadCallCount
+    XCTAssertEqual(unloadCallCount, 0)
+    do {
+      _ = try await coordinator.startGeneration(
+        request: request,
+        generation: RuntimeGenerationRequest(
+          generationId: "generation-1",
+          sessionId: "session-1",
+          prompt: "late",
+          context: [],
+          temperature: 0.25,
+          topP: 0.9,
+          maxTokens: 128,
+          seed: 1
+        )
+      )
+      XCTFail("Expected a disposed coordinator to reject late work")
+    } catch {
+      XCTAssertEqual(error as? RuntimeBoundaryError, .runtimeUnavailable)
+    }
+  }
+
+  func testShutdownImmediatelyRejectsEveryNewModelOperation() async throws {
+    let backend = RuntimeBackendSpy(blockUnloads: true)
+    let deadline = ManualShutdownDeadline()
+    let coordinator = InferenceCoordinator(
+      supportedSchemaVersion: 2,
+      backend: backend,
+      shutdownDeadlineFactory: ManualShutdownDeadlineFactory(deadline: deadline)
+    )
+    let request = RuntimeRequestEnvelope(
+      schemaVersion: 2,
+      requestId: "request-1",
+      timestampMicros: 1
+    )
+    let model = RuntimeModelRequest(
+      modelId: "model-1",
+      modelPath: "/models/model-1.bin",
+      contextSize: 4096
+    )
+    let generation = RuntimeGenerationRequest(
+      generationId: "generation-1",
+      sessionId: "session-1",
+      prompt: "first",
+      context: [],
+      temperature: 0.25,
+      topP: 0.9,
+      maxTokens: 128,
+      seed: 1
+    )
+    await backend.automaticallyCompleteLoads()
+    await backend.automaticallyAcknowledgeStarts()
+    _ = try await coordinator.loadModel(request: request, model: model)
+    _ = try await coordinator.startGeneration(
+      request: request,
+      generation: generation
+    )
+
+    async let shutdown = coordinator.shutdown()
+    await backend.waitForCancelCall()
+    await backend.waitForUnloadCall()
+    func assertRuntimeUnavailable<T>(
+      _ operation: () async throws -> T
+    ) async {
+      do {
+        _ = try await operation()
+        XCTFail("Expected shutdown to reject new work")
+      } catch {
+        XCTAssertEqual(error as? RuntimeBoundaryError, .runtimeUnavailable)
+      }
+    }
+    await assertRuntimeUnavailable {
+      try await coordinator.loadModel(request: request, model: model)
+    }
+    await assertRuntimeUnavailable {
+      try await coordinator.startGeneration(request: request, generation: generation)
+    }
+    await assertRuntimeUnavailable {
+      try await coordinator.cancelGeneration(
+        request: request,
+        generationId: generation.generationId
+      )
+    }
+    await assertRuntimeUnavailable {
+      try await coordinator.unloadModel(request: request)
+    }
+
+    await deadline.waitUntilArmed()
+    await deadline.fire()
+    _ = try? await shutdown
+  }
+
+  func testShutdownWaitsForInFlightLoadBeforeUnloading() async throws {
+    let backend = RuntimeBackendSpy()
+    let deadline = ManualShutdownDeadline()
+    let coordinator = InferenceCoordinator(
+      supportedSchemaVersion: 2,
+      backend: backend,
+      shutdownDeadlineFactory: ManualShutdownDeadlineFactory(deadline: deadline)
+    )
+    let request = RuntimeRequestEnvelope(
+      schemaVersion: 2,
+      requestId: "request-1",
+      timestampMicros: 1
+    )
+    let model = RuntimeModelRequest(
+      modelId: "model-1",
+      modelPath: "/models/model-1.bin",
+      contextSize: 4096
+    )
+
+    async let load = coordinator.loadModel(request: request, model: model)
+    await backend.waitForLoadCall()
+    async let shutdown = coordinator.shutdown()
+    await deadline.waitUntilArmed()
+    for _ in 0..<8 {
+      await Task.yield()
+    }
+    let unloadCountBeforeLoadSettles = await backend.unloadCallCount
+    XCTAssertEqual(unloadCountBeforeLoadSettles, 0)
+
+    await backend.completeLoads(
+      with: RuntimeModelLoadResult(modelId: model.modelId, loaded: true)
+    )
+    await backend.waitForUnloadCall()
+    _ = try? await load
+    let shutdownCompletion = try await shutdown
+    XCTAssertEqual(shutdownCompletion, RuntimeOperationCompletion(completed: true))
+    let unloadCallCount = await backend.unloadCallCount
+    XCTAssertEqual(unloadCallCount, 1)
+  }
+
+  func testShutdownSkipsCancellationWhenInFlightStartFails() async throws {
+    let backend = RuntimeBackendSpy()
+    let deadline = ManualShutdownDeadline()
+    let coordinator = InferenceCoordinator(
+      supportedSchemaVersion: 2,
+      backend: backend,
+      shutdownDeadlineFactory: ManualShutdownDeadlineFactory(deadline: deadline)
+    )
+    let request = RuntimeRequestEnvelope(
+      schemaVersion: 2,
+      requestId: "request-1",
+      timestampMicros: 1
+    )
+    let model = RuntimeModelRequest(
+      modelId: "model-1",
+      modelPath: "/models/model-1.bin",
+      contextSize: 4096
+    )
+    let generation = RuntimeGenerationRequest(
+      generationId: "generation-1",
+      sessionId: "session-1",
+      prompt: "first",
+      context: [],
+      temperature: 0.25,
+      topP: 0.9,
+      maxTokens: 128,
+      seed: 1
+    )
+    await backend.automaticallyCompleteLoads()
+    _ = try await coordinator.loadModel(request: request, model: model)
+
+    async let start = coordinator.startGeneration(
+      request: request,
+      generation: generation
+    )
+    await backend.waitForStartCall(count: 1)
+    async let shutdown = coordinator.shutdown()
+    await deadline.waitUntilArmed()
+    await backend.failStart(
+      generationId: generation.generationId,
+      with: RuntimeBoundaryError.generationFailed
+    )
+    await backend.waitForUnloadCall()
+    _ = try? await start
+    _ = try await shutdown
+    let cancelCallCount = await backend.cancelCallCount
+    let unloadCallCount = await backend.unloadCallCount
+    XCTAssertEqual(cancelCallCount, 0)
+    XCTAssertEqual(unloadCallCount, 1)
+  }
+
+  func testShutdownSkipsCancellationWhenInFlightStartIsDeclined()
+    async throws
+  {
+    let backend = RuntimeBackendSpy()
+    let deadline = ManualShutdownDeadline()
+    let coordinator = InferenceCoordinator(
+      supportedSchemaVersion: 2,
+      backend: backend,
+      shutdownDeadlineFactory: ManualShutdownDeadlineFactory(deadline: deadline)
+    )
+    let request = RuntimeRequestEnvelope(
+      schemaVersion: 2,
+      requestId: "request-1",
+      timestampMicros: 1
+    )
+    let model = RuntimeModelRequest(
+      modelId: "model-1",
+      modelPath: "/models/model-1.bin",
+      contextSize: 4096
+    )
+    let generation = RuntimeGenerationRequest(
+      generationId: "generation-1",
+      sessionId: "session-1",
+      prompt: "first",
+      context: [],
+      temperature: 0.25,
+      topP: 0.9,
+      maxTokens: 128,
+      seed: 1
+    )
+    await backend.automaticallyCompleteLoads()
+    _ = try await coordinator.loadModel(request: request, model: model)
+
+    async let start = coordinator.startGeneration(
+      request: request,
+      generation: generation
+    )
+    await backend.waitForStartCall(count: 1)
+    async let shutdown = coordinator.shutdown()
+    await deadline.waitUntilArmed()
+    await backend.completeStart(
+      generationId: generation.generationId,
+      with: RuntimeGenerationAcknowledgement(
+        generationId: generation.generationId,
+        accepted: false
+      )
+    )
+    await backend.waitForUnloadCall()
+    _ = try? await start
+    _ = try await shutdown
+    let cancelCallCount = await backend.cancelCallCount
+    XCTAssertEqual(cancelCallCount, 0)
+  }
+
+  func testOrdinaryUnloadPropagatesItsBackendError() async throws {
+    let backend = RuntimeBackendSpy(blockUnloads: true)
+    let coordinator = InferenceCoordinator(
+      supportedSchemaVersion: 2,
+      backend: backend
+    )
+    let request = RuntimeRequestEnvelope(
+      schemaVersion: 2,
+      requestId: "request-1",
+      timestampMicros: 1
+    )
+
+    async let unload = coordinator.unloadModel(request: request)
+    await backend.waitForUnloadCall()
+    await backend.failUnloads(with: RuntimeBoundaryError.modelLoadFailed)
+    do {
+      _ = try await unload
+      XCTFail("Expected the backend error to propagate")
+    } catch {
+      XCTAssertEqual(error as? RuntimeBoundaryError, .modelLoadFailed)
+    }
+  }
+
+  func testOrdinaryUnloadPropagatesInFlightLoadError() async throws {
+    let backend = RuntimeBackendSpy()
+    let coordinator = InferenceCoordinator(
+      supportedSchemaVersion: 2,
+      backend: backend
+    )
+    let request = RuntimeRequestEnvelope(
+      schemaVersion: 2,
+      requestId: "request-1",
+      timestampMicros: 1
+    )
+    let model = RuntimeModelRequest(
+      modelId: "model-1",
+      modelPath: "/models/model-1.bin",
+      contextSize: 4096
+    )
+
+    async let load = coordinator.loadModel(request: request, model: model)
+    await backend.waitForLoadCall()
+    async let unload = coordinator.unloadModel(request: request)
+    await backend.failLoads(with: RuntimeBoundaryError.modelLoadFailed)
+    _ = try? await load
+    do {
+      _ = try await unload
+      XCTFail("Expected the in-flight load error to propagate")
+    } catch {
+      XCTAssertEqual(error as? RuntimeBoundaryError, .modelLoadFailed)
+    }
+    let unloadCallCount = await backend.unloadCallCount
+    XCTAssertEqual(unloadCallCount, 0)
+  }
+
+  func testOrdinaryUnloadFailureKeepsSuccessfulCancellationTerminal()
+    async throws
+  {
+    let backend = RuntimeBackendSpy(blockUnloads: true)
+    let recorder = RuntimeEventRecorder()
+    let coordinator = InferenceCoordinator(
+      supportedSchemaVersion: 2,
+      backend: backend,
+      eventHandler: { event in
+        recorder.record(event)
+      }
+    )
+    let request = RuntimeRequestEnvelope(
+      schemaVersion: 2,
+      requestId: "request-1",
+      timestampMicros: 1
+    )
+    let model = RuntimeModelRequest(
+      modelId: "model-1",
+      modelPath: "/models/model-1.bin",
+      contextSize: 4096
+    )
+    let firstGeneration = RuntimeGenerationRequest(
+      generationId: "generation-1",
+      sessionId: "session-1",
+      prompt: "first",
+      context: [],
+      temperature: 0.25,
+      topP: 0.9,
+      maxTokens: 128,
+      seed: 1
+    )
+    let secondGeneration = RuntimeGenerationRequest(
+      generationId: "generation-2",
+      sessionId: "session-1",
+      prompt: "second",
+      context: [],
+      temperature: 0.25,
+      topP: 0.9,
+      maxTokens: 128,
+      seed: 2
+    )
+    await backend.automaticallyCompleteLoads()
+    await backend.automaticallyAcknowledgeStarts()
+    _ = try await coordinator.loadModel(request: request, model: model)
+    _ = try await coordinator.startGeneration(
+      request: request,
+      generation: firstGeneration
+    )
+
+    async let unload = coordinator.unloadModel(request: request)
+    await backend.waitForCancelCall()
+    await backend.waitForUnloadCall()
+    await backend.failUnloads(with: RuntimeBoundaryError.runtimeUnavailable)
+    _ = try? await unload
+
+    let secondAcknowledgement = try await coordinator.startGeneration(
+      request: request,
+      generation: secondGeneration
+    )
+    XCTAssertTrue(secondAcknowledgement.accepted)
+    let cancelCallCount = await backend.cancelCallCount
+    XCTAssertEqual(cancelCallCount, 1)
+    XCTAssertEqual(recorder.events.map(\.kind), [.cancelled])
+  }
+
+  func testOrdinaryIncompleteUnloadKeepsSuccessfulCancellationTerminal()
+    async throws
+  {
+    let backend = RuntimeBackendSpy(blockUnloads: true)
+    let recorder = RuntimeEventRecorder()
+    let coordinator = InferenceCoordinator(
+      supportedSchemaVersion: 2,
+      backend: backend,
+      eventHandler: { event in
+        recorder.record(event)
+      }
+    )
+    let request = RuntimeRequestEnvelope(
+      schemaVersion: 2,
+      requestId: "request-1",
+      timestampMicros: 1
+    )
+    let model = RuntimeModelRequest(
+      modelId: "model-1",
+      modelPath: "/models/model-1.bin",
+      contextSize: 4096
+    )
+    let firstGeneration = RuntimeGenerationRequest(
+      generationId: "generation-1",
+      sessionId: "session-1",
+      prompt: "first",
+      context: [],
+      temperature: 0.25,
+      topP: 0.9,
+      maxTokens: 128,
+      seed: 1
+    )
+    let secondGeneration = RuntimeGenerationRequest(
+      generationId: "generation-2",
+      sessionId: "session-1",
+      prompt: "second",
+      context: [],
+      temperature: 0.25,
+      topP: 0.9,
+      maxTokens: 128,
+      seed: 2
+    )
+    await backend.automaticallyCompleteLoads()
+    await backend.automaticallyAcknowledgeStarts()
+    _ = try await coordinator.loadModel(request: request, model: model)
+    _ = try await coordinator.startGeneration(
+      request: request,
+      generation: firstGeneration
+    )
+
+    async let unload = coordinator.unloadModel(request: request)
+    await backend.waitForCancelCall()
+    await backend.waitForUnloadCall()
+    await backend.completeUnloads(
+      with: RuntimeOperationCompletion(completed: false)
+    )
+    let completion = try await unload
+    XCTAssertFalse(completion.completed)
+
+    let secondAcknowledgement = try await coordinator.startGeneration(
+      request: request,
+      generation: secondGeneration
+    )
+    XCTAssertTrue(secondAcknowledgement.accepted)
+    let cancelCallCount = await backend.cancelCallCount
+    XCTAssertEqual(cancelCallCount, 1)
+    XCTAssertEqual(recorder.events.map(\.kind), [.cancelled])
+  }
+
+  func testShutdownReusesOrdinaryCancellationWithoutLateTerminalEvent()
+    async throws
+  {
+    let backend = RuntimeBackendSpy(blockCancellations: true)
+    let deadline = ManualShutdownDeadline()
+    let recorder = RuntimeEventRecorder()
+    let coordinator = InferenceCoordinator(
+      supportedSchemaVersion: 2,
+      backend: backend,
+      eventHandler: { event in
+        recorder.record(event)
+      },
+      shutdownDeadlineFactory: ManualShutdownDeadlineFactory(deadline: deadline)
+    )
+    let request = RuntimeRequestEnvelope(
+      schemaVersion: 2,
+      requestId: "request-1",
+      timestampMicros: 1
+    )
+    let model = RuntimeModelRequest(
+      modelId: "model-1",
+      modelPath: "/models/model-1.bin",
+      contextSize: 4096
+    )
+    let generation = RuntimeGenerationRequest(
+      generationId: "generation-1",
+      sessionId: "session-1",
+      prompt: "first",
+      context: [],
+      temperature: 0.25,
+      topP: 0.9,
+      maxTokens: 128,
+      seed: 1
+    )
+    await backend.automaticallyCompleteLoads()
+    await backend.automaticallyAcknowledgeStarts()
+    _ = try await coordinator.loadModel(request: request, model: model)
+    _ = try await coordinator.startGeneration(
+      request: request,
+      generation: generation
+    )
+
+    async let cancellation = coordinator.cancelGeneration(
+      request: request,
+      generationId: generation.generationId
+    )
+    await backend.waitForCancelCall()
+    async let shutdown = coordinator.shutdown()
+    await deadline.waitUntilArmed()
+    let cancelCountBeforeAcknowledgement = await backend.cancelCallCount
+    XCTAssertEqual(cancelCountBeforeAcknowledgement, 1)
+    let unloadCountBeforeAcknowledgement = await backend.unloadCallCount
+    XCTAssertEqual(unloadCountBeforeAcknowledgement, 0)
+
+    await backend.completeCancellations(
+      with: RuntimeCancellationAcknowledgement(
+        generationId: generation.generationId,
+        acknowledged: true
+      )
+    )
+    await backend.waitForUnloadCall()
+    _ = try await cancellation
+    _ = try await shutdown
+    let cancelCallCount = await backend.cancelCallCount
+    let unloadCallCount = await backend.unloadCallCount
+    XCTAssertEqual(cancelCallCount, 1)
+    XCTAssertEqual(unloadCallCount, 1)
+    XCTAssertTrue(recorder.events.isEmpty)
+  }
+
+  func testShutdownRejectsMismatchedReusedCancellationAcknowledgement()
+    async throws
+  {
+    let backend = RuntimeBackendSpy(blockCancellations: true)
+    let deadline = ManualShutdownDeadline()
+    let coordinator = InferenceCoordinator(
+      supportedSchemaVersion: 2,
+      backend: backend,
+      shutdownDeadlineFactory: ManualShutdownDeadlineFactory(deadline: deadline)
+    )
+    let request = RuntimeRequestEnvelope(
+      schemaVersion: 2,
+      requestId: "request-1",
+      timestampMicros: 1
+    )
+    let model = RuntimeModelRequest(
+      modelId: "model-1",
+      modelPath: "/models/model-1.bin",
+      contextSize: 4096
+    )
+    let generation = RuntimeGenerationRequest(
+      generationId: "generation-1",
+      sessionId: "session-1",
+      prompt: "first",
+      context: [],
+      temperature: 0.25,
+      topP: 0.9,
+      maxTokens: 128,
+      seed: 1
+    )
+    await backend.automaticallyCompleteLoads()
+    await backend.automaticallyAcknowledgeStarts()
+    _ = try await coordinator.loadModel(request: request, model: model)
+    _ = try await coordinator.startGeneration(
+      request: request,
+      generation: generation
+    )
+
+    async let cancellation = coordinator.cancelGeneration(
+      request: request,
+      generationId: generation.generationId
+    )
+    await backend.waitForCancelCall()
+    async let shutdown = coordinator.shutdown()
+    await deadline.waitUntilArmed()
+    await backend.completeCancellations(
+      with: RuntimeCancellationAcknowledgement(
+        generationId: "wrong-generation",
+        acknowledged: true
+      )
+    )
+    _ = try? await cancellation
+    do {
+      _ = try await shutdown
+      XCTFail("Expected mismatched cancellation identity to fail shutdown")
+    } catch {
+      XCTAssertEqual(error as? RuntimeBoundaryError, .runtimeUnavailable)
+    }
+    let unloadCallCount = await backend.unloadCallCount
+    XCTAssertEqual(unloadCallCount, 0)
+  }
+
+  func testShutdownDeadlineReusesExistingUnloadWithoutSecondBackendCall()
+    async throws
+  {
+    let backend = RuntimeBackendSpy(blockUnloads: true)
+    let deadline = ManualShutdownDeadline()
+    let coordinator = InferenceCoordinator(
+      supportedSchemaVersion: 2,
+      backend: backend,
+      shutdownDeadlineFactory: ManualShutdownDeadlineFactory(deadline: deadline)
+    )
+    let request = RuntimeRequestEnvelope(
+      schemaVersion: 2,
+      requestId: "request-1",
+      timestampMicros: 1
+    )
+    let model = RuntimeModelRequest(
+      modelId: "model-1",
+      modelPath: "/models/model-1.bin",
+      contextSize: 4096
+    )
+    await backend.automaticallyCompleteLoads()
+    _ = try await coordinator.loadModel(request: request, model: model)
+
+    async let ordinaryUnload = coordinator.unloadModel(request: request)
+    await backend.waitForUnloadCall()
+    async let shutdown = coordinator.shutdown()
+    await deadline.waitUntilArmed()
+    await deadline.fire()
+    do {
+      _ = try await shutdown
+      XCTFail("Expected the shutdown deadline to fail closed")
+    } catch {
+      XCTAssertEqual(error as? RuntimeBoundaryError, .runtimeUnavailable)
+    }
+    let unloadCallCount = await backend.unloadCallCount
+    XCTAssertEqual(unloadCallCount, 1)
+    await backend.completeUnloads(
+      with: RuntimeOperationCompletion(completed: true)
+    )
+    _ = try? await ordinaryUnload
+  }
+
+  func testShutdownDeadlineStopsReusedUnloadBeforeLateBackendUnload()
+    async throws
+  {
+    let backend = RuntimeBackendSpy(blockCancellations: true)
+    let deadline = ManualShutdownDeadline()
+    let recorder = RuntimeEventRecorder()
+    let unloadAdmissions = ShutdownWaitRecorder()
+    let coordinator = InferenceCoordinator(
+      supportedSchemaVersion: 2,
+      backend: backend,
+      eventHandler: { event in
+        recorder.record(event)
+      },
+      shutdownDeadlineFactory: ManualShutdownDeadlineFactory(deadline: deadline),
+      shutdownWaitObserver: {},
+      ordinaryUnloadAdmissionObserver: {
+        Task {
+          await unloadAdmissions.recordWait()
+        }
+      }
+    )
+    let request = RuntimeRequestEnvelope(
+      schemaVersion: 2,
+      requestId: "request-1",
+      timestampMicros: 1
+    )
+    let model = RuntimeModelRequest(
+      modelId: "model-1",
+      modelPath: "/models/model-1.bin",
+      contextSize: 4096
+    )
+    let generation = RuntimeGenerationRequest(
+      generationId: "generation-1",
+      sessionId: "session-1",
+      prompt: "first",
+      context: [],
+      temperature: 0.25,
+      topP: 0.9,
+      maxTokens: 128,
+      seed: 1
+    )
+    await backend.automaticallyCompleteLoads()
+    await backend.automaticallyAcknowledgeStarts()
+    _ = try await coordinator.loadModel(request: request, model: model)
+    _ = try await coordinator.startGeneration(
+      request: request,
+      generation: generation
+    )
+
+    async let ordinaryUnload = coordinator.unloadModel(request: request)
+    await backend.waitForCancelCall()
+    async let shutdown = coordinator.shutdown()
+    await deadline.waitUntilArmed()
+    await deadline.fire()
+    do {
+      _ = try await shutdown
+      XCTFail("Expected the shutdown deadline to fail closed")
+    } catch {
+      XCTAssertEqual(error as? RuntimeBoundaryError, .runtimeUnavailable)
+    }
+    do {
+      _ = try await ordinaryUnload
+      XCTFail("Expected the reused unload to fail closed")
+    } catch {
+      XCTAssertEqual(error as? RuntimeBoundaryError, .runtimeUnavailable)
+    }
+
+    await backend.completeCancellations(
+      with: RuntimeCancellationAcknowledgement(
+        generationId: generation.generationId,
+        acknowledged: true
+      )
+    )
+    await unloadAdmissions.waitForWaitCount(1)
+
+    let unloadCallCount = await backend.unloadCallCount
+    XCTAssertEqual(unloadCallCount, 0)
+    XCTAssertTrue(recorder.events.isEmpty)
+    do {
+      _ = try await coordinator.shutdown()
+      XCTFail("Expected the terminal shutdown outcome to remain unavailable")
+    } catch {
+      XCTAssertEqual(error as? RuntimeBoundaryError, .runtimeUnavailable)
+    }
+  }
+
+  func testShutdownReusesExistingUnloadCompletion() async throws {
+    let backend = RuntimeBackendSpy(blockUnloads: true)
+    let deadline = ManualShutdownDeadline()
+    let coordinator = InferenceCoordinator(
+      supportedSchemaVersion: 2,
+      backend: backend,
+      shutdownDeadlineFactory: ManualShutdownDeadlineFactory(deadline: deadline)
+    )
+    let request = RuntimeRequestEnvelope(
+      schemaVersion: 2,
+      requestId: "request-1",
+      timestampMicros: 1
+    )
+
+    async let ordinaryUnload = coordinator.unloadModel(request: request)
+    await backend.waitForUnloadCall()
+    async let shutdown = coordinator.shutdown()
+    await deadline.waitUntilArmed()
+    await backend.completeUnloads(
+      with: RuntimeOperationCompletion(completed: true)
+    )
+
+    let ordinaryCompletion = try await ordinaryUnload
+    let shutdownCompletion = try await shutdown
+    XCTAssertEqual(ordinaryCompletion, RuntimeOperationCompletion(completed: true))
+    XCTAssertEqual(shutdownCompletion, RuntimeOperationCompletion(completed: true))
+    let unloadCallCount = await backend.unloadCallCount
+    XCTAssertEqual(unloadCallCount, 1)
+  }
+
+  func testShutdownDeadlineReleasesCoordinatorWithExistingHungUnload()
+    async throws
+  {
+    let backend = RuntimeBackendSpy(blockUnloads: true)
+    let deadline = ManualShutdownDeadline()
+    var coordinator: InferenceCoordinator? = InferenceCoordinator(
+      supportedSchemaVersion: 2,
+      backend: backend,
+      shutdownDeadlineFactory: ManualShutdownDeadlineFactory(deadline: deadline)
+    )
+    weak let releasedCoordinator = coordinator
+    let request = RuntimeRequestEnvelope(
+      schemaVersion: 2,
+      requestId: "request-1",
+      timestampMicros: 1
+    )
+
+    let ordinaryUnload = Task { [weak coordinator] in
+      try? await coordinator?.unloadModel(request: request)
+    }
+    await backend.waitForUnloadCall()
+    let shutdown = Task { [weak coordinator] in
+      try? await coordinator?.shutdown()
+    }
+    await deadline.waitUntilArmed()
+    await deadline.fire()
+    _ = await shutdown.value
+    _ = await ordinaryUnload.value
+    coordinator = nil
+    for _ in 0..<8 {
+      await Task.yield()
+    }
+
+    XCTAssertNil(releasedCoordinator)
+  }
+
+  func testConcurrentShutdownSuccessSharesResultAfterBothCallersWait()
+    async throws
+  {
+    let backend = RuntimeBackendSpy(blockUnloads: true)
+    let deadline = ManualShutdownDeadline()
+    let waits = ShutdownWaitRecorder()
+    let coordinator = InferenceCoordinator(
+      supportedSchemaVersion: 2,
+      backend: backend,
+      eventHandler: { _ in },
+      shutdownDeadlineFactory: ManualShutdownDeadlineFactory(deadline: deadline),
+      shutdownWaitObserver: {
+        Task {
+          await waits.recordWait()
+        }
+      }
+    )
+
+    async let first = coordinator.shutdown()
+    await backend.waitForUnloadCall()
+    async let second = coordinator.shutdown()
+    await waits.waitForWaitCount(2)
+    await backend.completeUnloads(
+      with: RuntimeOperationCompletion(completed: true)
+    )
+
+    let firstCompletion = try await first
+    let secondCompletion = try await second
+    XCTAssertEqual(firstCompletion, RuntimeOperationCompletion(completed: true))
+    XCTAssertEqual(secondCompletion, RuntimeOperationCompletion(completed: true))
+  }
+
+  func testConcurrentShutdownDeadlineSharesFailureAfterBothCallersWait()
+    async throws
+  {
+    let backend = RuntimeBackendSpy(blockUnloads: true)
+    let deadline = ManualShutdownDeadline()
+    let waits = ShutdownWaitRecorder()
+    let coordinator = InferenceCoordinator(
+      supportedSchemaVersion: 2,
+      backend: backend,
+      eventHandler: { _ in },
+      shutdownDeadlineFactory: ManualShutdownDeadlineFactory(deadline: deadline),
+      shutdownWaitObserver: {
+        Task {
+          await waits.recordWait()
+        }
+      }
+    )
+
+    async let first = coordinator.shutdown()
+    await backend.waitForUnloadCall()
+    async let second = coordinator.shutdown()
+    await waits.waitForWaitCount(2)
+    await deadline.waitUntilArmed()
+    await deadline.fire()
+
+    do {
+      _ = try await first
+      XCTFail("Expected the shared deadline failure")
+    } catch {
+      XCTAssertEqual(error as? RuntimeBoundaryError, .runtimeUnavailable)
+    }
+    do {
+      _ = try await second
+      XCTFail("Expected the shared deadline failure")
+    } catch {
+      XCTAssertEqual(error as? RuntimeBoundaryError, .runtimeUnavailable)
+    }
+  }
+
+  func testShutdownCompletionDeadlineRaceSharesOutcomeForEightyIterations()
+    async throws
+  {
+    enum Outcome: Equatable {
+      case completed
+      case unavailable
+    }
+    func shutdownOutcome(_ coordinator: InferenceCoordinator) async -> Outcome {
+      let completion = try? await coordinator.shutdown()
+      return completion == nil ? .unavailable : .completed
+    }
+
+    for _ in 0..<80 {
+      let backend = RuntimeBackendSpy(blockUnloads: true)
+      let deadline = ManualShutdownDeadline()
+      let coordinator = InferenceCoordinator(
+        supportedSchemaVersion: 2,
+        backend: backend,
+        shutdownDeadlineFactory: ManualShutdownDeadlineFactory(deadline: deadline)
+      )
+      async let first = shutdownOutcome(coordinator)
+      await backend.waitForUnloadCall()
+      async let second = shutdownOutcome(coordinator)
+      await deadline.waitUntilArmed()
+      async let completion: Void = backend.completeUnloads(
+        with: RuntimeOperationCompletion(completed: true)
+      )
+      async let expiry: Void = deadline.fire()
+      _ = await (completion, expiry)
+      let firstOutcome = await first
+      let secondOutcome = await second
+      let lateOutcome = await shutdownOutcome(coordinator)
+      XCTAssertEqual(firstOutcome, secondOutcome)
+      XCTAssertEqual(secondOutcome, lateOutcome)
+    }
+  }
+
   func testEventBridgePreservesIdentitySequenceAndOneTerminal() {
     let sink = RecordingGenerationEventSink()
     let bridge = GenerationEventBridge(
@@ -2591,6 +3697,86 @@ private actor AsyncAdmissionGate {
   }
 }
 
+private actor ManualShutdownDeadline: RuntimeShutdownDeadline {
+  private var fired = false
+  private var armed = false
+  private var armContinuations: [CheckedContinuation<Void, Never>] = []
+  private var waitContinuations: [UUID: CheckedContinuation<Void, Never>] = [:]
+
+  func wait() async -> Bool {
+    guard !Task.isCancelled else {
+      return false
+    }
+    armed = true
+    armContinuations.forEach { $0.resume() }
+    armContinuations.removeAll()
+    guard !fired else {
+      return !Task.isCancelled
+    }
+    let waitId = UUID()
+    await withTaskCancellationHandler(operation: {
+      await withCheckedContinuation { continuation in
+        if fired || Task.isCancelled {
+          continuation.resume()
+        } else {
+          waitContinuations[waitId] = continuation
+        }
+      }
+    }, onCancel: {
+      Task {
+        await self.cancelWait(id: waitId)
+      }
+    })
+    return !Task.isCancelled
+  }
+
+  func waitUntilArmed() async {
+    guard !armed else {
+      return
+    }
+    await withCheckedContinuation { continuation in
+      armContinuations.append(continuation)
+    }
+  }
+
+  func fire() {
+    fired = true
+    waitContinuations.values.forEach { $0.resume() }
+    waitContinuations.removeAll()
+  }
+
+  private func cancelWait(id: UUID) {
+    waitContinuations.removeValue(forKey: id)?.resume()
+  }
+}
+
+private actor ShutdownWaitRecorder {
+  private var waitCount = 0
+  private var continuations: [CheckedContinuation<Void, Never>] = []
+
+  func recordWait() {
+    waitCount += 1
+    continuations.forEach { $0.resume() }
+    continuations.removeAll()
+  }
+
+  func waitForWaitCount(_ expectedCount: Int) async {
+    while waitCount < expectedCount {
+      await withCheckedContinuation { continuation in
+        continuations.append(continuation)
+      }
+    }
+  }
+}
+
+private struct ManualShutdownDeadlineFactory: RuntimeShutdownDeadlineFactory {
+  let deadline: ManualShutdownDeadline
+
+  func makeDeadline() -> any RuntimeShutdownDeadline {
+    deadline
+  }
+}
+
 private actor RuntimeBackendSpy: RuntimeBackend {
   init(
     blockCancellations: Bool = false,
@@ -2656,6 +3842,11 @@ private actor RuntimeBackendSpy: RuntimeBackend {
 
   func completeLoads(with result: RuntimeModelLoadResult) {
     loadContinuations.forEach { $0.resume(returning: result) }
+    loadContinuations.removeAll()
+  }
+
+  func failLoads(with error: Error) {
+    loadContinuations.forEach { $0.resume(throwing: error) }
     loadContinuations.removeAll()
   }
 
@@ -2766,6 +3957,11 @@ private actor RuntimeBackendSpy: RuntimeBackend {
 
   func completeUnloads(with result: RuntimeOperationCompletion) {
     unloadContinuations.forEach { $0.resume(returning: result) }
+    unloadContinuations.removeAll()
+  }
+
+  func failUnloads(with error: Error) {
+    unloadContinuations.forEach { $0.resume(throwing: error) }
     unloadContinuations.removeAll()
   }
 }

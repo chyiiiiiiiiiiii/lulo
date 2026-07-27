@@ -594,15 +594,72 @@ public protocol RuntimeBackend: AnyObject, Sendable {
   func unloadModel() async throws -> RuntimeOperationCompletion
 }
 
+public protocol RuntimeShutdownDeadline: Sendable {
+  func wait() async -> Bool
+}
+
+public protocol RuntimeShutdownDeadlineFactory: Sendable {
+  func makeDeadline() -> any RuntimeShutdownDeadline
+}
+
+public struct SystemRuntimeShutdownDeadlineFactory:
+  RuntimeShutdownDeadlineFactory
+{
+  public init(timeoutNanoseconds: UInt64 = 5_000_000_000) {
+    self.timeoutNanoseconds = timeoutNanoseconds
+  }
+
+  public func makeDeadline() -> any RuntimeShutdownDeadline {
+    SystemRuntimeShutdownDeadline(timeoutNanoseconds: timeoutNanoseconds)
+  }
+
+  private let timeoutNanoseconds: UInt64
+}
+
+private struct SystemRuntimeShutdownDeadline: RuntimeShutdownDeadline {
+  let timeoutNanoseconds: UInt64
+
+  func wait() async -> Bool {
+    do {
+      try await Task.sleep(nanoseconds: timeoutNanoseconds)
+      return !Task.isCancelled
+    } catch {
+      return false
+    }
+  }
+}
+
 public actor InferenceCoordinator {
   public init(
     supportedSchemaVersion: Int64,
     backend: any RuntimeBackend,
-    eventHandler: @escaping @Sendable (RuntimeGenerationEvent) -> Void = { _ in }
+    eventHandler: @escaping @Sendable (RuntimeGenerationEvent) -> Void = { _ in },
+    shutdownDeadlineFactory: any RuntimeShutdownDeadlineFactory =
+      SystemRuntimeShutdownDeadlineFactory()
+  ) {
+    self.init(
+      supportedSchemaVersion: supportedSchemaVersion,
+      backend: backend,
+      eventHandler: eventHandler,
+      shutdownDeadlineFactory: shutdownDeadlineFactory,
+      shutdownWaitObserver: {}
+    )
+  }
+
+  init(
+    supportedSchemaVersion: Int64,
+    backend: any RuntimeBackend,
+    eventHandler: @escaping @Sendable (RuntimeGenerationEvent) -> Void,
+    shutdownDeadlineFactory: any RuntimeShutdownDeadlineFactory,
+    shutdownWaitObserver: @escaping @Sendable () -> Void,
+    ordinaryUnloadAdmissionObserver: @escaping @Sendable () -> Void = {}
   ) {
     self.supportedSchemaVersion = supportedSchemaVersion
     self.backend = backend
     self.eventHandler = eventHandler
+    self.shutdownDeadlineFactory = shutdownDeadlineFactory
+    self.shutdownWaitObserver = shutdownWaitObserver
+    self.ordinaryUnloadAdmissionObserver = ordinaryUnloadAdmissionObserver
   }
 
   private enum ModelState {
@@ -636,15 +693,133 @@ public actor InferenceCoordinator {
     let task: Task<RuntimeCancellationAcknowledgement, Error>
   }
 
-  private struct UnloadOperation {
+  private final class UnloadOperation {
+    init(
+      token: UInt64,
+      task: Task<RuntimeOperationCompletion, Error>,
+      result: UnloadResult,
+      generationId: String?
+    ) {
+      self.token = token
+      self.task = task
+      self.result = result
+      self.generationId = generationId
+    }
+
     let token: UInt64
     let task: Task<RuntimeOperationCompletion, Error>
+    let result: UnloadResult
+    let generationId: String?
+    var observerTask: Task<Void, Never>?
+    var cancellationTask: Task<RuntimeCancellationAcknowledgement, Error>?
+    var backendUnloadTask: Task<RuntimeOperationCompletion, Error>?
+  }
+
+  private struct TeardownPlan: Sendable {
+    let backend: any RuntimeBackend
+    let loadingTask: Task<RuntimeModelLoadResult, Error>?
+    let startingTask: Task<RuntimeGenerationAcknowledgement, Error>?
+    let cancellationTask: Task<RuntimeCancellationAcknowledgement, Error>?
+    let cancellationGenerationId: String?
+    let generationId: String?
+    let cancellationHandler: @Sendable (String) async -> Void
+  }
+
+  private struct ShutdownPlan: Sendable {
+    let teardown: TeardownPlan
+    let existingUnloadResult: UnloadResult?
+  }
+
+  private enum Lifecycle {
+    case ready
+    case shuttingDown(ShutdownOperation)
+    case disposed(ShutdownResult)
+  }
+
+  private final class ShutdownOperation {
+    init(token: UInt64, result: ShutdownResult) {
+      self.token = token
+      self.result = result
+    }
+
+    let token: UInt64
+    let result: ShutdownResult
+    var workerTask: Task<Void, Never>?
+    var deadlineTask: Task<Void, Never>?
+    var cancellationTask: Task<RuntimeCancellationAcknowledgement, Error>?
+    var unloadTask: Task<RuntimeOperationCompletion, Error>?
+  }
+
+  private enum ShutdownOutcome: Sendable {
+    case completed(RuntimeOperationCompletion)
+    case unavailable
+  }
+
+  private actor ShutdownResult {
+    private var outcome: ShutdownOutcome?
+    private var continuations: [CheckedContinuation<ShutdownOutcome, Never>] = []
+
+    func wait() async throws -> RuntimeOperationCompletion {
+      let outcome = if let outcome {
+        outcome
+      } else {
+        await withCheckedContinuation { continuation in
+          continuations.append(continuation)
+        }
+      }
+      switch outcome {
+      case .completed(let completion):
+        return completion
+      case .unavailable:
+        throw RuntimeBoundaryError.runtimeUnavailable
+      }
+    }
+
+    func resolve(_ outcome: ShutdownOutcome) {
+      guard self.outcome == nil else {
+        return
+      }
+      self.outcome = outcome
+      continuations.forEach { $0.resume(returning: outcome) }
+      continuations.removeAll()
+    }
+  }
+
+  private actor UnloadResult {
+    private var outcome: Result<RuntimeOperationCompletion, Error>?
+    private var continuations:
+      [CheckedContinuation<Result<RuntimeOperationCompletion, Error>, Never>] = []
+
+    func wait() async throws -> RuntimeOperationCompletion {
+      let outcome = if let outcome {
+        outcome
+      } else {
+        await withCheckedContinuation { continuation in
+          continuations.append(continuation)
+        }
+      }
+      return try outcome.get()
+    }
+
+    func resolve(_ outcome: Result<RuntimeOperationCompletion, Error>) {
+      guard self.outcome == nil else {
+        return
+      }
+      self.outcome = outcome
+      continuations.forEach { $0.resume(returning: outcome) }
+      continuations.removeAll()
+    }
   }
 
   private let supportedSchemaVersion: Int64
   private let backend: any RuntimeBackend
   private let eventHandler:
     @Sendable (RuntimeGenerationEvent) -> Void
+  private let shutdownDeadlineFactory: any RuntimeShutdownDeadlineFactory
+  private let shutdownWaitObserver: @Sendable () -> Void
+  private let ordinaryUnloadAdmissionObserver: @Sendable () -> Void
+  private var lifecycle = Lifecycle.ready
+  private var nextShutdownToken: UInt64 = 0
   private var modelState = ModelState.idle
   private var nextModelToken: UInt64 = 0
   private var generationState = GenerationState.idle
@@ -661,7 +836,7 @@ public actor InferenceCoordinator {
     model: RuntimeModelRequest
   ) async throws -> RuntimeModelLoadResult {
     try validate(request)
-    guard unloadOperation == nil else {
+    guard isReadyForRequests, unloadOperation == nil else {
       throw RuntimeBoundaryError.runtimeUnavailable
     }
 
@@ -679,12 +854,16 @@ public actor InferenceCoordinator {
     case .idle:
       let token = nextModelToken
       nextModelToken &+= 1
+      let backend = self.backend
       let task = Task {
         try await backend.loadModel(model)
       }
       modelState = .loading(request: model, token: token, task: task)
       do {
         let result = try await task.value
+        guard isReadyForRequests else {
+          throw RuntimeBoundaryError.runtimeUnavailable
+        }
         if
           case .loading(_, let activeToken, _) = modelState,
           activeToken == token
@@ -697,6 +876,9 @@ public actor InferenceCoordinator {
         }
         return result
       } catch {
+        guard isReadyForRequests else {
+          throw RuntimeBoundaryError.runtimeUnavailable
+        }
         if
           case .loading(_, let activeToken, _) = modelState,
           activeToken == token
@@ -713,7 +895,7 @@ public actor InferenceCoordinator {
     generation: RuntimeGenerationRequest
   ) async throws -> RuntimeGenerationAcknowledgement {
     try validate(request)
-    guard unloadOperation == nil else {
+    guard isReadyForRequests, unloadOperation == nil else {
       throw RuntimeBoundaryError.runtimeUnavailable
     }
     guard !cancelledGenerationIds.contains(generation.generationId) else {
@@ -723,6 +905,7 @@ public actor InferenceCoordinator {
       throw RuntimeBoundaryError.generationBusy
     }
 
+    let backend = self.backend
     let task = Task {
       try await backend.startGeneration(generation)
     }
@@ -736,6 +919,9 @@ public actor InferenceCoordinator {
     )
     do {
       let acknowledgement = try await task.value
+      guard isReadyForRequests else {
+        throw RuntimeBoundaryError.runtimeUnavailable
+      }
       if
         case .starting(
           let generationId,
@@ -751,6 +937,9 @@ public actor InferenceCoordinator {
       }
       return acknowledgement
     } catch {
+      guard isReadyForRequests else {
+        throw RuntimeBoundaryError.runtimeUnavailable
+      }
       if
         case .starting(
           let generationId,
@@ -771,6 +960,9 @@ public actor InferenceCoordinator {
     generationId: String
   ) async throws -> RuntimeCancellationAcknowledgement {
     try validate(request)
+    guard isReadyForRequests else {
+      throw RuntimeBoundaryError.runtimeUnavailable
+    }
     if cancelledGenerationIds.contains(generationId) {
       return RuntimeCancellationAcknowledgement(
         generationId: generationId,
@@ -789,6 +981,7 @@ public actor InferenceCoordinator {
 
     let operationToken = nextCancellationToken
     nextCancellationToken &+= 1
+    let backend = self.backend
     let operation = CancellationOperation(
       operationToken: operationToken,
       generationId: generationId,
@@ -806,6 +999,9 @@ public actor InferenceCoordinator {
   ) async throws -> RuntimeCancellationAcknowledgement {
     do {
       let acknowledgement = try await operation.task.value
+      guard isReadyForRequests else {
+        return acknowledgement
+      }
       guard acknowledgement.generationId == operation.generationId else {
         if cancellationOperation?.operationToken == operation.operationToken {
           cancellationOperation = nil
@@ -852,85 +1048,431 @@ public actor InferenceCoordinator {
     request: RuntimeRequestEnvelope
   ) async throws -> RuntimeOperationCompletion {
     try validate(request)
+    guard isReadyForRequests else {
+      throw RuntimeBoundaryError.runtimeUnavailable
+    }
     if let unloadOperation {
       return try await finishUnload(unloadOperation)
     }
 
     let token = nextUnloadToken
     nextUnloadToken &+= 1
-    let task = Task {
-      try await self.performUnload(request: request)
+    let plan = makeTeardownPlan(reportCancellation: true)
+    let task = Task { [weak self] in
+      if let generationId = try await Self.settleTeardown(plan) {
+        guard let cancellationTask =
+          await self?.admitOrdinaryUnloadCancellation(
+            token: token,
+            generationId: generationId
+          )
+        else {
+          throw RuntimeBoundaryError.runtimeUnavailable
+        }
+        let acknowledgement = try await cancellationTask.value
+        guard acknowledgement.generationId == generationId else {
+          throw RuntimeBoundaryError.protocolMismatch
+        }
+        guard acknowledgement.acknowledged else {
+          throw RuntimeBoundaryError.generationBusy
+        }
+        await plan.cancellationHandler(acknowledgement.generationId)
+      }
+      guard let unloadTask = await self?.admitOrdinaryBackendUnload(token: token)
+      else {
+        throw RuntimeBoundaryError.runtimeUnavailable
+      }
+      return try await unloadTask.value
     }
-    let operation = UnloadOperation(token: token, task: task)
+    let operation = UnloadOperation(
+      token: token,
+      task: task,
+      result: UnloadResult(),
+      generationId: plan.generationId
+    )
     unloadOperation = operation
+    operation.observerTask = Task { [weak self, task] in
+      do {
+        let completion = try await task.value
+        await self?.completeUnload(token: token, completion: completion)
+      } catch {
+        await self?.failUnload(token: token, error: error)
+      }
+    }
     return try await finishUnload(operation)
   }
 
-  private func performUnload(
-    request: RuntimeRequestEnvelope
-  ) async throws -> RuntimeOperationCompletion {
-    if
-      case .loading(let modelRequest, let token, let task) = modelState
-    {
-      do {
-        let result = try await task.value
-        if
-          case .loading(_, let activeToken, _) = modelState,
-          activeToken == token
-        {
-          modelState = .loaded(
-            request: modelRequest,
-            result: result,
-            token: token
-          )
-        }
-      } catch {
-        if
-          case .loading(_, let activeToken, _) = modelState,
-          activeToken == token
-        {
-          modelState = .idle
-        }
-        throw error
-      }
-    }
-    if let generationId = currentGenerationId {
-      let acknowledgement = try await cancelGeneration(
-        request: request,
-        generationId: generationId
+  public func shutdown() async throws -> RuntimeOperationCompletion {
+    switch lifecycle {
+    case .disposed(let result):
+      return try await waitForShutdownResult(result)
+    case .shuttingDown(let operation):
+      return try await waitForShutdownResult(operation.result)
+    case .ready:
+      let token = nextShutdownToken
+      nextShutdownToken &+= 1
+      let result = ShutdownResult()
+      let operation = ShutdownOperation(token: token, result: result)
+      lifecycle = .shuttingDown(operation)
+
+      let deadline = shutdownDeadlineFactory.makeDeadline()
+      let plan = ShutdownPlan(
+        teardown: makeTeardownPlan(),
+        existingUnloadResult: unloadOperation?.result
       )
+      operation.deadlineTask = Task { [weak self, deadline] in
+        guard await deadline.wait() else {
+          return
+        }
+        await self?.expireShutdown(token: token)
+      }
+      operation.workerTask = Task { [weak self] in
+        do {
+          let completion: RuntimeOperationCompletion
+          if let existingUnloadResult = plan.existingUnloadResult {
+            completion = try await existingUnloadResult.wait()
+          } else {
+            let generationId = try await Self.settleTeardown(plan.teardown)
+            if let generationId {
+              guard let cancellationTask =
+                await self?.admitShutdownCancellation(
+                  token: token,
+                  generationId: generationId
+                )
+              else {
+                return
+              }
+              let acknowledgement = try await cancellationTask.value
+              guard acknowledgement.generationId == generationId else {
+                throw RuntimeBoundaryError.protocolMismatch
+              }
+              guard acknowledgement.acknowledged else {
+                throw RuntimeBoundaryError.generationBusy
+              }
+            }
+            guard let unloadTask = await self?.admitShutdownUnload(token: token)
+            else {
+              return
+            }
+            completion = try await unloadTask.value
+          }
+          await self?.finishShutdown(token: token, completion: completion)
+        } catch {
+          await self?.failShutdown(token: token)
+        }
+      }
+      return try await waitForShutdownResult(result)
+    }
+  }
+
+  private func waitForShutdownResult(
+    _ result: ShutdownResult
+  ) async throws -> RuntimeOperationCompletion {
+    shutdownWaitObserver()
+    return try await result.wait()
+  }
+
+  private var isReadyForRequests: Bool {
+    if case .ready = lifecycle {
+      return true
+    }
+    return false
+  }
+
+  private func makeTeardownPlan(
+    reportCancellation: Bool = false
+  ) -> TeardownPlan {
+    let loadingTask: Task<RuntimeModelLoadResult, Error>? = if case .loading(
+      _, _, let task
+    ) = modelState {
+      task
+    } else {
+      nil
+    }
+    let startingTask: Task<RuntimeGenerationAcknowledgement, Error>? =
+      if case .starting(_, _, let task) = generationState {
+        task
+      } else {
+        nil
+      }
+    let cancellationHandler:
+      @Sendable (String) async -> Void
+    if reportCancellation {
+      cancellationHandler = { [weak self] generationId in
+        await self?.recordTeardownCancellation(generationId)
+      }
+    } else {
+      cancellationHandler = { _ in }
+    }
+    return TeardownPlan(
+      backend: backend,
+      loadingTask: loadingTask,
+      startingTask: startingTask,
+      cancellationTask: cancellationOperation?.task,
+      cancellationGenerationId: cancellationOperation?.generationId,
+      generationId: currentGenerationId,
+      cancellationHandler: cancellationHandler
+    )
+  }
+
+  private nonisolated static func settleTeardown(
+    _ plan: TeardownPlan
+  ) async throws -> String? {
+    if let loadingTask = plan.loadingTask {
+      _ = try await loadingTask.value
+      try Task.checkCancellation()
+    }
+    if let startingTask = plan.startingTask {
+      guard let acknowledgement = try? await startingTask.value,
+        acknowledgement.accepted
+      else {
+        try Task.checkCancellation()
+        return nil
+      }
+      try Task.checkCancellation()
+    }
+    if let cancellationTask = plan.cancellationTask {
+      let acknowledgement = try await cancellationTask.value
+      try Task.checkCancellation()
+      guard acknowledgement.generationId == plan.cancellationGenerationId else {
+        throw RuntimeBoundaryError.protocolMismatch
+      }
       guard acknowledgement.acknowledged else {
         throw RuntimeBoundaryError.generationBusy
       }
+      await plan.cancellationHandler(acknowledgement.generationId)
+      return nil
     }
-    return try await backend.unloadModel()
+    try Task.checkCancellation()
+    return plan.generationId
+  }
+
+  private func admitOrdinaryUnloadCancellation(
+    token: UInt64,
+    generationId: String
+  ) -> Task<RuntimeCancellationAcknowledgement, Error>? {
+    guard let operation = unloadOperation, operation.token == token else {
+      return nil
+    }
+    guard isReadyForRequests || isShutdownInProgress else {
+      return nil
+    }
+    let backend = self.backend
+    let task = Task {
+      try Task.checkCancellation()
+      return try await backend.cancelGeneration(generationId: generationId)
+    }
+    operation.cancellationTask = task
+    return task
+  }
+
+  private func admitOrdinaryBackendUnload(
+    token: UInt64
+  ) -> Task<RuntimeOperationCompletion, Error>? {
+    ordinaryUnloadAdmissionObserver()
+    guard let operation = unloadOperation, operation.token == token else {
+      return nil
+    }
+    guard isReadyForRequests || isShutdownInProgress else {
+      return nil
+    }
+    let backend = self.backend
+    let task = Task {
+      try Task.checkCancellation()
+      return try await backend.unloadModel()
+    }
+    operation.backendUnloadTask = task
+    return task
+  }
+
+  private var isShutdownInProgress: Bool {
+    if case .shuttingDown = lifecycle {
+      return true
+    }
+    return false
+  }
+
+  private func admitShutdownCancellation(
+    token: UInt64,
+    generationId: String
+  ) -> Task<RuntimeCancellationAcknowledgement, Error>? {
+    guard case .shuttingDown(let operation) = lifecycle,
+      operation.token == token
+    else {
+      return nil
+    }
+    let backend = self.backend
+    let task = Task {
+      try Task.checkCancellation()
+      return try await backend.cancelGeneration(generationId: generationId)
+    }
+    operation.cancellationTask = task
+    return task
+  }
+
+  private func admitShutdownUnload(
+    token: UInt64
+  ) -> Task<RuntimeOperationCompletion, Error>? {
+    guard case .shuttingDown(let operation) = lifecycle,
+      operation.token == token
+    else {
+      return nil
+    }
+    let backend = self.backend
+    let task = Task {
+      try Task.checkCancellation()
+      return try await backend.unloadModel()
+    }
+    operation.unloadTask = task
+    return task
+  }
+
+  private func recordTeardownCancellation(_ generationId: String) {
+    guard isReadyForRequests, generationToken(for: generationId) != nil else {
+      return
+    }
+    let sequence = (lastGenerationSequence ?? -1) + 1
+    generationState = .idle
+    lastGenerationSequence = nil
+    recordCancelledGeneration(generationId)
+    eventHandler(
+      RuntimeGenerationEvent(
+        generationId: generationId,
+        sequence: sequence,
+        kind: .cancelled,
+        failureCode: .cancelled,
+        message: "The response was cancelled."
+      )
+    )
+  }
+
+  private func finishShutdown(
+    token: UInt64,
+    completion: RuntimeOperationCompletion
+  ) async {
+    guard case .shuttingDown(let operation) = lifecycle,
+      operation.token == token
+    else {
+      return
+    }
+    operation.deadlineTask?.cancel()
+    operation.workerTask = nil
+    operation.deadlineTask = nil
+    operation.cancellationTask = nil
+    operation.unloadTask = nil
+    resetStateAfterShutdown()
+    lifecycle = .disposed(operation.result)
+    await operation.result.resolve(.completed(completion))
+  }
+
+  private func failShutdown(token: UInt64) async {
+    await disposeAfterShutdownDeadline(token: token)
+  }
+
+  private func expireShutdown(token: UInt64) async {
+    await disposeAfterShutdownDeadline(token: token)
+  }
+
+  private func disposeAfterShutdownDeadline(token: UInt64) async {
+    guard case .shuttingDown(let operation) = lifecycle,
+      operation.token == token
+    else {
+      return
+    }
+    operation.workerTask?.cancel()
+    operation.deadlineTask?.cancel()
+    operation.cancellationTask?.cancel()
+    operation.unloadTask?.cancel()
+    operation.workerTask = nil
+    operation.deadlineTask = nil
+    operation.cancellationTask = nil
+    operation.unloadTask = nil
+    let pendingUnload = unloadOperation
+    pendingUnload?.task.cancel()
+    pendingUnload?.observerTask?.cancel()
+    pendingUnload?.cancellationTask?.cancel()
+    pendingUnload?.backendUnloadTask?.cancel()
+    pendingUnload?.observerTask = nil
+    pendingUnload?.cancellationTask = nil
+    pendingUnload?.backendUnloadTask = nil
+    resetStateAfterShutdown()
+    lifecycle = .disposed(operation.result)
+    await pendingUnload?.result.resolve(
+      .failure(RuntimeBoundaryError.runtimeUnavailable)
+    )
+    await operation.result.resolve(.unavailable)
+  }
+
+  private func resetStateAfterShutdown() {
+    modelState = .idle
+    generationState = .idle
+    cancellationOperation = nil
+    unloadOperation = nil
+    lastGenerationSequence = nil
+    cancelledGenerationIds.removeAll()
+  }
+
+  private func completeUnload(
+    token: UInt64,
+    completion: RuntimeOperationCompletion
+  ) async {
+    guard let operation = unloadOperation, operation.token == token else {
+      return
+    }
+    operation.observerTask = nil
+    guard isReadyForRequests else {
+      await operation.result.resolve(.success(completion))
+      return
+    }
+    unloadOperation = nil
+    if completion.completed {
+      if
+        let generationId = operation.generationId,
+        generationToken(for: generationId) != nil
+      {
+        let sequence = (lastGenerationSequence ?? -1) + 1
+        generationState = .idle
+        lastGenerationSequence = nil
+        recordCancelledGeneration(generationId)
+        eventHandler(
+          RuntimeGenerationEvent(
+            generationId: generationId,
+            sequence: sequence,
+            kind: .cancelled,
+            failureCode: .cancelled,
+            message: "The response was cancelled."
+          )
+        )
+      }
+      modelState = .idle
+      generationState = .idle
+      lastGenerationSequence = nil
+    }
+    await operation.result.resolve(.success(completion))
+  }
+
+  private func failUnload(token: UInt64, error: Error) async {
+    guard let operation = unloadOperation, operation.token == token else {
+      return
+    }
+    operation.observerTask = nil
+    guard isReadyForRequests else {
+      await operation.result.resolve(.failure(error))
+      return
+    }
+    unloadOperation = nil
+    await operation.result.resolve(.failure(error))
   }
 
   private func finishUnload(
     _ operation: UnloadOperation
   ) async throws -> RuntimeOperationCompletion {
-    do {
-      let completion = try await operation.task.value
-      guard unloadOperation?.token == operation.token else {
-        return completion
-      }
-      unloadOperation = nil
-      if completion.completed {
-        modelState = .idle
-        generationState = .idle
-        lastGenerationSequence = nil
-      }
-      return completion
-    } catch {
-      if unloadOperation?.token == operation.token {
-        unloadOperation = nil
-      }
-      throw error
-    }
+    try await operation.result.wait()
   }
 
   public func receiveGenerationEvent(_ event: RuntimeGenerationEvent) async {
-    guard generationToken(for: event.generationId) != nil else {
+    guard isReadyForRequests,
+      generationToken(for: event.generationId) != nil
+    else {
       return
     }
     if
