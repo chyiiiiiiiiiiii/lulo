@@ -34,6 +34,8 @@
 		A20000000000000000000002 /* GlobalHotKeyController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000007 /* GlobalHotKeyController.swift */; };
 		A20000000000000000000003 /* MenuBarController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000008 /* MenuBarController.swift */; };
 		A20000000000000000000004 /* GeneratedDesktopHostApi.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000009 /* GeneratedDesktopHostApi.swift */; };
+		A30000000000000000000001 /* LocalRuntimeHostAdapter.swift in Sources */ = {isa = PBXBuildFile; fileRef = A30000000000000000000003 /* LocalRuntimeHostAdapter.swift */; };
+		A30000000000000000000002 /* InferenceService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A30000000000000000000004 /* InferenceService.swift */; };
 		FD92A5DA52FD9344E085145A /* Pods_Runner.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = CAEFFED4590B1D0DF0DAD294 /* Pods_Runner.framework */; };
 		FF89447D1B5F91740FC3CB0B /* Pods_RunnerTests.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 23ABEA4BB2B8A2B3B7817F6E /* Pods_RunnerTests.framework */; };
 /* End PBXBuildFile section */
@@ -87,6 +89,8 @@
 		A20000000000000000000007 /* GlobalHotKeyController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GlobalHotKeyController.swift; sourceTree = "<group>"; };
 		A20000000000000000000008 /* MenuBarController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarController.swift; sourceTree = "<group>"; };
 		A20000000000000000000009 /* GeneratedDesktopHostApi.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeneratedDesktopHostApi.swift; sourceTree = "<group>"; };
+		A30000000000000000000003 /* LocalRuntimeHostAdapter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalRuntimeHostAdapter.swift; sourceTree = "<group>"; };
+		A30000000000000000000004 /* InferenceService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = InferenceService.swift; path = ../../../../native/inference_service/Sources/InferenceService/InferenceService.swift; sourceTree = "<group>"; };
 		33CEB47222A05771004F2AC0 /* Flutter-Debug.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = "Flutter-Debug.xcconfig"; sourceTree = "<group>"; };
 		33CEB47422A05771004F2AC0 /* Flutter-Release.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = "Flutter-Release.xcconfig"; sourceTree = "<group>"; };
 		33CEB47722A0578A004F2AC0 /* Flutter-Generated.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; name = "Flutter-Generated.xcconfig"; path = "ephemeral/Flutter-Generated.xcconfig"; sourceTree = "<group>"; };
@@ -212,6 +216,8 @@
 				A20000000000000000000007 /* GlobalHotKeyController.swift */,
 				A20000000000000000000008 /* MenuBarController.swift */,
 				A20000000000000000000009 /* GeneratedDesktopHostApi.swift */,
+				A30000000000000000000003 /* LocalRuntimeHostAdapter.swift */,
+				A30000000000000000000004 /* InferenceService.swift */,
 				33E51913231747F40026EE4D /* DebugProfile.entitlements */,
 				33E51914231749380026EE4D /* Release.entitlements */,
 				33CC11242044D66E0003C045 /* Resources */,
@@ -450,6 +456,8 @@
 				A20000000000000000000002 /* GlobalHotKeyController.swift in Sources */,
 				A20000000000000000000003 /* MenuBarController.swift in Sources */,
 				A20000000000000000000004 /* GeneratedDesktopHostApi.swift in Sources */,
+				A30000000000000000000001 /* LocalRuntimeHostAdapter.swift in Sources */,
+				A30000000000000000000002 /* InferenceService.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

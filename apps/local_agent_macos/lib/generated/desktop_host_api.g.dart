@@ -172,6 +172,363 @@ class HostRequest {
   int get hashCode => _deepHash(<Object?>[runtimeType, ..._toList()]);
 }
 
+class HostHandshakeResult {
+  HostHandshakeResult({
+    required this.schemaVersion,
+    required this.runtimeName,
+    required this.supportsStreaming,
+    required this.supportsCancellation,
+  });
+
+  int schemaVersion;
+
+  String runtimeName;
+
+  bool supportsStreaming;
+
+  bool supportsCancellation;
+
+  List<Object?> _toList() {
+    return <Object?>[
+      schemaVersion,
+      runtimeName,
+      supportsStreaming,
+      supportsCancellation,
+    ];
+  }
+
+  Object encode() {
+    return _toList();
+  }
+
+  static HostHandshakeResult decode(Object result) {
+    result as List<Object?>;
+    return HostHandshakeResult(
+      schemaVersion: result[0]! as int,
+      runtimeName: result[1]! as String,
+      supportsStreaming: result[2]! as bool,
+      supportsCancellation: result[3]! as bool,
+    );
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  bool operator ==(Object other) {
+    if (other is! HostHandshakeResult || other.runtimeType != runtimeType) {
+      return false;
+    }
+    if (identical(this, other)) {
+      return true;
+    }
+    return _deepEquals(schemaVersion, other.schemaVersion) &&
+        _deepEquals(runtimeName, other.runtimeName) &&
+        _deepEquals(supportsStreaming, other.supportsStreaming) &&
+        _deepEquals(supportsCancellation, other.supportsCancellation);
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  int get hashCode => _deepHash(<Object?>[runtimeType, ..._toList()]);
+}
+
+class HostModelRequest {
+  HostModelRequest({
+    required this.modelId,
+    required this.modelPath,
+    required this.contextSize,
+  });
+
+  String modelId;
+
+  String modelPath;
+
+  int contextSize;
+
+  List<Object?> _toList() {
+    return <Object?>[modelId, modelPath, contextSize];
+  }
+
+  Object encode() {
+    return _toList();
+  }
+
+  static HostModelRequest decode(Object result) {
+    result as List<Object?>;
+    return HostModelRequest(
+      modelId: result[0]! as String,
+      modelPath: result[1]! as String,
+      contextSize: result[2]! as int,
+    );
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  bool operator ==(Object other) {
+    if (other is! HostModelRequest || other.runtimeType != runtimeType) {
+      return false;
+    }
+    if (identical(this, other)) {
+      return true;
+    }
+    return _deepEquals(modelId, other.modelId) &&
+        _deepEquals(modelPath, other.modelPath) &&
+        _deepEquals(contextSize, other.contextSize);
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  int get hashCode => _deepHash(<Object?>[runtimeType, ..._toList()]);
+}
+
+class HostModelLoadResult {
+  HostModelLoadResult({required this.modelId, required this.loaded});
+
+  String modelId;
+
+  bool loaded;
+
+  List<Object?> _toList() {
+    return <Object?>[modelId, loaded];
+  }
+
+  Object encode() {
+    return _toList();
+  }
+
+  static HostModelLoadResult decode(Object result) {
+    result as List<Object?>;
+    return HostModelLoadResult(
+      modelId: result[0]! as String,
+      loaded: result[1]! as bool,
+    );
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  bool operator ==(Object other) {
+    if (other is! HostModelLoadResult || other.runtimeType != runtimeType) {
+      return false;
+    }
+    if (identical(this, other)) {
+      return true;
+    }
+    return _deepEquals(modelId, other.modelId) &&
+        _deepEquals(loaded, other.loaded);
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  int get hashCode => _deepHash(<Object?>[runtimeType, ..._toList()]);
+}
+
+class HostGenerationRequest {
+  HostGenerationRequest({
+    required this.generationId,
+    required this.sessionId,
+    required this.prompt,
+    required this.context,
+    required this.temperature,
+    required this.topP,
+    required this.maxTokens,
+    required this.seed,
+  });
+
+  String generationId;
+
+  String sessionId;
+
+  String prompt;
+
+  List<String> context;
+
+  double temperature;
+
+  double topP;
+
+  int maxTokens;
+
+  int seed;
+
+  List<Object?> _toList() {
+    return <Object?>[
+      generationId,
+      sessionId,
+      prompt,
+      context,
+      temperature,
+      topP,
+      maxTokens,
+      seed,
+    ];
+  }
+
+  Object encode() {
+    return _toList();
+  }
+
+  static HostGenerationRequest decode(Object result) {
+    result as List<Object?>;
+    return HostGenerationRequest(
+      generationId: result[0]! as String,
+      sessionId: result[1]! as String,
+      prompt: result[2]! as String,
+      context: (result[3]! as List<Object?>).cast<String>(),
+      temperature: result[4]! as double,
+      topP: result[5]! as double,
+      maxTokens: result[6]! as int,
+      seed: result[7]! as int,
+    );
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  bool operator ==(Object other) {
+    if (other is! HostGenerationRequest || other.runtimeType != runtimeType) {
+      return false;
+    }
+    if (identical(this, other)) {
+      return true;
+    }
+    return _deepEquals(generationId, other.generationId) &&
+        _deepEquals(sessionId, other.sessionId) &&
+        _deepEquals(prompt, other.prompt) &&
+        _deepEquals(context, other.context) &&
+        _deepEquals(temperature, other.temperature) &&
+        _deepEquals(topP, other.topP) &&
+        _deepEquals(maxTokens, other.maxTokens) &&
+        _deepEquals(seed, other.seed);
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  int get hashCode => _deepHash(<Object?>[runtimeType, ..._toList()]);
+}
+
+class HostGenerationAcknowledgement {
+  HostGenerationAcknowledgement({
+    required this.generationId,
+    required this.accepted,
+  });
+
+  String generationId;
+
+  bool accepted;
+
+  List<Object?> _toList() {
+    return <Object?>[generationId, accepted];
+  }
+
+  Object encode() {
+    return _toList();
+  }
+
+  static HostGenerationAcknowledgement decode(Object result) {
+    result as List<Object?>;
+    return HostGenerationAcknowledgement(
+      generationId: result[0]! as String,
+      accepted: result[1]! as bool,
+    );
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  bool operator ==(Object other) {
+    if (other is! HostGenerationAcknowledgement ||
+        other.runtimeType != runtimeType) {
+      return false;
+    }
+    if (identical(this, other)) {
+      return true;
+    }
+    return _deepEquals(generationId, other.generationId) &&
+        _deepEquals(accepted, other.accepted);
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  int get hashCode => _deepHash(<Object?>[runtimeType, ..._toList()]);
+}
+
+class HostCancellationAcknowledgement {
+  HostCancellationAcknowledgement({
+    required this.generationId,
+    required this.acknowledged,
+  });
+
+  String generationId;
+
+  bool acknowledged;
+
+  List<Object?> _toList() {
+    return <Object?>[generationId, acknowledged];
+  }
+
+  Object encode() {
+    return _toList();
+  }
+
+  static HostCancellationAcknowledgement decode(Object result) {
+    result as List<Object?>;
+    return HostCancellationAcknowledgement(
+      generationId: result[0]! as String,
+      acknowledged: result[1]! as bool,
+    );
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  bool operator ==(Object other) {
+    if (other is! HostCancellationAcknowledgement ||
+        other.runtimeType != runtimeType) {
+      return false;
+    }
+    if (identical(this, other)) {
+      return true;
+    }
+    return _deepEquals(generationId, other.generationId) &&
+        _deepEquals(acknowledged, other.acknowledged);
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  int get hashCode => _deepHash(<Object?>[runtimeType, ..._toList()]);
+}
+
+class HostOperationCompletion {
+  HostOperationCompletion({required this.completed});
+
+  bool completed;
+
+  List<Object?> _toList() {
+    return <Object?>[completed];
+  }
+
+  Object encode() {
+    return _toList();
+  }
+
+  static HostOperationCompletion decode(Object result) {
+    result as List<Object?>;
+    return HostOperationCompletion(completed: result[0]! as bool);
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  bool operator ==(Object other) {
+    if (other is! HostOperationCompletion || other.runtimeType != runtimeType) {
+      return false;
+    }
+    if (identical(this, other)) {
+      return true;
+    }
+    return _deepEquals(completed, other.completed);
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  int get hashCode => _deepHash(<Object?>[runtimeType, ..._toList()]);
+}
+
 class HostGenerationEvent {
   HostGenerationEvent({
     required this.schemaVersion,
@@ -265,8 +622,29 @@ class _PigeonCodec extends StandardMessageCodec {
     } else if (value is HostRequest) {
       buffer.putUint8(131);
       writeValue(buffer, value.encode());
-    } else if (value is HostGenerationEvent) {
+    } else if (value is HostHandshakeResult) {
       buffer.putUint8(132);
+      writeValue(buffer, value.encode());
+    } else if (value is HostModelRequest) {
+      buffer.putUint8(133);
+      writeValue(buffer, value.encode());
+    } else if (value is HostModelLoadResult) {
+      buffer.putUint8(134);
+      writeValue(buffer, value.encode());
+    } else if (value is HostGenerationRequest) {
+      buffer.putUint8(135);
+      writeValue(buffer, value.encode());
+    } else if (value is HostGenerationAcknowledgement) {
+      buffer.putUint8(136);
+      writeValue(buffer, value.encode());
+    } else if (value is HostCancellationAcknowledgement) {
+      buffer.putUint8(137);
+      writeValue(buffer, value.encode());
+    } else if (value is HostOperationCompletion) {
+      buffer.putUint8(138);
+      writeValue(buffer, value.encode());
+    } else if (value is HostGenerationEvent) {
+      buffer.putUint8(139);
       writeValue(buffer, value.encode());
     } else {
       super.writeValue(buffer, value);
@@ -285,6 +663,20 @@ class _PigeonCodec extends StandardMessageCodec {
       case 131:
         return HostRequest.decode(readValue(buffer)!);
       case 132:
+        return HostHandshakeResult.decode(readValue(buffer)!);
+      case 133:
+        return HostModelRequest.decode(readValue(buffer)!);
+      case 134:
+        return HostModelLoadResult.decode(readValue(buffer)!);
+      case 135:
+        return HostGenerationRequest.decode(readValue(buffer)!);
+      case 136:
+        return HostGenerationAcknowledgement.decode(readValue(buffer)!);
+      case 137:
+        return HostCancellationAcknowledgement.decode(readValue(buffer)!);
+      case 138:
+        return HostOperationCompletion.decode(readValue(buffer)!);
+      case 139:
         return HostGenerationEvent.decode(readValue(buffer)!);
       default:
         return super.readValueOfType(type, buffer);
@@ -308,6 +700,144 @@ class DesktopHostApi {
   static const MessageCodec<Object?> pigeonChannelCodec = _PigeonCodec();
 
   final String pigeonVar_messageChannelSuffix;
+
+  Future<HostHandshakeResult> handshake(HostRequest request) async {
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.local_agent_macos.DesktopHostApi.handshake$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channel = BasicMessageChannel<Object?>(
+      pigeonVar_channelName,
+      pigeonChannelCodec,
+      binaryMessenger: pigeonVar_binaryMessenger,
+    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(
+      <Object?>[request],
+    );
+    final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
+
+    final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: false,
+    );
+    return pigeonVar_replyValue! as HostHandshakeResult;
+  }
+
+  Future<HostModelLoadResult> loadModel(
+    HostRequest request,
+    HostModelRequest model,
+  ) async {
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.local_agent_macos.DesktopHostApi.loadModel$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channel = BasicMessageChannel<Object?>(
+      pigeonVar_channelName,
+      pigeonChannelCodec,
+      binaryMessenger: pigeonVar_binaryMessenger,
+    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(
+      <Object?>[request, model],
+    );
+    final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
+
+    final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: false,
+    );
+    return pigeonVar_replyValue! as HostModelLoadResult;
+  }
+
+  Future<HostGenerationAcknowledgement> startGeneration(
+    HostRequest request,
+    HostGenerationRequest generation,
+  ) async {
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.local_agent_macos.DesktopHostApi.startGeneration$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channel = BasicMessageChannel<Object?>(
+      pigeonVar_channelName,
+      pigeonChannelCodec,
+      binaryMessenger: pigeonVar_binaryMessenger,
+    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(
+      <Object?>[request, generation],
+    );
+    final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
+
+    final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: false,
+    );
+    return pigeonVar_replyValue! as HostGenerationAcknowledgement;
+  }
+
+  Future<HostCancellationAcknowledgement> cancelGeneration(
+    HostRequest request,
+    String generationId,
+  ) async {
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.local_agent_macos.DesktopHostApi.cancelGeneration$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channel = BasicMessageChannel<Object?>(
+      pigeonVar_channelName,
+      pigeonChannelCodec,
+      binaryMessenger: pigeonVar_binaryMessenger,
+    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(
+      <Object?>[request, generationId],
+    );
+    final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
+
+    final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: false,
+    );
+    return pigeonVar_replyValue! as HostCancellationAcknowledgement;
+  }
+
+  Future<HostOperationCompletion> resetSession(
+    HostRequest request,
+    String sessionId,
+  ) async {
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.local_agent_macos.DesktopHostApi.resetSession$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channel = BasicMessageChannel<Object?>(
+      pigeonVar_channelName,
+      pigeonChannelCodec,
+      binaryMessenger: pigeonVar_binaryMessenger,
+    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(
+      <Object?>[request, sessionId],
+    );
+    final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
+
+    final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: false,
+    );
+    return pigeonVar_replyValue! as HostOperationCompletion;
+  }
+
+  Future<HostOperationCompletion> unloadModel(HostRequest request) async {
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.local_agent_macos.DesktopHostApi.unloadModel$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channel = BasicMessageChannel<Object?>(
+      pigeonVar_channelName,
+      pigeonChannelCodec,
+      binaryMessenger: pigeonVar_binaryMessenger,
+    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(
+      <Object?>[request],
+    );
+    final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
+
+    final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: false,
+    );
+    return pigeonVar_replyValue! as HostOperationCompletion;
+  }
 
   Future<void> showPanel(HostRequest request) async {
     final pigeonVar_channelName =

@@ -34,6 +34,87 @@ class HostRequest {
   int timestampMicros;
 }
 
+class HostHandshakeResult {
+  HostHandshakeResult({
+    required this.schemaVersion,
+    required this.runtimeName,
+    required this.supportsStreaming,
+    required this.supportsCancellation,
+  });
+
+  int schemaVersion;
+  String runtimeName;
+  bool supportsStreaming;
+  bool supportsCancellation;
+}
+
+class HostModelRequest {
+  HostModelRequest({
+    required this.modelId,
+    required this.modelPath,
+    required this.contextSize,
+  });
+
+  String modelId;
+  String modelPath;
+  int contextSize;
+}
+
+class HostModelLoadResult {
+  HostModelLoadResult({required this.modelId, required this.loaded});
+
+  String modelId;
+  bool loaded;
+}
+
+class HostGenerationRequest {
+  HostGenerationRequest({
+    required this.generationId,
+    required this.sessionId,
+    required this.prompt,
+    required this.context,
+    required this.temperature,
+    required this.topP,
+    required this.maxTokens,
+    required this.seed,
+  });
+
+  String generationId;
+  String sessionId;
+  String prompt;
+  List<String> context;
+  double temperature;
+  double topP;
+  int maxTokens;
+  int seed;
+}
+
+class HostGenerationAcknowledgement {
+  HostGenerationAcknowledgement({
+    required this.generationId,
+    required this.accepted,
+  });
+
+  String generationId;
+  bool accepted;
+}
+
+class HostCancellationAcknowledgement {
+  HostCancellationAcknowledgement({
+    required this.generationId,
+    required this.acknowledged,
+  });
+
+  String generationId;
+  bool acknowledged;
+}
+
+class HostOperationCompletion {
+  HostOperationCompletion({required this.completed});
+
+  bool completed;
+}
+
 class HostGenerationEvent {
   HostGenerationEvent({
     required this.schemaVersion,
@@ -56,6 +137,24 @@ class HostGenerationEvent {
 
 @HostApi()
 abstract class DesktopHostApi {
+  HostHandshakeResult handshake(HostRequest request);
+
+  HostModelLoadResult loadModel(HostRequest request, HostModelRequest model);
+
+  HostGenerationAcknowledgement startGeneration(
+    HostRequest request,
+    HostGenerationRequest generation,
+  );
+
+  HostCancellationAcknowledgement cancelGeneration(
+    HostRequest request,
+    String generationId,
+  );
+
+  HostOperationCompletion resetSession(HostRequest request, String sessionId);
+
+  HostOperationCompletion unloadModel(HostRequest request);
+
   void showPanel(HostRequest request);
 
   void hidePanel(HostRequest request);

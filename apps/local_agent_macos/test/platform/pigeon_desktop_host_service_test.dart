@@ -8,6 +8,107 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   group('PigeonDesktopHostService', () {
+    test('round-trips every typed local-runtime lifecycle operation', () async {
+      final hostApi = RecordingLifecycleDesktopHostApi();
+      final service = PigeonDesktopHostService(
+        hostApi: hostApi,
+        now: () => DateTime.utc(2026, 7, 27),
+        registerEventApi: false,
+      );
+
+      final DesktopRuntimeCapabilities capabilities = await service.handshake();
+      final DesktopModelLoadResult loadResult = await service.loadModel(
+        const DesktopModelRequest(
+          modelId: 'deterministic-model',
+          modelPath: '/models/deterministic.bin',
+          contextSize: 4096,
+        ),
+      );
+      final DesktopGenerationAcknowledgement startResult = await service
+          .startGeneration(
+            const DesktopGenerationRequest(
+              generationId: 'generation-1',
+              sessionId: 'session-1',
+              prompt: 'private prompt',
+              context: <String>['private context'],
+              temperature: 0.25,
+              topP: 0.9,
+              maxTokens: 128,
+              seed: 7,
+            ),
+          );
+      final DesktopCancellationAcknowledgement cancelResult = await service
+          .cancelGeneration('generation-1');
+      final DesktopOperationCompletion resetResult = await service.resetSession(
+        'session-1',
+      );
+      final DesktopOperationCompletion unloadResult = await service
+          .unloadModel();
+
+      expect(
+        capabilities,
+        const DesktopRuntimeCapabilities(
+          schemaVersion: DesktopHostService.schemaVersion,
+          runtimeName: 'deterministic',
+          supportsStreaming: true,
+          supportsCancellation: true,
+        ),
+      );
+      expect(
+        loadResult,
+        const DesktopModelLoadResult(
+          modelId: 'deterministic-model',
+          loaded: true,
+        ),
+      );
+      expect(
+        startResult,
+        const DesktopGenerationAcknowledgement(
+          generationId: 'generation-1',
+          accepted: true,
+        ),
+      );
+      expect(
+        cancelResult,
+        const DesktopCancellationAcknowledgement(
+          generationId: 'generation-1',
+          acknowledged: true,
+        ),
+      );
+      expect(resetResult, const DesktopOperationCompletion(completed: true));
+      expect(unloadResult, const DesktopOperationCompletion(completed: true));
+
+      expect(hostApi.requests, hasLength(6));
+      for (final HostRequest request in hostApi.requests) {
+        expect(request.schemaVersion, DesktopHostService.schemaVersion);
+        expect(request.requestId, isNotEmpty);
+        expect(request.timestampMicros, 1785110400000000);
+      }
+      expect(
+        hostApi.model,
+        HostModelRequest(
+          modelId: 'deterministic-model',
+          modelPath: '/models/deterministic.bin',
+          contextSize: 4096,
+        ),
+      );
+      expect(
+        hostApi.generation,
+        HostGenerationRequest(
+          generationId: 'generation-1',
+          sessionId: 'session-1',
+          prompt: 'private prompt',
+          context: <String>['private context'],
+          temperature: 0.25,
+          topP: 0.9,
+          maxTokens: 128,
+          seed: 7,
+        ),
+      );
+      expect(hostApi.cancelledGenerationId, 'generation-1');
+      expect(hostApi.resetSessionId, 'session-1');
+    });
+
     test('maps every platform error code to a typed app failure', () async {
       for (final DesktopHostFailureCode expected
           in DesktopHostFailureCode.values) {
@@ -531,4 +632,75 @@ final class ThrowingDesktopHostApi extends DesktopHostApi {
 final class RecordingDesktopHostApi extends DesktopHostApi {
   @override
   Future<void> showPanel(HostRequest request) async {}
+}
+
+final class RecordingLifecycleDesktopHostApi extends DesktopHostApi {
+  final List<HostRequest> requests = <HostRequest>[];
+  HostModelRequest? model;
+  HostGenerationRequest? generation;
+  String? cancelledGenerationId;
+  String? resetSessionId;
+
+  @override
+  Future<HostHandshakeResult> handshake(HostRequest request) async {
+    requests.add(request);
+    return HostHandshakeResult(
+      schemaVersion: DesktopHostService.schemaVersion,
+      runtimeName: 'deterministic',
+      supportsStreaming: true,
+      supportsCancellation: true,
+    );
+  }
+
+  @override
+  Future<HostModelLoadResult> loadModel(
+    HostRequest request,
+    HostModelRequest model,
+  ) async {
+    requests.add(request);
+    this.model = model;
+    return HostModelLoadResult(modelId: model.modelId, loaded: true);
+  }
+
+  @override
+  Future<HostGenerationAcknowledgement> startGeneration(
+    HostRequest request,
+    HostGenerationRequest generation,
+  ) async {
+    requests.add(request);
+    this.generation = generation;
+    return HostGenerationAcknowledgement(
+      generationId: generation.generationId,
+      accepted: true,
+    );
+  }
+
+  @override
+  Future<HostCancellationAcknowledgement> cancelGeneration(
+    HostRequest request,
+    String generationId,
+  ) async {
+    requests.add(request);
+    cancelledGenerationId = generationId;
+    return HostCancellationAcknowledgement(
+      generationId: generationId,
+      acknowledged: true,
+    );
+  }
+
+  @override
+  Future<HostOperationCompletion> resetSession(
+    HostRequest request,
+    String sessionId,
+  ) async {
+    requests.add(request);
+    resetSessionId = sessionId;
+    return HostOperationCompletion(completed: true);
+  }
+
+  @override
+  Future<HostOperationCompletion> unloadModel(HostRequest request) async {
+    requests.add(request);
+    return HostOperationCompletion(completed: true);
+  }
 }

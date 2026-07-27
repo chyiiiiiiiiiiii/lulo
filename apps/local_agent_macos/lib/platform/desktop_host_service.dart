@@ -3,10 +3,32 @@ import '../generated/desktop_host_api.g.dart';
 /// App-facing contract for the typed macOS host boundary.
 abstract interface class DesktopHostService {
   /// Current schema shared by Dart and the generated host bridge.
-  static const int schemaVersion = 1;
+  static const int schemaVersion = 2;
 
   /// Events validated and normalized at the platform boundary.
   Stream<DesktopGenerationEvent> get generationEvents;
+
+  /// Negotiates the exact schema and reports native runtime capabilities.
+  Future<DesktopRuntimeCapabilities> handshake();
+
+  /// Loads a local model described by [model].
+  Future<DesktopModelLoadResult> loadModel(DesktopModelRequest model);
+
+  /// Starts one typed local generation request.
+  Future<DesktopGenerationAcknowledgement> startGeneration(
+    DesktopGenerationRequest generation,
+  );
+
+  /// Requests idempotent cancellation of [generationId].
+  Future<DesktopCancellationAcknowledgement> cancelGeneration(
+    String generationId,
+  );
+
+  /// Resets the bounded native state for [sessionId].
+  Future<DesktopOperationCompletion> resetSession(String sessionId);
+
+  /// Releases the currently loaded model.
+  Future<DesktopOperationCompletion> unloadModel();
 
   /// Makes the retained desktop panel visible.
   Future<void> showPanel();
@@ -19,6 +41,193 @@ abstract interface class DesktopHostService {
 
   /// Releases message handlers and stream resources.
   Future<void> dispose();
+}
+
+/// Truthful capabilities returned by the native runtime handshake.
+final class DesktopRuntimeCapabilities {
+  /// Creates an immutable capability snapshot.
+  const DesktopRuntimeCapabilities({
+    required this.schemaVersion,
+    required this.runtimeName,
+    required this.supportsStreaming,
+    required this.supportsCancellation,
+  });
+
+  /// Exact schema version implemented by the native peer.
+  final int schemaVersion;
+
+  /// Stable native runtime implementation name.
+  final String runtimeName;
+
+  /// Whether the runtime emits incremental text.
+  final bool supportsStreaming;
+
+  /// Whether active generation can be cancelled.
+  final bool supportsCancellation;
+
+  @override
+  bool operator ==(Object other) {
+    return other is DesktopRuntimeCapabilities &&
+        schemaVersion == other.schemaVersion &&
+        runtimeName == other.runtimeName &&
+        supportsStreaming == other.supportsStreaming &&
+        supportsCancellation == other.supportsCancellation;
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    schemaVersion,
+    runtimeName,
+    supportsStreaming,
+    supportsCancellation,
+  );
+}
+
+/// Model identity, location, and bounded context configuration.
+final class DesktopModelRequest {
+  /// Creates a typed local model request.
+  const DesktopModelRequest({
+    required this.modelId,
+    required this.modelPath,
+    required this.contextSize,
+  });
+
+  /// Stable product-owned model identifier.
+  final String modelId;
+
+  /// Local filesystem path supplied to the native runtime.
+  final String modelPath;
+
+  /// Maximum context tokens requested for this load.
+  final int contextSize;
+}
+
+/// Typed acknowledgement for a model load.
+final class DesktopModelLoadResult {
+  /// Creates a model load result.
+  const DesktopModelLoadResult({required this.modelId, required this.loaded});
+
+  /// Identity of the model addressed by the operation.
+  final String modelId;
+
+  /// Whether the model is now loaded.
+  final bool loaded;
+
+  @override
+  bool operator ==(Object other) {
+    return other is DesktopModelLoadResult &&
+        modelId == other.modelId &&
+        loaded == other.loaded;
+  }
+
+  @override
+  int get hashCode => Object.hash(modelId, loaded);
+}
+
+/// Typed generation payload crossing the native boundary.
+final class DesktopGenerationRequest {
+  /// Creates an immutable generation request.
+  const DesktopGenerationRequest({
+    required this.generationId,
+    required this.sessionId,
+    required this.prompt,
+    required this.context,
+    required this.temperature,
+    required this.topP,
+    required this.maxTokens,
+    required this.seed,
+  });
+
+  /// Stable ID used to correlate acknowledgements and events.
+  final String generationId;
+
+  /// Session whose native context should be used.
+  final String sessionId;
+
+  /// User prompt passed without logging.
+  final String prompt;
+
+  /// Ordered prior context passed without logging.
+  final List<String> context;
+
+  /// Sampling temperature.
+  final double temperature;
+
+  /// Nucleus sampling probability.
+  final double topP;
+
+  /// Maximum number of output tokens.
+  final int maxTokens;
+
+  /// Deterministic sampling seed.
+  final int seed;
+}
+
+/// Typed acknowledgement for generation start.
+final class DesktopGenerationAcknowledgement {
+  /// Creates a generation acknowledgement.
+  const DesktopGenerationAcknowledgement({
+    required this.generationId,
+    required this.accepted,
+  });
+
+  /// Generation addressed by the acknowledgement.
+  final String generationId;
+
+  /// Whether the request was accepted.
+  final bool accepted;
+
+  @override
+  bool operator ==(Object other) {
+    return other is DesktopGenerationAcknowledgement &&
+        generationId == other.generationId &&
+        accepted == other.accepted;
+  }
+
+  @override
+  int get hashCode => Object.hash(generationId, accepted);
+}
+
+/// Typed idempotent cancellation acknowledgement.
+final class DesktopCancellationAcknowledgement {
+  /// Creates a cancellation acknowledgement.
+  const DesktopCancellationAcknowledgement({
+    required this.generationId,
+    required this.acknowledged,
+  });
+
+  /// Generation addressed by the acknowledgement.
+  final String generationId;
+
+  /// Whether native state now fences further generation output.
+  final bool acknowledged;
+
+  @override
+  bool operator ==(Object other) {
+    return other is DesktopCancellationAcknowledgement &&
+        generationId == other.generationId &&
+        acknowledged == other.acknowledged;
+  }
+
+  @override
+  int get hashCode => Object.hash(generationId, acknowledged);
+}
+
+/// Typed completion returned by bounded lifecycle operations.
+final class DesktopOperationCompletion {
+  /// Creates an operation completion.
+  const DesktopOperationCompletion({required this.completed});
+
+  /// Whether the bounded operation completed.
+  final bool completed;
+
+  @override
+  bool operator ==(Object other) {
+    return other is DesktopOperationCompletion && completed == other.completed;
+  }
+
+  @override
+  int get hashCode => completed.hashCode;
 }
 
 /// Stable app failure categories exposed by the desktop host.

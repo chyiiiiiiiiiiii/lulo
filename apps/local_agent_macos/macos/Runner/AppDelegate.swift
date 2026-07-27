@@ -6,7 +6,8 @@ import FlutterMacOS
 class AppDelegate: FlutterAppDelegate {
   private var menuBarController: MenuBarController?
   private var hotKeyController: GlobalHotKeyController?
-  private var desktopHostApi: PanelDesktopHostApi?
+  private var desktopHostApi: LocalRuntimeDesktopHostApi?
+  private var binaryMessenger: FlutterBinaryMessenger?
 
   override func applicationDidFinishLaunching(_ notification: Notification) {
     NSApp.setActivationPolicy(.accessory)
@@ -37,16 +38,35 @@ class AppDelegate: FlutterAppDelegate {
       menuBarController.setHotKeyAvailable(false)
     }
 
-    let desktopHostApi = PanelDesktopHostApi(
-      panelController: panelController
+    let binaryMessenger = window.flutterEngine.binaryMessenger
+    let eventSink = PigeonGenerationEventSink(
+      api: DesktopHostEventApi(binaryMessenger: binaryMessenger)
+    )
+    let eventBridge = GenerationEventBridge(
+      sink: eventSink,
+      scheduler: MainQueueRuntimeEventScheduler(),
+      coalescingMilliseconds: 10
+    )
+    let backend = DeterministicLocalModelRuntimeBackend(
+      eventReceiver: eventBridge.receive
+    )
+    let coordinator = LocalModelRuntimeCoordinator(
+      supportedSchemaVersion: 2,
+      backend: backend
+    )
+    let desktopHostApi = LocalRuntimeDesktopHostApi(
+      panelController: panelController,
+      coordinator: coordinator,
+      eventBridge: eventBridge
     )
     DesktopHostApiSetup.setUp(
-      binaryMessenger: window.flutterEngine.binaryMessenger,
+      binaryMessenger: binaryMessenger,
       api: desktopHostApi
     )
     self.menuBarController = menuBarController
     self.hotKeyController = hotKeyController
     self.desktopHostApi = desktopHostApi
+    self.binaryMessenger = binaryMessenger
     super.applicationDidFinishLaunching(notification)
   }
 
@@ -74,6 +94,10 @@ class AppDelegate: FlutterAppDelegate {
   }
 
   override func applicationWillTerminate(_ notification: Notification) {
+    desktopHostApi?.dispose()
+    if let binaryMessenger {
+      DesktopHostApiSetup.setUp(binaryMessenger: binaryMessenger, api: nil)
+    }
     hotKeyController?.unregister()
     super.applicationWillTerminate(notification)
   }
@@ -87,49 +111,4 @@ func resolveMainFlutterWindow(
     return window
   }
   return applicationWindows.compactMap { $0 as? MainFlutterWindow }.first
-}
-
-private final class PanelDesktopHostApi: DesktopHostApi {
-  private let panelController: DesktopPanelControlling
-
-  init(panelController: DesktopPanelControlling) {
-    self.panelController = panelController
-  }
-
-  func showPanel(request: HostRequest) throws {
-    try validate(request)
-    onMain { self.panelController.show() }
-  }
-
-  func hidePanel(request: HostRequest) throws {
-    try validate(request)
-    onMain { self.panelController.hide() }
-  }
-
-  func togglePanel(request: HostRequest) throws {
-    try validate(request)
-    onMain { self.panelController.toggle() }
-  }
-
-  private func validate(_ request: HostRequest) throws {
-    guard
-      request.schemaVersion == 1,
-      !request.requestId.isEmpty,
-      request.timestampMicros > 0
-    else {
-      throw PigeonError(
-        code: "protocolMismatch",
-        message: "The desktop host request schema is incompatible.",
-        details: nil
-      )
-    }
-  }
-
-  private func onMain(_ operation: @escaping () -> Void) {
-    if Thread.isMainThread {
-      operation()
-    } else {
-      DispatchQueue.main.sync(execute: operation)
-    }
-  }
 }

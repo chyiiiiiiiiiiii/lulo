@@ -37,6 +37,92 @@ final class PigeonDesktopHostService extends DesktopHostEventApi
   Stream<DesktopGenerationEvent> get generationEvents => _events.stream;
 
   @override
+  Future<DesktopRuntimeCapabilities> handshake() async {
+    final HostHandshakeResult result = await _invokeResult(_hostApi.handshake);
+    if (result.schemaVersion != DesktopHostService.schemaVersion) {
+      throw const DesktopHostFailure(DesktopHostFailureCode.protocolMismatch);
+    }
+    return DesktopRuntimeCapabilities(
+      schemaVersion: result.schemaVersion,
+      runtimeName: result.runtimeName,
+      supportsStreaming: result.supportsStreaming,
+      supportsCancellation: result.supportsCancellation,
+    );
+  }
+
+  @override
+  Future<DesktopModelLoadResult> loadModel(DesktopModelRequest model) async {
+    final HostModelLoadResult result = await _invokeResult(
+      (HostRequest request) => _hostApi.loadModel(
+        request,
+        HostModelRequest(
+          modelId: model.modelId,
+          modelPath: model.modelPath,
+          contextSize: model.contextSize,
+        ),
+      ),
+    );
+    return DesktopModelLoadResult(
+      modelId: result.modelId,
+      loaded: result.loaded,
+    );
+  }
+
+  @override
+  Future<DesktopGenerationAcknowledgement> startGeneration(
+    DesktopGenerationRequest generation,
+  ) async {
+    final HostGenerationAcknowledgement result = await _invokeResult(
+      (HostRequest request) => _hostApi.startGeneration(
+        request,
+        HostGenerationRequest(
+          generationId: generation.generationId,
+          sessionId: generation.sessionId,
+          prompt: generation.prompt,
+          context: generation.context,
+          temperature: generation.temperature,
+          topP: generation.topP,
+          maxTokens: generation.maxTokens,
+          seed: generation.seed,
+        ),
+      ),
+    );
+    return DesktopGenerationAcknowledgement(
+      generationId: result.generationId,
+      accepted: result.accepted,
+    );
+  }
+
+  @override
+  Future<DesktopCancellationAcknowledgement> cancelGeneration(
+    String generationId,
+  ) async {
+    final HostCancellationAcknowledgement result = await _invokeResult(
+      (HostRequest request) => _hostApi.cancelGeneration(request, generationId),
+    );
+    return DesktopCancellationAcknowledgement(
+      generationId: result.generationId,
+      acknowledged: result.acknowledged,
+    );
+  }
+
+  @override
+  Future<DesktopOperationCompletion> resetSession(String sessionId) async {
+    final HostOperationCompletion result = await _invokeResult(
+      (HostRequest request) => _hostApi.resetSession(request, sessionId),
+    );
+    return DesktopOperationCompletion(completed: result.completed);
+  }
+
+  @override
+  Future<DesktopOperationCompletion> unloadModel() async {
+    final HostOperationCompletion result = await _invokeResult(
+      _hostApi.unloadModel,
+    );
+    return DesktopOperationCompletion(completed: result.completed);
+  }
+
+  @override
   Future<void> showPanel() => _invoke(_hostApi.showPanel);
 
   @override
@@ -127,6 +213,20 @@ final class PigeonDesktopHostService extends DesktopHostEventApi
     _ensureAvailable();
     try {
       await operation(_nextRequestEnvelope());
+    } on PlatformException catch (error) {
+      final DesktopHostFailureCode code = DesktopHostFailureCode.fromPigeonCode(
+        error.code,
+      );
+      throw DesktopHostFailure(code);
+    }
+  }
+
+  Future<T> _invokeResult<T>(
+    Future<T> Function(HostRequest request) operation,
+  ) async {
+    _ensureAvailable();
+    try {
+      return await operation(_nextRequestEnvelope());
     } on PlatformException catch (error) {
       final DesktopHostFailureCode code = DesktopHostFailureCode.fromPigeonCode(
         error.code,

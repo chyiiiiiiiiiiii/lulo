@@ -238,6 +238,298 @@ struct HostRequest: Hashable {
 }
 
 /// Generated class from Pigeon that represents data sent in messages.
+struct HostHandshakeResult: Hashable {
+  var schemaVersion: Int64
+  var runtimeName: String
+  var supportsStreaming: Bool
+  var supportsCancellation: Bool
+
+
+  // swift-format-ignore: AlwaysUseLowerCamelCase
+  static func fromList(_ pigeonVar_list: [Any?]) -> HostHandshakeResult? {
+    let schemaVersion = pigeonVar_list[0] as! Int64
+    let runtimeName = pigeonVar_list[1] as! String
+    let supportsStreaming = pigeonVar_list[2] as! Bool
+    let supportsCancellation = pigeonVar_list[3] as! Bool
+
+    return HostHandshakeResult(
+      schemaVersion: schemaVersion,
+      runtimeName: runtimeName,
+      supportsStreaming: supportsStreaming,
+      supportsCancellation: supportsCancellation
+    )
+  }
+  func toList() -> [Any?] {
+    return [
+      schemaVersion,
+      runtimeName,
+      supportsStreaming,
+      supportsCancellation,
+    ]
+  }
+  static func == (lhs: HostHandshakeResult, rhs: HostHandshakeResult) -> Bool {
+    if Swift.type(of: lhs) != Swift.type(of: rhs) {
+      return false
+    }
+    return deepEqualsGeneratedDesktopHostApi(lhs.schemaVersion, rhs.schemaVersion) && deepEqualsGeneratedDesktopHostApi(lhs.runtimeName, rhs.runtimeName) && deepEqualsGeneratedDesktopHostApi(lhs.supportsStreaming, rhs.supportsStreaming) && deepEqualsGeneratedDesktopHostApi(lhs.supportsCancellation, rhs.supportsCancellation)
+  }
+
+  func hash(into hasher: inout Hasher) {
+    hasher.combine("HostHandshakeResult")
+    deepHashGeneratedDesktopHostApi(value: schemaVersion, hasher: &hasher)
+    deepHashGeneratedDesktopHostApi(value: runtimeName, hasher: &hasher)
+    deepHashGeneratedDesktopHostApi(value: supportsStreaming, hasher: &hasher)
+    deepHashGeneratedDesktopHostApi(value: supportsCancellation, hasher: &hasher)
+  }
+}
+
+/// Generated class from Pigeon that represents data sent in messages.
+struct HostModelRequest: Hashable {
+  var modelId: String
+  var modelPath: String
+  var contextSize: Int64
+
+
+  // swift-format-ignore: AlwaysUseLowerCamelCase
+  static func fromList(_ pigeonVar_list: [Any?]) -> HostModelRequest? {
+    let modelId = pigeonVar_list[0] as! String
+    let modelPath = pigeonVar_list[1] as! String
+    let contextSize = pigeonVar_list[2] as! Int64
+
+    return HostModelRequest(
+      modelId: modelId,
+      modelPath: modelPath,
+      contextSize: contextSize
+    )
+  }
+  func toList() -> [Any?] {
+    return [
+      modelId,
+      modelPath,
+      contextSize,
+    ]
+  }
+  static func == (lhs: HostModelRequest, rhs: HostModelRequest) -> Bool {
+    if Swift.type(of: lhs) != Swift.type(of: rhs) {
+      return false
+    }
+    return deepEqualsGeneratedDesktopHostApi(lhs.modelId, rhs.modelId) && deepEqualsGeneratedDesktopHostApi(lhs.modelPath, rhs.modelPath) && deepEqualsGeneratedDesktopHostApi(lhs.contextSize, rhs.contextSize)
+  }
+
+  func hash(into hasher: inout Hasher) {
+    hasher.combine("HostModelRequest")
+    deepHashGeneratedDesktopHostApi(value: modelId, hasher: &hasher)
+    deepHashGeneratedDesktopHostApi(value: modelPath, hasher: &hasher)
+    deepHashGeneratedDesktopHostApi(value: contextSize, hasher: &hasher)
+  }
+}
+
+/// Generated class from Pigeon that represents data sent in messages.
+struct HostModelLoadResult: Hashable {
+  var modelId: String
+  var loaded: Bool
+
+
+  // swift-format-ignore: AlwaysUseLowerCamelCase
+  static func fromList(_ pigeonVar_list: [Any?]) -> HostModelLoadResult? {
+    let modelId = pigeonVar_list[0] as! String
+    let loaded = pigeonVar_list[1] as! Bool
+
+    return HostModelLoadResult(
+      modelId: modelId,
+      loaded: loaded
+    )
+  }
+  func toList() -> [Any?] {
+    return [
+      modelId,
+      loaded,
+    ]
+  }
+  static func == (lhs: HostModelLoadResult, rhs: HostModelLoadResult) -> Bool {
+    if Swift.type(of: lhs) != Swift.type(of: rhs) {
+      return false
+    }
+    return deepEqualsGeneratedDesktopHostApi(lhs.modelId, rhs.modelId) && deepEqualsGeneratedDesktopHostApi(lhs.loaded, rhs.loaded)
+  }
+
+  func hash(into hasher: inout Hasher) {
+    hasher.combine("HostModelLoadResult")
+    deepHashGeneratedDesktopHostApi(value: modelId, hasher: &hasher)
+    deepHashGeneratedDesktopHostApi(value: loaded, hasher: &hasher)
+  }
+}
+
+/// Generated class from Pigeon that represents data sent in messages.
+struct HostGenerationRequest: Hashable {
+  var generationId: String
+  var sessionId: String
+  var prompt: String
+  var context: [String]
+  var temperature: Double
+  var topP: Double
+  var maxTokens: Int64
+  var seed: Int64
+
+
+  // swift-format-ignore: AlwaysUseLowerCamelCase
+  static func fromList(_ pigeonVar_list: [Any?]) -> HostGenerationRequest? {
+    let generationId = pigeonVar_list[0] as! String
+    let sessionId = pigeonVar_list[1] as! String
+    let prompt = pigeonVar_list[2] as! String
+    let context = pigeonVar_list[3] as! [String]
+    let temperature = pigeonVar_list[4] as! Double
+    let topP = pigeonVar_list[5] as! Double
+    let maxTokens = pigeonVar_list[6] as! Int64
+    let seed = pigeonVar_list[7] as! Int64
+
+    return HostGenerationRequest(
+      generationId: generationId,
+      sessionId: sessionId,
+      prompt: prompt,
+      context: context,
+      temperature: temperature,
+      topP: topP,
+      maxTokens: maxTokens,
+      seed: seed
+    )
+  }
+  func toList() -> [Any?] {
+    return [
+      generationId,
+      sessionId,
+      prompt,
+      context,
+      temperature,
+      topP,
+      maxTokens,
+      seed,
+    ]
+  }
+  static func == (lhs: HostGenerationRequest, rhs: HostGenerationRequest) -> Bool {
+    if Swift.type(of: lhs) != Swift.type(of: rhs) {
+      return false
+    }
+    return deepEqualsGeneratedDesktopHostApi(lhs.generationId, rhs.generationId) && deepEqualsGeneratedDesktopHostApi(lhs.sessionId, rhs.sessionId) && deepEqualsGeneratedDesktopHostApi(lhs.prompt, rhs.prompt) && deepEqualsGeneratedDesktopHostApi(lhs.context, rhs.context) && deepEqualsGeneratedDesktopHostApi(lhs.temperature, rhs.temperature) && deepEqualsGeneratedDesktopHostApi(lhs.topP, rhs.topP) && deepEqualsGeneratedDesktopHostApi(lhs.maxTokens, rhs.maxTokens) && deepEqualsGeneratedDesktopHostApi(lhs.seed, rhs.seed)
+  }
+
+  func hash(into hasher: inout Hasher) {
+    hasher.combine("HostGenerationRequest")
+    deepHashGeneratedDesktopHostApi(value: generationId, hasher: &hasher)
+    deepHashGeneratedDesktopHostApi(value: sessionId, hasher: &hasher)
+    deepHashGeneratedDesktopHostApi(value: prompt, hasher: &hasher)
+    deepHashGeneratedDesktopHostApi(value: context, hasher: &hasher)
+    deepHashGeneratedDesktopHostApi(value: temperature, hasher: &hasher)
+    deepHashGeneratedDesktopHostApi(value: topP, hasher: &hasher)
+    deepHashGeneratedDesktopHostApi(value: maxTokens, hasher: &hasher)
+    deepHashGeneratedDesktopHostApi(value: seed, hasher: &hasher)
+  }
+}
+
+/// Generated class from Pigeon that represents data sent in messages.
+struct HostGenerationAcknowledgement: Hashable {
+  var generationId: String
+  var accepted: Bool
+
+
+  // swift-format-ignore: AlwaysUseLowerCamelCase
+  static func fromList(_ pigeonVar_list: [Any?]) -> HostGenerationAcknowledgement? {
+    let generationId = pigeonVar_list[0] as! String
+    let accepted = pigeonVar_list[1] as! Bool
+
+    return HostGenerationAcknowledgement(
+      generationId: generationId,
+      accepted: accepted
+    )
+  }
+  func toList() -> [Any?] {
+    return [
+      generationId,
+      accepted,
+    ]
+  }
+  static func == (lhs: HostGenerationAcknowledgement, rhs: HostGenerationAcknowledgement) -> Bool {
+    if Swift.type(of: lhs) != Swift.type(of: rhs) {
+      return false
+    }
+    return deepEqualsGeneratedDesktopHostApi(lhs.generationId, rhs.generationId) && deepEqualsGeneratedDesktopHostApi(lhs.accepted, rhs.accepted)
+  }
+
+  func hash(into hasher: inout Hasher) {
+    hasher.combine("HostGenerationAcknowledgement")
+    deepHashGeneratedDesktopHostApi(value: generationId, hasher: &hasher)
+    deepHashGeneratedDesktopHostApi(value: accepted, hasher: &hasher)
+  }
+}
+
+/// Generated class from Pigeon that represents data sent in messages.
+struct HostCancellationAcknowledgement: Hashable {
+  var generationId: String
+  var acknowledged: Bool
+
+
+  // swift-format-ignore: AlwaysUseLowerCamelCase
+  static func fromList(_ pigeonVar_list: [Any?]) -> HostCancellationAcknowledgement? {
+    let generationId = pigeonVar_list[0] as! String
+    let acknowledged = pigeonVar_list[1] as! Bool
+
+    return HostCancellationAcknowledgement(
+      generationId: generationId,
+      acknowledged: acknowledged
+    )
+  }
+  func toList() -> [Any?] {
+    return [
+      generationId,
+      acknowledged,
+    ]
+  }
+  static func == (lhs: HostCancellationAcknowledgement, rhs: HostCancellationAcknowledgement) -> Bool {
+    if Swift.type(of: lhs) != Swift.type(of: rhs) {
+      return false
+    }
+    return deepEqualsGeneratedDesktopHostApi(lhs.generationId, rhs.generationId) && deepEqualsGeneratedDesktopHostApi(lhs.acknowledged, rhs.acknowledged)
+  }
+
+  func hash(into hasher: inout Hasher) {
+    hasher.combine("HostCancellationAcknowledgement")
+    deepHashGeneratedDesktopHostApi(value: generationId, hasher: &hasher)
+    deepHashGeneratedDesktopHostApi(value: acknowledged, hasher: &hasher)
+  }
+}
+
+/// Generated class from Pigeon that represents data sent in messages.
+struct HostOperationCompletion: Hashable {
+  var completed: Bool
+
+
+  // swift-format-ignore: AlwaysUseLowerCamelCase
+  static func fromList(_ pigeonVar_list: [Any?]) -> HostOperationCompletion? {
+    let completed = pigeonVar_list[0] as! Bool
+
+    return HostOperationCompletion(
+      completed: completed
+    )
+  }
+  func toList() -> [Any?] {
+    return [
+      completed
+    ]
+  }
+  static func == (lhs: HostOperationCompletion, rhs: HostOperationCompletion) -> Bool {
+    if Swift.type(of: lhs) != Swift.type(of: rhs) {
+      return false
+    }
+    return deepEqualsGeneratedDesktopHostApi(lhs.completed, rhs.completed)
+  }
+
+  func hash(into hasher: inout Hasher) {
+    hasher.combine("HostOperationCompletion")
+    deepHashGeneratedDesktopHostApi(value: completed, hasher: &hasher)
+  }
+}
+
+/// Generated class from Pigeon that represents data sent in messages.
 struct HostGenerationEvent: Hashable {
   var schemaVersion: Int64
   var generationId: String
@@ -316,6 +608,20 @@ private class GeneratedDesktopHostApiPigeonCodecReader: FlutterStandardReader {
     case 131:
       return HostRequest.fromList(self.readValue() as! [Any?])
     case 132:
+      return HostHandshakeResult.fromList(self.readValue() as! [Any?])
+    case 133:
+      return HostModelRequest.fromList(self.readValue() as! [Any?])
+    case 134:
+      return HostModelLoadResult.fromList(self.readValue() as! [Any?])
+    case 135:
+      return HostGenerationRequest.fromList(self.readValue() as! [Any?])
+    case 136:
+      return HostGenerationAcknowledgement.fromList(self.readValue() as! [Any?])
+    case 137:
+      return HostCancellationAcknowledgement.fromList(self.readValue() as! [Any?])
+    case 138:
+      return HostOperationCompletion.fromList(self.readValue() as! [Any?])
+    case 139:
       return HostGenerationEvent.fromList(self.readValue() as! [Any?])
     default:
       return super.readValue(ofType: type)
@@ -334,8 +640,29 @@ private class GeneratedDesktopHostApiPigeonCodecWriter: FlutterStandardWriter {
     } else if let value = value as? HostRequest {
       super.writeByte(131)
       super.writeValue(value.toList())
-    } else if let value = value as? HostGenerationEvent {
+    } else if let value = value as? HostHandshakeResult {
       super.writeByte(132)
+      super.writeValue(value.toList())
+    } else if let value = value as? HostModelRequest {
+      super.writeByte(133)
+      super.writeValue(value.toList())
+    } else if let value = value as? HostModelLoadResult {
+      super.writeByte(134)
+      super.writeValue(value.toList())
+    } else if let value = value as? HostGenerationRequest {
+      super.writeByte(135)
+      super.writeValue(value.toList())
+    } else if let value = value as? HostGenerationAcknowledgement {
+      super.writeByte(136)
+      super.writeValue(value.toList())
+    } else if let value = value as? HostCancellationAcknowledgement {
+      super.writeByte(137)
+      super.writeValue(value.toList())
+    } else if let value = value as? HostOperationCompletion {
+      super.writeByte(138)
+      super.writeValue(value.toList())
+    } else if let value = value as? HostGenerationEvent {
+      super.writeByte(139)
       super.writeValue(value.toList())
     } else {
       super.writeValue(value)
@@ -359,6 +686,12 @@ class GeneratedDesktopHostApiPigeonCodec: FlutterStandardMessageCodec, @unchecke
 
 /// Generated protocol from Pigeon that represents a handler of messages from Flutter.
 protocol DesktopHostApi {
+  func handshake(request: HostRequest) throws -> HostHandshakeResult
+  func loadModel(request: HostRequest, model: HostModelRequest) throws -> HostModelLoadResult
+  func startGeneration(request: HostRequest, generation: HostGenerationRequest) throws -> HostGenerationAcknowledgement
+  func cancelGeneration(request: HostRequest, generationId: String) throws -> HostCancellationAcknowledgement
+  func resetSession(request: HostRequest, sessionId: String) throws -> HostOperationCompletion
+  func unloadModel(request: HostRequest) throws -> HostOperationCompletion
   func showPanel(request: HostRequest) throws
   func hidePanel(request: HostRequest) throws
   func togglePanel(request: HostRequest) throws
@@ -370,6 +703,100 @@ class DesktopHostApiSetup {
   /// Sets up an instance of `DesktopHostApi` to handle messages through the `binaryMessenger`.
   static func setUp(binaryMessenger: FlutterBinaryMessenger, api: DesktopHostApi?, messageChannelSuffix: String = "") {
     let channelSuffix = messageChannelSuffix.count > 0 ? ".\(messageChannelSuffix)" : ""
+    let handshakeChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.local_agent_macos.DesktopHostApi.handshake\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
+    if let api = api {
+      handshakeChannel.setMessageHandler { message, reply in
+        let args = message as! [Any?]
+        let requestArg = args[0] as! HostRequest
+        do {
+          let result = try api.handshake(request: requestArg)
+          reply(wrapResult(result))
+        } catch {
+          reply(wrapError(error))
+        }
+      }
+    } else {
+      handshakeChannel.setMessageHandler(nil)
+    }
+    let loadModelChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.local_agent_macos.DesktopHostApi.loadModel\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
+    if let api = api {
+      loadModelChannel.setMessageHandler { message, reply in
+        let args = message as! [Any?]
+        let requestArg = args[0] as! HostRequest
+        let modelArg = args[1] as! HostModelRequest
+        do {
+          let result = try api.loadModel(request: requestArg, model: modelArg)
+          reply(wrapResult(result))
+        } catch {
+          reply(wrapError(error))
+        }
+      }
+    } else {
+      loadModelChannel.setMessageHandler(nil)
+    }
+    let startGenerationChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.local_agent_macos.DesktopHostApi.startGeneration\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
+    if let api = api {
+      startGenerationChannel.setMessageHandler { message, reply in
+        let args = message as! [Any?]
+        let requestArg = args[0] as! HostRequest
+        let generationArg = args[1] as! HostGenerationRequest
+        do {
+          let result = try api.startGeneration(request: requestArg, generation: generationArg)
+          reply(wrapResult(result))
+        } catch {
+          reply(wrapError(error))
+        }
+      }
+    } else {
+      startGenerationChannel.setMessageHandler(nil)
+    }
+    let cancelGenerationChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.local_agent_macos.DesktopHostApi.cancelGeneration\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
+    if let api = api {
+      cancelGenerationChannel.setMessageHandler { message, reply in
+        let args = message as! [Any?]
+        let requestArg = args[0] as! HostRequest
+        let generationIdArg = args[1] as! String
+        do {
+          let result = try api.cancelGeneration(request: requestArg, generationId: generationIdArg)
+          reply(wrapResult(result))
+        } catch {
+          reply(wrapError(error))
+        }
+      }
+    } else {
+      cancelGenerationChannel.setMessageHandler(nil)
+    }
+    let resetSessionChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.local_agent_macos.DesktopHostApi.resetSession\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
+    if let api = api {
+      resetSessionChannel.setMessageHandler { message, reply in
+        let args = message as! [Any?]
+        let requestArg = args[0] as! HostRequest
+        let sessionIdArg = args[1] as! String
+        do {
+          let result = try api.resetSession(request: requestArg, sessionId: sessionIdArg)
+          reply(wrapResult(result))
+        } catch {
+          reply(wrapError(error))
+        }
+      }
+    } else {
+      resetSessionChannel.setMessageHandler(nil)
+    }
+    let unloadModelChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.local_agent_macos.DesktopHostApi.unloadModel\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
+    if let api = api {
+      unloadModelChannel.setMessageHandler { message, reply in
+        let args = message as! [Any?]
+        let requestArg = args[0] as! HostRequest
+        do {
+          let result = try api.unloadModel(request: requestArg)
+          reply(wrapResult(result))
+        } catch {
+          reply(wrapError(error))
+        }
+      }
+    } else {
+      unloadModelChannel.setMessageHandler(nil)
+    }
     let showPanelChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.local_agent_macos.DesktopHostApi.showPanel\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
     if let api = api {
       showPanelChannel.setMessageHandler { message, reply in
