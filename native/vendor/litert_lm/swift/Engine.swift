@@ -134,7 +134,9 @@ public actor Engine {
   /// - Returns: `Conversation` The created conversation.
   /// - Throws: A `LiteRTLMError` if the conversation creation fails.
   ///
-  public func createConversation(with config: ConversationConfig? = nil) throws -> Conversation {
+  public func createConversation(
+    with config: ConversationConfig? = nil
+  ) throws -> sending Conversation {
     guard isInitialized() else {
       throw LiteRTLMError.engine(.notInitialized)
     }

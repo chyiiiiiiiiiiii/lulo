@@ -81,6 +81,7 @@ public enum LiteRTLMError: Error, LocalizedError, Equatable {
     case invalidResponse(String)
     case recurringToolCallLimitExceeded(limit: Int)
     case failedToStartStream(status: Int)
+    case invalidMaxOutputTokens
     case invalidJson(String)
     case toolExecutionError(name: String, error: String)
     case benchmarkNotEnabled
@@ -98,6 +99,8 @@ public enum LiteRTLMError: Error, LocalizedError, Equatable {
         return "Exceeded recurring tool call limit of \(limit)"
       case .failedToStartStream(let status):
         return "Failed to start stream. Status: \(status)"
+      case .invalidMaxOutputTokens:
+        return "maxOutputTokens must fit in Int32 and be greater than zero."
       case .invalidJson(let details):
         return "Invalid JSON: \(details)"
       case .toolExecutionError(let name, let error):

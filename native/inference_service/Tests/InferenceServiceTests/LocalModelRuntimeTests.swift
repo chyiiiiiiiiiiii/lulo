@@ -1,10 +1,46 @@
 import Dispatch
 import Foundation
+@testable import LiteRTLM
 import XCTest
 
 @testable import InferenceService
 
 final class LocalModelRuntimeTests: XCTestCase {
+  func testConversationMaxOutputTokensPropagatesValidatedValue() throws {
+    var recordedValues: [Int32] = []
+
+    try applyConversationMaxOutputTokens(128) { value in
+      recordedValues.append(value)
+    }
+
+    XCTAssertEqual(recordedValues, [128])
+  }
+
+  func testConversationMaxOutputTokensOmitsUnsetValue() throws {
+    var recordedValues: [Int32] = []
+
+    try applyConversationMaxOutputTokens(nil) { value in
+      recordedValues.append(value)
+    }
+
+    XCTAssertTrue(recordedValues.isEmpty)
+  }
+
+  func testConversationMaxOutputTokensRejectsInvalidValues() {
+    let invalidValues = [0, -1, Int(Int32.max) + 1]
+
+    for value in invalidValues {
+      XCTAssertThrowsError(
+        try applyConversationMaxOutputTokens(value) { _ in }
+      ) { error in
+        XCTAssertEqual(
+          error as? LiteRTLMError,
+          .conversation(.invalidMaxOutputTokens)
+        )
+      }
+    }
+  }
+
   func testMainQueueDispatcherQueuesOffMainWorkInOrder() {
     var queued: [() -> Void] = []
     var delivered: [Int] = []

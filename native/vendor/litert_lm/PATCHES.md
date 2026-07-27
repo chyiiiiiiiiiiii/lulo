@@ -6,15 +6,16 @@ release `v0.14.0`, Git revision
 `80f301ff9a3b02c2c1e7be2dd1a567752f7b51b6`, under Apache-2.0.
 
 Only the ten production Swift wrapper sources from upstream `swift/` and the
-upstream `LICENSE` are copied. Upstream tests, iOS artifacts, repository
+upstream `LICENSE` are copied, with the narrow local wrapper patch documented
+below. Upstream tests, iOS artifacts, repository
 history, build caches, model files, and binary archives are intentionally not
 vendored. The deterministic wrapper-source hash is
-`09a6b8db393646be730723c9207f87d5335a0cbe68f34af17e20ddec5f337b55`,
+`147c61bff2e672d4ccd6e8f00b62d77f2bebd0db071f52fd3dcc30baa4f27e81`,
 computed by hashing each source with SHA-256, sorting those records by
 filename, and hashing the resulting records. The opt-in verification gate also
 pins every individual source hash and the license hash.
 
-## Manifest-only patches
+## Local patches
 
 1. The official macOS archive URL is retained, but its checksum is corrected
    from upstream's invalid
@@ -24,6 +25,22 @@ pins every individual source hash and the license hash.
 2. The upstream `-Xlinker -all_load` unsafe linker flag is omitted. With Swift
    6.3.3 and Xcode 26.6 it creates 54 duplicate Swift compatibility symbols;
    omitting only that flag compiles, links, and runs the no-model smoke.
+3. `Conversation.sendMessageStream` and its internal `sendToStream` path accept
+   a validated per-call `maxOutputTokens` and pass it to
+   `litert_lm_conversation_optional_args_set_max_output_tokens`. Values must be
+   positive and fit in `Int32`; invalid values throw the typed
+   `LiteRTLMError.conversation(.invalidMaxOutputTokens)` instead of being
+   ignored. Model-free Swift tests pin propagation, omission, and validation.
+4. `Engine.createConversation` returns `sending Conversation` instead of a bare
+   `Conversation`. `Engine` is an actor and `Conversation` is a non-`Sendable`
+   class, so under Swift 6 strict concurrency the value cannot otherwise cross
+   the actor boundary to the caller. `sending` transfers the only reference out
+   of the actor's isolation domain and lets the compiler prove no aliasing
+   remains behind, which keeps the LiteRT `Conversation` confined to one
+   isolation domain at a time. Marking `Conversation` `@unchecked Sendable` is
+   deliberately rejected: it would silence the compiler while leaving the
+   underlying `CConversationHandle` reachable concurrently, which is exactly
+   the data race this project's actor-per-generation ownership model prevents.
 
 The local manifest is scoped to the macOS product and production wrapper, so
 the unused upstream iOS binary and upstream test targets are not reproduced.

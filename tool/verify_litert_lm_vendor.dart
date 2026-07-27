@@ -18,13 +18,13 @@ const Map<String, String> _sourceChecksums = <String, String>{
   'Config.swift':
       '3f1c93449c679736b4e487376805161673b440c74244b07bb15c3c288e6aa929',
   'Conversation.swift':
-      '178a722d7727febd319f9852b33f7094d1e6d251541f9e0f3ad210ae6694eadf',
+      'b6af8f849cd7ae212381b566d5ef252f6070cabd528a544dfb3a6ddff86595e2',
   'Engine.swift':
-      'aae9f14109d8cc6aeec34c6c67e6b49f096bad4d54b81813e5901a0efd8eab2c',
+      '2ebbb095aea6440725e605b3b858ae43e30f2cbbb19cb420c3595f4c49d1290d',
   'ExperimentalFlags.swift':
       'bc2d554c686a0db84d553174d1acffbcd38e151a8f10f3f0b78e747a11400621',
   'LiteRTLMError.swift':
-      '0ab54191c0f0a01ce03b69b411b968400bee295d4672fb51519713f3f275dc85',
+      '40a05e2749a8445b4b36873e4889ee1cbf6da9337101af9b7ae5d69751c6fbcb',
   'Message.swift':
       'c9f3bcaa02897e406b8e3208c9c9657c8035d4830ee61dd0c5a2a6536f814d55',
   'Tool.swift':
@@ -32,6 +32,11 @@ const Map<String, String> _sourceChecksums = <String, String>{
   'ToolManager.swift':
       '7fed45d66e562a153dd61e57a8cc67cbd89fa063d1c09d9d20626ea48574d3f7',
 };
+
+/// SHA-256 over the wrapper-source records, each rendered as
+/// `<sha256>  <filename>\n` and ordered by filename.
+const String _wrapperAggregateChecksum =
+    '147c61bff2e672d4ccd6e8f00b62d77f2bebd0db071f52fd3dcc30baa4f27e81';
 
 const String _licenseChecksum =
     'c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4';
@@ -139,6 +144,7 @@ Future<void> _main(List<String> arguments) async {
   }
   await _requireChecksum(File(_join(vendor.path, 'LICENSE')), _licenseChecksum);
   await _requireChecksum(compileSmokeSource, _compileSmokeChecksum);
+  await _requireWrapperAggregateChecksum();
 
   final Map<String, dynamic> vendorPackage = await _dumpPackage(vendor);
   _validateVendorPackage(vendorPackage);
@@ -149,6 +155,7 @@ Future<void> _main(List<String> arguments) async {
     'v0.14.0',
     _upstreamRevision,
     _releaseArchiveChecksum,
+    _wrapperAggregateChecksum,
     'Apache-2.0',
     'Exit condition',
   ]) {
@@ -528,8 +535,12 @@ void _validateInferencePackage(
       <String, dynamic>{
         'byName': <dynamic>['InferenceService', null],
       },
+      <String, dynamic>{
+        'product': <dynamic>['LiteRTLM', 'litert_lm', null, null],
+      },
     ]),
-    'InferenceServiceTests must depend exactly on InferenceService.',
+    'InferenceServiceTests must depend exactly on InferenceService and '
+    'local LiteRTLM.',
   );
   _require(
     _asList(testsTarget['settings']).isEmpty,
@@ -890,15 +901,21 @@ Future<void> _runSelfTests(List<String> arguments) async {
       _MutationCase('inference test dependency', (Directory fixture) {
         _mutateFile(
           File(_join(fixture.path, 'native/inference_service/Package.swift')),
-          'dependencies: ["InferenceService"]',
-          'dependencies: []',
+          '        "InferenceService",\n'
+              '        .product(name: "LiteRTLM", package: "litert_lm"),',
+          '        .product(name: "LiteRTLM", package: "litert_lm"),',
         );
       }),
       _MutationCase('inference test settings', (Directory fixture) {
         _mutateFile(
           File(_join(fixture.path, 'native/inference_service/Package.swift')),
-          'dependencies: ["InferenceService"]\n    )',
-          'dependencies: ["InferenceService"],\n'
+          '        "InferenceService",\n'
+              '        .product(name: "LiteRTLM", package: "litert_lm"),\n'
+              '      ]\n'
+              '    )',
+          '        "InferenceService",\n'
+              '        .product(name: "LiteRTLM", package: "litert_lm"),\n'
+              '      ],\n'
               '      swiftSettings: [.unsafeFlags(["-DUNSAFE"])]\n'
               '    )',
         );
@@ -915,8 +932,23 @@ Future<void> _runSelfTests(List<String> arguments) async {
       _MutationCase('compile-smoke target dependency', (Directory fixture) {
         _mutateFile(
           File(_join(fixture.path, 'native/inference_service/Package.swift')),
-          '.product(name: "LiteRTLM", package: "litert_lm"),',
-          '',
+          '    .executableTarget(\n'
+              '      name: "LiteRTLMCompileSmoke",\n'
+              '      dependencies: [\n'
+              '        .product(name: "LiteRTLM", package: "litert_lm"),\n'
+              '      ]\n'
+              '    ),',
+          '    .executableTarget(\n'
+              '      name: "LiteRTLMCompileSmoke",\n'
+              '      dependencies: []\n'
+              '    ),',
+        );
+      }),
+      _MutationCase('wrapper aggregate fingerprint drift', (Directory fixture) {
+        _mutateFile(
+          File(_join(fixture.path, 'native/vendor/litert_lm/PATCHES.md')),
+          _wrapperAggregateChecksum,
+          '0000000000000000000000000000000000000000000000000000000000000000',
         );
       }),
       _MutationCase('no-op compile-smoke source edit', (Directory fixture) {
@@ -1192,6 +1224,27 @@ Future<ProcessResult> _runContractForFixture(Directory fixture) {
     File(Platform.script.toFilePath()).absolute.path,
     '--contract-only',
   ], workingDirectory: fixture.path);
+}
+
+/// Recomputes the aggregate wrapper fingerprint from the pinned per-source
+/// hashes so a source edit can never land without repinning the aggregate.
+Future<void> _requireWrapperAggregateChecksum() async {
+  final List<String> names = _sourceChecksums.keys.toList()..sort();
+  final String records = names
+      .map((String name) => '${_sourceChecksums[name]}  $name\n')
+      .join();
+  final Process process = await Process.start('shasum', <String>['-a', '256']);
+  process.stdin.write(records);
+  await process.stdin.close();
+  final String output = await process.stdout.transform(utf8.decoder).join();
+  final int exitCode = await process.exitCode;
+  _require(exitCode == 0, 'Could not hash the aggregate wrapper records.');
+  final String actual = output.split(RegExp(r'\s+')).first;
+  _require(
+    actual == _wrapperAggregateChecksum,
+    'Aggregate wrapper-source fingerprint drifted.\n'
+    'Expected: $_wrapperAggregateChecksum\nActual: $actual',
+  );
 }
 
 Future<void> _requireChecksum(File file, String expected) async {

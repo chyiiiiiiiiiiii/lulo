@@ -25,7 +25,10 @@ let package = Package(
     ),
     .testTarget(
       name: "InferenceServiceTests",
-      dependencies: ["InferenceService"]
+      dependencies: [
+        "InferenceService",
+        .product(name: "LiteRTLM", package: "litert_lm"),
+      ]
     ),
   ]
 )

@@ -25,6 +25,19 @@ private let logger = Logger(
 
 private let recurringToolCallLimit = 25
 
+func applyConversationMaxOutputTokens(
+  _ maxOutputTokens: Int?,
+  setter: (Int32) -> Void
+) throws {
+  guard let maxOutputTokens else {
+    return
+  }
+  guard maxOutputTokens > 0, maxOutputTokens <= Int(Int32.max) else {
+    throw LiteRTLMError.conversation(.invalidMaxOutputTokens)
+  }
+  setter(Int32(maxOutputTokens))
+}
+
 /// Represents a conversation with the LiteRT-LM model.
 ///
 /// Example usage:
@@ -187,9 +200,12 @@ public class Conversation {
   ///
   /// - Parameter message: The message to send.
   /// - Parameter extraContext: The extra context to send to the model.
+  /// - Parameter maxOutputTokens: The maximum number of tokens generated for this message.
   /// - Returns: An async throwing stream of `Message` chunks.
   public func sendMessageStream(
-    _ message: Message, extraContext: [String: Any]? = nil
+    _ message: Message,
+    extraContext: [String: Any]? = nil,
+    maxOutputTokens: Int? = nil
   ) -> AsyncThrowingStream<Message, Error> {
     return AsyncThrowingStream { continuation in
       do {
@@ -199,7 +215,12 @@ public class Conversation {
           continuation: continuation, conversation: self)
 
         try self.sendToStream(
-          handle: handle, messageJson: messageJson, extraContext: extraContext, context: context)
+          handle: handle,
+          messageJson: messageJson,
+          extraContext: extraContext,
+          maxOutputTokens: maxOutputTokens,
+          context: context
+        )
       } catch {
         continuation.finish(throwing: error)
       }
@@ -215,6 +236,7 @@ public class Conversation {
   ///   - handle: The `CConversationHandle` for the current conversation.
   ///   - messageJson: The message to send, represented as a JSON dictionary.
   ///   - extraContext: The extra context to send to the model.
+  ///   - maxOutputTokens: The maximum number of tokens generated for this message.
   ///   - context: The `StreamContext` containing the `AsyncThrowingStream.Continuation`
   ///     and other state for the streaming process.
   /// - Throws: A `LiteRTLMError` if the message fails to send or the response is invalid.
@@ -223,6 +245,7 @@ public class Conversation {
     handle: CConversationHandle,
     messageJson: [String: Any],
     extraContext: [String: Any]? = nil,
+    maxOutputTokens: Int? = nil,
     context: StreamContext
   ) throws {
     let messageData = try JSONSerialization.data(withJSONObject: messageJson)
@@ -241,6 +264,12 @@ public class Conversation {
     if let visualTokenBudget = ExperimentalFlags.visualTokenBudget {
       litert_lm_conversation_optional_args_set_visual_token_budget(
         optionalArgs, Int32(visualTokenBudget))
+    }
+    try applyConversationMaxOutputTokens(maxOutputTokens) { value in
+      litert_lm_conversation_optional_args_set_max_output_tokens(
+        optionalArgs,
+        value
+      )
     }
     defer { litert_lm_conversation_optional_args_delete(optionalArgs) }
 
