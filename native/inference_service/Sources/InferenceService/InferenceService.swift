@@ -576,6 +576,93 @@ public protocol LocalModelRuntimeBackend: AnyObject {
   func unloadModel() throws -> RuntimeOperationCompletion
 }
 
+public protocol RuntimeBackend: AnyObject, Sendable {
+  var capabilities: RuntimeCapabilities { get async }
+
+  func loadModel(_ model: RuntimeModelRequest) async throws
+    -> RuntimeModelLoadResult
+
+  func startGeneration(_ generation: RuntimeGenerationRequest) async throws
+    -> RuntimeGenerationAcknowledgement
+
+  func cancelGeneration(generationId: String) async throws
+    -> RuntimeCancellationAcknowledgement
+
+  func resetSession(sessionId: String) async throws
+    -> RuntimeOperationCompletion
+
+  func unloadModel() async throws -> RuntimeOperationCompletion
+}
+
+public actor InferenceCoordinator {
+  public init(
+    supportedSchemaVersion: Int64,
+    backend: any RuntimeBackend
+  ) {
+    self.supportedSchemaVersion = supportedSchemaVersion
+    self.backend = backend
+  }
+
+  private enum ModelState {
+    case idle
+    case loading(
+      request: RuntimeModelRequest,
+      task: Task<RuntimeModelLoadResult, Error>
+    )
+    case loaded(
+      request: RuntimeModelRequest,
+      result: RuntimeModelLoadResult
+    )
+  }
+
+  private let supportedSchemaVersion: Int64
+  private let backend: any RuntimeBackend
+  private var modelState = ModelState.idle
+
+  public func loadModel(
+    request: RuntimeRequestEnvelope,
+    model: RuntimeModelRequest
+  ) async throws -> RuntimeModelLoadResult {
+    try validate(request)
+
+    switch modelState {
+    case .loaded(let loadedRequest, let result):
+      guard loadedRequest == model else {
+        throw RuntimeBoundaryError.modelLoadFailed
+      }
+      return result
+    case .loading(let loadingRequest, let task):
+      guard loadingRequest == model else {
+        throw RuntimeBoundaryError.modelLoadFailed
+      }
+      return try await task.value
+    case .idle:
+      let task = Task {
+        try await backend.loadModel(model)
+      }
+      modelState = .loading(request: model, task: task)
+      do {
+        let result = try await task.value
+        modelState = .loaded(request: model, result: result)
+        return result
+      } catch {
+        modelState = .idle
+        throw error
+      }
+    }
+  }
+
+  private func validate(_ request: RuntimeRequestEnvelope) throws {
+    guard
+      request.schemaVersion == supportedSchemaVersion,
+      !request.requestId.isEmpty,
+      request.timestampMicros > 0
+    else {
+      throw RuntimeBoundaryError.protocolMismatch
+    }
+  }
+}
+
 public final class LocalModelRuntimeCoordinator {
   public init(
     supportedSchemaVersion: Int64,

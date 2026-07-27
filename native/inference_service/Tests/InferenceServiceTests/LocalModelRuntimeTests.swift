@@ -254,6 +254,49 @@ final class LocalModelRuntimeTests: XCTestCase {
     }
   }
 
+  func testOverlappingSameModelLoadsShareOneBackendLoadAndResult() async throws {
+    let backend = RuntimeBackendSpy()
+    let coordinator = InferenceCoordinator(
+      supportedSchemaVersion: 2,
+      backend: backend
+    )
+    let request = RuntimeRequestEnvelope(
+      schemaVersion: 2,
+      requestId: "request-1",
+      timestampMicros: 1
+    )
+    let model = RuntimeModelRequest(
+      modelId: "model-1",
+      modelPath: "/models/model-1.bin",
+      contextSize: 4096
+    )
+    let admissionGate = AsyncAdmissionGate(requiredArrivals: 2)
+
+    async let first: RuntimeModelLoadResult = {
+      await admissionGate.arriveAndWait()
+      return try await coordinator.loadModel(request: request, model: model)
+    }()
+    async let second: RuntimeModelLoadResult = {
+      await admissionGate.arriveAndWait()
+      return try await coordinator.loadModel(request: request, model: model)
+    }()
+
+    await admissionGate.waitUntilAllArrive()
+    await admissionGate.open()
+    await backend.waitForLoadCall()
+    await backend.completeLoad(
+      with: RuntimeModelLoadResult(modelId: model.modelId, loaded: true)
+    )
+
+    let results = try await [first, second]
+    XCTAssertEqual(results, [
+      RuntimeModelLoadResult(modelId: model.modelId, loaded: true),
+      RuntimeModelLoadResult(modelId: model.modelId, loaded: true),
+    ])
+    let loadCallCount = await backend.loadCallCount
+    XCTAssertEqual(loadCallCount, 1)
+  }
+
   func testEventBridgePreservesIdentitySequenceAndOneTerminal() {
     let sink = RecordingGenerationEventSink()
     let bridge = GenerationEventBridge(
@@ -1263,6 +1306,107 @@ private enum BackendInvocation: Equatable {
   case cancelGeneration
   case resetSession
   case unloadModel
+}
+
+private actor AsyncAdmissionGate {
+  init(requiredArrivals: Int) {
+    self.requiredArrivals = requiredArrivals
+  }
+
+  private let requiredArrivals: Int
+  private var arrivalCount = 0
+  private var opened = false
+  private var allArrivedContinuations: [CheckedContinuation<Void, Never>] = []
+  private var waitingContinuations: [CheckedContinuation<Void, Never>] = []
+
+  func arriveAndWait() async {
+    arrivalCount += 1
+    if arrivalCount == requiredArrivals {
+      allArrivedContinuations.forEach { $0.resume() }
+      allArrivedContinuations.removeAll()
+    }
+    guard !opened else {
+      return
+    }
+    await withCheckedContinuation { continuation in
+      waitingContinuations.append(continuation)
+    }
+  }
+
+  func waitUntilAllArrive() async {
+    guard arrivalCount < requiredArrivals else {
+      return
+    }
+    await withCheckedContinuation { continuation in
+      allArrivedContinuations.append(continuation)
+    }
+  }
+
+  func open() {
+    opened = true
+    waitingContinuations.forEach { $0.resume() }
+    waitingContinuations.removeAll()
+  }
+}
+
+private actor RuntimeBackendSpy: RuntimeBackend {
+  let capabilities = RuntimeCapabilities(
+    runtimeName: "spy",
+    supportsStreaming: true,
+    supportsCancellation: true
+  )
+
+  private(set) var loadCallCount = 0
+  private var loadCallContinuations: [CheckedContinuation<Void, Never>] = []
+  private var loadContinuation: CheckedContinuation<RuntimeModelLoadResult, Error>?
+
+  func loadModel(_ model: RuntimeModelRequest) async throws
+    -> RuntimeModelLoadResult {
+    loadCallCount += 1
+    loadCallContinuations.forEach { $0.resume() }
+    loadCallContinuations.removeAll()
+    return try await withCheckedThrowingContinuation { continuation in
+      loadContinuation = continuation
+    }
+  }
+
+  func waitForLoadCall() async {
+    guard loadCallCount == 0 else {
+      return
+    }
+    await withCheckedContinuation { continuation in
+      loadCallContinuations.append(continuation)
+    }
+  }
+
+  func completeLoad(with result: RuntimeModelLoadResult) {
+    loadContinuation?.resume(returning: result)
+    loadContinuation = nil
+  }
+
+  func startGeneration(_ generation: RuntimeGenerationRequest) async throws
+    -> RuntimeGenerationAcknowledgement {
+    RuntimeGenerationAcknowledgement(
+      generationId: generation.generationId,
+      accepted: true
+    )
+  }
+
+  func cancelGeneration(generationId: String) async throws
+    -> RuntimeCancellationAcknowledgement {
+    RuntimeCancellationAcknowledgement(
+      generationId: generationId,
+      acknowledged: true
+    )
+  }
+
+  func resetSession(sessionId: String) async throws -> RuntimeOperationCompletion {
+    RuntimeOperationCompletion(completed: true)
+  }
+
+  func unloadModel() async throws -> RuntimeOperationCompletion {
+    RuntimeOperationCompletion(completed: true)
+  }
 }
 
 private final class RecordingLocalModelRuntimeBackend: LocalModelRuntimeBackend {
