@@ -597,10 +597,12 @@ public protocol RuntimeBackend: AnyObject, Sendable {
 public actor InferenceCoordinator {
   public init(
     supportedSchemaVersion: Int64,
-    backend: any RuntimeBackend
+    backend: any RuntimeBackend,
+    eventHandler: @escaping @Sendable (RuntimeGenerationEvent) -> Void = { _ in }
   ) {
     self.supportedSchemaVersion = supportedSchemaVersion
     self.backend = backend
+    self.eventHandler = eventHandler
   }
 
   private enum ModelState {
@@ -625,11 +627,24 @@ public actor InferenceCoordinator {
     case active(generationId: String, token: UInt64)
   }
 
+  private struct CancellationOperation {
+    let operationToken: UInt64
+    let generationId: String
+    let generationToken: UInt64
+    let task: Task<RuntimeCancellationAcknowledgement, Error>
+  }
+
   private let supportedSchemaVersion: Int64
   private let backend: any RuntimeBackend
+  private let eventHandler:
+    @Sendable (RuntimeGenerationEvent) -> Void
   private var modelState = ModelState.idle
   private var generationState = GenerationState.idle
   private var nextGenerationToken: UInt64 = 0
+  private var nextCancellationToken: UInt64 = 0
+  private var cancellationOperation: CancellationOperation?
+  private var lastGenerationSequence: Int64?
+  private var cancelledGenerationIds: [String] = []
 
   public func loadModel(
     request: RuntimeRequestEnvelope,
@@ -669,6 +684,9 @@ public actor InferenceCoordinator {
     generation: RuntimeGenerationRequest
   ) async throws -> RuntimeGenerationAcknowledgement {
     try validate(request)
+    guard !cancelledGenerationIds.contains(generation.generationId) else {
+      throw RuntimeBoundaryError.protocolMismatch
+    }
     guard case .idle = generationState else {
       throw RuntimeBoundaryError.generationBusy
     }
@@ -678,6 +696,7 @@ public actor InferenceCoordinator {
     }
     let token = nextGenerationToken
     nextGenerationToken &+= 1
+    lastGenerationSequence = nil
     generationState = .starting(
       generationId: generation.generationId,
       token: token,
@@ -715,18 +734,123 @@ public actor InferenceCoordinator {
     }
   }
 
-  public func receiveGenerationEvent(_ event: RuntimeGenerationEvent) {
-    guard isTerminal(event.kind) else {
+  public func cancelGeneration(
+    request: RuntimeRequestEnvelope,
+    generationId: String
+  ) async throws -> RuntimeCancellationAcknowledgement {
+    try validate(request)
+    if cancelledGenerationIds.contains(generationId) {
+      return RuntimeCancellationAcknowledgement(
+        generationId: generationId,
+        acknowledged: true
+      )
+    }
+    if
+      let cancellationOperation,
+      cancellationOperation.generationId == generationId
+    {
+      return try await finishCancellation(cancellationOperation)
+    }
+    guard let generationToken = generationToken(for: generationId) else {
+      return try await backend.cancelGeneration(generationId: generationId)
+    }
+
+    let operationToken = nextCancellationToken
+    nextCancellationToken &+= 1
+    let operation = CancellationOperation(
+      operationToken: operationToken,
+      generationId: generationId,
+      generationToken: generationToken,
+      task: Task {
+        try await backend.cancelGeneration(generationId: generationId)
+      }
+    )
+    cancellationOperation = operation
+    return try await finishCancellation(operation)
+  }
+
+  private func finishCancellation(
+    _ operation: CancellationOperation
+  ) async throws -> RuntimeCancellationAcknowledgement {
+    do {
+      let acknowledgement = try await operation.task.value
+      guard acknowledgement.generationId == operation.generationId else {
+        if cancellationOperation?.operationToken == operation.operationToken {
+          cancellationOperation = nil
+        }
+        throw RuntimeBoundaryError.protocolMismatch
+      }
+      guard
+        cancellationOperation?.operationToken == operation.operationToken
+      else {
+        return acknowledgement
+      }
+      cancellationOperation = nil
+      guard
+        acknowledgement.acknowledged,
+        generationToken(for: operation.generationId)
+          == operation.generationToken
+      else {
+        return acknowledgement
+      }
+
+      let sequence = (lastGenerationSequence ?? -1) + 1
+      generationState = .idle
+      lastGenerationSequence = nil
+      recordCancelledGeneration(operation.generationId)
+      eventHandler(
+        RuntimeGenerationEvent(
+          generationId: operation.generationId,
+          sequence: sequence,
+          kind: .cancelled,
+          failureCode: .cancelled,
+          message: "The response was cancelled."
+        )
+      )
+      return acknowledgement
+    } catch {
+      if cancellationOperation?.operationToken == operation.operationToken {
+        cancellationOperation = nil
+      }
+      throw error
+    }
+  }
+
+  public func receiveGenerationEvent(_ event: RuntimeGenerationEvent) async {
+    guard generationToken(for: event.generationId) != nil else {
       return
     }
+    if
+      let lastGenerationSequence,
+      event.sequence <= lastGenerationSequence
+    {
+      return
+    }
+    lastGenerationSequence = event.sequence
+    if isTerminal(event.kind) {
+      generationState = .idle
+      lastGenerationSequence = nil
+    }
+    eventHandler(event)
+  }
+
+  private func generationToken(for generationId: String) -> UInt64? {
     switch generationState {
-    case .starting(let generationId, _, _)
-      where generationId == event.generationId:
-      generationState = .idle
-    case .active(let generationId, _) where generationId == event.generationId:
-      generationState = .idle
-    case .idle, .starting, .active:
-      break
+    case .starting(let activeGenerationId, let token, _),
+      .active(let activeGenerationId, let token):
+      activeGenerationId == generationId ? token : nil
+    case .idle:
+      nil
+    }
+  }
+
+  private func recordCancelledGeneration(_ generationId: String) {
+    guard !cancelledGenerationIds.contains(generationId) else {
+      return
+    }
+    cancelledGenerationIds.append(generationId)
+    if cancelledGenerationIds.count > 32 {
+      cancelledGenerationIds.removeFirst()
     }
   }
 

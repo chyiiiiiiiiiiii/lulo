@@ -1,4 +1,5 @@
 import Dispatch
+import Foundation
 import XCTest
 
 @testable import InferenceService
@@ -676,6 +677,667 @@ final class LocalModelRuntimeTests: XCTestCase {
     }
     let startCallCount = await backend.startCallCount
     XCTAssertEqual(startCallCount, 2)
+  }
+
+  func testCancelBeforeStartAcknowledgementEmitsOneTerminalAndIsIdempotent()
+    async throws
+  {
+    let backend = RuntimeBackendSpy()
+    let recorder = RuntimeEventRecorder()
+    let coordinator = InferenceCoordinator(
+      supportedSchemaVersion: 2,
+      backend: backend,
+      eventHandler: { event in
+        recorder.record(event)
+      }
+    )
+    let request = RuntimeRequestEnvelope(
+      schemaVersion: 2,
+      requestId: "request-1",
+      timestampMicros: 1
+    )
+    let model = RuntimeModelRequest(
+      modelId: "model-1",
+      modelPath: "/models/model-1.bin",
+      contextSize: 4096
+    )
+    let firstGeneration = RuntimeGenerationRequest(
+      generationId: "generation-1",
+      sessionId: "session-1",
+      prompt: "first",
+      context: [],
+      temperature: 0.25,
+      topP: 0.9,
+      maxTokens: 128,
+      seed: 1
+    )
+    let secondGeneration = RuntimeGenerationRequest(
+      generationId: "generation-2",
+      sessionId: "session-1",
+      prompt: "second",
+      context: [],
+      temperature: 0.25,
+      topP: 0.9,
+      maxTokens: 128,
+      seed: 2
+    )
+
+    async let loadResult = coordinator.loadModel(request: request, model: model)
+    await backend.waitForLoadCall()
+    await backend.completeLoads(
+      with: RuntimeModelLoadResult(modelId: model.modelId, loaded: true)
+    )
+    _ = try await loadResult
+
+    async let firstAcknowledgement = coordinator.startGeneration(
+      request: request,
+      generation: firstGeneration
+    )
+    await backend.waitForStartCall(count: 1)
+
+    let firstCancellation = try await coordinator.cancelGeneration(
+      request: request,
+      generationId: firstGeneration.generationId
+    )
+    let duplicateCancellation = try await coordinator.cancelGeneration(
+      request: request,
+      generationId: firstGeneration.generationId
+    )
+
+    XCTAssertEqual(
+      firstCancellation,
+      RuntimeCancellationAcknowledgement(
+        generationId: firstGeneration.generationId,
+        acknowledged: true
+      )
+    )
+    XCTAssertEqual(duplicateCancellation, firstCancellation)
+    let events = recorder.events
+    XCTAssertEqual(
+      events,
+      [
+        RuntimeGenerationEvent(
+          generationId: firstGeneration.generationId,
+          sequence: 0,
+          kind: .cancelled,
+          failureCode: .cancelled,
+          message: "The response was cancelled."
+        ),
+      ]
+    )
+    let cancelCallCount = await backend.cancelCallCount
+    XCTAssertEqual(cancelCallCount, 1)
+
+    await backend.completeStart(
+      generationId: firstGeneration.generationId,
+      with: RuntimeGenerationAcknowledgement(
+        generationId: firstGeneration.generationId,
+        accepted: true
+      )
+    )
+    _ = try await firstAcknowledgement
+
+    await backend.automaticallyAcknowledgeStarts()
+    let secondAcknowledgement = try await coordinator.startGeneration(
+      request: request,
+      generation: secondGeneration
+    )
+    XCTAssertEqual(
+      secondAcknowledgement,
+      RuntimeGenerationAcknowledgement(
+        generationId: secondGeneration.generationId,
+        accepted: true
+      )
+    )
+  }
+
+  func testConcurrentCancellationSharesOneBackendOperation() async throws {
+    let backend = RuntimeBackendSpy(blockCancellations: true)
+    let recorder = RuntimeEventRecorder()
+    let coordinator = InferenceCoordinator(
+      supportedSchemaVersion: 2,
+      backend: backend,
+      eventHandler: { event in
+        recorder.record(event)
+      }
+    )
+    let request = RuntimeRequestEnvelope(
+      schemaVersion: 2,
+      requestId: "request-1",
+      timestampMicros: 1
+    )
+    let model = RuntimeModelRequest(
+      modelId: "model-1",
+      modelPath: "/models/model-1.bin",
+      contextSize: 4096
+    )
+    let generation = RuntimeGenerationRequest(
+      generationId: "generation-1",
+      sessionId: "session-1",
+      prompt: "first",
+      context: [],
+      temperature: 0.25,
+      topP: 0.9,
+      maxTokens: 128,
+      seed: 1
+    )
+
+    async let loadResult = coordinator.loadModel(request: request, model: model)
+    await backend.waitForLoadCall()
+    await backend.completeLoads(
+      with: RuntimeModelLoadResult(modelId: model.modelId, loaded: true)
+    )
+    _ = try await loadResult
+    await backend.automaticallyAcknowledgeStarts()
+    _ = try await coordinator.startGeneration(
+      request: request,
+      generation: generation
+    )
+
+    let admissionGate = AsyncAdmissionGate(requiredArrivals: 2)
+    async let firstCancellation: RuntimeCancellationAcknowledgement = {
+      await admissionGate.arriveAndWait()
+      return try await coordinator.cancelGeneration(
+        request: request,
+        generationId: generation.generationId
+      )
+    }()
+    async let secondCancellation: RuntimeCancellationAcknowledgement = {
+      await admissionGate.arriveAndWait()
+      return try await coordinator.cancelGeneration(
+        request: request,
+        generationId: generation.generationId
+      )
+    }()
+
+    await admissionGate.waitUntilAllArrive()
+    await admissionGate.open()
+    await backend.waitForCancelCall()
+    for _ in 0..<8 {
+      await Task.yield()
+    }
+    let inFlightCancelCount = await backend.cancelCallCount
+    XCTAssertEqual(inFlightCancelCount, 1)
+
+    await backend.completeCancellations(
+      with: RuntimeCancellationAcknowledgement(
+        generationId: generation.generationId,
+        acknowledged: true
+      )
+    )
+
+    let acknowledgements = try await [firstCancellation, secondCancellation]
+    XCTAssertEqual(
+      acknowledgements,
+      [
+        RuntimeCancellationAcknowledgement(
+          generationId: generation.generationId,
+          acknowledged: true
+        ),
+        RuntimeCancellationAcknowledgement(
+          generationId: generation.generationId,
+          acknowledged: true
+        ),
+      ]
+    )
+    let events = recorder.events
+    XCTAssertEqual(
+      events,
+      [
+        RuntimeGenerationEvent(
+          generationId: generation.generationId,
+          sequence: 0,
+          kind: .cancelled,
+          failureCode: .cancelled,
+          message: "The response was cancelled."
+        ),
+      ]
+    )
+  }
+
+  func testCancelDuringPrefillEmitsOneTerminalAndDropsLateEvents() async throws {
+    let backend = RuntimeBackendSpy()
+    let recorder = RuntimeEventRecorder()
+    let coordinator = InferenceCoordinator(
+      supportedSchemaVersion: 2,
+      backend: backend,
+      eventHandler: { event in
+        recorder.record(event)
+      }
+    )
+    let request = RuntimeRequestEnvelope(
+      schemaVersion: 2,
+      requestId: "request-1",
+      timestampMicros: 1
+    )
+    let model = RuntimeModelRequest(
+      modelId: "model-1",
+      modelPath: "/models/model-1.bin",
+      contextSize: 4096
+    )
+    let generation = RuntimeGenerationRequest(
+      generationId: "generation-1",
+      sessionId: "session-1",
+      prompt: "first",
+      context: [],
+      temperature: 0.25,
+      topP: 0.9,
+      maxTokens: 128,
+      seed: 1
+    )
+
+    async let loadResult = coordinator.loadModel(request: request, model: model)
+    await backend.waitForLoadCall()
+    await backend.completeLoads(
+      with: RuntimeModelLoadResult(modelId: model.modelId, loaded: true)
+    )
+    _ = try await loadResult
+    await backend.automaticallyAcknowledgeStarts()
+    _ = try await coordinator.startGeneration(
+      request: request,
+      generation: generation
+    )
+
+    await coordinator.receiveGenerationEvent(
+      RuntimeGenerationEvent(
+        generationId: generation.generationId,
+        sequence: 0,
+        kind: .started
+      )
+    )
+    _ = try await coordinator.cancelGeneration(
+      request: request,
+      generationId: generation.generationId
+    )
+    await coordinator.receiveGenerationEvent(
+      RuntimeGenerationEvent(
+        generationId: generation.generationId,
+        sequence: 2,
+        kind: .delta,
+        delta: "late"
+      )
+    )
+    await coordinator.receiveGenerationEvent(
+      RuntimeGenerationEvent(
+        generationId: generation.generationId,
+        sequence: 3,
+        kind: .completed
+      )
+    )
+
+    let events = recorder.events
+    XCTAssertEqual(
+      events,
+      [
+        RuntimeGenerationEvent(
+          generationId: generation.generationId,
+          sequence: 0,
+          kind: .started
+        ),
+        RuntimeGenerationEvent(
+          generationId: generation.generationId,
+          sequence: 1,
+          kind: .cancelled,
+          failureCode: .cancelled,
+          message: "The response was cancelled."
+        ),
+      ]
+    )
+  }
+
+  func testCancelDuringDecodePreservesPrefixAndDropsLateEvents() async throws {
+    let backend = RuntimeBackendSpy()
+    let recorder = RuntimeEventRecorder()
+    let coordinator = InferenceCoordinator(
+      supportedSchemaVersion: 2,
+      backend: backend,
+      eventHandler: { event in
+        recorder.record(event)
+      }
+    )
+    let request = RuntimeRequestEnvelope(
+      schemaVersion: 2,
+      requestId: "request-1",
+      timestampMicros: 1
+    )
+    let model = RuntimeModelRequest(
+      modelId: "model-1",
+      modelPath: "/models/model-1.bin",
+      contextSize: 4096
+    )
+    let generation = RuntimeGenerationRequest(
+      generationId: "generation-1",
+      sessionId: "session-1",
+      prompt: "first",
+      context: [],
+      temperature: 0.25,
+      topP: 0.9,
+      maxTokens: 128,
+      seed: 1
+    )
+
+    async let loadResult = coordinator.loadModel(request: request, model: model)
+    await backend.waitForLoadCall()
+    await backend.completeLoads(
+      with: RuntimeModelLoadResult(modelId: model.modelId, loaded: true)
+    )
+    _ = try await loadResult
+    await backend.automaticallyAcknowledgeStarts()
+    _ = try await coordinator.startGeneration(
+      request: request,
+      generation: generation
+    )
+
+    await coordinator.receiveGenerationEvent(
+      RuntimeGenerationEvent(
+        generationId: generation.generationId,
+        sequence: 0,
+        kind: .started
+      )
+    )
+    await coordinator.receiveGenerationEvent(
+      RuntimeGenerationEvent(
+        generationId: generation.generationId,
+        sequence: 1,
+        kind: .delta,
+        delta: "before"
+      )
+    )
+    _ = try await coordinator.cancelGeneration(
+      request: request,
+      generationId: generation.generationId
+    )
+    await coordinator.receiveGenerationEvent(
+      RuntimeGenerationEvent(
+        generationId: generation.generationId,
+        sequence: 3,
+        kind: .delta,
+        delta: "late"
+      )
+    )
+    await coordinator.receiveGenerationEvent(
+      RuntimeGenerationEvent(
+        generationId: generation.generationId,
+        sequence: 4,
+        kind: .completed
+      )
+    )
+
+    let events = recorder.events
+    XCTAssertEqual(
+      events,
+      [
+        RuntimeGenerationEvent(
+          generationId: generation.generationId,
+          sequence: 0,
+          kind: .started
+        ),
+        RuntimeGenerationEvent(
+          generationId: generation.generationId,
+          sequence: 1,
+          kind: .delta,
+          delta: "before"
+        ),
+        RuntimeGenerationEvent(
+          generationId: generation.generationId,
+          sequence: 2,
+          kind: .cancelled,
+          failureCode: .cancelled,
+          message: "The response was cancelled."
+        ),
+      ]
+    )
+  }
+
+  func testStaleSequenceCannotRewindCancellationTerminal() async throws {
+    let backend = RuntimeBackendSpy()
+    let recorder = RuntimeEventRecorder()
+    let coordinator = InferenceCoordinator(
+      supportedSchemaVersion: 2,
+      backend: backend,
+      eventHandler: { event in
+        recorder.record(event)
+      }
+    )
+    let request = RuntimeRequestEnvelope(
+      schemaVersion: 2,
+      requestId: "request-1",
+      timestampMicros: 1
+    )
+    let generation = RuntimeGenerationRequest(
+      generationId: "generation-1",
+      sessionId: "session-1",
+      prompt: "first",
+      context: [],
+      temperature: 0.25,
+      topP: 0.9,
+      maxTokens: 128,
+      seed: 1
+    )
+
+    await backend.automaticallyAcknowledgeStarts()
+    _ = try await coordinator.startGeneration(
+      request: request,
+      generation: generation
+    )
+    await coordinator.receiveGenerationEvent(
+      RuntimeGenerationEvent(
+        generationId: generation.generationId,
+        sequence: 0,
+        kind: .started
+      )
+    )
+    await coordinator.receiveGenerationEvent(
+      RuntimeGenerationEvent(
+        generationId: generation.generationId,
+        sequence: 2,
+        kind: .delta,
+        delta: "newest"
+      )
+    )
+    await coordinator.receiveGenerationEvent(
+      RuntimeGenerationEvent(
+        generationId: generation.generationId,
+        sequence: 1,
+        kind: .delta,
+        delta: "stale"
+      )
+    )
+    _ = try await coordinator.cancelGeneration(
+      request: request,
+      generationId: generation.generationId
+    )
+
+    let events = recorder.events
+    XCTAssertEqual(
+      events,
+      [
+        RuntimeGenerationEvent(
+          generationId: generation.generationId,
+          sequence: 0,
+          kind: .started
+        ),
+        RuntimeGenerationEvent(
+          generationId: generation.generationId,
+          sequence: 2,
+          kind: .delta,
+          delta: "newest"
+        ),
+        RuntimeGenerationEvent(
+          generationId: generation.generationId,
+          sequence: 3,
+          kind: .cancelled,
+          failureCode: .cancelled,
+          message: "The response was cancelled."
+        ),
+      ]
+    )
+  }
+
+  func testMismatchedCancellationAcknowledgementCannotClearOwnership()
+    async throws
+  {
+    let backend = RuntimeBackendSpy(
+      cancelAcknowledgementGenerationId: "generation-other"
+    )
+    let recorder = RuntimeEventRecorder()
+    let coordinator = InferenceCoordinator(
+      supportedSchemaVersion: 2,
+      backend: backend,
+      eventHandler: { event in
+        recorder.record(event)
+      }
+    )
+    let request = RuntimeRequestEnvelope(
+      schemaVersion: 2,
+      requestId: "request-1",
+      timestampMicros: 1
+    )
+    let firstGeneration = RuntimeGenerationRequest(
+      generationId: "generation-1",
+      sessionId: "session-1",
+      prompt: "first",
+      context: [],
+      temperature: 0.25,
+      topP: 0.9,
+      maxTokens: 128,
+      seed: 1
+    )
+    let secondGeneration = RuntimeGenerationRequest(
+      generationId: "generation-2",
+      sessionId: "session-1",
+      prompt: "second",
+      context: [],
+      temperature: 0.25,
+      topP: 0.9,
+      maxTokens: 128,
+      seed: 2
+    )
+
+    await backend.automaticallyAcknowledgeStarts()
+    _ = try await coordinator.startGeneration(
+      request: request,
+      generation: firstGeneration
+    )
+
+    do {
+      _ = try await coordinator.cancelGeneration(
+        request: request,
+        generationId: firstGeneration.generationId
+      )
+      XCTFail("Expected a mismatched acknowledgement to be rejected")
+    } catch {
+      XCTAssertEqual(error as? RuntimeBoundaryError, .protocolMismatch)
+    }
+
+    let events = recorder.events
+    XCTAssertTrue(events.isEmpty)
+    do {
+      _ = try await coordinator.startGeneration(
+        request: request,
+        generation: secondGeneration
+      )
+      XCTFail("Expected the first generation to retain ownership")
+    } catch {
+      XCTAssertEqual(error as? RuntimeBoundaryError, .generationBusy)
+    }
+  }
+
+  func testRecentlyCancelledGenerationIdCannotBeReused() async throws {
+    let backend = RuntimeBackendSpy()
+    let coordinator = InferenceCoordinator(
+      supportedSchemaVersion: 2,
+      backend: backend
+    )
+    let request = RuntimeRequestEnvelope(
+      schemaVersion: 2,
+      requestId: "request-1",
+      timestampMicros: 1
+    )
+    let generation = RuntimeGenerationRequest(
+      generationId: "generation-1",
+      sessionId: "session-1",
+      prompt: "first",
+      context: [],
+      temperature: 0.25,
+      topP: 0.9,
+      maxTokens: 128,
+      seed: 1
+    )
+
+    await backend.automaticallyAcknowledgeStarts()
+    _ = try await coordinator.startGeneration(
+      request: request,
+      generation: generation
+    )
+    _ = try await coordinator.cancelGeneration(
+      request: request,
+      generationId: generation.generationId
+    )
+
+    do {
+      _ = try await coordinator.startGeneration(
+        request: request,
+        generation: generation
+      )
+      XCTFail("Expected a recently cancelled generation ID to be rejected")
+    } catch {
+      XCTAssertEqual(error as? RuntimeBoundaryError, .protocolMismatch)
+    }
+    let startCallCount = await backend.startCallCount
+    XCTAssertEqual(startCallCount, 1)
+  }
+
+  func testSynchronousEventHandlerReceivesEventsInActorOrder() async throws {
+    let backend = RuntimeBackendSpy()
+    let recorder = RuntimeEventRecorder()
+    let coordinator = InferenceCoordinator(
+      supportedSchemaVersion: 2,
+      backend: backend,
+      eventHandler: { event in
+        recorder.record(event)
+      }
+    )
+    let request = RuntimeRequestEnvelope(
+      schemaVersion: 2,
+      requestId: "request-1",
+      timestampMicros: 1
+    )
+    let generation = RuntimeGenerationRequest(
+      generationId: "generation-1",
+      sessionId: "session-1",
+      prompt: "first",
+      context: [],
+      temperature: 0.25,
+      topP: 0.9,
+      maxTokens: 128,
+      seed: 1
+    )
+
+    await backend.automaticallyAcknowledgeStarts()
+    _ = try await coordinator.startGeneration(
+      request: request,
+      generation: generation
+    )
+
+    await coordinator.receiveGenerationEvent(
+      RuntimeGenerationEvent(
+        generationId: generation.generationId,
+        sequence: 0,
+        kind: .started
+      )
+    )
+    await coordinator.receiveGenerationEvent(
+      RuntimeGenerationEvent(
+        generationId: generation.generationId,
+        sequence: 1,
+        kind: .delta,
+        delta: "next"
+      )
+    )
+
+    let sequences = recorder.events.map(\.sequence)
+    XCTAssertEqual(sequences, [0, 1])
   }
 
   func testEventBridgePreservesIdentitySequenceAndOneTerminal() {
@@ -1731,6 +2393,15 @@ private actor AsyncAdmissionGate {
 }
 
 private actor RuntimeBackendSpy: RuntimeBackend {
+  init(
+    blockCancellations: Bool = false,
+    cancelAcknowledgementGenerationId: String? = nil
+  ) {
+    self.blockCancellations = blockCancellations
+    self.cancelAcknowledgementGenerationId =
+      cancelAcknowledgementGenerationId
+  }
+
   let capabilities = RuntimeCapabilities(
     runtimeName: "spy",
     supportsStreaming: true,
@@ -1739,6 +2410,7 @@ private actor RuntimeBackendSpy: RuntimeBackend {
 
   private(set) var loadCallCount = 0
   private(set) var startCallCount = 0
+  private(set) var cancelCallCount = 0
   private var loadCallContinuations: [CheckedContinuation<Void, Never>] = []
   private var startCallContinuations: [CheckedContinuation<Void, Never>] = []
   private var loadContinuations:
@@ -1747,6 +2419,11 @@ private actor RuntimeBackendSpy: RuntimeBackend {
     String: CheckedContinuation<RuntimeGenerationAcknowledgement, Error>
   ] = [:]
   private var shouldAutomaticallyAcknowledgeStarts = false
+  private let blockCancellations: Bool
+  private let cancelAcknowledgementGenerationId: String?
+  private var cancelCallContinuations: [CheckedContinuation<Void, Never>] = []
+  private var cancelContinuations:
+    [CheckedContinuation<RuntimeCancellationAcknowledgement, Error>] = []
 
   func loadModel(_ model: RuntimeModelRequest) async throws
     -> RuntimeModelLoadResult {
@@ -1818,10 +2495,34 @@ private actor RuntimeBackendSpy: RuntimeBackend {
 
   func cancelGeneration(generationId: String) async throws
     -> RuntimeCancellationAcknowledgement {
-    RuntimeCancellationAcknowledgement(
-      generationId: generationId,
+    cancelCallCount += 1
+    cancelCallContinuations.forEach { $0.resume() }
+    cancelCallContinuations.removeAll()
+    if blockCancellations {
+      return try await withCheckedThrowingContinuation { continuation in
+        cancelContinuations.append(continuation)
+      }
+    }
+    return RuntimeCancellationAcknowledgement(
+      generationId: cancelAcknowledgementGenerationId ?? generationId,
       acknowledged: true
     )
+  }
+
+  func waitForCancelCall() async {
+    guard cancelCallCount == 0 else {
+      return
+    }
+    await withCheckedContinuation { continuation in
+      cancelCallContinuations.append(continuation)
+    }
+  }
+
+  func completeCancellations(
+    with result: RuntimeCancellationAcknowledgement
+  ) {
+    cancelContinuations.forEach { $0.resume(returning: result) }
+    cancelContinuations.removeAll()
   }
 
   func resetSession(sessionId: String) async throws -> RuntimeOperationCompletion {
@@ -1830,6 +2531,23 @@ private actor RuntimeBackendSpy: RuntimeBackend {
 
   func unloadModel() async throws -> RuntimeOperationCompletion {
     RuntimeOperationCompletion(completed: true)
+  }
+}
+
+private final class RuntimeEventRecorder: @unchecked Sendable {
+  var events: [RuntimeGenerationEvent] {
+    lock.lock()
+    defer { lock.unlock() }
+    return storedEvents
+  }
+
+  private let lock = NSLock()
+  private var storedEvents: [RuntimeGenerationEvent] = []
+
+  func record(_ event: RuntimeGenerationEvent) {
+    lock.lock()
+    storedEvents.append(event)
+    lock.unlock()
   }
 }
 
