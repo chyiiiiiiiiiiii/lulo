@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:agent_core/agent_core.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:local_agent_macos/features/conversation/conversation_repository.dart';
+import 'package:local_agent_macos/features/conversation/inference_service.dart';
 
 import '../../support/controlled_inference_service.dart';
 import '../../support/recording_conversation_storage_service.dart';
@@ -146,6 +147,117 @@ void main() {
     await subscription.cancel();
     await inference.dispose();
   });
+
+  test('requests native cancellation before awaiting source cleanup', () async {
+    final RecordingConversationStorageService storage =
+        RecordingConversationStorageService();
+    final CancellationRaceInferenceService inference =
+        CancellationRaceInferenceService();
+    final ConversationRepository repository = ConversationRepository(
+      storageService: storage,
+      inferenceService: inference,
+    );
+    final Completer<void> startedVisible = Completer<void>();
+    final Completer<void> streamDone = Completer<void>();
+    final List<GenerationEvent> visibleEvents = <GenerationEvent>[];
+    repository.startGeneration(userTurn: userTurn, request: request).listen((
+      GenerationEvent event,
+    ) {
+      visibleEvents.add(event);
+      if (event is GenerationStarted && !startedVisible.isCompleted) {
+        startedVisible.complete();
+      }
+    }, onDone: streamDone.complete);
+
+    await inference.requestReceived;
+    inference.emit(GenerationStarted(generation));
+    await startedVisible.future;
+
+    final Future<void> stop = repository.stop(generation.id);
+    try {
+      expect(inference.cancelRequested.isCompleted, isTrue);
+    } finally {
+      inference.cancelAcknowledged.complete();
+      inference.allowSourceCleanup.complete();
+      await stop;
+    }
+    await streamDone.future;
+
+    expect(visibleEvents.whereType<GenerationCancelled>(), hasLength(1));
+    await inference.dispose();
+  });
+
+  test(
+    'cancel acknowledgement wins races with every native terminal',
+    () async {
+      final List<GenerationEvent> nativeTerminals = <GenerationEvent>[
+        const GenerationCompleted(GenerationId('generation-1')),
+        const GenerationCancelled(GenerationId('generation-1')),
+        const GenerationFailed(
+          generationId: GenerationId('generation-1'),
+          failure: ConversationFailure('Native inference failed.'),
+        ),
+      ];
+
+      for (final GenerationEvent nativeTerminal in nativeTerminals) {
+        final RecordingConversationStorageService storage =
+            RecordingConversationStorageService();
+        final CancellationRaceInferenceService inference =
+            CancellationRaceInferenceService();
+        final ConversationRepository repository = ConversationRepository(
+          storageService: storage,
+          inferenceService: inference,
+        );
+        final Completer<void> startedVisible = Completer<void>();
+        final Completer<void> streamDone = Completer<void>();
+        final List<GenerationEvent> visibleEvents = <GenerationEvent>[];
+        repository.startGeneration(userTurn: userTurn, request: request).listen(
+          (GenerationEvent event) {
+            visibleEvents.add(event);
+            if (event is GenerationStarted && !startedVisible.isCompleted) {
+              startedVisible.complete();
+            }
+          },
+          onDone: streamDone.complete,
+        );
+
+        await inference.requestReceived;
+        inference.emit(GenerationStarted(generation));
+        await startedVisible.future;
+
+        final Future<void> stop = repository.stop(generation.id);
+        expect(inference.cancelRequested.isCompleted, isTrue);
+        inference.emit(nativeTerminal);
+        inference.cancelAcknowledged.complete();
+        inference.emit(
+          const GenerationDelta(
+            generationId: GenerationId('generation-1'),
+            delta: 'post-terminal text',
+          ),
+        );
+        inference.allowSourceCleanup.complete();
+
+        await stop;
+        await streamDone.future;
+
+        final List<GenerationEvent> visibleTerminals = visibleEvents
+            .where(_isTerminalGenerationEvent)
+            .toList();
+        expect(visibleTerminals, hasLength(1));
+        expect(visibleTerminals.single, isA<GenerationCancelled>());
+        expect(visibleEvents.whereType<GenerationDelta>(), isEmpty);
+        expect(storage.assistantTurns, hasLength(1));
+        expect(storage.assistantTurns.single.turn.status, TurnStatus.cancelled);
+        expect(inference.sourceCleanupRequested.isCompleted, isTrue);
+
+        await repository
+            .startGeneration(userTurn: userTurn, request: request)
+            .drain<void>();
+        expect(inference.requestCount, 2);
+        await inference.dispose();
+      }
+    },
+  );
 
   test(
     'releases the active operation when its listener is cancelled',
@@ -518,4 +630,55 @@ void main() {
       await inference.dispose();
     },
   );
+}
+
+bool _isTerminalGenerationEvent(GenerationEvent event) {
+  return event is GenerationCompleted ||
+      event is GenerationCancelled ||
+      event is GenerationFailed;
+}
+
+final class CancellationRaceInferenceService implements InferenceService {
+  CancellationRaceInferenceService() {
+    _events = StreamController<GenerationEvent>(
+      sync: true,
+      onCancel: () async {
+        sourceCleanupRequested.complete();
+        await allowSourceCleanup.future;
+      },
+    );
+  }
+
+  late final StreamController<GenerationEvent> _events;
+  final Completer<GenerationRequest> _requestReceived =
+      Completer<GenerationRequest>();
+  final Completer<void> cancelRequested = Completer<void>();
+  final Completer<void> cancelAcknowledged = Completer<void>();
+  final Completer<void> sourceCleanupRequested = Completer<void>();
+  final Completer<void> allowSourceCleanup = Completer<void>();
+  int requestCount = 0;
+
+  Future<GenerationRequest> get requestReceived => _requestReceived.future;
+
+  @override
+  Stream<GenerationEvent> generate(GenerationRequest request) {
+    requestCount += 1;
+    if (requestCount == 1) {
+      _requestReceived.complete(request);
+      return _events.stream;
+    }
+    return const Stream<GenerationEvent>.empty();
+  }
+
+  @override
+  Future<void> cancel(GenerationId generationId) async {
+    cancelRequested.complete();
+    await cancelAcknowledged.future;
+  }
+
+  void emit(GenerationEvent event) {
+    _events.add(event);
+  }
+
+  Future<void> dispose() => _events.close();
 }

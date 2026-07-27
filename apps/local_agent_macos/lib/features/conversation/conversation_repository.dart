@@ -157,8 +157,11 @@ final class _GenerationOperation {
     required bool publishCancellation,
   }) async {
     try {
-      await _subscription?.cancel();
-      await _inferenceService.cancel(generation.id);
+      try {
+        await _inferenceService.cancel(generation.id);
+      } finally {
+        await _subscription?.cancel();
+      }
     } finally {
       try {
         await _persistTerminal(

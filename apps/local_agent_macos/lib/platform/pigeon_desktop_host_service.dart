@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:collection';
 
 import 'package:flutter/services.dart';
 
@@ -26,9 +27,9 @@ final class PigeonDesktopHostService extends DesktopHostEventApi
   final bool _eventApiRegistered;
   final StreamController<DesktopGenerationEvent> _events =
       StreamController<DesktopGenerationEvent>.broadcast(sync: true);
-  final Map<String, int> _lastSequenceByGeneration = <String, int>{};
-  final Set<String> _startedGenerationIds = <String>{};
+  final Queue<String> _staleGenerationIds = Queue<String>();
   String? _activeGenerationId;
+  int? _lastActiveSequence;
   int _nextRequest = 0;
   bool _disposed = false;
 
@@ -60,58 +61,38 @@ final class PigeonDesktopHostService extends DesktopHostEventApi
   DesktopGenerationEvent acceptGenerationEvent(HostGenerationEvent event) {
     _ensureAvailable();
     if (event.schemaVersion != DesktopHostService.schemaVersion) {
-      throw const DesktopHostFailure(
-        DesktopHostFailureCode.protocolMismatch,
-        'The desktop host schema is incompatible.',
-      );
+      throw const DesktopHostFailure(DesktopHostFailureCode.protocolMismatch);
     }
     if (event.generationId.isEmpty || event.sequence < 0) {
-      throw const DesktopHostFailure(
-        DesktopHostFailureCode.protocolMismatch,
-        'The desktop host sent an invalid generation event.',
-      );
-    }
-    final int? previous = _lastSequenceByGeneration[event.generationId];
-    if (previous != null && event.sequence <= previous) {
-      throw const DesktopHostFailure(
-        DesktopHostFailureCode.protocolMismatch,
-        'The desktop host sent a stale generation event.',
-      );
+      throw const DesktopHostFailure(DesktopHostFailureCode.protocolMismatch);
     }
     if (event.type == HostGenerationEventType.started) {
       if (_activeGenerationId != null ||
-          _startedGenerationIds.contains(event.generationId)) {
-        throw const DesktopHostFailure(
-          DesktopHostFailureCode.protocolMismatch,
-          'The desktop host sent a mismatched generation event.',
-        );
+          _staleGenerationIds.contains(event.generationId)) {
+        throw const DesktopHostFailure(DesktopHostFailureCode.protocolMismatch);
       }
     } else if (_activeGenerationId != event.generationId) {
-      throw const DesktopHostFailure(
-        DesktopHostFailureCode.protocolMismatch,
-        'A generation event arrived before its start.',
-      );
+      throw const DesktopHostFailure(DesktopHostFailureCode.protocolMismatch);
+    }
+    final int? previous = _lastActiveSequence;
+    if (previous != null && event.sequence <= previous) {
+      throw const DesktopHostFailure(DesktopHostFailureCode.protocolMismatch);
     }
     if (event.type == HostGenerationEventType.delta && event.delta == null) {
-      throw const DesktopHostFailure(
-        DesktopHostFailureCode.protocolMismatch,
-        'A generation delta did not contain text.',
-      );
+      throw const DesktopHostFailure(DesktopHostFailureCode.protocolMismatch);
     }
     if (event.type == HostGenerationEventType.failed &&
         event.failureCode == null) {
-      throw const DesktopHostFailure(
-        DesktopHostFailureCode.protocolMismatch,
-        'A failed generation did not contain an error code.',
-      );
+      throw const DesktopHostFailure(DesktopHostFailureCode.protocolMismatch);
     }
 
-    _lastSequenceByGeneration[event.generationId] = event.sequence;
+    _lastActiveSequence = event.sequence;
     if (event.type == HostGenerationEventType.started) {
-      _startedGenerationIds.add(event.generationId);
       _activeGenerationId = event.generationId;
     } else if (_isTerminal(event.type)) {
+      _recordStaleGeneration(event.generationId);
       _activeGenerationId = null;
+      _lastActiveSequence = null;
     }
     final DesktopHostFailureCode? failureCode = event.failureCode?.appCode;
     return DesktopGenerationEvent(
@@ -122,6 +103,13 @@ final class PigeonDesktopHostService extends DesktopHostEventApi
       failureCode: failureCode,
       message: failureCode?.userSafeMessage,
     );
+  }
+
+  void _recordStaleGeneration(String generationId) {
+    _staleGenerationIds.addLast(generationId);
+    if (_staleGenerationIds.length > _staleGenerationCapacity) {
+      _staleGenerationIds.removeFirst();
+    }
   }
 
   bool _isTerminal(HostGenerationEventType type) {
@@ -143,7 +131,7 @@ final class PigeonDesktopHostService extends DesktopHostEventApi
       final DesktopHostFailureCode code = DesktopHostFailureCode.fromPigeonCode(
         error.code,
       );
-      throw DesktopHostFailure(code, code.userSafeMessage);
+      throw DesktopHostFailure(code);
     }
   }
 
@@ -175,6 +163,8 @@ final class PigeonDesktopHostService extends DesktopHostEventApi
     await _events.close();
   }
 }
+
+const int _staleGenerationCapacity = 32;
 
 extension on HostFailureCode {
   DesktopHostFailureCode get appCode {

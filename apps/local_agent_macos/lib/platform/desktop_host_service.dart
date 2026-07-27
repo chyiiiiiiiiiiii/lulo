@@ -24,61 +24,60 @@ abstract interface class DesktopHostService {
 /// Stable app failure categories exposed by the desktop host.
 enum DesktopHostFailureCode {
   /// The requested local model is not installed.
-  modelNotInstalled('modelNotInstalled'),
+  modelNotInstalled(
+    'modelNotInstalled',
+    'The local model is not installed.',
+    true,
+  ),
 
   /// The local model could not be loaded.
-  modelLoadFailed('modelLoadFailed'),
+  modelLoadFailed(
+    'modelLoadFailed',
+    'The local model could not be loaded.',
+    true,
+  ),
 
   /// The selected local runtime is not available.
-  runtimeUnavailable('runtimeUnavailable'),
+  runtimeUnavailable(
+    'runtimeUnavailable',
+    'Local inference is unavailable.',
+    true,
+  ),
 
   /// Another generation is already active.
-  generationBusy('generationBusy'),
+  generationBusy(
+    'generationBusy',
+    'Another response is already being generated.',
+    true,
+  ),
 
   /// Generation ended unsuccessfully.
-  generationFailed('generationFailed'),
+  generationFailed('generationFailed', 'Local inference failed.', true),
 
   /// The active operation was cancelled.
-  cancelled('cancelled'),
+  cancelled('cancelled', 'The response was cancelled.', false),
 
   /// The peer sent an incompatible schema or invalid event order.
-  protocolMismatch('protocolMismatch');
+  protocolMismatch(
+    'protocolMismatch',
+    'The desktop host protocol is incompatible.',
+    false,
+  );
 
-  const DesktopHostFailureCode(this.pigeonCode);
+  const DesktopHostFailureCode(
+    this.pigeonCode,
+    this.userSafeMessage,
+    this.isRecoverable,
+  );
 
   /// Stable code serialized across the platform boundary.
   final String pigeonCode;
 
   /// Stable user-safe message that never includes native diagnostic text.
-  String get userSafeMessage {
-    return switch (this) {
-      DesktopHostFailureCode.modelNotInstalled =>
-        'The local model is not installed.',
-      DesktopHostFailureCode.modelLoadFailed =>
-        'The local model could not be loaded.',
-      DesktopHostFailureCode.runtimeUnavailable =>
-        'Local inference is unavailable.',
-      DesktopHostFailureCode.generationBusy =>
-        'Another response is already being generated.',
-      DesktopHostFailureCode.generationFailed => 'Local inference failed.',
-      DesktopHostFailureCode.cancelled => 'The response was cancelled.',
-      DesktopHostFailureCode.protocolMismatch =>
-        'The desktop host protocol is incompatible.',
-    };
-  }
+  final String userSafeMessage;
 
   /// Whether product behavior can offer retry or corrective action.
-  bool get isRecoverable {
-    return switch (this) {
-      DesktopHostFailureCode.modelNotInstalled ||
-      DesktopHostFailureCode.modelLoadFailed ||
-      DesktopHostFailureCode.runtimeUnavailable ||
-      DesktopHostFailureCode.generationBusy ||
-      DesktopHostFailureCode.generationFailed => true,
-      DesktopHostFailureCode.cancelled ||
-      DesktopHostFailureCode.protocolMismatch => false,
-    };
-  }
+  final bool isRecoverable;
 
   /// Maps a serialized Pigeon [code] to an application failure category.
   static DesktopHostFailureCode fromPigeonCode(String code) {
@@ -91,14 +90,14 @@ enum DesktopHostFailureCode {
 
 /// A user-safe failure normalized at the desktop boundary.
 final class DesktopHostFailure implements Exception {
-  /// Creates a failure with a stable [code] and safe [message].
-  const DesktopHostFailure(this.code, this.message);
+  /// Creates a failure whose complete product-visible contract belongs to [code].
+  const DesktopHostFailure(this.code);
 
   /// Stable application failure category.
   final DesktopHostFailureCode code;
 
   /// Safe diagnostic text without a native stack trace.
-  final String message;
+  String get message => code.userSafeMessage;
 
   /// Whether product behavior can offer retry or corrective action.
   bool get isRecoverable => code.isRecoverable;

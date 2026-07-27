@@ -80,42 +80,147 @@ void main() {
 
       for (final MapEntry<DesktopHostFailureCode, bool> entry
           in expectedRecoverability.entries) {
-        final DesktopHostFailure failure = DesktopHostFailure(
-          entry.key,
-          entry.key.userSafeMessage,
-        );
+        final DesktopHostFailure failure = DesktopHostFailure(entry.key);
 
         expect(failure.isRecoverable, entry.value);
       }
     });
 
-    test('sanitizes native failed-event text at the adapter boundary', () {
-      final service = PigeonDesktopHostService(
-        hostApi: RecordingDesktopHostApi(),
-        registerEventApi: false,
-      );
-      service.acceptGenerationEvent(
-        HostGenerationEvent(
-          schemaVersion: DesktopHostService.schemaVersion,
-          generationId: 'generation-1',
-          sequence: 0,
-          type: HostGenerationEventType.started,
-        ),
-      );
+    test('normalizes every protocol rejection to one stable triple', () {
+      final List<void Function()> protocolRejections = <void Function()>[
+        () =>
+            PigeonDesktopHostService(
+              hostApi: RecordingDesktopHostApi(),
+              registerEventApi: false,
+            ).acceptGenerationEvent(
+              HostGenerationEvent(
+                schemaVersion: DesktopHostService.schemaVersion + 1,
+                generationId: 'generation-1',
+                sequence: 0,
+                type: HostGenerationEventType.started,
+              ),
+            ),
+        () =>
+            PigeonDesktopHostService(
+              hostApi: RecordingDesktopHostApi(),
+              registerEventApi: false,
+            ).acceptGenerationEvent(
+              HostGenerationEvent(
+                schemaVersion: DesktopHostService.schemaVersion,
+                generationId: 'generation-1',
+                sequence: 0,
+                type: HostGenerationEventType.delta,
+                delta: 'unexpected',
+              ),
+            ),
+      ];
 
-      final DesktopGenerationEvent event = service.acceptGenerationEvent(
-        HostGenerationEvent(
-          schemaVersion: DesktopHostService.schemaVersion,
-          generationId: 'generation-1',
-          sequence: 1,
-          type: HostGenerationEventType.failed,
-          failureCode: HostFailureCode.modelLoadFailed,
-          message: 'Native stack: prompt=private user text',
-        ),
-      );
+      for (final void Function() reject in protocolRejections) {
+        expect(
+          reject,
+          throwsA(
+            isA<DesktopHostFailure>()
+                .having(
+                  (DesktopHostFailure failure) => failure.code,
+                  'code',
+                  DesktopHostFailureCode.protocolMismatch,
+                )
+                .having(
+                  (DesktopHostFailure failure) => failure.message,
+                  'message',
+                  'The desktop host protocol is incompatible.',
+                )
+                .having(
+                  (DesktopHostFailure failure) => failure.isRecoverable,
+                  'isRecoverable',
+                  isFalse,
+                ),
+          ),
+        );
+      }
+    });
 
-      expect(event.failureCode, DesktopHostFailureCode.modelLoadFailed);
-      expect(event.message, 'The local model could not be loaded.');
+    test('maps every failed-event code to its stable Dart triple', () {
+      const Map<
+        HostFailureCode,
+        ({DesktopHostFailureCode code, String message, bool isRecoverable})
+      >
+      expected =
+          <
+            HostFailureCode,
+            ({DesktopHostFailureCode code, String message, bool isRecoverable})
+          >{
+            HostFailureCode.modelNotInstalled: (
+              code: DesktopHostFailureCode.modelNotInstalled,
+              message: 'The local model is not installed.',
+              isRecoverable: true,
+            ),
+            HostFailureCode.modelLoadFailed: (
+              code: DesktopHostFailureCode.modelLoadFailed,
+              message: 'The local model could not be loaded.',
+              isRecoverable: true,
+            ),
+            HostFailureCode.runtimeUnavailable: (
+              code: DesktopHostFailureCode.runtimeUnavailable,
+              message: 'Local inference is unavailable.',
+              isRecoverable: true,
+            ),
+            HostFailureCode.generationBusy: (
+              code: DesktopHostFailureCode.generationBusy,
+              message: 'Another response is already being generated.',
+              isRecoverable: true,
+            ),
+            HostFailureCode.generationFailed: (
+              code: DesktopHostFailureCode.generationFailed,
+              message: 'Local inference failed.',
+              isRecoverable: true,
+            ),
+            HostFailureCode.cancelled: (
+              code: DesktopHostFailureCode.cancelled,
+              message: 'The response was cancelled.',
+              isRecoverable: false,
+            ),
+            HostFailureCode.protocolMismatch: (
+              code: DesktopHostFailureCode.protocolMismatch,
+              message: 'The desktop host protocol is incompatible.',
+              isRecoverable: false,
+            ),
+          };
+
+      for (final MapEntry<
+            HostFailureCode,
+            ({DesktopHostFailureCode code, String message, bool isRecoverable})
+          >
+          entry
+          in expected.entries) {
+        final service = PigeonDesktopHostService(
+          hostApi: RecordingDesktopHostApi(),
+          registerEventApi: false,
+        );
+        service.acceptGenerationEvent(
+          HostGenerationEvent(
+            schemaVersion: DesktopHostService.schemaVersion,
+            generationId: 'generation-1',
+            sequence: 0,
+            type: HostGenerationEventType.started,
+          ),
+        );
+
+        final DesktopGenerationEvent event = service.acceptGenerationEvent(
+          HostGenerationEvent(
+            schemaVersion: DesktopHostService.schemaVersion,
+            generationId: 'generation-1',
+            sequence: 1,
+            type: HostGenerationEventType.failed,
+            failureCode: entry.key,
+            message: 'Native stack: prompt=private user text',
+          ),
+        );
+
+        expect(event.failureCode, entry.value.code);
+        expect(event.message, entry.value.message);
+        expect(event.failureCode!.isRecoverable, entry.value.isRecoverable);
+      }
     });
 
     test('rejects an event with a mismatched schema', () async {
@@ -353,7 +458,60 @@ void main() {
         );
       }
     });
+
+    test('evicts the oldest stale ID while rejecting recent stale IDs', () {
+      final service = PigeonDesktopHostService(
+        hostApi: RecordingDesktopHostApi(),
+        registerEventApi: false,
+      );
+
+      for (int index = 0; index <= 32; index += 1) {
+        _completeGeneration(service, 'generation-$index');
+      }
+
+      _completeGeneration(service, 'generation-0');
+
+      expect(
+        () => service.acceptGenerationEvent(
+          HostGenerationEvent(
+            schemaVersion: DesktopHostService.schemaVersion,
+            generationId: 'generation-32',
+            sequence: 2,
+            type: HostGenerationEventType.started,
+          ),
+        ),
+        throwsA(
+          isA<DesktopHostFailure>().having(
+            (DesktopHostFailure failure) => failure.code,
+            'code',
+            DesktopHostFailureCode.protocolMismatch,
+          ),
+        ),
+      );
+    });
   });
+}
+
+void _completeGeneration(
+  PigeonDesktopHostService service,
+  String generationId,
+) {
+  service.acceptGenerationEvent(
+    HostGenerationEvent(
+      schemaVersion: DesktopHostService.schemaVersion,
+      generationId: generationId,
+      sequence: 0,
+      type: HostGenerationEventType.started,
+    ),
+  );
+  service.acceptGenerationEvent(
+    HostGenerationEvent(
+      schemaVersion: DesktopHostService.schemaVersion,
+      generationId: generationId,
+      sequence: 1,
+      type: HostGenerationEventType.completed,
+    ),
+  );
 }
 
 final class ThrowingDesktopHostApi extends DesktopHostApi {
