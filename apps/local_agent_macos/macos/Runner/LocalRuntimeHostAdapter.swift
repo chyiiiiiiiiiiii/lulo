@@ -106,6 +106,7 @@ final class LocalRuntimeDesktopHostApi: DesktopHostApi {
     completion: @escaping (Result<HostCancellationAcknowledgement, Error>) -> Void
   ) {
     let coordinator = self.coordinator
+    let eventBridge = self.eventBridge
     let envelope = request.runtimeEnvelope
     Task {
       await resolve(completion) {
@@ -113,6 +114,15 @@ final class LocalRuntimeDesktopHostApi: DesktopHostApi {
           request: envelope,
           generationId: generationId
         )
+        if result.acknowledged {
+          // The bridge tracks one active generation at a time. Engaging its
+          // fence marks this generation stale, so anything the runtime still
+          // emits for it is dropped, and returns the bridge to idle. Skipping
+          // this would leave the bridge pinned to the cancelled generation,
+          // which then rejects the next turn's started event and leaves that
+          // turn producing nothing at all.
+          eventBridge.cancelGeneration(generationId: result.generationId)
+        }
         return HostCancellationAcknowledgement(
           generationId: result.generationId,
           acknowledged: result.acknowledged

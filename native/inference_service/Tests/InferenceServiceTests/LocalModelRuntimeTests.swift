@@ -184,6 +184,62 @@ final class LocalModelRuntimeTests: XCTestCase {
     ])
   }
 
+  func testLiteRTLMBackendCancellationEmitsOneTerminalAndFreesTheSlot()
+    async throws {
+    let harness = try await makeLiteRTLMBackendHarness()
+    defer { try? FileManager.default.removeItem(at: harness.modelDirectory) }
+    _ = try await harness.backend.startGeneration(
+      RuntimeGenerationRequest(
+        generationId: "generation-1",
+        sessionId: "session-1",
+        prompt: "Hello",
+        context: [],
+        temperature: 0.25,
+        topP: 0.9,
+        maxTokens: 16,
+        seed: 7
+      )
+    )
+    await harness.driver.waitForGenerationCall()
+    await harness.driver.emitChunk("kept")
+    await harness.events.waitForCount(2)
+
+    _ = try await harness.backend.cancelGeneration(generationId: "generation-1")
+    await harness.events.waitForCount(3)
+
+    let kinds = await harness.events.events.map(\.kind)
+    XCTAssertEqual(
+      kinds,
+      [.started, .delta, .cancelled],
+      "Cancellation must emit exactly one cancelled terminal event."
+    )
+
+    await harness.driver.emitChunk("late")
+    await Task.yield()
+    let settledKinds = await harness.events.events.map(\.kind)
+    XCTAssertEqual(
+      settledKinds,
+      [.started, .delta, .cancelled],
+      "A late chunk must not follow the cancelled terminal."
+    )
+
+    // Without a terminal event the coordinator never releases the slot, so a
+    // cancelled turn would permanently block every later generation.
+    let next = try await harness.backend.startGeneration(
+      RuntimeGenerationRequest(
+        generationId: "generation-2",
+        sessionId: "session-1",
+        prompt: "Again",
+        context: [],
+        temperature: 0.25,
+        topP: 0.9,
+        maxTokens: 16,
+        seed: 7
+      )
+    )
+    XCTAssertTrue(next.accepted, "The next generation must be accepted.")
+  }
+
   func testLiteRTLMBackendCancellationFencesLateChunks() async throws {
     let harness = try await makeLiteRTLMBackendHarness()
     defer { try? FileManager.default.removeItem(at: harness.modelDirectory) }
@@ -4035,6 +4091,164 @@ final class LocalModelRuntimeTests: XCTestCase {
     }
   }
 
+
+  /// Opt-in characterization of a LiteRT-LM v0.14.0 defect.
+  ///
+  /// Cancelling an in-flight generation does not terminate the executing task.
+  /// The runtime logs `SessionAdvanced::CancelProcess` and then repeatedly
+  /// fails with `DEADLINE_EXCEEDED: Timeout waiting for all tasks to be done
+  /// in pool 'callback_thread_pool'. Active tasks: 1`, so the engine stays
+  /// wedged and the next generation emits `started` and never produces a
+  /// token. Recreating the conversation does not help, because the stall is in
+  /// the engine's thread pool rather than the conversation handle.
+  ///
+  /// This test pins the defective behaviour deliberately so the suite stays
+  /// honest. When upstream fixes cancellation, this test fails, and it should
+  /// then be rewritten to assert that the second turn completes.
+  func testRealGemmaCancellationWedgesEngineUpstreamDefect() async throws {
+    let environment = ProcessInfo.processInfo.environment
+    guard let modelPath = environment["REAL_GEMMA_MODEL_PATH"] else {
+      throw XCTSkip("Set REAL_GEMMA_MODEL_PATH to run the real-model smoke.")
+    }
+
+    let collector = RealModelEventCollector()
+    let relay = RuntimeGenerationEventRelay()
+    await relay.attach { event in
+      await collector.record(event)
+    }
+    let backend = LiteRTLMRuntimeBackend(eventRelay: relay)
+    _ = try await backend.loadModel(
+      RuntimeModelRequest(
+        modelId: "gemma-4-E4B-it",
+        modelPath: modelPath,
+        contextSize: 4096
+      )
+    )
+
+    _ = try await backend.startGeneration(
+      RuntimeGenerationRequest(
+        generationId: "generation-1",
+        sessionId: "session-1",
+        prompt: "Count slowly from one to two hundred.",
+        context: [],
+        temperature: 0.7,
+        topP: 0.95,
+        maxTokens: 512,
+        seed: 7
+      )
+    )
+    let deltaDeadline = Date().addingTimeInterval(120)
+    while Date() < deltaDeadline, await collector.kinds.count < 2 {
+      try await Task.sleep(nanoseconds: 20_000_000)
+    }
+    _ = try await backend.cancelGeneration(generationId: "generation-1")
+    print("REAL_SMOKE after_cancel_kinds=\(await collector.kinds)")
+
+    await collector.reset()
+    _ = try await backend.startGeneration(
+      RuntimeGenerationRequest(
+        generationId: "generation-2",
+        sessionId: "session-1",
+        prompt: "Say the single word: ready.",
+        context: [],
+        temperature: 0.7,
+        topP: 0.95,
+        maxTokens: 32,
+        seed: 7
+      )
+    )
+    let deadline = Date().addingTimeInterval(30)
+    while Date() < deadline, await !collector.isTerminal {
+      try await Task.sleep(nanoseconds: 50_000_000)
+    }
+
+    let kinds = await collector.kinds
+    let text = await collector.text
+    print("REAL_SMOKE reuse_kinds=\(kinds)")
+    print("REAL_SMOKE reuse_text=\(text)")
+    XCTAssertEqual(
+      kinds,
+      [.started],
+      "Upstream defect: the wedged engine only ever reports started."
+    )
+    XCTAssertTrue(
+      text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+      "Upstream defect: no token is produced after a cancelled generation."
+    )
+    _ = try await backend.unloadModel()
+  }
+
+  /// Opt-in smoke against the real Gemma 4 E4B artifact.
+  ///
+  /// Set REAL_GEMMA_MODEL_PATH to run it. It is skipped by default so the
+  /// ordinary suite stays model-free and fast.
+  func testRealGemmaLoadsAndStreamsTokens() async throws {
+    let environment = ProcessInfo.processInfo.environment
+    guard let modelPath = environment["REAL_GEMMA_MODEL_PATH"] else {
+      throw XCTSkip("Set REAL_GEMMA_MODEL_PATH to run the real-model smoke.")
+    }
+
+    let collector = RealModelEventCollector()
+    let relay = RuntimeGenerationEventRelay()
+    await relay.attach { event in
+      await collector.record(event)
+    }
+    let backend = LiteRTLMRuntimeBackend(eventRelay: relay)
+
+    let loadStarted = Date()
+    let load = try await backend.loadModel(
+      RuntimeModelRequest(
+        modelId: "gemma-4-E4B-it",
+        modelPath: modelPath,
+        contextSize: 4096
+      )
+    )
+    let loadSeconds = Date().timeIntervalSince(loadStarted)
+    XCTAssertTrue(load.loaded, "The real model must load.")
+    print("REAL_SMOKE cold_load_seconds=\(loadSeconds)")
+
+    let generationStarted = Date()
+    let acknowledgement = try await backend.startGeneration(
+      RuntimeGenerationRequest(
+        generationId: "generation-1",
+        sessionId: "session-1",
+        prompt: "Reply with exactly one short sentence about local AI.",
+        context: [],
+        temperature: 0.7,
+        topP: 0.95,
+        maxTokens: 48,
+        seed: 7
+      )
+    )
+    XCTAssertTrue(acknowledgement.accepted, "The generation must be accepted.")
+
+    let deadline = Date().addingTimeInterval(300)
+    while Date() < deadline, await !collector.isTerminal {
+      try await Task.sleep(nanoseconds: 50_000_000)
+    }
+
+    let kinds = await collector.kinds
+    let text = await collector.text
+    let failure = await collector.failureDescription
+    let elapsed = Date().timeIntervalSince(generationStarted)
+    print("REAL_SMOKE kinds=\(kinds)")
+    print("REAL_SMOKE generation_seconds=\(elapsed)")
+    print("REAL_SMOKE text=\(text)")
+    if let failure {
+      print("REAL_SMOKE failure=\(failure)")
+    }
+
+    XCTAssertNil(failure, "The real generation must not fail.")
+    XCTAssertEqual(kinds.first, .started)
+    XCTAssertEqual(kinds.last, .completed)
+    XCTAssertFalse(
+      text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+      "Gemma must emit real token text."
+    )
+
+    _ = try await backend.unloadModel()
+  }
+
 }
 
 private enum BackendInvocation: Equatable {
@@ -4708,6 +4922,37 @@ private actor AsyncRuntimeEventRecorder {
     }
     await withCheckedContinuation { continuation in
       waiters.append((count, continuation))
+    }
+  }
+}
+
+
+private actor RealModelEventCollector {
+  private(set) var kinds: [RuntimeGenerationEventKind] = []
+  private(set) var text = ""
+  private(set) var failureDescription: String?
+
+  func reset() {
+    kinds.removeAll()
+    text = ""
+    failureDescription = nil
+  }
+
+  var isTerminal: Bool {
+    guard let last = kinds.last else {
+      return false
+    }
+    return last == .completed || last == .cancelled || last == .failed
+  }
+
+  func record(_ event: RuntimeGenerationEvent) {
+    kinds.append(event.kind)
+    if let delta = event.delta {
+      text += delta
+    }
+    if event.kind == .failed {
+      failureDescription =
+        "\(String(describing: event.failureCode)): \(event.message ?? "")"
     }
   }
 }

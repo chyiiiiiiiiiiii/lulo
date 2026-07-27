@@ -362,7 +362,7 @@ public actor LiteRTLMRuntimeBackend: RuntimeBackend {
     generationId: String
   ) async throws -> RuntimeCancellationAcknowledgement {
     guard
-      let active = activeGeneration,
+      var active = activeGeneration,
       active.generationId == generationId,
       let driver
     else {
@@ -371,6 +371,8 @@ public actor LiteRTLMRuntimeBackend: RuntimeBackend {
         acknowledged: false
       )
     }
+    // Clearing the active generation first fences any chunk the driver is
+    // still producing, so nothing can follow the terminal emitted below.
     activeGeneration = nil
     active.task?.cancel()
     do {
@@ -378,6 +380,18 @@ public actor LiteRTLMRuntimeBackend: RuntimeBackend {
     } catch {
       throw RuntimeBoundaryError.generationFailed
     }
+    // A cancelled generation must still reach a terminal event. The
+    // coordinator only releases its single generation slot when it observes
+    // one, so skipping this would leave every later generation rejected as
+    // busy for the lifetime of the process.
+    active.nextSequence += 1
+    await eventRelay.emit(
+      RuntimeGenerationEvent(
+        generationId: generationId,
+        sequence: active.nextSequence,
+        kind: .cancelled
+      )
+    )
     return RuntimeCancellationAcknowledgement(
       generationId: generationId,
       acknowledged: true
