@@ -9,14 +9,14 @@ class AppDelegate: FlutterAppDelegate {
   private var desktopHostApi: PanelDesktopHostApi?
 
   override func applicationDidFinishLaunching(_ notification: Notification) {
-    super.applicationDidFinishLaunching(notification)
     NSApp.setActivationPolicy(.accessory)
 
-    guard
-      let window = NSApp.windows.compactMap({ $0 as? MainFlutterWindow }).first,
-      let panelController = window.panelController
-    else {
+    guard let window = resolveMainFlutterWindow(
+      outletWindow: mainFlutterWindow,
+      applicationWindows: NSApp.windows
+    ), let panelController = window.panelController else {
       assertionFailure("The retained desktop panel was not loaded.")
+      super.applicationDidFinishLaunching(notification)
       return
     }
 
@@ -47,6 +47,7 @@ class AppDelegate: FlutterAppDelegate {
     self.menuBarController = menuBarController
     self.hotKeyController = hotKeyController
     self.desktopHostApi = desktopHostApi
+    super.applicationDidFinishLaunching(notification)
   }
 
   override func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
@@ -76,6 +77,16 @@ class AppDelegate: FlutterAppDelegate {
     hotKeyController?.unregister()
     super.applicationWillTerminate(notification)
   }
+}
+
+func resolveMainFlutterWindow(
+  outletWindow: NSWindow?,
+  applicationWindows: [NSWindow]
+) -> MainFlutterWindow? {
+  if let window = outletWindow as? MainFlutterWindow {
+    return window
+  }
+  return applicationWindows.compactMap { $0 as? MainFlutterWindow }.first
 }
 
 private final class PanelDesktopHostApi: DesktopHostApi {

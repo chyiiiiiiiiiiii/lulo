@@ -53,5 +53,6 @@ final class DesktopPanelControllerTests: XCTestCase {
     XCTAssertTrue(panel.collectionBehavior.contains(.canJoinAllSpaces))
     XCTAssertTrue(panel.collectionBehavior.contains(.fullScreenAuxiliary))
     XCTAssertFalse(panel.hidesOnDeactivate)
+    XCTAssertEqual(panel.animationBehavior, .none)
   }
 }

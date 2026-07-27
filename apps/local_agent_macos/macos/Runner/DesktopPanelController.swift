@@ -13,6 +13,9 @@ struct FlutterPanelContent {
 }
 
 final class DesktopPanelController: DesktopPanelControlling {
+  private static let performanceMetricsEnabled =
+    ProcessInfo.processInfo.environment["LOCAL_AGENT_PANEL_METRICS"] == "1"
+
   private(set) var retainedPanel: NSPanel
   private(set) var retainedEngine: AnyObject
   private let screenProvider: () -> NSScreen?
@@ -33,6 +36,7 @@ final class DesktopPanelController: DesktopPanelControlling {
     panel.level = .floating
     panel.isFloatingPanel = true
     panel.hidesOnDeactivate = false
+    panel.animationBehavior = .none
     panel.styleMask.insert(.nonactivatingPanel)
     panel.collectionBehavior.formUnion([.canJoinAllSpaces, .fullScreenAuxiliary])
   }
@@ -43,17 +47,59 @@ final class DesktopPanelController: DesktopPanelControlling {
 
   func show() {
     precondition(Thread.isMainThread)
+    let startedAt = performanceTimestamp()
     if !retainedPanel.isVisible {
       moveToActiveDisplay()
     }
+    let movedAt = performanceTimestamp()
     NSApp.activate(ignoringOtherApps: true)
+    let activatedAt = performanceTimestamp()
     retainedPanel.orderFrontRegardless()
+    let orderedAt = performanceTimestamp()
     retainedPanel.makeKey()
+    let completedAt = performanceTimestamp()
+    if let startedAt, let movedAt, let activatedAt, let orderedAt, let completedAt {
+      reportPanelPerformance(
+        operation: "show",
+        stages: [
+          "move": movedAt - startedAt,
+          "activate": activatedAt - movedAt,
+          "order": orderedAt - activatedAt,
+          "make_key": completedAt - orderedAt,
+          "total": completedAt - startedAt,
+        ]
+      )
+    }
   }
 
   func hide() {
     precondition(Thread.isMainThread)
+    let startedAt = performanceTimestamp()
     retainedPanel.orderOut(nil)
+    let completedAt = performanceTimestamp()
+    if let startedAt, let completedAt {
+      reportPanelPerformance(
+        operation: "hide",
+        stages: ["order_out": completedAt - startedAt, "total": completedAt - startedAt]
+      )
+    }
+  }
+
+  private func reportPanelPerformance(
+    operation: String,
+    stages: [String: UInt64]
+  ) {
+    let fields = stages.keys.sorted().map { key in
+      "\"\(key)_micros\":\(stages[key]! / 1_000)"
+    }.joined(separator: ",")
+    print("panel_native_metric {\"operation\":\"\(operation)\",\(fields)}")
+  }
+
+  private func performanceTimestamp() -> UInt64? {
+    guard Self.performanceMetricsEnabled else {
+      return nil
+    }
+    return DispatchTime.now().uptimeNanoseconds
   }
 
   func toggle() {
