@@ -4,12 +4,25 @@ import PackageDescription
 
 let package = Package(
   name: "InferenceService",
-  platforms: [.macOS(.v10_15)],
+  platforms: [.macOS(.v12)],
   products: [
     .library(name: "InferenceService", targets: ["InferenceService"]),
+    .executable(
+      name: "LiteRTLMCompileSmoke",
+      targets: ["LiteRTLMCompileSmoke"]
+    ),
+  ],
+  dependencies: [
+    .package(path: "../vendor/litert_lm"),
   ],
   targets: [
     .target(name: "InferenceService"),
+    .executableTarget(
+      name: "LiteRTLMCompileSmoke",
+      dependencies: [
+        .product(name: "LiteRTLM", package: "litert_lm"),
+      ]
+    ),
     .testTarget(
       name: "InferenceServiceTests",
       dependencies: ["InferenceService"]
