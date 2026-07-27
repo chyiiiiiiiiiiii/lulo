@@ -684,14 +684,15 @@ class GeneratedDesktopHostApiPigeonCodec: FlutterStandardMessageCodec, @unchecke
   static let shared = GeneratedDesktopHostApiPigeonCodec(readerWriter: GeneratedDesktopHostApiPigeonCodecReaderWriter())
 }
 
+
 /// Generated protocol from Pigeon that represents a handler of messages from Flutter.
 protocol DesktopHostApi {
-  func handshake(request: HostRequest) throws -> HostHandshakeResult
-  func loadModel(request: HostRequest, model: HostModelRequest) throws -> HostModelLoadResult
-  func startGeneration(request: HostRequest, generation: HostGenerationRequest) throws -> HostGenerationAcknowledgement
-  func cancelGeneration(request: HostRequest, generationId: String) throws -> HostCancellationAcknowledgement
-  func resetSession(request: HostRequest, sessionId: String) throws -> HostOperationCompletion
-  func unloadModel(request: HostRequest) throws -> HostOperationCompletion
+  func handshake(request: HostRequest, completion: @escaping (Result<HostHandshakeResult, Error>) -> Void)
+  func loadModel(request: HostRequest, model: HostModelRequest, completion: @escaping (Result<HostModelLoadResult, Error>) -> Void)
+  func startGeneration(request: HostRequest, generation: HostGenerationRequest, completion: @escaping (Result<HostGenerationAcknowledgement, Error>) -> Void)
+  func cancelGeneration(request: HostRequest, generationId: String, completion: @escaping (Result<HostCancellationAcknowledgement, Error>) -> Void)
+  func resetSession(request: HostRequest, sessionId: String, completion: @escaping (Result<HostOperationCompletion, Error>) -> Void)
+  func unloadModel(request: HostRequest, completion: @escaping (Result<HostOperationCompletion, Error>) -> Void)
   func showPanel(request: HostRequest) throws
   func hidePanel(request: HostRequest) throws
   func togglePanel(request: HostRequest) throws
@@ -708,11 +709,13 @@ class DesktopHostApiSetup {
       handshakeChannel.setMessageHandler { message, reply in
         let args = message as! [Any?]
         let requestArg = args[0] as! HostRequest
-        do {
-          let result = try api.handshake(request: requestArg)
-          reply(wrapResult(result))
-        } catch {
-          reply(wrapError(error))
+        api.handshake(request: requestArg) { result in
+          switch result {
+          case .success(let res):
+            reply(wrapResult(res))
+          case .failure(let error):
+            reply(wrapError(error))
+          }
         }
       }
     } else {
@@ -724,11 +727,13 @@ class DesktopHostApiSetup {
         let args = message as! [Any?]
         let requestArg = args[0] as! HostRequest
         let modelArg = args[1] as! HostModelRequest
-        do {
-          let result = try api.loadModel(request: requestArg, model: modelArg)
-          reply(wrapResult(result))
-        } catch {
-          reply(wrapError(error))
+        api.loadModel(request: requestArg, model: modelArg) { result in
+          switch result {
+          case .success(let res):
+            reply(wrapResult(res))
+          case .failure(let error):
+            reply(wrapError(error))
+          }
         }
       }
     } else {
@@ -740,11 +745,13 @@ class DesktopHostApiSetup {
         let args = message as! [Any?]
         let requestArg = args[0] as! HostRequest
         let generationArg = args[1] as! HostGenerationRequest
-        do {
-          let result = try api.startGeneration(request: requestArg, generation: generationArg)
-          reply(wrapResult(result))
-        } catch {
-          reply(wrapError(error))
+        api.startGeneration(request: requestArg, generation: generationArg) { result in
+          switch result {
+          case .success(let res):
+            reply(wrapResult(res))
+          case .failure(let error):
+            reply(wrapError(error))
+          }
         }
       }
     } else {
@@ -756,11 +763,13 @@ class DesktopHostApiSetup {
         let args = message as! [Any?]
         let requestArg = args[0] as! HostRequest
         let generationIdArg = args[1] as! String
-        do {
-          let result = try api.cancelGeneration(request: requestArg, generationId: generationIdArg)
-          reply(wrapResult(result))
-        } catch {
-          reply(wrapError(error))
+        api.cancelGeneration(request: requestArg, generationId: generationIdArg) { result in
+          switch result {
+          case .success(let res):
+            reply(wrapResult(res))
+          case .failure(let error):
+            reply(wrapError(error))
+          }
         }
       }
     } else {
@@ -772,11 +781,13 @@ class DesktopHostApiSetup {
         let args = message as! [Any?]
         let requestArg = args[0] as! HostRequest
         let sessionIdArg = args[1] as! String
-        do {
-          let result = try api.resetSession(request: requestArg, sessionId: sessionIdArg)
-          reply(wrapResult(result))
-        } catch {
-          reply(wrapError(error))
+        api.resetSession(request: requestArg, sessionId: sessionIdArg) { result in
+          switch result {
+          case .success(let res):
+            reply(wrapResult(res))
+          case .failure(let error):
+            reply(wrapError(error))
+          }
         }
       }
     } else {
@@ -787,11 +798,13 @@ class DesktopHostApiSetup {
       unloadModelChannel.setMessageHandler { message, reply in
         let args = message as! [Any?]
         let requestArg = args[0] as! HostRequest
-        do {
-          let result = try api.unloadModel(request: requestArg)
-          reply(wrapResult(result))
-        } catch {
-          reply(wrapError(error))
+        api.unloadModel(request: requestArg) { result in
+          switch result {
+          case .success(let res):
+            reply(wrapResult(res))
+          case .failure(let error):
+            reply(wrapError(error))
+          }
         }
       }
     } else {

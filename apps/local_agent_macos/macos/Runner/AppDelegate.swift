@@ -48,14 +48,24 @@ class AppDelegate: FlutterAppDelegate {
       scheduler: MainQueueRuntimeEventScheduler(),
       coalescingMilliseconds: 10
     )
-    let backend = DeterministicLocalModelRuntimeBackend(
-      eventReceiver: eventBridge.receive
-    )
-    let coordinator = LocalModelRuntimeCoordinator(
+    // The relay buffers backend events until the coordinator attaches, so a
+    // generation that finishes before wiring completes is not lost. The
+    // coordinator is the single arbiter: it sequences and fences events, then
+    // forwards them to the Flutter bridge through its event handler.
+    let eventRelay = RuntimeGenerationEventRelay()
+    let backend = LiteRTLMRuntimeBackend(eventRelay: eventRelay)
+    let coordinator = InferenceCoordinator(
       supportedSchemaVersion: 2,
       backend: backend,
-      cancellationFence: eventBridge
+      eventHandler: { [eventBridge] event in
+        eventBridge.receive(event)
+      }
     )
+    Task {
+      await eventRelay.attach { [coordinator] event in
+        await coordinator.receiveGenerationEvent(event)
+      }
+    }
     let desktopHostApi = LocalRuntimeDesktopHostApi(
       panelController: panelController,
       coordinator: coordinator,

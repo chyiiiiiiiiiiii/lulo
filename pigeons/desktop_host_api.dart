@@ -137,22 +137,28 @@ class HostGenerationEvent {
 
 @HostApi()
 abstract class DesktopHostApi {
+  @async
   HostHandshakeResult handshake(HostRequest request);
 
+  @async
   HostModelLoadResult loadModel(HostRequest request, HostModelRequest model);
 
+  @async
   HostGenerationAcknowledgement startGeneration(
     HostRequest request,
     HostGenerationRequest generation,
   );
 
+  @async
   HostCancellationAcknowledgement cancelGeneration(
     HostRequest request,
     String generationId,
   );
 
+  @async
   HostOperationCompletion resetSession(HostRequest request, String sessionId);
 
+  @async
   HostOperationCompletion unloadModel(HostRequest request);
 
   void showPanel(HostRequest request);

@@ -1528,6 +1528,37 @@ public actor InferenceCoordinator {
     }
   }
 
+  /// Reports the runtime contract this coordinator speaks together with the
+  /// capabilities its backend actually provides.
+  public func handshake(
+    request: RuntimeRequestEnvelope
+  ) async throws -> RuntimeHandshakeResult {
+    try validate(request)
+    guard isReadyForRequests else {
+      throw RuntimeBoundaryError.runtimeUnavailable
+    }
+    let capabilities = await backend.capabilities
+    return RuntimeHandshakeResult(
+      schemaVersion: supportedSchemaVersion,
+      runtimeName: capabilities.runtimeName,
+      supportsStreaming: capabilities.supportsStreaming,
+      supportsCancellation: capabilities.supportsCancellation
+    )
+  }
+
+  /// Clears the conversation state the backend holds for one session.
+  public func resetSession(
+    request: RuntimeRequestEnvelope,
+    sessionId: String
+  ) async throws -> RuntimeOperationCompletion {
+    try validate(request)
+    guard isReadyForRequests else {
+      throw RuntimeBoundaryError.runtimeUnavailable
+    }
+    return try await backend.resetSession(sessionId: sessionId)
+  }
+
+
   private func validate(_ request: RuntimeRequestEnvelope) throws {
     guard
       request.schemaVersion == supportedSchemaVersion,

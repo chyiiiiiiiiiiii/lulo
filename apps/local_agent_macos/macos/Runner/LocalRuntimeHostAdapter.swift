@@ -2,10 +2,17 @@ import Dispatch
 import Foundation
 import InferenceService
 
+/// Bridges the generated Pigeon host boundary to the asynchronous
+/// `InferenceCoordinator` actor.
+///
+/// Every lifecycle method returns immediately and resolves its Pigeon
+/// completion once the actor answers, so model initialization never runs on
+/// the main thread. Panel control stays synchronous because it only touches
+/// AppKit.
 final class LocalRuntimeDesktopHostApi: DesktopHostApi {
   init(
     panelController: DesktopPanelControlling,
-    coordinator: LocalModelRuntimeCoordinator,
+    coordinator: InferenceCoordinator,
     eventBridge: GenerationEventBridge
   ) {
     self.panelController = panelController
@@ -14,99 +21,136 @@ final class LocalRuntimeDesktopHostApi: DesktopHostApi {
   }
 
   private let panelController: DesktopPanelControlling
-  private let coordinator: LocalModelRuntimeCoordinator
+  private let coordinator: InferenceCoordinator
   private let eventBridge: GenerationEventBridge
 
-  func handshake(request: HostRequest) throws -> HostHandshakeResult {
-    let result = try translate {
-      try coordinator.handshake(request: request.runtimeEnvelope)
+  func handshake(
+    request: HostRequest,
+    completion: @escaping (Result<HostHandshakeResult, Error>) -> Void
+  ) {
+    let coordinator = self.coordinator
+    let envelope = request.runtimeEnvelope
+    Task {
+      await resolve(completion) {
+        let result = try await coordinator.handshake(request: envelope)
+        return HostHandshakeResult(
+          schemaVersion: result.schemaVersion,
+          runtimeName: result.runtimeName,
+          supportsStreaming: result.supportsStreaming,
+          supportsCancellation: result.supportsCancellation
+        )
+      }
     }
-    return HostHandshakeResult(
-      schemaVersion: result.schemaVersion,
-      runtimeName: result.runtimeName,
-      supportsStreaming: result.supportsStreaming,
-      supportsCancellation: result.supportsCancellation
-    )
   }
 
   func loadModel(
     request: HostRequest,
-    model: HostModelRequest
-  ) throws -> HostModelLoadResult {
-    let result = try translate {
-      try coordinator.loadModel(
-        request: request.runtimeEnvelope,
-        model: RuntimeModelRequest(
-          modelId: model.modelId,
-          modelPath: model.modelPath,
-          contextSize: model.contextSize
+    model: HostModelRequest,
+    completion: @escaping (Result<HostModelLoadResult, Error>) -> Void
+  ) {
+    let coordinator = self.coordinator
+    let envelope = request.runtimeEnvelope
+    let modelRequest = RuntimeModelRequest(
+      modelId: model.modelId,
+      modelPath: model.modelPath,
+      contextSize: model.contextSize
+    )
+    Task {
+      await resolve(completion) {
+        let result = try await coordinator.loadModel(
+          request: envelope,
+          model: modelRequest
         )
-      )
+        return HostModelLoadResult(
+          modelId: result.modelId,
+          loaded: result.loaded
+        )
+      }
     }
-    return HostModelLoadResult(modelId: result.modelId, loaded: result.loaded)
   }
 
   func startGeneration(
     request: HostRequest,
-    generation: HostGenerationRequest
-  ) throws -> HostGenerationAcknowledgement {
-    let result = try translate {
-      try coordinator.startGeneration(
-        request: request.runtimeEnvelope,
-        generation: RuntimeGenerationRequest(
-          generationId: generation.generationId,
-          sessionId: generation.sessionId,
-          prompt: generation.prompt,
-          context: generation.context,
-          temperature: generation.temperature,
-          topP: generation.topP,
-          maxTokens: generation.maxTokens,
-          seed: generation.seed
-        )
-      )
-    }
-    return HostGenerationAcknowledgement(
-      generationId: result.generationId,
-      accepted: result.accepted
+    generation: HostGenerationRequest,
+    completion: @escaping (Result<HostGenerationAcknowledgement, Error>) -> Void
+  ) {
+    let coordinator = self.coordinator
+    let envelope = request.runtimeEnvelope
+    let generationRequest = RuntimeGenerationRequest(
+      generationId: generation.generationId,
+      sessionId: generation.sessionId,
+      prompt: generation.prompt,
+      context: generation.context,
+      temperature: generation.temperature,
+      topP: generation.topP,
+      maxTokens: generation.maxTokens,
+      seed: generation.seed
     )
+    Task {
+      await resolve(completion) {
+        let result = try await coordinator.startGeneration(
+          request: envelope,
+          generation: generationRequest
+        )
+        return HostGenerationAcknowledgement(
+          generationId: result.generationId,
+          accepted: result.accepted
+        )
+      }
+    }
   }
 
   func cancelGeneration(
     request: HostRequest,
-    generationId: String
-  ) throws -> HostCancellationAcknowledgement {
-    let result = try translate {
-      try coordinator.cancelGeneration(
-        request: request.runtimeEnvelope,
-        generationId: generationId
-      )
+    generationId: String,
+    completion: @escaping (Result<HostCancellationAcknowledgement, Error>) -> Void
+  ) {
+    let coordinator = self.coordinator
+    let envelope = request.runtimeEnvelope
+    Task {
+      await resolve(completion) {
+        let result = try await coordinator.cancelGeneration(
+          request: envelope,
+          generationId: generationId
+        )
+        return HostCancellationAcknowledgement(
+          generationId: result.generationId,
+          acknowledged: result.acknowledged
+        )
+      }
     }
-    return HostCancellationAcknowledgement(
-      generationId: result.generationId,
-      acknowledged: result.acknowledged
-    )
   }
 
   func resetSession(
     request: HostRequest,
-    sessionId: String
-  ) throws -> HostOperationCompletion {
-    let result = try translate {
-      try coordinator.resetSession(
-        request: request.runtimeEnvelope,
-        sessionId: sessionId
-      )
+    sessionId: String,
+    completion: @escaping (Result<HostOperationCompletion, Error>) -> Void
+  ) {
+    let coordinator = self.coordinator
+    let envelope = request.runtimeEnvelope
+    Task {
+      await resolve(completion) {
+        let result = try await coordinator.resetSession(
+          request: envelope,
+          sessionId: sessionId
+        )
+        return HostOperationCompletion(completed: result.completed)
+      }
     }
-    return HostOperationCompletion(completed: result.completed)
   }
 
   func unloadModel(
-    request: HostRequest
-  ) throws -> HostOperationCompletion {
-    let result = try translate {
-      try coordinator.unloadModel(request: request.runtimeEnvelope)
+    request: HostRequest,
+    completion: @escaping (Result<HostOperationCompletion, Error>) -> Void
+  ) {
+    let coordinator = self.coordinator
+    let envelope = request.runtimeEnvelope
+    Task {
+      await resolve(completion) {
+        let result = try await coordinator.unloadModel(request: envelope)
+        return HostOperationCompletion(completed: result.completed)
+      }
     }
-    return HostOperationCompletion(completed: result.completed)
   }
 
   func showPanel(request: HostRequest) throws {
@@ -124,15 +168,31 @@ final class LocalRuntimeDesktopHostApi: DesktopHostApi {
     onMain { self.panelController.toggle() }
   }
 
+  /// Stops delivering events to Flutter, then drains the coordinator within a
+  /// bounded window so termination cannot hang on a running generation.
+  ///
+  /// The bridge is disposed first: it is the only component that hops to the
+  /// main queue, so shutting it down before waiting keeps this bounded wait
+  /// from deadlocking against the thread it is called on.
   func dispose() {
     eventBridge.dispose()
+    let coordinator = self.coordinator
+    let drained = DispatchSemaphore(value: 0)
+    Task {
+      _ = try? await coordinator.shutdown()
+      drained.signal()
+    }
+    _ = drained.wait(timeout: .now() + .milliseconds(2000))
   }
 
-  private func translate<T>(_ operation: () throws -> T) throws -> T {
+  private func resolve<T>(
+    _ completion: @escaping (Result<T, Error>) -> Void,
+    _ operation: () async throws -> T
+  ) async {
     do {
-      return try operation()
+      completion(.success(try await operation()))
     } catch {
-      throw pigeonError(for: error)
+      completion(.failure(makePigeonError(for: error)))
     }
   }
 
@@ -142,17 +202,8 @@ final class LocalRuntimeDesktopHostApi: DesktopHostApi {
       !request.requestId.isEmpty,
       request.timestampMicros > 0
     else {
-      throw pigeonError(for: RuntimeBoundaryError.protocolMismatch)
+      throw makePigeonError(for: RuntimeBoundaryError.protocolMismatch)
     }
-  }
-
-  private func pigeonError(for error: Error) -> PigeonError {
-    let failure = safeRuntimeFailure(for: error)
-    return PigeonError(
-      code: failure.code,
-      message: failure.message,
-      details: nil
-    )
   }
 
   private func onMain(_ operation: @escaping () -> Void) {
@@ -162,6 +213,16 @@ final class LocalRuntimeDesktopHostApi: DesktopHostApi {
       DispatchQueue.main.sync(execute: operation)
     }
   }
+}
+
+/// Maps any runtime error onto the stable, non-leaking Pigeon failure code.
+private func makePigeonError(for error: Error) -> PigeonError {
+  let failure = safeRuntimeFailure(for: error)
+  return PigeonError(
+    code: failure.code,
+    message: failure.message,
+    details: nil
+  )
 }
 
 final class PigeonGenerationEventSink: RuntimeGenerationEventSink {

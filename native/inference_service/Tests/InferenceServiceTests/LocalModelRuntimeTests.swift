@@ -3907,6 +3907,134 @@ final class LocalModelRuntimeTests: XCTestCase {
     XCTAssertEqual(scheduler.cancelledTaskCount, 1)
     XCTAssertNil(releasedSink)
   }
+
+  func testCoordinatorHandshakeReportsBackendCapabilities() async throws {
+    let backend = RuntimeBackendSpy()
+    let coordinator = InferenceCoordinator(
+      supportedSchemaVersion: 2,
+      backend: backend
+    )
+
+    let result = try await coordinator.handshake(
+      request: RuntimeRequestEnvelope(
+        schemaVersion: 2,
+        requestId: "request-1",
+        timestampMicros: 1
+      )
+    )
+
+    XCTAssertEqual(
+      result,
+      RuntimeHandshakeResult(
+        schemaVersion: 2,
+        runtimeName: "spy",
+        supportsStreaming: true,
+        supportsCancellation: true
+      )
+    )
+  }
+
+  func testCoordinatorHandshakeRejectsProtocolMismatch() async {
+    let coordinator = InferenceCoordinator(
+      supportedSchemaVersion: 2,
+      backend: RuntimeBackendSpy()
+    )
+
+    await assertRuntimeBoundaryError(.protocolMismatch) {
+      _ = try await coordinator.handshake(
+        request: RuntimeRequestEnvelope(
+          schemaVersion: 1,
+          requestId: "request-1",
+          timestampMicros: 1
+        )
+      )
+    }
+  }
+
+  func testCoordinatorResetSessionDelegatesExactSessionToBackend() async throws {
+    let backend = RuntimeBackendSpy()
+    let coordinator = InferenceCoordinator(
+      supportedSchemaVersion: 2,
+      backend: backend
+    )
+
+    let completion = try await coordinator.resetSession(
+      request: RuntimeRequestEnvelope(
+        schemaVersion: 2,
+        requestId: "request-1",
+        timestampMicros: 1
+      ),
+      sessionId: "session-1"
+    )
+
+    XCTAssertEqual(completion, RuntimeOperationCompletion(completed: true))
+    let resetSessionIds = await backend.resetSessionIds
+    XCTAssertEqual(resetSessionIds, ["session-1"])
+  }
+
+  func testCoordinatorResetSessionRejectsProtocolMismatch() async {
+    let backend = RuntimeBackendSpy()
+    let coordinator = InferenceCoordinator(
+      supportedSchemaVersion: 2,
+      backend: backend
+    )
+
+    await assertRuntimeBoundaryError(.protocolMismatch) {
+      _ = try await coordinator.resetSession(
+        request: RuntimeRequestEnvelope(
+          schemaVersion: 2,
+          requestId: "",
+          timestampMicros: 1
+        ),
+        sessionId: "session-1"
+      )
+    }
+    let resetSessionIds = await backend.resetSessionIds
+    XCTAssertEqual(resetSessionIds, [])
+  }
+
+  func testCoordinatorRejectsHandshakeAndResetSessionAfterShutdown() async throws {
+    let backend = RuntimeBackendSpy()
+    let coordinator = InferenceCoordinator(
+      supportedSchemaVersion: 2,
+      backend: backend
+    )
+    let request = RuntimeRequestEnvelope(
+      schemaVersion: 2,
+      requestId: "request-1",
+      timestampMicros: 1
+    )
+    _ = try await coordinator.shutdown()
+
+    await assertRuntimeBoundaryError(.runtimeUnavailable) {
+      _ = try await coordinator.handshake(request: request)
+    }
+    await assertRuntimeBoundaryError(.runtimeUnavailable) {
+      _ = try await coordinator.resetSession(
+        request: request,
+        sessionId: "session-1"
+      )
+    }
+    let resetSessionIds = await backend.resetSessionIds
+    XCTAssertEqual(resetSessionIds, [])
+  }
+
+  private func assertRuntimeBoundaryError(
+    _ expected: RuntimeBoundaryError,
+    file: StaticString = #filePath,
+    line: UInt = #line,
+    _ operation: () async throws -> Void
+  ) async {
+    do {
+      try await operation()
+      XCTFail("Expected \(expected) but the operation succeeded.", file: file, line: line)
+    } catch let error as RuntimeBoundaryError {
+      XCTAssertEqual(error, expected, file: file, line: line)
+    } catch {
+      XCTFail("Expected \(expected) but got \(error).", file: file, line: line)
+    }
+  }
+
 }
 
 private enum BackendInvocation: Equatable {
@@ -4192,8 +4320,11 @@ private actor RuntimeBackendSpy: RuntimeBackend {
     cancelContinuations.removeAll()
   }
 
+  private(set) var resetSessionIds: [String] = []
+
   func resetSession(sessionId: String) async throws -> RuntimeOperationCompletion {
-    RuntimeOperationCompletion(completed: true)
+    resetSessionIds.append(sessionId)
+    return RuntimeOperationCompletion(completed: true)
   }
 
   func unloadModel() async throws -> RuntimeOperationCompletion {
