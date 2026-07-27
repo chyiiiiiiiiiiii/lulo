@@ -1,0 +1,172 @@
+{
+  "schema_version": 1,
+  "evidence_root": "01-Projects/Flutter-Local-Agent/evidence/retained-panel-performance",
+  "source_commits": {
+    "idle_cadence": "00eed02",
+    "retained_panel_host": "8227714",
+    "tracked_toggle_validator": "5dd2038"
+  },
+  "gates": [
+    {
+      "gate": "idle_cpu",
+      "status": "accepted_hard_gate",
+      "result": {
+        "profile_idle_mean_percent": 1.605,
+        "empty_shell_mean_percent": 1.173,
+        "hard_limit_percent": 3.0,
+        "aspirational_target_percent": 1.0
+      },
+      "evidence": [
+        {
+          "path": "attempt-1/baseline-cpu-rss.csv",
+          "sha256": "51d52c1654c31e6e9989eef7bfa3950235353a10b6b301b1fd5f8efaa4fd2fe2"
+        },
+        {
+          "path": "attempt-1/adaptive-idle-final60-cpu-rss.csv",
+          "sha256": "3395793f72b1abd2e3bd4324f68d8ecc43f7c8a3aea6099dd0bdbab8939400b0"
+        }
+      ],
+      "limitation": "The hard limit passes, but the 1% aspirational target does not."
+    },
+    {
+      "gate": "speaking_cpu_delta",
+      "status": "recorded",
+      "result": {
+        "profile_speaking_mean_percent": 18.022,
+        "delta_over_empty_shell_percentage_points": 16.849
+      },
+      "evidence": [
+        {
+          "path": "attempt-1/speaking-cpu-rss.csv",
+          "sha256": "f15359f901fcb47daef26ba5a6f19b672a0ed94c412327ad5d715a4063cd2585"
+        }
+      ]
+    },
+    {
+      "gate": "metal_gpu",
+      "status": "inconclusive",
+      "evidence": [
+        {
+          "path": "attempt-1/speaking-metal-toc.xml",
+          "sha256": "46c360afdc037ab7a2b827a552e32090fccc6ac48e869dabca4f509c1ffeac78"
+        }
+      ],
+      "limitation": "The trace completed, but exported submission and stall rows could not be attributed to this process."
+    },
+    {
+      "gate": "retained_panel_direct_latency",
+      "status": "accepted_hard_gate",
+      "result": {
+        "typed_show_p95_ms": 10.91,
+        "typed_hide_p95_ms": 12.687,
+        "native_show_p95_ms": 7.214,
+        "native_hide_p95_ms": 6.701,
+        "samples_over_180_ms": 0
+      },
+      "evidence": [
+        {
+          "path": "attempt-4/panel-operation-latency.ndjson",
+          "sha256": "61b7d1c88003360de2e98765e45476cb689de727ddd3fd75d7f85905effcc07c"
+        },
+        {
+          "path": "attempt-4/panel-native-stages.ndjson",
+          "sha256": "d8d5932900302e16a97098c4ee252cb1d441a5514e6314f2e9eca2d3a54aab96"
+        }
+      ],
+      "limitation": "This measures the typed host roundtrip, not the physical keyboard-to-visible path."
+    },
+    {
+      "gate": "retained_panel_toggle_completion",
+      "status": "accepted",
+      "result": {
+        "expected": 60,
+        "completed": 60,
+        "failures": 0,
+        "build_mode": "profile"
+      },
+      "evidence": [
+        {
+          "path": "attempt-6/panel-toggle-validator.log",
+          "sha256": "1ea28fdf894fa88c87c0708acf681500b4225646b6a7a4c449c97ea5ebfd0403"
+        },
+        {
+          "path": "attempt-6/source-revision.txt",
+          "sha256": "f780c1d68a531bede0164ae1d2f4147b863821c8bcea779ec089d2689cd92582"
+        },
+        {
+          "path": "attempt-6/source-status.txt",
+          "sha256": "8291355441ba8293ec3e581237266267d9532993107c7b36a066cf21a331bb14"
+        }
+      ],
+      "protocol": "Every toggle is awaited. Any Pigeon exception fails the integration test. The success boundary is emitted before normal test shutdown."
+    },
+    {
+      "gate": "ten_minute_rss",
+      "status": "observed_bounded_window_inconclusive_trend",
+      "result": {
+        "samples": 600,
+        "minimum_kib": 119328,
+        "maximum_kib": 133520,
+        "post_360_second_slope_kib_per_second": 2.843542,
+        "post_360_second_slope_kib_per_minute": 170.613
+      },
+      "evidence": [
+        {
+          "path": "attempt-5/memory-cycle-10min.csv",
+          "sha256": "454a304213ef4b8287ca40aa76583fb0cd32f94ed0a07de9ebea4efba8cd4e42"
+        },
+        {
+          "path": "attempt-5/memory-cycle-process.txt",
+          "sha256": "d0393d05ca7f948e782c36e0ccf5f96ba3cae0367fae4c094bf7a95a6dde8e53"
+        }
+      ],
+      "limitation": "The finite window stayed within 119328–133520 KiB, but positive post-360-second slope and another step near second 591 do not establish a stable post-GC trend. The process file proves the exact Profile executable; its first-line revision is invalid because the helper resolved the wrong Git directory."
+    },
+    {
+      "gate": "leaks_and_allocations",
+      "status": "observed_not_clean",
+      "result": {
+        "trace_duration_seconds": 60,
+        "reported_leaks": 289,
+        "reported_leaked_bytes": 14608,
+        "matched_application_frame_symbols_in_leak_root_body": 0
+      },
+      "evidence": [
+        {
+          "path": "attempt-5/leaks-profile-toc.xml",
+          "sha256": "3af1435c96bc8f11e002dc62cc576182fb13b1dc9cf1b51e835dd811bc580c95"
+        },
+        {
+          "path": "attempt-5/leaks-profile-xctrace.log",
+          "sha256": "df8aa97fac86925cecfb6ae76089fee73369dac4a778a27d26ceac4ef825b495"
+        },
+        {
+          "path": "attempt-6/leaks-cli-report.txt",
+          "sha256": "132ba957b7bc966a1caf383ba8b6295fe0225db35abef6d9b06e11c110923fa3"
+        },
+        {
+          "path": "attempt-6/leaks-cli-process.txt",
+          "sha256": "7e12604f4b3e900d35b2c0f1c79b65c7670fe2fefdd7148314efc16ba02c484a"
+        }
+      ],
+      "limitation": "The exact Profile process is proven. No application frame symbol matched in the leak-root body, but ownership remains unresolved and non-zero output means this gate is not a pass."
+    },
+    {
+      "gate": "physical_global_hotkey_latency",
+      "status": "blocked",
+      "limitation": "macOS denied synthetic keyboard input and window observation without Accessibility permission."
+    }
+  ],
+  "superseded_or_partial": [
+    {
+      "attempt": 5,
+      "artifact": "memory-cycle-app.log",
+      "reason": "Shutdown truncated buffered native metrics at 36 operations, so this file cannot prove all scheduled toggles."
+    },
+    {
+      "attempt": 5,
+      "artifact": "memory-cycle-process.txt",
+      "reason": "The revision helper used an incorrect relative path. The executable identity is valid, but the recorded revision is not."
+    }
+  ]
+}
