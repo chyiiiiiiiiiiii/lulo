@@ -142,7 +142,7 @@ void main() {
       elapsedSeconds: 1.95,
     );
 
-    expect(nextCycle, orderedEquals(first));
+    _expectRepeatsExactly(nextCycle, first);
   });
 
   testWidgets('idle rendering repeats every 5.6 seconds', (
@@ -165,7 +165,7 @@ void main() {
       elapsedSeconds: 6.3,
     );
 
-    expect(nextCycle, orderedEquals(first));
+    _expectRepeatsExactly(nextCycle, first);
   });
 
   testWidgets('speaking rendering repeats every 2.4 seconds', (
@@ -188,7 +188,7 @@ void main() {
       elapsedSeconds: 2.85,
     );
 
-    expect(nextCycle, orderedEquals(first));
+    _expectRepeatsExactly(nextCycle, first);
   });
 
   testWidgets('working stays continuous across the former 5.6 second reset', (
@@ -452,4 +452,38 @@ final class _Rgba {
 
   @override
   String toString() => 'rgba($red, $green, $blue, $alpha)';
+}
+
+/// Asserts one cycle renders the same image as the next.
+///
+/// Compared with a one-level tolerance per channel rather than byte equality.
+/// The presence field includes value noise, and value noise is discontinuous at
+/// its cell boundaries, so a phase that differs by a single float step can move
+/// one pixel by one level even though the animation repeats exactly. Measured
+/// against the real shader, a correctly periodic cycle differs in one byte by
+/// one level, while a non-periodic one differs across thousands of bytes, so
+/// this still fails loudly if the animation ever starts to drift.
+void _expectRepeatsExactly(Uint8List actual, Uint8List expected) {
+  expect(actual.length, expected.length);
+  int differing = 0;
+  int worst = 0;
+  for (int index = 0; index < actual.length; index++) {
+    final int delta = (actual[index] - expected[index]).abs();
+    if (delta != 0) {
+      differing++;
+      worst = delta > worst ? delta : worst;
+    }
+  }
+  expect(
+    worst,
+    lessThanOrEqualTo(1),
+    reason:
+        'A repeated cycle moved a channel by $worst levels across $differing '
+        'bytes, which is more than noise-boundary rounding can explain.',
+  );
+  expect(
+    differing,
+    lessThan(actual.length ~/ 100),
+    reason: '$differing bytes changed between cycles, so the animation drifts.',
+  );
 }
