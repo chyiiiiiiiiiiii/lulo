@@ -1,11 +1,13 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/physics.dart';
 
 import '../features/conversation/conversation_view.dart';
 import '../features/presence/agent_presence_controller.dart';
 import '../features/presence/agent_presence_orb.dart';
 import '../features/presence/desktop_orb_surface.dart';
+import '../features/presence/presence_flight.dart';
 import '../platform/desktop_host_service.dart';
 import 'app_composition.dart';
 
@@ -72,9 +74,6 @@ final class _PresentationSwitch extends StatefulWidget {
   State<_PresentationSwitch> createState() => _PresentationSwitchState();
 }
 
-/// How long the presence takes to travel between the two forms.
-const Duration _flightDuration = Duration(milliseconds: 320);
-
 final class _PresentationSwitchState extends State<_PresentationSwitch>
     with SingleTickerProviderStateMixin {
   /// Identifies the conversation so it keeps its state when the form changes.
@@ -122,9 +121,10 @@ final class _PresentationSwitchState extends State<_PresentationSwitch>
   @override
   void initState() {
     super.initState();
-    // Built here rather than lazily: a controller first touched in dispose
+    // Unbounded because the spring passes its destination before settling,
+    // and built here rather than lazily: a controller first touched in dispose
     // would ask a deactivated element for its TickerMode.
-    _flight = AnimationController(vsync: this, duration: _flightDuration);
+    _flight = AnimationController.unbounded(vsync: this);
     // The hotkey and the menu bar are native, so collapsing is asked for from
     // there. Without listening the window would simply move and there would be
     // nothing left to draw.
@@ -226,7 +226,10 @@ final class _PresentationSwitchState extends State<_PresentationSwitch>
       }
     }
 
-    await _flight.forward(from: 0);
+    // Thrown rather than driven for a fixed time: the presence arrives when
+    // its own weight says it does.
+    _flight.value = 0;
+    await _flight.animateWith(SpringSimulation(presenceFlightSpring, 0, 1, 0));
     if (!mounted) {
       return;
     }
@@ -302,7 +305,7 @@ final class _PresentationSwitchState extends State<_PresentationSwitch>
         AnimatedBuilder(
           animation: _flight,
           builder: (BuildContext context, Widget? _) {
-            final Rect rect = _flightRect();
+            final Rect rect = _flightRect(canvas);
             return Positioned.fromRect(
               rect: rect,
               // The shader renders at the size it is given rather than being
@@ -320,13 +323,18 @@ final class _PresentationSwitchState extends State<_PresentationSwitch>
   }
 
   /// Where the presence is right now, between the two forms.
-  Rect _flightRect() {
+  Rect _flightRect(DesktopTransitionGeometry canvas) {
     final Rect? from = _flightFrom;
     final Rect? to = _flightTo;
     if (from == null || to == null) {
       return from ?? to ?? Rect.zero;
     }
-    return Rect.lerp(from, to, Curves.easeInOutCubic.transform(_flight.value))!;
+    return presenceFlightRect(
+      from: from,
+      to: to,
+      t: _flight.value,
+      bounds: Offset.zero & canvas.size,
+    );
   }
 
   @override

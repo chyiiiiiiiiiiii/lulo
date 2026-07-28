@@ -212,7 +212,7 @@ void main() {
 
     // Not pumpAndSettle: the travelling presence animates continuously, so
     // there is no quiet frame to settle on.
-    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pump(const Duration(milliseconds: 1200));
     await tester.pump();
     await tester.pump();
 
