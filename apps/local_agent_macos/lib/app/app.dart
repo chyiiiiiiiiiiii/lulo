@@ -51,11 +51,14 @@ final class _LocalAgentAppState extends State<LocalAgentApp> {
   }
 }
 
+/// Layout size the conversation keeps while the window is orb-sized.
+const Size _collapsedConversationSize = Size(720, 560);
+
 /// Chooses the surface for the window's current form.
 ///
 /// Only this widget rebuilds when the form changes, so switching between the
 /// desktop orb and the conversation never rebuilds the conversation itself.
-final class _PresentationSwitch extends StatelessWidget {
+final class _PresentationSwitch extends StatefulWidget {
   const _PresentationSwitch({
     required this.composition,
     required this.presenceShaderLoader,
@@ -65,11 +68,25 @@ final class _PresentationSwitch extends StatelessWidget {
   final AgentPresenceShaderLoader presenceShaderLoader;
 
   @override
+  State<_PresentationSwitch> createState() => _PresentationSwitchState();
+}
+
+final class _PresentationSwitchState extends State<_PresentationSwitch> {
+  /// Identifies the conversation so it keeps its state when the form changes.
+  ///
+  /// Collapsing wraps the conversation differently so it can lay out at its own
+  /// size inside an orb-sized window. That moves it in the tree, and without a
+  /// stable identity Flutter would rebuild it from scratch: the view owns its
+  /// ViewModel, so the answer being generated would be cancelled.
+  final GlobalKey _conversationKey = GlobalKey();
+
+  @override
   Widget build(BuildContext context) {
-    final DesktopPresentationHost? host = composition.presentationHost;
+    final DesktopPresentationHost? host = widget.composition.presentationHost;
     final Widget conversation = ConversationView(
-      viewModelFactory: composition.createConversationViewModel,
-      presenceShaderLoader: presenceShaderLoader,
+      key: _conversationKey,
+      viewModelFactory: widget.composition.createConversationViewModel,
+      presenceShaderLoader: widget.presenceShaderLoader,
     );
     if (host == null) {
       return conversation;
@@ -77,12 +94,37 @@ final class _PresentationSwitch extends StatelessWidget {
     return ValueListenableBuilder<DesktopPresentation>(
       valueListenable: host.presentation,
       builder: (BuildContext context, DesktopPresentation mode, Widget? child) {
-        if (mode == DesktopPresentation.expanded) {
-          return child!;
-        }
-        return DesktopOrbSurface(
-          presenceShaderLoader: presenceShaderLoader,
-          onSummon: () => host.setPresentation(DesktopPresentation.expanded),
+        final bool expanded = mode == DesktopPresentation.expanded;
+        return Stack(
+          children: <Widget>[
+            // The conversation stays mounted in both forms. It owns its
+            // ViewModel and tearing it down cancels whatever is being
+            // generated, so collapsing to the orb mid-answer would throw the
+            // answer away. Offstage keeps it alive without painting it.
+            Offstage(
+              offstage: !expanded,
+              // While collapsed the window is orb-sized, which is far too small
+              // for the conversation to lay out in. Giving it its own size
+              // keeps that layout stable instead of overflowing every frame.
+              child: expanded
+                  ? child!
+                  : OverflowBox(
+                      alignment: Alignment.topLeft,
+                      maxWidth: _collapsedConversationSize.width,
+                      maxHeight: _collapsedConversationSize.height,
+                      child: SizedBox.fromSize(
+                        size: _collapsedConversationSize,
+                        child: child,
+                      ),
+                    ),
+            ),
+            if (!expanded)
+              DesktopOrbSurface(
+                presenceShaderLoader: widget.presenceShaderLoader,
+                onSummon: () =>
+                    host.setPresentation(DesktopPresentation.expanded),
+              ),
+          ],
         );
       },
       child: conversation,

@@ -4164,6 +4164,89 @@ final class LocalModelRuntimeTests: XCTestCase {
   }
 
 
+  /// Opt-in throughput comparison between the GPU and CPU backends.
+  ///
+  /// The runtime logs a failure to create an OpenCL context on this machine, so
+  /// this measures what the two configurations actually deliver rather than
+  /// trusting the requested backend.
+  func testRealGemmaBackendThroughput() async throws {
+    let environment = ProcessInfo.processInfo.environment
+    guard let modelPath = environment["REAL_GEMMA_MODEL_PATH"] else {
+      throw XCTSkip("Set REAL_GEMMA_MODEL_PATH to run the real-model smoke.")
+    }
+
+    let cases: [(String, LiteRTLMRuntimeConfiguration)] = [
+      (
+        "gpu",
+        LiteRTLMRuntimeConfiguration(
+          primaryBackend: .gpu,
+          enableCPUFallback: false
+        )
+      ),
+      (
+        "cpu",
+        LiteRTLMRuntimeConfiguration(
+          primaryBackend: .cpu(threadCount: nil),
+          enableCPUFallback: false
+        )
+      ),
+    ]
+
+    for (name, configuration) in cases {
+      let collector = RealModelEventCollector()
+      let relay = RuntimeGenerationEventRelay()
+      await relay.attach { event in await collector.record(event) }
+      let backend = LiteRTLMRuntimeBackend(
+        configuration: configuration,
+        eventRelay: relay
+      )
+      let loadStarted = Date()
+      do {
+        _ = try await backend.loadModel(
+          RuntimeModelRequest(
+            modelId: "gemma-4-E4B-it",
+            modelPath: modelPath,
+            contextSize: 4096
+          )
+        )
+      } catch {
+        print("BENCH backend=\(name) load_failed=\(error)")
+        continue
+      }
+      let loadSeconds = Date().timeIntervalSince(loadStarted)
+
+      let started = Date()
+      _ = try await backend.startGeneration(
+        RuntimeGenerationRequest(
+          generationId: "bench-\(name)",
+          sessionId: "bench-\(name)",
+          prompt: "Write one paragraph about why local inference matters.",
+          context: [],
+          temperature: 0.7,
+          topP: 0.95,
+          maxTokens: 128,
+          seed: 7
+        )
+      )
+      let deadline = Date().addingTimeInterval(300)
+      while Date() < deadline, await !collector.isTerminal {
+        try await Task.sleep(nanoseconds: 20_000_000)
+      }
+      let elapsed = Date().timeIntervalSince(started)
+      let kinds = await collector.kinds
+      let text = await collector.text
+      let deltas = kinds.filter { $0 == .delta }.count
+      let perSecond = elapsed > 0 ? Double(deltas) / elapsed : 0
+      print(
+        "BENCH backend=\(name) load=\(String(format: "%.2f", loadSeconds))s "
+          + "gen=\(String(format: "%.2f", elapsed))s deltas=\(deltas) "
+          + "deltas_per_second=\(String(format: "%.2f", perSecond)) "
+          + "chars=\(text.count) terminal=\(String(describing: kinds.last))"
+      )
+      _ = try await backend.unloadModel()
+    }
+  }
+
   /// Opt-in: a stopped turn must not prevent the next one.
   ///
   /// LiteRT-LM v0.14.0 cannot actually stop a running decode. CancelProcess
