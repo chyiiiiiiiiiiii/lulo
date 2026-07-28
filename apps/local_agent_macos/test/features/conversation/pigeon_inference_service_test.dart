@@ -408,6 +408,52 @@ void main() {
     ]);
     expect(host.disposeCount, 0);
   });
+  test(
+    'warmUp loads the model once so the first prompt does not pay for it',
+    () async {
+      final host = RecordingDesktopHostService();
+      final service = PigeonInferenceService(
+        desktopHostService: host,
+        config: testModelConfig,
+      );
+
+      await service.warmUp();
+      await service.warmUp();
+
+      expect(host.handshakeCount, 1);
+      expect(host.loadModelCount, 1);
+
+      final events = <GenerationEvent>[];
+      final subscription = service
+          .generate(
+            const GenerationRequest(
+              conversationId: ConversationId('conversation-1'),
+              prompt: 'Hello',
+            ),
+          )
+          .listen(events.add);
+      await Future<void>.delayed(Duration.zero);
+      await subscription.cancel();
+
+      expect(
+        host.loadModelCount,
+        1,
+        reason: 'A warmed service must not reload on the first generation.',
+      );
+      await service.dispose();
+    },
+  );
+
+  test('warmUp reports a failure instead of hiding it', () async {
+    final host = RecordingDesktopHostService(loadFailuresRemaining: 1);
+    final service = PigeonInferenceService(
+      desktopHostService: host,
+      config: testModelConfig,
+    );
+
+    await expectLater(service.warmUp(), throwsA(isA<DesktopHostFailure>()));
+    await service.dispose();
+  });
 }
 
 const LocalModelConfig testModelConfig = LocalModelConfig(

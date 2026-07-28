@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import '../features/conversation/pigeon_inference_service.dart';
 import '../platform/pigeon_desktop_host_service.dart';
 import 'app_composition.dart';
@@ -64,6 +66,15 @@ AppComposition createAppComposition({
         seed: 7,
       ),
     );
+    // Start loading the model immediately instead of on the first prompt.
+    // The load takes seconds, and this is a resident agent that is launched
+    // once and summoned repeatedly, so paying it during startup keeps it off
+    // the critical path of the first answer.
+    //
+    // The failure is deliberately dropped here: the readiness attempt is
+    // cleared when it fails, so the first real prompt retries and reports the
+    // error through the conversation, where the user can actually see it.
+    unawaited(inferenceService.warmUp().catchError((Object _) {}));
     return AppComposition(
       () async {
         await inferenceService.dispose();

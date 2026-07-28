@@ -93,6 +93,16 @@ final class PigeonInferenceService implements InferenceService {
     return controller.stream;
   }
 
+  /// Performs the handshake and model load ahead of the first prompt.
+  ///
+  /// Loading a multi-gigabyte model takes seconds, and doing it lazily puts
+  /// that cost in front of the user's first answer. Calling this at startup
+  /// moves it off the critical path. It shares the single readiness attempt
+  /// with [generate], so a prompt that arrives mid-warmup waits for the same
+  /// load rather than starting a second one, and it surfaces failures to the
+  /// caller instead of hiding them until the first prompt.
+  Future<void> warmUp() => _ensureReady();
+
   Future<void> _ensureReady() async {
     if (_disposed) {
       throw StateError('The inference service is disposed.');
