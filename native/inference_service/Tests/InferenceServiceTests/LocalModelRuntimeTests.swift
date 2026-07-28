@@ -184,6 +184,72 @@ final class LocalModelRuntimeTests: XCTestCase {
     ])
   }
 
+  func testLiteRTLMBackendDrainsCancelledGenerationBeforeTheNext()
+    async throws {
+    let harness = try await makeLiteRTLMBackendHarness()
+    defer { try? FileManager.default.removeItem(at: harness.modelDirectory) }
+    _ = try await harness.backend.startGeneration(
+      RuntimeGenerationRequest(
+        generationId: "generation-1",
+        sessionId: "session-1",
+        prompt: "Hello",
+        context: [],
+        temperature: 0.25,
+        topP: 0.9,
+        maxTokens: 16,
+        seed: 7
+      )
+    )
+    await harness.driver.waitForGenerationCall()
+    await harness.driver.emitChunk("partial")
+    await harness.events.waitForCount(2)
+
+    _ = try await harness.backend.cancelGeneration(generationId: "generation-1")
+    await harness.events.waitForCount(3)
+
+    // LiteRT-LM v0.14.0 never finishes a cancelled task: CancelProcess leaves
+    // one active task in its callback pool forever, which wedges the engine so
+    // hard that even unloadModel blocks. The driver cancel must therefore stay
+    // unused, and the abandoned decode is drained instead.
+    let cancelledSessionIds = await harness.driver.cancelledSessionIds
+    XCTAssertEqual(cancelledSessionIds, [])
+
+    let second = Task {
+      try await harness.backend.startGeneration(
+        RuntimeGenerationRequest(
+        generationId: "generation-2",
+        sessionId: "session-1",
+        prompt: "Hello",
+        context: [],
+        temperature: 0.25,
+        topP: 0.9,
+        maxTokens: 16,
+        seed: 7
+      )
+      )
+    }
+    try await Task.sleep(nanoseconds: 100_000_000)
+    let startedWhileDraining = await harness.driver.generationRequests.count
+    XCTAssertEqual(
+      startedWhileDraining,
+      1,
+      "A new generation must not reach the engine while it is draining."
+    )
+
+    await harness.driver.finishGeneration()
+    let acknowledgement = try await second.value
+    XCTAssertTrue(acknowledgement.accepted)
+    // The acknowledgement precedes the driver call, which the generation task
+    // makes, so observe the call rather than assuming it already happened.
+    var startedAfterDrain = await harness.driver.generationRequests.count
+    let deadline = Date().addingTimeInterval(5)
+    while startedAfterDrain < 2, Date() < deadline {
+      try await Task.sleep(nanoseconds: 10_000_000)
+      startedAfterDrain = await harness.driver.generationRequests.count
+    }
+    XCTAssertEqual(startedAfterDrain, 2)
+  }
+
   func testLiteRTLMBackendCancellationEmitsOneTerminalAndFreesTheSlot()
     async throws {
     let harness = try await makeLiteRTLMBackendHarness()
@@ -224,7 +290,10 @@ final class LocalModelRuntimeTests: XCTestCase {
     )
 
     // Without a terminal event the coordinator never releases the slot, so a
-    // cancelled turn would permanently block every later generation.
+    // cancelled turn would permanently block every later generation. The
+    // abandoned decode still owns the engine, so let it drain first; the
+    // ordering itself is pinned by the dedicated drain test.
+    await harness.driver.finishGeneration()
     let next = try await harness.backend.startGeneration(
       RuntimeGenerationRequest(
         generationId: "generation-2",
@@ -273,7 +342,10 @@ final class LocalModelRuntimeTests: XCTestCase {
     )
     let cancelledSessionIds = await harness.driver.cancelledSessionIds
     let deliveredDeltas = await harness.events.events.compactMap(\.delta)
-    XCTAssertEqual(cancelledSessionIds, ["session-1"])
+    // Fencing is what hides the late chunk, not the runtime's own cancel.
+    // LiteRT-LM v0.14.0's CancelProcess wedges the engine permanently, so it
+    // is deliberately never invoked.
+    XCTAssertEqual(cancelledSessionIds, [])
     XCTAssertEqual(
       deliveredDeltas,
       ["kept"]
@@ -4092,20 +4164,15 @@ final class LocalModelRuntimeTests: XCTestCase {
   }
 
 
-  /// Opt-in characterization of a LiteRT-LM v0.14.0 defect.
+  /// Opt-in: a stopped turn must not prevent the next one.
   ///
-  /// Cancelling an in-flight generation does not terminate the executing task.
-  /// The runtime logs `SessionAdvanced::CancelProcess` and then repeatedly
-  /// fails with `DEADLINE_EXCEEDED: Timeout waiting for all tasks to be done
-  /// in pool 'callback_thread_pool'. Active tasks: 1`, so the engine stays
-  /// wedged and the next generation emits `started` and never produces a
-  /// token. Recreating the conversation does not help, because the stall is in
-  /// the engine's thread pool rather than the conversation handle.
-  ///
-  /// This test pins the defective behaviour deliberately so the suite stays
-  /// honest. When upstream fixes cancellation, this test fails, and it should
-  /// then be rewritten to assert that the second turn completes.
-  func testRealGemmaCancellationWedgesEngineUpstreamDefect() async throws {
+  /// LiteRT-LM v0.14.0 cannot actually stop a running decode. CancelProcess
+  /// leaves one active task in its callback thread pool forever, which wedges
+  /// the engine so completely that a later generation only reports started and
+  /// even unloadModel blocks. The backend therefore abandons the decode rather
+  /// than cancelling it, discards its output, and drains it before the next
+  /// generation touches the engine.
+  func testRealGemmaServesTheNextTurnAfterACancellation() async throws {
     let environment = ProcessInfo.processInfo.environment
     guard let modelPath = environment["REAL_GEMMA_MODEL_PATH"] else {
       throw XCTSkip("Set REAL_GEMMA_MODEL_PATH to run the real-model smoke.")
@@ -4157,7 +4224,7 @@ final class LocalModelRuntimeTests: XCTestCase {
         seed: 7
       )
     )
-    let deadline = Date().addingTimeInterval(30)
+    let deadline = Date().addingTimeInterval(180)
     while Date() < deadline, await !collector.isTerminal {
       try await Task.sleep(nanoseconds: 50_000_000)
     }
@@ -4167,13 +4234,13 @@ final class LocalModelRuntimeTests: XCTestCase {
     print("REAL_SMOKE reuse_kinds=\(kinds)")
     print("REAL_SMOKE reuse_text=\(text)")
     XCTAssertEqual(
-      kinds,
-      [.started],
-      "Upstream defect: the wedged engine only ever reports started."
+      kinds.last,
+      .completed,
+      "The turn after a stop must still complete."
     )
-    XCTAssertTrue(
+    XCTAssertFalse(
       text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-      "Upstream defect: no token is produced after a cancelled generation."
+      "The turn after a stop must produce real text."
     )
     _ = try await backend.unloadModel()
   }

@@ -257,6 +257,12 @@ public actor LiteRTLMRuntimeBackend: RuntimeBackend {
   private var loadedModel: RuntimeModelRequest?
   private var sessionSamplers: [String: LiteRTLMSamplerFingerprint] = [:]
   private var activeGeneration: ActiveGeneration?
+  /// The decode of a cancelled generation, which still owns the engine.
+  private var drainingGeneration: Task<Void, Never>?
+  /// Identifies that decode so its own completion is what clears the wait.
+  private var drainingToken: UInt64?
+  /// How long a new generation waits for an abandoned decode to finish.
+  private let drainTimeoutSeconds: TimeInterval = 120
   private var nextGenerationToken: UInt64 = 0
 
   public func loadModel(
@@ -313,11 +319,27 @@ public actor LiteRTLMRuntimeBackend: RuntimeBackend {
   public func startGeneration(
     _ generation: RuntimeGenerationRequest
   ) async throws -> RuntimeGenerationAcknowledgement {
-    guard let loadedModel, let driver else {
-      throw RuntimeBoundaryError.runtimeUnavailable
-    }
     guard activeGeneration == nil else {
       throw RuntimeBoundaryError.generationBusy
+    }
+    // A cancelled generation is abandoned rather than stopped, so its decode
+    // may still own the engine. Wait for it before touching the runtime again;
+    // overlapping the two would block inside LiteRT with no way back out.
+    //
+    // The wait is bounded. An unbounded one would turn any runtime stall into
+    // a permanently unresponsive app, and reporting the runtime as unavailable
+    // is far better than a request that never returns.
+    if drainingGeneration != nil {
+      let deadline = Date().addingTimeInterval(drainTimeoutSeconds)
+      while drainingGeneration != nil, Date() < deadline {
+        try? await Task.sleep(nanoseconds: 50_000_000)
+      }
+      guard drainingGeneration == nil else {
+        throw RuntimeBoundaryError.runtimeUnavailable
+      }
+    }
+    guard let loadedModel, let driver else {
+      throw RuntimeBoundaryError.runtimeUnavailable
     }
     let request = try validateGeneration(
       generation,
@@ -363,8 +385,7 @@ public actor LiteRTLMRuntimeBackend: RuntimeBackend {
   ) async throws -> RuntimeCancellationAcknowledgement {
     guard
       var active = activeGeneration,
-      active.generationId == generationId,
-      let driver
+      active.generationId == generationId
     else {
       return RuntimeCancellationAcknowledgement(
         generationId: generationId,
@@ -374,12 +395,17 @@ public actor LiteRTLMRuntimeBackend: RuntimeBackend {
     // Clearing the active generation first fences any chunk the driver is
     // still producing, so nothing can follow the terminal emitted below.
     activeGeneration = nil
-    active.task?.cancel()
-    do {
-      try await driver.cancel(sessionId: active.sessionId)
-    } catch {
-      throw RuntimeBoundaryError.generationFailed
-    }
+    // The decode is abandoned, not stopped. LiteRT-LM v0.14.0's CancelProcess
+    // does not end the running task: it leaves one active task in the
+    // callback thread pool permanently, which wedges the engine so completely
+    // that a later generation only ever reports started, and even unloadModel
+    // blocks. Measured against the real Gemma artifact, the engine never
+    // recovered across four minutes. Cancelling the Swift task cannot help
+    // either, because the loop is suspended awaiting a stream that stops
+    // yielding. So the decode is left to finish on its own token budget while
+    // its output is discarded, and the next generation waits for it.
+    drainingGeneration = active.task
+    drainingToken = active.token
     // A cancelled generation must still reach a terminal event. The
     // coordinator only releases its single generation slot when it observes
     // one, so skipping this would leave every later generation rejected as
@@ -431,6 +457,10 @@ public actor LiteRTLMRuntimeBackend: RuntimeBackend {
       active.task?.cancel()
       try? await driver.cancel(sessionId: active.sessionId)
     }
+    // A pending drain refers to an engine that is about to be torn down, so it
+    // must not keep blocking the generation that follows a reload.
+    drainingGeneration = nil
+    drainingToken = nil
     await driver.unload()
     self.driver = nil
     loadedModel = nil
@@ -464,6 +494,17 @@ public actor LiteRTLMRuntimeBackend: RuntimeBackend {
     } catch {
       await failGeneration(generationId: generationId, token: token)
     }
+    // If this decode was the abandoned one, the engine is free again.
+    releaseDrain(token: token)
+  }
+
+  /// Marks the abandoned decode as finished so a waiting generation proceeds.
+  private func releaseDrain(token: UInt64) {
+    guard drainingToken == token else {
+      return
+    }
+    drainingToken = nil
+    drainingGeneration = nil
   }
 
   private func receiveChunk(
