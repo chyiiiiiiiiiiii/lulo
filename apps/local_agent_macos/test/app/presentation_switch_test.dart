@@ -1,13 +1,13 @@
 import 'dart:async';
 
 import 'package:agent_core/agent_core.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:local_agent_macos/app/app.dart';
 import 'package:local_agent_macos/app/app_composition.dart';
 import 'package:local_agent_macos/app/fake_runtime.dart';
 import 'package:local_agent_macos/features/conversation/inference_service.dart';
+import 'package:local_agent_macos/features/presence/desktop_orb_surface.dart';
 import 'package:local_agent_macos/platform/desktop_host_service.dart';
 
 void main() {
@@ -69,6 +69,55 @@ void main() {
     );
     expect(inference.activeRequests, 1);
   });
+
+  testWidgets('the collapsed orb shows the agent speaking, not resting', (
+    WidgetTester tester,
+  ) async {
+    final _FakePresentationHost host = _FakePresentationHost();
+    final _HoldingInferenceService inference = _HoldingInferenceService();
+    final AppComposition composition = AppComposition(
+      () {},
+      storageService: InMemoryConversationStorageService(),
+      inferenceService: inference,
+      presentationHost: host,
+    );
+    addTearDown(() => unawaited(composition.dispose()));
+
+    host.presentation.value = DesktopPresentation.expanded;
+    await tester.pumpWidget(
+      LocalAgentApp(
+        composition: composition,
+        presenceShaderLoader: _failShaderLoad,
+      ),
+    );
+    await tester.pump();
+
+    await tester.enterText(
+      find.byKey(const Key('conversation-composer-field')),
+      'Explain local inference',
+    );
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('conversation-submit-button')));
+    await tester.pump();
+    inference.emitDelta('Local inference ');
+    await tester.pump();
+
+    host.presentation.value = DesktopPresentation.orb;
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 50));
+
+    // The orb must be the same agent, so while the answer is being spoken the
+    // resting presence says so rather than reporting itself as ready.
+    final Finder orb = find.descendant(
+      of: find.byType(DesktopOrbSurface),
+      matching: find.bySemanticsLabel('Speaking'),
+    );
+    expect(
+      orb,
+      findsOneWidget,
+      reason: 'The collapsed orb did not follow the conversation state.',
+    );
+  });
 }
 
 final class _FakePresentationHost implements DesktopPresentationHost {
@@ -105,6 +154,15 @@ final class _HoldingInferenceService implements InferenceService {
     final GenerationId id = GenerationId('generation-$activeRequests');
     controller.add(GenerationStarted(Generation(id: id, request: request)));
     return controller.stream;
+  }
+
+  void emitDelta(String delta) {
+    _controllers.last.add(
+      GenerationDelta(
+        generationId: GenerationId('generation-$activeRequests'),
+        delta: delta,
+      ),
+    );
   }
 
   @override

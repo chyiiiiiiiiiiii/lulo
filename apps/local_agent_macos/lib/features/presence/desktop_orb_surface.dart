@@ -43,6 +43,7 @@ final class _DesktopOrbSurfaceState extends State<DesktopOrbSurface> {
   bool _hovered = false;
   bool _pressed = false;
   bool _dragged = false;
+  Offset? _pressedAt;
 
   /// The presence driving the orb, owned here only when none was supplied.
   AgentPresenceController get _controller {
@@ -76,6 +77,11 @@ final class _DesktopOrbSurfaceState extends State<DesktopOrbSurface> {
         child: GestureDetector(
           behavior: HitTestBehavior.opaque,
           onTapDown: (_) => setState(() => _pressed = true),
+          // Where the press actually landed, so the distance the recogniser
+          // spends deciding it is a drag can be given back below.
+          onPanDown: (DragDownDetails details) {
+            _pressedAt = details.globalPosition;
+          },
           onTapCancel: () => setState(() => _pressed = false),
           onTap: () {
             setState(() => _pressed = false);
@@ -84,15 +90,29 @@ final class _DesktopOrbSurfaceState extends State<DesktopOrbSurface> {
           // The orb is draggable, so a drag must not also summon. The window
           // itself cannot be dragged by its background here, because this
           // surface consumes the mouse before AppKit sees it.
-          onPanStart: (_) => setState(() {
-            _pressed = true;
-            _dragged = false;
-          }),
+          onPanStart: (DragStartDetails details) {
+            // A pan is only recognised after the pointer has travelled the
+            // drag slop, and that travel is never reported as a delta. Without
+            // replaying it the orb settles that far behind the cursor and
+            // stays there for the rest of the drag.
+            final Offset? pressedAt = _pressedAt;
+            if (pressedAt != null) {
+              final Offset slop = details.globalPosition - pressedAt;
+              if (slop != Offset.zero) {
+                widget.onDragBy?.call(slop);
+              }
+            }
+            setState(() {
+              _pressed = true;
+              _dragged = false;
+            });
+          },
           onPanUpdate: (DragUpdateDetails details) {
             _dragged = true;
             widget.onDragBy?.call(details.delta);
           },
           onPanEnd: (_) {
+            _pressedAt = null;
             final bool moved = _dragged;
             setState(() {
               _pressed = false;

@@ -88,15 +88,12 @@ void main() {
     await tester.pump();
 
     expect(moves, isNotEmpty, reason: 'The drag did not move the window.');
-    // The gesture recogniser absorbs the first few points as drag slop before
-    // it reports any delta, so the reported movement trails the gesture by that
-    // much. What matters is that it follows the same direction and covers most
-    // of the distance.
+    // The recogniser absorbs the drag slop before reporting deltas, and the
+    // surface replays it, so the window follows the pointer exactly rather
+    // than settling behind it.
     final Offset total = moves.reduce((Offset a, Offset b) => a + b);
-    expect(total.dx, greaterThan(30));
-    expect(total.dx, lessThanOrEqualTo(60));
-    expect(total.dy, lessThan(0));
-    expect(total.dy, greaterThanOrEqualTo(-25));
+    expect(total.dx, closeTo(60, 0.5));
+    expect(total.dy, closeTo(-25, 0.5));
     expect(
       summons,
       0,

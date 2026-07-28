@@ -99,23 +99,44 @@ void main() {
       speakingWaves +
       workingWave;
 
+  // How hard the agent is working, used to drive both the speed and the reach
+  // of the mist. Computed before the drift so it can scale it.
+  float activity =
+      clamp(
+          uListeningWeight * 0.55 +
+          uThinkingWeight * 0.85 +
+          uSpeakingWeight +
+          uWorkingWeight * 0.7,
+          0.0,
+          1.0);
+
   // The mist must repeat exactly once per state period, like the analytic
   // waves above. A linear drift would never repeat and its input would grow
   // without bound, which loses float precision in an always-on presence. So the
   // noise domain is moved around a circle whose phase is the state's own phase.
+  //
+  // Each state carries its own phase, so the vapour already travels faster
+  // while the agent is busy: 2.4 seconds per turn while speaking against 5.6
+  // while resting. Thinking has no phase of its own, so it doubles the resting
+  // one rather than drifting as slowly as an idle agent.
   float idlePhase = tau * fract(time / 5.6);
   vec2 idleDrift = vec2(sin(idlePhase), cos(idlePhase));
+  vec2 thinkingDrift = vec2(sin(idlePhase * 2.0), cos(idlePhase * 2.0));
   vec2 speakingDrift = vec2(sin(speakingPhase), cos(speakingPhase));
   vec2 workingDrift = vec2(sin(workingPhase), cos(workingPhase));
-  vec2 mistDrift = mix(idleDrift, speakingDrift, uSpeakingWeight);
+  vec2 mistDrift = mix(idleDrift, thinkingDrift, uThinkingWeight);
+  mistDrift = mix(mistDrift, speakingDrift, uSpeakingWeight);
   mistDrift = mix(mistDrift, workingDrift, uWorkingWeight);
 
-  vec2 mistDomain = point * 1.85 + mistDrift * 0.42 + uSeed * 1.7;
+  // Busy states also sweep a wider arc, so the movement reads as more than a
+  // change of tempo.
+  float driftReach = 0.42 + activity * 0.30;
+  vec2 mistDomain = point * 1.85 + mistDrift * driftReach + uSeed * 1.7;
   float cloud = mistField(mistDomain);
   vec2 swirl =
       vec2(point.x * 0.9 + point.y * 0.42, point.y * 0.9 - point.x * 0.42);
   float cloudDetail =
-      mistField(swirl * 3.4 - vec2(mistDrift.y, mistDrift.x) * 0.55);
+      mistField(swirl * 3.4 - vec2(mistDrift.y, mistDrift.x) * driftReach * 1.3);
   float cloudField = mix(cloud, cloudDetail, 0.38);
   // Raise the contrast of the field so individual puffs read as volume rather
   // than as a single soft blur.
@@ -125,15 +146,11 @@ void main() {
   // Faster turbulence that only appears while the agent is active, so motion
   // reads as effort rather than as constant noise. It completes two turns per
   // period so it stays periodic while moving faster than the base mist.
-  float activity =
-      clamp(
-          uListeningWeight * 0.55 +
-          uThinkingWeight * 0.85 +
-          uSpeakingWeight +
-          uWorkingWeight * 0.7,
-          0.0,
-          1.0);
   vec2 fastDrift = vec2(sin(idlePhase * 2.0), cos(idlePhase * 2.0));
+  fastDrift = mix(
+      fastDrift,
+      vec2(sin(idlePhase * 4.0), cos(idlePhase * 4.0)),
+      uThinkingWeight);
   fastDrift = mix(
       fastDrift,
       vec2(sin(speakingPhase * 2.0), cos(speakingPhase * 2.0)),

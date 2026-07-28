@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:ui' show Offset;
 import 'dart:collection';
 
 import 'package:flutter/foundation.dart';
