@@ -1,4 +1,4 @@
-import 'dart:ui' show Offset;
+import 'dart:ui' show Offset, Rect, Size;
 import 'package:flutter/foundation.dart';
 
 import '../generated/desktop_host_api.g.dart';
@@ -371,6 +371,54 @@ abstract interface class DesktopPresentationHost {
 
   /// Drags the window by [delta], in logical points.
   Future<void> moveWindowBy(Offset delta);
+
+  /// Grows the window to cover both forms so a move between them can be drawn.
+  ///
+  /// The window is inert until [endPresentationTransition] settles it.
+  Future<DesktopTransitionGeometry> beginPresentationTransition(
+    DesktopPresentation target,
+  );
+
+  /// Settles the window into [mode] and lets it take the mouse again.
+  Future<void> endPresentationTransition(DesktopPresentation mode);
+}
+
+/// Where each form sits inside the window that covers both of them.
+///
+/// Measured from the top-left of that window in logical points, which is the
+/// space Flutter lays out in, so these rectangles can be used directly.
+@immutable
+final class DesktopTransitionGeometry {
+  /// Creates the geometry a change of form is drawn inside.
+  const DesktopTransitionGeometry({
+    required this.size,
+    required this.conversation,
+    required this.orb,
+  });
+
+  /// Size of the window covering both forms.
+  final Size size;
+
+  /// Where the conversation sits inside that window.
+  final Rect conversation;
+
+  /// Where the resting orb sits inside that window.
+  final Rect orb;
+
+  @override
+  bool operator ==(Object other) =>
+      other is DesktopTransitionGeometry &&
+      other.size == size &&
+      other.conversation == conversation &&
+      other.orb == orb;
+
+  @override
+  int get hashCode => Object.hash(size, conversation, orb);
+
+  @override
+  String toString() =>
+      'DesktopTransitionGeometry(size: $size, conversation: $conversation, '
+      'orb: $orb)';
 }
 
 /// How the always-on-screen desktop window is presented.

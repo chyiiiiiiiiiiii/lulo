@@ -163,6 +163,39 @@ final class PigeonDesktopHostService extends DesktopHostEventApi
     );
   }
 
+  @override
+  Future<DesktopTransitionGeometry> beginPresentationTransition(
+    DesktopPresentation target,
+  ) {
+    return _invokeResult((HostRequest request) async {
+      final HostTransitionGeometry geometry = await _hostApi
+          .beginPresentationTransition(request, _hostMode(target));
+      return DesktopTransitionGeometry(
+        size: Size(geometry.width, geometry.height),
+        conversation: Rect.fromLTWH(
+          geometry.conversationLeft,
+          geometry.conversationTop,
+          geometry.conversationWidth,
+          geometry.conversationHeight,
+        ),
+        orb: Rect.fromLTWH(
+          geometry.orbLeft,
+          geometry.orbTop,
+          geometry.orbExtent,
+          geometry.orbExtent,
+        ),
+      );
+    });
+  }
+
+  @override
+  Future<void> endPresentationTransition(DesktopPresentation mode) {
+    return _invoke(
+      (HostRequest request) =>
+          _hostApi.endPresentationTransition(request, _hostMode(mode)),
+    );
+  }
+
   static HostPresentationMode _hostMode(DesktopPresentation mode) {
     return mode == DesktopPresentation.orb
         ? HostPresentationMode.orb

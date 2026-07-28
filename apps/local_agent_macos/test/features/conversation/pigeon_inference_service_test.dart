@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:ui' show Rect, Size;
 
 import 'package:agent_core/agent_core.dart';
 import 'package:flutter/foundation.dart';
@@ -583,6 +584,18 @@ final class RecordingDesktopHostService implements DesktopHostService {
 
   @override
   Future<void> moveWindowBy(Offset delta) async {}
+
+  @override
+  Future<DesktopTransitionGeometry> beginPresentationTransition(
+    DesktopPresentation target,
+  ) async => DesktopTransitionGeometry(
+    size: const Size.square(168),
+    conversation: const Rect.fromLTWH(0, 0, 168, 168),
+    orb: const Rect.fromLTWH(0, 0, 148, 148),
+  );
+
+  @override
+  Future<void> endPresentationTransition(DesktopPresentation mode) async {}
 
   @override
   Future<void> showPanel() async {}

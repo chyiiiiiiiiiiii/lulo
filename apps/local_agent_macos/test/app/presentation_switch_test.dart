@@ -240,6 +240,33 @@ final class _FakePresentationHost implements DesktopPresentationHost {
   Future<void> moveWindowBy(Offset delta) async {
     moves.add(delta);
   }
+
+  /// A canvas holding a centred conversation and an orb in the lower corner.
+  DesktopTransitionGeometry geometry = const DesktopTransitionGeometry(
+    size: Size(1268, 828),
+    conversation: Rect.fromLTWH(0, 0, 720, 560),
+    orb: Rect.fromLTWH(1100, 660, 148, 148),
+  );
+
+  /// Targets passed to [beginPresentationTransition], in order.
+  final List<DesktopPresentation> begunTransitions = <DesktopPresentation>[];
+
+  /// Modes passed to [endPresentationTransition], in order.
+  final List<DesktopPresentation> endedTransitions = <DesktopPresentation>[];
+
+  @override
+  Future<DesktopTransitionGeometry> beginPresentationTransition(
+    DesktopPresentation target,
+  ) async {
+    begunTransitions.add(target);
+    return geometry;
+  }
+
+  @override
+  Future<void> endPresentationTransition(DesktopPresentation mode) async {
+    endedTransitions.add(mode);
+    presentation.value = mode;
+  }
 }
 
 /// Streams a started event and then holds, so a generation stays in flight.
