@@ -118,6 +118,59 @@ void main() {
       reason: 'The collapsed orb did not follow the conversation state.',
     );
   });
+
+  testWidgets('an app that starts as an orb still follows the agent', (
+    WidgetTester tester,
+  ) async {
+    final _FakePresentationHost host = _FakePresentationHost();
+    final _HoldingInferenceService inference = _HoldingInferenceService();
+    final AppComposition composition = AppComposition(
+      () {},
+      storageService: InMemoryConversationStorageService(),
+      inferenceService: inference,
+      presentationHost: host,
+    );
+    addTearDown(() => unawaited(composition.dispose()));
+
+    // The real app launches resting on the desktop, so the conversation is
+    // first built inside the collapsed wrapper. Starting expanded hides any
+    // ordering fault in how the presence is handed over.
+    expect(host.presentation.value, DesktopPresentation.orb);
+    await tester.pumpWidget(
+      LocalAgentApp(
+        composition: composition,
+        presenceShaderLoader: _failShaderLoad,
+      ),
+    );
+    await tester.pump();
+
+    host.presentation.value = DesktopPresentation.expanded;
+    await tester.pump();
+    await tester.enterText(
+      find.byKey(const Key('conversation-composer-field')),
+      'Explain local inference',
+    );
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('conversation-submit-button')));
+    await tester.pump();
+    inference.emitDelta('Local inference ');
+    await tester.pump();
+
+    host.presentation.value = DesktopPresentation.orb;
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 50));
+
+    expect(
+      find.descendant(
+        of: find.byType(DesktopOrbSurface),
+        matching: find.bySemanticsLabel('Speaking'),
+      ),
+      findsOneWidget,
+      reason:
+          'An orb-first launch left the desktop presence on its own idle '
+          'controller, so it rested while the agent was speaking.',
+    );
+  });
 }
 
 final class _FakePresentationHost implements DesktopPresentationHost {
