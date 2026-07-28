@@ -100,10 +100,11 @@ final class _AgentPresenceOrbState extends State<AgentPresenceOrb>
 
   late final AnimationController _motion;
   late final ValueNotifier<bool> _motionEnabled;
-  late final Listenable _repaint;
+  late Listenable _repaint;
   late final Stopwatch _clock;
-  late final AgentPresenceFallbackPainter _fallbackPainter;
+  late AgentPresenceFallbackPainter _fallbackPainter;
   AgentPresencePainter? _shaderPainter;
+  ui.FragmentProgram? _shaderProgram;
   Timer? _idleFrameTimer;
   bool _disableAnimations = false;
   bool _tickerModeEnabled = true;
@@ -115,6 +116,61 @@ final class _AgentPresenceOrbState extends State<AgentPresenceOrb>
     _clock = Stopwatch()..start();
     _motion = AnimationController.unbounded(vsync: this);
     _motionEnabled = ValueNotifier<bool>(true);
+    _bindController();
+    widget.onRenderingPathChanged?.call(AgentPresenceRenderingPath.loading);
+    WidgetsBinding.instance.addPostFrameCallback((Duration _) {
+      _loadShader();
+    });
+  }
+
+  @override
+  void didUpdateWidget(AgentPresenceOrb oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.controller == widget.controller) {
+      return;
+    }
+    // The painters hold the listenables they were built with, so a controller
+    // handed over after the first build would keep the orb painting the state
+    // of the one it replaced: it would report the new state through semantics
+    // while still drawing the old one's colour.
+    oldWidget.controller.semanticStateListenable.removeListener(
+      _updateMotionLifecycle,
+    );
+    _bindController();
+    if (_shaderPainter != null) {
+      _rebuildShaderPainter();
+    }
+    _updateMotionLifecycle();
+  }
+
+  AgentPresencePainter _makeShaderPainter(ui.FragmentProgram program) {
+    return AgentPresencePainter(
+      program: program,
+      visualInput: widget.controller.visualInputListenable,
+      phase: _motion,
+      repaint: _repaint,
+      now: () => _clock.elapsed,
+      motionEnabled: _motionEnabled,
+      backend: widget.shaderBackendFactory(),
+      failurePainter: _fallbackPainter,
+      onFailure: _handleShaderPaintFailure,
+      onPaint: widget.onPaint,
+    );
+  }
+
+  /// Rebuilds the shader painter so it reads the current controller.
+  void _rebuildShaderPainter() {
+    final ui.FragmentProgram? program = _shaderProgram;
+    if (program == null) {
+      return;
+    }
+    setState(() {
+      _shaderPainter = _makeShaderPainter(program);
+    });
+  }
+
+  /// Points the repaint sources and painters at the current controller.
+  void _bindController() {
     _repaint = Listenable.merge(<Listenable>[
       _motion,
       _motionEnabled,
@@ -125,13 +181,9 @@ final class _AgentPresenceOrbState extends State<AgentPresenceOrb>
       repaint: _repaint,
       onPaint: widget.onPaint,
     );
-    widget.onRenderingPathChanged?.call(AgentPresenceRenderingPath.loading);
     widget.controller.semanticStateListenable.addListener(
       _updateMotionLifecycle,
     );
-    WidgetsBinding.instance.addPostFrameCallback((Duration _) {
-      _loadShader();
-    });
   }
 
   @override
@@ -219,18 +271,8 @@ final class _AgentPresenceOrbState extends State<AgentPresenceOrb>
       return;
     }
     try {
-      final AgentPresencePainter painter = AgentPresencePainter(
-        program: program,
-        visualInput: widget.controller.visualInputListenable,
-        phase: _motion,
-        repaint: _repaint,
-        now: () => _clock.elapsed,
-        motionEnabled: _motionEnabled,
-        backend: widget.shaderBackendFactory(),
-        failurePainter: _fallbackPainter,
-        onFailure: _handleShaderPaintFailure,
-        onPaint: widget.onPaint,
-      );
+      _shaderProgram = program;
+      final AgentPresencePainter painter = _makeShaderPainter(program);
       setState(() {
         _shaderPainter = painter;
         _shaderLoadPhase = _ShaderLoadPhase.ready;
