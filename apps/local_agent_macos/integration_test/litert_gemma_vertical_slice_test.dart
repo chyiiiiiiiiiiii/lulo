@@ -19,10 +19,6 @@ void main() {
   final IntegrationTestWidgetsFlutterBinding binding =
       IntegrationTestWidgetsFlutterBinding.ensureInitialized();
 
-  // The stop is deliberately the last turn. Cancelling wedges the LiteRT-LM
-  // v0.14.0 engine (its callback thread pool keeps one task active forever),
-  // so any turn after a stop cannot produce tokens. Ordering the stop last
-  // keeps that upstream defect from masking the guarantees before it.
   testWidgets(
     'real Gemma streams a turn, reuses the loaded model, then stops cleanly',
     (WidgetTester tester) async {
