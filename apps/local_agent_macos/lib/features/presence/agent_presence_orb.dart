@@ -101,6 +101,15 @@ final class _AgentPresenceOrbState extends State<AgentPresenceOrb>
   late final AnimationController _motion;
   late final ValueNotifier<bool> _motionEnabled;
   late Listenable _repaint;
+
+  /// Difference between the controller's timebase and this widget's clock.
+  ///
+  /// Snapshots are stamped by whoever drives the controller, and blend progress
+  /// is measured against those stamps. This orb starts its own clock at zero
+  /// whenever it is built, so a controller that has been running for a while
+  /// would be read as not having started its transition yet, and the orb would
+  /// paint the state being left rather than the one being entered.
+  Duration _timebaseOffset = Duration.zero;
   late final Stopwatch _clock;
   late AgentPresenceFallbackPainter _fallbackPainter;
   AgentPresencePainter? _shaderPainter;
@@ -149,7 +158,7 @@ final class _AgentPresenceOrbState extends State<AgentPresenceOrb>
       visualInput: widget.controller.visualInputListenable,
       phase: _motion,
       repaint: _repaint,
-      now: () => _clock.elapsed,
+      now: () => _clock.elapsed + _timebaseOffset,
       motionEnabled: _motionEnabled,
       backend: widget.shaderBackendFactory(),
       failurePainter: _fallbackPainter,
@@ -169,8 +178,21 @@ final class _AgentPresenceOrbState extends State<AgentPresenceOrb>
     });
   }
 
+  /// Aligns this widget's clock with the controller's timebase.
+  ///
+  /// Done once per controller rather than on every sample. Re-aligning on each
+  /// sample would peg the reported time to the moment of the last one, which
+  /// freezes blend progress between samples instead of letting it run. Both
+  /// clocks advance at the same rate, so a single alignment holds.
+  void _syncTimebase() {
+    _timebaseOffset =
+        widget.controller.visualInputListenable.value.sampledAt -
+        _clock.elapsed;
+  }
+
   /// Points the repaint sources and painters at the current controller.
   void _bindController() {
+    _syncTimebase();
     _repaint = Listenable.merge(<Listenable>[
       _motion,
       _motionEnabled,

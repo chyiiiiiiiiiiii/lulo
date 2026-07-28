@@ -56,12 +56,7 @@ void main() {
           ),
         ),
       );
-      // Let the shader load and the state blend run to completion. The
-      // presence eases between states, so sampling early reads a colour part
-      // way between the two and says nothing about which controller is driving.
-      for (int i = 0; i < 120; i++) {
-        await tester.pump(const Duration(milliseconds: 60));
-      }
+      await _settle(tester);
     }
 
     await pumpWith(thinking);
@@ -82,6 +77,74 @@ void main() {
           'it showed one state while reporting another.',
     );
   });
+
+  testWidgets('a freshly built orb paints a controller already mid-run', (
+    WidgetTester tester,
+  ) async {
+    tester.view
+      ..physicalSize = const Size.square(200)
+      ..devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    // The conversation has been open for a while, so its presence is stamped
+    // far into its own timebase. Collapsing builds a brand new orb whose clock
+    // starts at zero, which is the situation that made the desktop orb paint
+    // the state the agent was leaving instead of the one it was in.
+    const Duration wellIntoTheRun = Duration(minutes: 2);
+    final AgentPresenceController controller = AgentPresenceController();
+    addTearDown(controller.dispose);
+    controller.projectConversationState(
+      AgentPresenceProjectionState.thinking,
+      wellIntoTheRun,
+    );
+    controller.projectConversationState(
+      AgentPresenceProjectionState.speaking,
+      wellIntoTheRun + const Duration(seconds: 1),
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ColoredBox(
+          color: const Color(0xFF000000),
+          child: Center(
+            child: RepaintBoundary(
+              key: const Key('swap-orb'),
+              child: AgentPresenceOrb(
+                controller: controller,
+                extent: 160,
+                showLabel: false,
+                continuousMotion: true,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await _settle(tester);
+
+    expect(
+      await _medianHue(tester),
+      closeTo(_speakingHue, 14),
+      reason:
+          'The orb measured blend progress against its own clock, so a '
+          'controller already mid-run looked like it had not started.',
+    );
+  });
+}
+
+/// Lets the shader load and the state blend finish.
+///
+/// The orb measures blend progress with a real stopwatch, and pumping only
+/// advances the test's own clock, so real time has to be allowed to pass or the
+/// blend never leaves the state it started from.
+Future<void> _settle(WidgetTester tester) async {
+  for (int i = 0; i < 40; i++) {
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 40)),
+    );
+    await tester.pump();
+  }
 }
 
 /// Median hue of the orb body, in degrees.
