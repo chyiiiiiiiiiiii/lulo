@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 import 'package:local_agent_macos/app/app.dart';
 import 'package:local_agent_macos/app/bootstrap.dart';
+import 'package:local_agent_macos/platform/desktop_host_service.dart';
 
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
@@ -20,6 +21,14 @@ void main() {
         ),
       );
       await tester.pump();
+
+      // The app rests on the desktop as an orb, so the conversation is not on
+      // screen until it is summoned. Driving the real host also resizes the
+      // real window, which is what gives the conversation room to lay out.
+      await composition.presentationHost!.setPresentation(
+        DesktopPresentation.expanded,
+      );
+      await tester.pumpAndSettle();
 
       expect(find.text('Start a conversation'), findsOneWidget);
       expect(find.byKey(const Key('agent-presence-fallback')), findsOneWidget);

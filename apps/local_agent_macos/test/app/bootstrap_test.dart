@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:local_agent_macos/app/app_composition.dart';
 import 'package:local_agent_macos/app/bootstrap.dart';
 
 void main() {
@@ -31,6 +32,26 @@ void main() {
     );
 
     await composition.dispose();
+  });
+
+  test('every runtime gives the app its desktop presence', () async {
+    // The desktop form is how the agent is reached, not a property of which
+    // runtime answers it. A composition without a presentation host renders
+    // the conversation straight into the window, which at rest is orb-sized.
+    for (final String runtime in <String>['fake', 'litert']) {
+      final AppComposition composition = createAppComposition(
+        inferenceRuntime: runtime,
+        localModelPath: '/models/gemma-4-E4B-it.litertlm',
+      );
+
+      expect(
+        composition.presentationHost,
+        isNotNull,
+        reason: 'The $runtime runtime bootstrapped without a desktop host.',
+      );
+
+      await composition.dispose();
+    }
   });
 
   test('LiteRT bootstrap rejects a missing model path', () {
