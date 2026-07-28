@@ -97,6 +97,13 @@ final class DesktopPanelController: DesktopPanelControlling {
   private var storedMode: DesktopPresentationMode = .expanded
   /// Whether the window is currently the canvas that covers both forms.
   private var isTransitioning = false
+
+  /// Reports a form change the app should draw, instead of making it happen.
+  var onPresentationChangeRequested: ((DesktopPresentationMode) -> Void)?
+
+  /// How long the app is given to start drawing a requested change of form.
+  static let transitionRequestGrace: TimeInterval = 0.25
+  private var pendingRequest: DispatchWorkItem?
   /// Whether the conversation frame has been applied at least once.
   private var hasPresentedExpanded = false
 
@@ -207,6 +214,9 @@ final class DesktopPanelController: DesktopPanelControlling {
   /// whatever is underneath.
   func beginTransition() -> DesktopTransitionGeometry {
     precondition(Thread.isMainThread)
+    // The app answered, so the window must not settle itself underneath it.
+    pendingRequest?.cancel()
+    pendingRequest = nil
     guard let screen = screenProvider() ?? NSScreen.main else {
       let empty = NSRect.zero
       return Self.transitionGeometry(conversation: empty, orb: empty).geometry
@@ -368,7 +378,34 @@ final class DesktopPanelController: DesktopPanelControlling {
       show()
       return
     }
-    setPresentationMode(storedMode == .expanded ? .orb : .expanded)
+    requestPresentationMode(storedMode == .expanded ? .orb : .expanded)
+  }
+
+  /// Asks the app to draw the change of form, and settles the window if it
+  /// does not answer.
+  ///
+  /// The hotkey and the menu bar are native, so moving the window here would
+  /// mean the app only ever heard about a change after it had happened and
+  /// the presence could never be drawn travelling. Asking first hands that
+  /// over. The fallback exists because a hotkey that depends on the Dart side
+  /// being responsive is a hotkey that stops working under load.
+  private func requestPresentationMode(_ mode: DesktopPresentationMode) {
+    guard let request = onPresentationChangeRequested else {
+      setPresentationMode(mode)
+      return
+    }
+    pendingRequest?.cancel()
+    let fallback = DispatchWorkItem { [weak self] in
+      guard let self else { return }
+      self.pendingRequest = nil
+      self.setPresentationMode(mode)
+    }
+    pendingRequest = fallback
+    DispatchQueue.main.asyncAfter(
+      deadline: .now() + Self.transitionRequestGrace,
+      execute: fallback
+    )
+    request(mode)
   }
 
   private func moveToActiveDisplay() {

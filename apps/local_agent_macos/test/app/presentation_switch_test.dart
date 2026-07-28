@@ -172,6 +172,58 @@ void main() {
     );
   });
 
+  testWidgets('a form change is drawn before the window settles into it', (
+    WidgetTester tester,
+  ) async {
+    final _FakePresentationHost host = _FakePresentationHost();
+    addTearDown(() => unawaited(host.dispose()));
+    final AppComposition composition = AppComposition(
+      () {},
+      storageService: InMemoryConversationStorageService(),
+      inferenceService: _HoldingInferenceService(),
+      presentationHost: host,
+    );
+    addTearDown(() => unawaited(composition.dispose()));
+
+    host.presentation.value = DesktopPresentation.expanded;
+    await tester.pumpWidget(
+      LocalAgentApp(
+        composition: composition,
+        presenceShaderLoader: _failShaderLoad,
+      ),
+    );
+    await tester.pump();
+
+    // The hotkey asks for the orb rather than moving the window itself.
+    host.requestPresentation(DesktopPresentation.orb);
+    await tester.pump();
+    await tester.pump();
+
+    expect(
+      host.begunTransitions,
+      <DesktopPresentation>[DesktopPresentation.orb],
+      reason: 'The window was never grown to cover both forms.',
+    );
+    expect(
+      host.endedTransitions,
+      isEmpty,
+      reason: 'The window settled before the presence had moved.',
+    );
+
+    // Not pumpAndSettle: the travelling presence animates continuously, so
+    // there is no quiet frame to settle on.
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pump();
+    await tester.pump();
+
+    expect(
+      host.endedTransitions,
+      <DesktopPresentation>[DesktopPresentation.orb],
+      reason: 'The window never settled once the presence had arrived.',
+    );
+    expect(host.presentation.value, DesktopPresentation.orb);
+  });
+
   testWidgets('changing form never rebuilds the presence orb', (
     WidgetTester tester,
   ) async {
@@ -240,6 +292,20 @@ final class _FakePresentationHost implements DesktopPresentationHost {
   Future<void> moveWindowBy(Offset delta) async {
     moves.add(delta);
   }
+
+  final StreamController<DesktopPresentation> _requests =
+      StreamController<DesktopPresentation>.broadcast();
+
+  @override
+  Stream<DesktopPresentation> get presentationRequests => _requests.stream;
+
+  /// Stands in for the hotkey or the menu bar asking for a change of form.
+  void requestPresentation(DesktopPresentation target) {
+    _requests.add(target);
+  }
+
+  /// Releases the request stream.
+  Future<void> dispose() => _requests.close();
 
   /// A canvas holding a centred conversation and an orb in the lower corner.
   DesktopTransitionGeometry geometry = const DesktopTransitionGeometry(

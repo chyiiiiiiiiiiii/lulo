@@ -145,6 +145,25 @@ final class PigeonDesktopHostService extends DesktopHostEventApi
     );
   }
 
+  final StreamController<DesktopPresentation> _presentationRequests =
+      StreamController<DesktopPresentation>.broadcast();
+
+  @override
+  Stream<DesktopPresentation> get presentationRequests =>
+      _presentationRequests.stream;
+
+  @override
+  void onPresentationChangeRequested(HostPresentationMode target) {
+    if (_disposed) {
+      return;
+    }
+    _presentationRequests.add(
+      target == HostPresentationMode.orb
+          ? DesktopPresentation.orb
+          : DesktopPresentation.expanded,
+    );
+  }
+
   @override
   void onPresentationModeChanged(HostPresentationMode mode) {
     if (_disposed) {
@@ -332,6 +351,7 @@ final class PigeonDesktopHostService extends DesktopHostEventApi
       DesktopHostEventApi.setUp(null);
     }
     await _events.close();
+    await _presentationRequests.close();
   }
 }
 

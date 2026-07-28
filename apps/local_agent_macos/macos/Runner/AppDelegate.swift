@@ -51,6 +51,15 @@ class AppDelegate: FlutterAppDelegate {
         completion: { _ in }
       )
     }
+    // The hotkey and the menu bar ask rather than act, so the app can draw the
+    // presence travelling between the two forms instead of finding out the
+    // window has already moved.
+    panelController.onPresentationChangeRequested = { target in
+      eventApi.onPresentationChangeRequested(
+        target: target == .orb ? .orb : .expanded,
+        completion: { _ in }
+      )
+    }
     let eventSink = PigeonGenerationEventSink(api: eventApi)
     let eventBridge = GenerationEventBridge(
       sink: eventSink,

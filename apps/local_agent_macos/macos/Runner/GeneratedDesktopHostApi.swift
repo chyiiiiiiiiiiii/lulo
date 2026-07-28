@@ -1049,6 +1049,14 @@ class DesktopHostApiSetup {
 protocol DesktopHostEventApiProtocol {
   func onGenerationEvent(event eventArg: HostGenerationEvent, completion: @escaping (Result<Void, PigeonError>) -> Void)
   func onPresentationModeChanged(mode modeArg: HostPresentationMode, completion: @escaping (Result<Void, PigeonError>) -> Void)
+  /// Asks the app to change form, rather than telling it that it already did.
+  ///
+  /// The hotkey and the menu bar live on the native side, so without this the
+  /// window would already have moved by the time Flutter heard about it and
+  /// the presence could not be drawn travelling. The host settles the window
+  /// itself if the app does not answer, so the hotkey still works when the
+  /// Dart side is busy or wedged.
+  func onPresentationChangeRequested(target targetArg: HostPresentationMode, completion: @escaping (Result<Void, PigeonError>) -> Void)
 }
 class DesktopHostEventApi: DesktopHostEventApiProtocol {
   private let binaryMessenger: FlutterBinaryMessenger
@@ -1082,6 +1090,31 @@ class DesktopHostEventApi: DesktopHostEventApiProtocol {
     let channelName: String = "dev.flutter.pigeon.local_agent_macos.DesktopHostEventApi.onPresentationModeChanged\(messageChannelSuffix)"
     let channel = FlutterBasicMessageChannel(name: channelName, binaryMessenger: binaryMessenger, codec: codec)
     channel.sendMessage([modeArg] as [Any?]) { response in
+      guard let listResponse = response as? [Any?] else {
+        completion(.failure(createConnectionError(withChannelName: channelName)))
+        return
+      }
+      if listResponse.count > 1 {
+        let code: String = listResponse[0] as! String
+        let message: String? = nilOrValue(listResponse[1])
+        let details: String? = nilOrValue(listResponse[2])
+        completion(.failure(PigeonError(code: code, message: message, details: details)))
+      } else {
+        completion(.success(()))
+      }
+    }
+  }
+  /// Asks the app to change form, rather than telling it that it already did.
+  ///
+  /// The hotkey and the menu bar live on the native side, so without this the
+  /// window would already have moved by the time Flutter heard about it and
+  /// the presence could not be drawn travelling. The host settles the window
+  /// itself if the app does not answer, so the hotkey still works when the
+  /// Dart side is busy or wedged.
+  func onPresentationChangeRequested(target targetArg: HostPresentationMode, completion: @escaping (Result<Void, PigeonError>) -> Void) {
+    let channelName: String = "dev.flutter.pigeon.local_agent_macos.DesktopHostEventApi.onPresentationChangeRequested\(messageChannelSuffix)"
+    let channel = FlutterBasicMessageChannel(name: channelName, binaryMessenger: binaryMessenger, codec: codec)
+    channel.sendMessage([targetArg] as [Any?]) { response in
       guard let listResponse = response as? [Any?] else {
         completion(.failure(createConnectionError(withChannelName: channelName)))
         return

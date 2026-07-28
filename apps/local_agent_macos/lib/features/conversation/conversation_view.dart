@@ -61,6 +61,7 @@ final class ConversationView extends StatefulWidget {
     this.onPresenceController,
     this.presenceController,
     this.presenceOrb,
+    this.presenceAnchorKey,
     super.key,
   });
 
@@ -72,6 +73,9 @@ final class ConversationView extends StatefulWidget {
   /// The app supplies the single orb it moves between here and the desktop, so
   /// that collapsing relocates the presence rather than rebuilding it.
   final Widget? presenceOrb;
+
+  /// Identifies the space the header keeps for the orb while it is elsewhere.
+  final Key? presenceAnchorKey;
 
   /// Creates the ViewModel owned by this view.
   final ConversationViewModel Function() viewModelFactory;
@@ -121,6 +125,7 @@ final class _ConversationViewState extends State<ConversationView> {
               activeTurn: _viewModel.activeTurnListenable,
               presenceController: widget.presenceController,
               presenceOrb: widget.presenceOrb,
+              presenceAnchorKey: widget.presenceAnchorKey,
               onPresenceControllerCreated:
                   (AgentPresenceController controller) {
                     widget.buildObserver?.agentPresenceController = controller;
@@ -163,6 +168,7 @@ final class _ConversationChrome extends StatelessWidget {
     required this.activeTurn,
     required this.presenceController,
     required this.presenceOrb,
+    required this.presenceAnchorKey,
     required this.onPresenceControllerCreated,
     required this.onPresenceOrbPaint,
     required this.onPresenceSemanticBuild,
@@ -173,6 +179,9 @@ final class _ConversationChrome extends StatelessWidget {
   final ValueListenable<Turn?> activeTurn;
   final AgentPresenceController? presenceController;
   final Widget? presenceOrb;
+
+  /// Identifies the space the header keeps for the orb while it is elsewhere.
+  final Key? presenceAnchorKey;
   final AgentPresenceControllerCallback onPresenceControllerCreated;
   final VoidCallback onPresenceOrbPaint;
   final VoidCallback onPresenceSemanticBuild;
@@ -196,6 +205,7 @@ final class _ConversationChrome extends StatelessWidget {
           activeTurn: activeTurn,
           controller: presenceController,
           orb: presenceOrb,
+          anchorKey: presenceAnchorKey,
           onControllerCreated: onPresenceControllerCreated,
           onOrbPaint: onPresenceOrbPaint,
           onSemanticBuild: onPresenceSemanticBuild,

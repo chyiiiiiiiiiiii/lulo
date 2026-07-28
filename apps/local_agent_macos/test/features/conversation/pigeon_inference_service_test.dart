@@ -586,6 +586,10 @@ final class RecordingDesktopHostService implements DesktopHostService {
   Future<void> moveWindowBy(Offset delta) async {}
 
   @override
+  Stream<DesktopPresentation> get presentationRequests =>
+      const Stream<DesktopPresentation>.empty();
+
+  @override
   Future<DesktopTransitionGeometry> beginPresentationTransition(
     DesktopPresentation target,
   ) async => DesktopTransitionGeometry(

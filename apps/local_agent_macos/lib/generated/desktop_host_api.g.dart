@@ -1121,6 +1121,15 @@ abstract class DesktopHostEventApi {
 
   void onPresentationModeChanged(HostPresentationMode mode);
 
+  /// Asks the app to change form, rather than telling it that it already did.
+  ///
+  /// The hotkey and the menu bar live on the native side, so without this the
+  /// window would already have moved by the time Flutter heard about it and
+  /// the presence could not be drawn travelling. The host settles the window
+  /// itself if the app does not answer, so the hotkey still works when the
+  /// Dart side is busy or wedged.
+  void onPresentationChangeRequested(HostPresentationMode target);
+
   static void setUp(
     DesktopHostEventApi? api, {
     BinaryMessenger? binaryMessenger,
@@ -1169,6 +1178,32 @@ abstract class DesktopHostEventApi {
               args[0]! as HostPresentationMode;
           try {
             api.onPresentationModeChanged(arg_mode);
+            return wrapResponse(empty: true);
+          } on PlatformException catch (e) {
+            return wrapResponse(error: e);
+          } catch (e) {
+            return wrapResponse(
+              error: PlatformException(code: 'error', message: e.toString()),
+            );
+          }
+        });
+      }
+    }
+    {
+      final pigeonVar_channel = BasicMessageChannel<Object?>(
+        'dev.flutter.pigeon.local_agent_macos.DesktopHostEventApi.onPresentationChangeRequested$messageChannelSuffix',
+        pigeonChannelCodec,
+        binaryMessenger: binaryMessenger,
+      );
+      if (api == null) {
+        pigeonVar_channel.setMessageHandler(null);
+      } else {
+        pigeonVar_channel.setMessageHandler((Object? message) async {
+          final List<Object?> args = message! as List<Object?>;
+          final HostPresentationMode arg_target =
+              args[0]! as HostPresentationMode;
+          try {
+            api.onPresentationChangeRequested(arg_target);
             return wrapResponse(empty: true);
           } on PlatformException catch (e) {
             return wrapResponse(error: e);

@@ -110,6 +110,68 @@ final class DesktopPanelControllerTests: XCTestCase {
     }
   }
 
+  func testTheHotkeyAsksTheAppToDrawTheChangeOfForm() {
+    let controller = Self.makeController()
+    controller.show()
+    controller.setPresentationMode(.expanded)
+    var requested: [DesktopPresentationMode] = []
+    controller.onPresentationChangeRequested = { requested.append($0) }
+
+    controller.toggle()
+
+    // Asking rather than acting is what lets the presence be drawn travelling
+    // between the two forms.
+    XCTAssertEqual(requested, [.orb])
+    XCTAssertEqual(controller.presentationMode, .expanded)
+
+    // Answering cancels the fallback, so the window stays on the canvas for
+    // as long as the app needs to draw the move.
+    _ = controller.beginTransition()
+    let settled = expectation(description: "the window was not settled for us")
+    settled.isInverted = true
+    DispatchQueue.main.asyncAfter(
+      deadline: .now() + DesktopPanelController.transitionRequestGrace * 3
+    ) {
+      if controller.presentationMode == .orb { settled.fulfill() }
+    }
+    wait(for: [settled], timeout: 1)
+
+    controller.endTransition(.orb)
+    XCTAssertEqual(controller.presentationMode, .orb)
+  }
+
+  func testAnUnansweredRequestStillMovesTheWindow() {
+    let controller = Self.makeController()
+    controller.show()
+    controller.setPresentationMode(.expanded)
+    // An app that never answers, which is what a wedged Dart isolate looks
+    // like from here. The hotkey has to keep working anyway.
+    controller.onPresentationChangeRequested = { _ in }
+
+    controller.toggle()
+    XCTAssertEqual(controller.presentationMode, .expanded)
+
+    let settled = expectation(description: "the window settled itself")
+    DispatchQueue.main.asyncAfter(
+      deadline: .now() + DesktopPanelController.transitionRequestGrace * 3
+    ) {
+      if controller.presentationMode == .orb { settled.fulfill() }
+    }
+    wait(for: [settled], timeout: 2)
+  }
+
+  private static func makeController() -> DesktopPanelController {
+    let panel = NSPanel(
+      contentRect: NSRect(x: 0, y: 0, width: 480, height: 640),
+      styleMask: [.titled, .closable, .miniaturizable, .resizable],
+      backing: .buffered,
+      defer: false
+    )
+    return DesktopPanelController(panel: panel) {
+      FlutterPanelContent(engine: NSObject(), viewController: NSViewController())
+    }
+  }
+
   func testPanelCanJoinSpacesAndRemainAvailableBesideFullscreenApps() {
     let panel = NSPanel(
       contentRect: NSRect(x: 0, y: 0, width: 480, height: 640),

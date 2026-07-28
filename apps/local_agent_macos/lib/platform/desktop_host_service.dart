@@ -366,6 +366,13 @@ abstract interface class DesktopPresentationHost {
   /// The form the window is currently presented in.
   ValueListenable<DesktopPresentation> get presentation;
 
+  /// Form changes the host is asking the app to draw.
+  ///
+  /// The hotkey and the menu bar are native, so this is how the app hears
+  /// about a change of form early enough to draw the move rather than being
+  /// told the window has already moved.
+  Stream<DesktopPresentation> get presentationRequests;
+
   /// Asks the host to present the window in [mode].
   Future<void> setPresentation(DesktopPresentation mode);
 

@@ -232,4 +232,13 @@ abstract class DesktopHostEventApi {
   void onGenerationEvent(HostGenerationEvent event);
 
   void onPresentationModeChanged(HostPresentationMode mode);
+
+  /// Asks the app to change form, rather than telling it that it already did.
+  ///
+  /// The hotkey and the menu bar live on the native side, so without this the
+  /// window would already have moved by the time Flutter heard about it and
+  /// the presence could not be drawn travelling. The host settles the window
+  /// itself if the app does not answer, so the hotkey still works when the
+  /// Dart side is busy or wedged.
+  void onPresentationChangeRequested(HostPresentationMode target);
 }

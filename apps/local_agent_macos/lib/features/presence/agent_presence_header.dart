@@ -18,6 +18,7 @@ final class AgentPresenceHeader extends StatefulWidget {
     required this.activeTurn,
     this.controller,
     this.orb,
+    this.anchorKey,
     this.onControllerCreated,
     this.onOrbPaint,
     this.onSemanticBuild,
@@ -38,6 +39,12 @@ final class AgentPresenceHeader extends StatefulWidget {
   /// desktop, so that collapsing relocates the presence instead of destroying
   /// it and building another one.
   final Widget? orb;
+
+  /// Identifies the space kept for the orb while another form holds it.
+  ///
+  /// The presence lands here when the conversation is summoned, so whoever
+  /// draws that journey needs to be able to measure where "here" is.
+  final Key? anchorKey;
 
   /// Terminal conversation history.
   final ValueListenable<List<Turn>> completedTurns;
@@ -147,7 +154,8 @@ final class _AgentPresenceHeaderState extends State<AgentPresenceHeader> {
       //
       // The space is still reserved, so the header does not reflow as the orb
       // leaves and returns.
-      return const SizedBox.square(
+      return SizedBox.square(
+        key: widget.anchorKey,
         dimension: AgentPresenceOrb.defaultOrbExtent,
       );
     }

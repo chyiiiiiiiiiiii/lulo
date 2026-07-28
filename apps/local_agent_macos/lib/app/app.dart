@@ -72,7 +72,11 @@ final class _PresentationSwitch extends StatefulWidget {
   State<_PresentationSwitch> createState() => _PresentationSwitchState();
 }
 
-final class _PresentationSwitchState extends State<_PresentationSwitch> {
+/// How long the presence takes to travel between the two forms.
+const Duration _flightDuration = Duration(milliseconds: 320);
+
+final class _PresentationSwitchState extends State<_PresentationSwitch>
+    with SingleTickerProviderStateMixin {
   /// Identifies the conversation so it keeps its state when the form changes.
   ///
   /// Collapsing wraps the conversation differently so it can lay out at its own
@@ -90,6 +94,12 @@ final class _PresentationSwitchState extends State<_PresentationSwitch> {
   /// reparented and simply keeps running.
   final GlobalKey _orbKey = GlobalKey();
 
+  /// Identifies the space the header keeps for the orb while it is away.
+  ///
+  /// Where the presence lands when the conversation is summoned. Its position
+  /// depends on the title beside it, so it is measured rather than assumed.
+  final GlobalKey _anchorKey = GlobalKey();
+
   /// The agent's presence, owned here because both forms show it.
   ///
   /// Created above the conversation rather than inside it: the desktop orb has
@@ -97,10 +107,138 @@ final class _PresentationSwitchState extends State<_PresentationSwitch> {
   /// left cannot outlive it.
   final AgentPresenceController _presence = AgentPresenceController();
 
+  /// Drives the presence between the two forms.
+  late final AnimationController _flight;
+
+  /// Where the presence starts and ends its journey, in canvas coordinates.
+  Rect? _flightFrom;
+  Rect? _flightTo;
+
+  /// The canvas covering both forms, held only while the presence is moving.
+  DesktopTransitionGeometry? _canvas;
+
+  StreamSubscription<DesktopPresentation>? _requests;
+
+  @override
+  void initState() {
+    super.initState();
+    // Built here rather than lazily: a controller first touched in dispose
+    // would ask a deactivated element for its TickerMode.
+    _flight = AnimationController(vsync: this, duration: _flightDuration);
+    // The hotkey and the menu bar are native, so collapsing is asked for from
+    // there. Without listening the window would simply move and there would be
+    // nothing left to draw.
+    _requests = widget.composition.presentationHost?.presentationRequests
+        .listen(_flyTo);
+  }
+
   @override
   void dispose() {
+    unawaited(_requests?.cancel());
+    _flight.dispose();
     _presence.dispose();
     super.dispose();
+  }
+
+  /// The orb's top-left in the current window, before that window changes.
+  Offset? _orbOrigin() {
+    final BuildContext? context = _orbKey.currentContext;
+    final RenderObject? object = context?.findRenderObject();
+    if (object is! RenderBox || !object.hasSize) {
+      return null;
+    }
+    return object.localToGlobal(Offset.zero);
+  }
+
+  /// Where the header keeps the orb's place, in canvas coordinates.
+  Rect? _anchorRect() {
+    final RenderObject? object = _anchorKey.currentContext?.findRenderObject();
+    if (object is! RenderBox || !object.hasSize) {
+      return null;
+    }
+    return object.localToGlobal(Offset.zero) & object.size;
+  }
+
+  Future<void> _nextFrame() {
+    final Completer<void> frame = Completer<void>();
+    WidgetsBinding.instance.addPostFrameCallback((Duration _) {
+      if (!frame.isCompleted) {
+        frame.complete();
+      }
+    });
+    return frame.future;
+  }
+
+  /// Draws the presence travelling, then lets the window settle into [target].
+  Future<void> _flyTo(DesktopPresentation target) async {
+    final DesktopPresentationHost? host = widget.composition.presentationHost;
+    if (host == null || _canvas != null) {
+      return;
+    }
+    final bool collapsing = target == DesktopPresentation.orb;
+    // Measured before the window grows, so it is still in the coordinates of
+    // the form being left.
+    final Offset? origin = _orbOrigin();
+
+    final DesktopTransitionGeometry canvas = await host
+        .beginPresentationTransition(target);
+    if (!mounted) {
+      return;
+    }
+
+    // The form being left occupies a known place on the canvas, so a position
+    // measured inside it becomes a canvas position by shifting it there.
+    final Rect leaving = collapsing ? canvas.conversation : canvas.orb;
+    final double fromExtent = collapsing
+        ? AgentPresenceOrb.defaultOrbExtent
+        : desktopOrbExtent;
+    final Rect from = origin == null
+        ? Rect.fromCenter(
+            center: leaving.center,
+            width: fromExtent,
+            height: fromExtent,
+          )
+        : (origin + leaving.topLeft) & Size.square(fromExtent);
+    final Rect to = collapsing
+        ? canvas.orb
+        : Rect.fromCenter(
+            center: canvas.conversation.center,
+            width: AgentPresenceOrb.defaultOrbExtent,
+            height: AgentPresenceOrb.defaultOrbExtent,
+          );
+
+    setState(() {
+      _canvas = canvas;
+      _flightFrom = from;
+      _flightTo = to;
+    });
+
+    if (!collapsing) {
+      // The header anchor only has a position once the conversation has been
+      // laid out on the canvas, which has not happened yet.
+      await _nextFrame();
+      if (!mounted) {
+        return;
+      }
+      final Rect? landing = _anchorRect();
+      if (landing != null) {
+        setState(() => _flightTo = landing);
+      }
+    }
+
+    await _flight.forward(from: 0);
+    if (!mounted) {
+      return;
+    }
+    await host.endPresentationTransition(target);
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _canvas = null;
+      _flightFrom = null;
+      _flightTo = null;
+    });
   }
 
   /// Builds the one orb at the size and cadence its current host wants.
@@ -132,6 +270,7 @@ final class _PresentationSwitchState extends State<_PresentationSwitch> {
       viewModelFactory: widget.composition.createConversationViewModel,
       presenceShaderLoader: widget.presenceShaderLoader,
       presenceController: _presence,
+      presenceAnchorKey: _anchorKey,
       presenceOrb: hostsOrb
           ? _orb(
               extent: AgentPresenceOrb.defaultOrbExtent,
@@ -142,11 +281,63 @@ final class _PresentationSwitchState extends State<_PresentationSwitch> {
     );
   }
 
+  /// The window while it covers both forms and the presence is travelling.
+  ///
+  /// The conversation is placed where it actually is on screen rather than
+  /// filling the canvas, so it neither reflows nor appears to jump as the
+  /// window grows around it. The presence is drawn on top, in flight.
+  Widget _flightLayout(DesktopTransitionGeometry canvas) {
+    return Stack(
+      children: <Widget>[
+        Positioned.fromRect(
+          rect: canvas.conversation,
+          // Held at the size it was, because the canvas is a different shape
+          // and laying the conversation out to fill it would be a visible
+          // reflow in the middle of the move.
+          child: SizedBox.fromSize(
+            size: canvas.conversation.size,
+            child: _conversation(hostsOrb: false),
+          ),
+        ),
+        AnimatedBuilder(
+          animation: _flight,
+          builder: (BuildContext context, Widget? _) {
+            final Rect rect = _flightRect();
+            return Positioned.fromRect(
+              rect: rect,
+              // The shader renders at the size it is given rather than being
+              // scaled afterwards, so the presence stays crisp all the way.
+              child: _orb(
+                extent: rect.width,
+                showLabel: false,
+                continuousMotion: true,
+              ),
+            );
+          },
+        ),
+      ],
+    );
+  }
+
+  /// Where the presence is right now, between the two forms.
+  Rect _flightRect() {
+    final Rect? from = _flightFrom;
+    final Rect? to = _flightTo;
+    if (from == null || to == null) {
+      return from ?? to ?? Rect.zero;
+    }
+    return Rect.lerp(from, to, Curves.easeInOutCubic.transform(_flight.value))!;
+  }
+
   @override
   Widget build(BuildContext context) {
     final DesktopPresentationHost? host = widget.composition.presentationHost;
     if (host == null) {
       return _conversation(hostsOrb: true);
+    }
+    final DesktopTransitionGeometry? canvas = _canvas;
+    if (canvas != null) {
+      return _flightLayout(canvas);
     }
     return ValueListenableBuilder<DesktopPresentation>(
       valueListenable: host.presentation,
