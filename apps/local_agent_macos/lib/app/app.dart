@@ -232,8 +232,45 @@ final class _PresentationSwitchState extends State<_PresentationSwitch>
 
     // Thrown rather than driven for a fixed time: the presence arrives when
     // its own weight says it does.
+    //
+    // Waited on until it is *home*, not until the spring has finished
+    // wobbling. Those are far apart, and the window only settles once this
+    // returns, so waiting for the wobble left the agent motionless at its
+    // destination with nothing happening around it.
     _flight.value = 0;
-    await _flight.animateWith(SpringSimulation(presenceFlightSpring, 0, 1, 0));
+    final Completer<void> home = Completer<void>();
+    void watchForArrival() {
+      if (!home.isCompleted && _flight.value >= 1) {
+        home.complete();
+      }
+    }
+
+    _flight.addListener(watchForArrival);
+    final TickerFuture settling = _flight.animateWith(
+      SpringSimulation(
+        presenceFlightSpring,
+        0,
+        1,
+        0,
+        tolerance: presenceFlightTolerance,
+      ),
+    );
+    // A spring that somehow never reaches its target must not hang the app.
+    unawaited(
+      settling.orCancel
+          .whenComplete(() {
+            if (!home.isCompleted) {
+              home.complete();
+            }
+          })
+          .catchError((Object _) {}),
+    );
+    await home.future;
+    _flight.removeListener(watchForArrival);
+    // Parked exactly on the destination, which is exactly where the settled
+    // window puts it, so nothing is left to jump.
+    _flight.stop();
+    _flight.value = 1;
     if (!mounted) {
       return;
     }

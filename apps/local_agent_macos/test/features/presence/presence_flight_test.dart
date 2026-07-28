@@ -1,5 +1,6 @@
 import 'dart:ui';
 
+import 'package:flutter/physics.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:local_agent_macos/features/presence/presence_flight.dart';
 
@@ -81,6 +82,35 @@ void main() {
 
     expect(early, closeTo(1, 0.02));
     expect(late, lessThan(early));
+  });
+
+  test('the presence is home before the wait becomes noticeable', () {
+    // The fault this guards: the presence reached the desktop and then sat
+    // there while the spring's tail was still being declared settled, which
+    // reads as the agent freezing on arrival.
+    //
+    // What decides when it arrives is the damped frequency, not how fast the
+    // envelope decays. Damping the spring harder lowers that frequency and
+    // makes the arrival later, which is the trap this exists to catch.
+    final SpringSimulation flight = SpringSimulation(
+      presenceFlightSpring,
+      0,
+      1,
+      0,
+    );
+
+    double arrival = 0;
+    while (arrival < 2 && flight.x(arrival) < 1) {
+      arrival += 1 / 240;
+    }
+
+    expect(
+      arrival,
+      lessThan(0.32),
+      reason: 'The presence took ${arrival.toStringAsFixed(2)}s to arrive.',
+    );
+    // Still thrown rather than eased into place: it passes the target.
+    expect(flight.x(arrival + 0.02), greaterThan(1));
   });
 
   test('an overshooting spring still leaves the presence on the canvas', () {

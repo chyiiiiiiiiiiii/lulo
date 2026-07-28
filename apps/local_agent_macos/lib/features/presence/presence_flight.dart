@@ -7,12 +7,18 @@ import 'package:flutter/physics.dart';
 ///
 /// Underdamped on purpose: it passes its destination slightly and comes back,
 /// which is what makes it read as something with weight rather than a widget
-/// being repositioned. The overshoot is small enough to stay believable and is
-/// kept on the canvas by [presenceFlightRect].
+/// being repositioned. The overshoot is kept on the canvas by
+/// [presenceFlightRect].
+///
+/// Tuned for when it *arrives*, which is set by the damped frequency
+/// `sqrt(stiffness) * sqrt(1 - zeta^2)` and not by how fast the spring stops
+/// wobbling afterwards. Damping it harder lowers that frequency and makes the
+/// agent take longer to get there, which is the opposite of what it looks
+/// like it should do. Speed comes from stiffness instead.
 const SpringDescription presenceFlightSpring = SpringDescription(
   mass: 1,
-  stiffness: 260,
-  damping: 30,
+  stiffness: 290,
+  damping: 25,
 );
 
 /// When the journey counts as over.
