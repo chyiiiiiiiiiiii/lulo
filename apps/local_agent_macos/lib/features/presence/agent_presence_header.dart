@@ -16,12 +16,28 @@ final class AgentPresenceHeader extends StatefulWidget {
   const AgentPresenceHeader({
     required this.completedTurns,
     required this.activeTurn,
+    this.controller,
+    this.orb,
     this.onControllerCreated,
     this.onOrbPaint,
     this.onSemanticBuild,
     this.shaderLoader = loadAgentPresenceShader,
     super.key,
   });
+
+  /// Presence to project into, or null to own one for this header alone.
+  ///
+  /// The agent is one presence shown in two forms, so when the app hosts both
+  /// the controller is created above this header and handed down. A header
+  /// built on its own still works, and still owns what it created.
+  final AgentPresenceController? controller;
+
+  /// The orb to place here, or null to build one belonging to this header.
+  ///
+  /// The app supplies the single orb it moves between the header and the
+  /// desktop, so that collapsing relocates the presence instead of destroying
+  /// it and building another one.
+  final Widget? orb;
 
   /// Terminal conversation history.
   final ValueListenable<List<Turn>> completedTurns;
@@ -46,8 +62,12 @@ final class AgentPresenceHeader extends StatefulWidget {
 }
 
 final class _AgentPresenceHeaderState extends State<AgentPresenceHeader> {
-  final AgentPresenceController _controller = AgentPresenceController();
+  /// The presence this header created, when none was supplied.
+  AgentPresenceController? _ownedController;
   final Stopwatch _clock = Stopwatch();
+
+  AgentPresenceController get _controller =>
+      widget.controller ?? (_ownedController ??= AgentPresenceController());
 
   @override
   void initState() {
@@ -78,7 +98,9 @@ final class _AgentPresenceHeaderState extends State<AgentPresenceHeader> {
     widget.completedTurns.removeListener(_projectConversation);
     widget.activeTurn.removeListener(_projectConversation);
     _clock.stop();
-    _controller.dispose();
+    // Only dispose a presence this header created. A supplied controller
+    // outlives the header, because the desktop form keeps showing it.
+    _ownedController?.dispose();
     super.dispose();
   }
 
@@ -112,6 +134,23 @@ final class _AgentPresenceHeaderState extends State<AgentPresenceHeader> {
 
   @override
   Widget build(BuildContext context) {
+    final Widget? orb = widget.orb;
+    if (orb != null) {
+      return orb;
+    }
+    if (widget.controller != null) {
+      // The presence was handed down, so whoever owns it also decides which
+      // form holds the orb, and right now it is not this one. Building one
+      // here anyway would be a second orb: the conversation keeps building
+      // while collapsed, so it would be rebuilt on every collapse — exactly
+      // what moving a single orb between the forms is meant to stop.
+      //
+      // The space is still reserved, so the header does not reflow as the orb
+      // leaves and returns.
+      return const SizedBox.square(
+        dimension: AgentPresenceOrb.defaultOrbExtent,
+      );
+    }
     return AgentPresenceOrb(
       controller: _controller,
       onPaint: widget.onOrbPaint,

@@ -59,8 +59,19 @@ final class ConversationView extends StatefulWidget {
     this.buildObserver,
     this.presenceShaderLoader = loadAgentPresenceShader,
     this.onPresenceController,
+    this.presenceController,
+    this.presenceOrb,
     super.key,
   });
+
+  /// Presence to project conversation state into, or null to own one.
+  final AgentPresenceController? presenceController;
+
+  /// The orb to place in the header, or null to let the header build one.
+  ///
+  /// The app supplies the single orb it moves between here and the desktop, so
+  /// that collapsing relocates the presence rather than rebuilding it.
+  final Widget? presenceOrb;
 
   /// Creates the ViewModel owned by this view.
   final ConversationViewModel Function() viewModelFactory;
@@ -108,6 +119,8 @@ final class _ConversationViewState extends State<ConversationView> {
             _ConversationChrome(
               completedTurns: _viewModel.completedTurnsListenable,
               activeTurn: _viewModel.activeTurnListenable,
+              presenceController: widget.presenceController,
+              presenceOrb: widget.presenceOrb,
               onPresenceControllerCreated:
                   (AgentPresenceController controller) {
                     widget.buildObserver?.agentPresenceController = controller;
@@ -148,6 +161,8 @@ final class _ConversationChrome extends StatelessWidget {
   const _ConversationChrome({
     required this.completedTurns,
     required this.activeTurn,
+    required this.presenceController,
+    required this.presenceOrb,
     required this.onPresenceControllerCreated,
     required this.onPresenceOrbPaint,
     required this.onPresenceSemanticBuild,
@@ -156,6 +171,8 @@ final class _ConversationChrome extends StatelessWidget {
 
   final ValueListenable<List<Turn>> completedTurns;
   final ValueListenable<Turn?> activeTurn;
+  final AgentPresenceController? presenceController;
+  final Widget? presenceOrb;
   final AgentPresenceControllerCallback onPresenceControllerCreated;
   final VoidCallback onPresenceOrbPaint;
   final VoidCallback onPresenceSemanticBuild;
@@ -171,6 +188,8 @@ final class _ConversationChrome extends StatelessWidget {
         AgentPresenceHeader(
           completedTurns: completedTurns,
           activeTurn: activeTurn,
+          controller: presenceController,
+          orb: presenceOrb,
           onControllerCreated: onPresenceControllerCreated,
           onOrbPaint: onPresenceOrbPaint,
           onSemanticBuild: onPresenceSemanticBuild,

@@ -135,21 +135,28 @@ final class _AgentPresenceOrbState extends State<AgentPresenceOrb>
   @override
   void didUpdateWidget(AgentPresenceOrb oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.controller == widget.controller) {
-      return;
+    if (oldWidget.controller != widget.controller) {
+      // The painters hold the listenables they were built with, so a controller
+      // handed over after the first build would keep the orb painting the state
+      // of the one it replaced: it would report the new state through semantics
+      // while still drawing the old one's colour.
+      oldWidget.controller.semanticStateListenable.removeListener(
+        _updateMotionLifecycle,
+      );
+      _bindController();
+      if (_shaderPainter != null) {
+        _rebuildShaderPainter();
+      }
     }
-    // The painters hold the listenables they were built with, so a controller
-    // handed over after the first build would keep the orb painting the state
-    // of the one it replaced: it would report the new state through semantics
-    // while still drawing the old one's colour.
-    oldWidget.controller.semanticStateListenable.removeListener(
-      _updateMotionLifecycle,
-    );
-    _bindController();
-    if (_shaderPainter != null) {
-      _rebuildShaderPainter();
+    // One orb now moves between the two forms rather than each form building
+    // its own, so its motion budget changes while it stays mounted. Without
+    // reacting here the orb keeps whichever cadence it was first built with:
+    // stepping at 5fps on the desktop, or running a ticker beside the
+    // conversation where the cheap stepped idle is the point.
+    if (oldWidget.controller != widget.controller ||
+        oldWidget.continuousMotion != widget.continuousMotion) {
+      _updateMotionLifecycle();
     }
-    _updateMotionLifecycle();
   }
 
   AgentPresencePainter _makeShaderPainter(ui.FragmentProgram program) {

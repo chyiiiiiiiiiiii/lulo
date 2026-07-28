@@ -81,12 +81,21 @@ final class _PresentationSwitchState extends State<_PresentationSwitch> {
   /// ViewModel, so the answer being generated would be cancelled.
   final GlobalKey _conversationKey = GlobalKey();
 
-  /// The conversation's presence, once it has been built.
+  /// Identifies the one orb, so that changing form moves it.
   ///
-  /// Held as a listenable so the orb starts following the real agent the moment
-  /// the conversation reports it, without rebuilding the conversation itself.
-  final ValueNotifier<AgentPresenceController?> _presence =
-      ValueNotifier<AgentPresenceController?>(null);
+  /// The header and the desktop are different places in the tree, and without a
+  /// stable identity Flutter would destroy the orb in the form being left and
+  /// build another in the form being entered. That restarts its clock and
+  /// reloads its shader on every collapse; with the key the same orb is
+  /// reparented and simply keeps running.
+  final GlobalKey _orbKey = GlobalKey();
+
+  /// The agent's presence, owned here because both forms show it.
+  ///
+  /// Created above the conversation rather than inside it: the desktop orb has
+  /// to follow the same presence, and a controller owned by the form being
+  /// left cannot outlive it.
+  final AgentPresenceController _presence = AgentPresenceController();
 
   @override
   void dispose() {
@@ -94,24 +103,56 @@ final class _PresentationSwitchState extends State<_PresentationSwitch> {
     super.dispose();
   }
 
-  @override
-  Widget build(BuildContext context) {
-    final DesktopPresentationHost? host = widget.composition.presentationHost;
-    final Widget conversation = ConversationView(
+  /// Builds the one orb at the size and cadence its current host wants.
+  ///
+  /// The properties change with the form; the orb behind them does not.
+  Widget _orb({
+    required double extent,
+    required bool showLabel,
+    required bool continuousMotion,
+  }) {
+    return AgentPresenceOrb(
+      key: _orbKey,
+      controller: _presence,
+      shaderLoader: widget.presenceShaderLoader,
+      extent: extent,
+      showLabel: showLabel,
+      continuousMotion: continuousMotion,
+    );
+  }
+
+  /// Builds the conversation, holding the orb only while it is the visible form.
+  ///
+  /// Exactly one host may hold the orb at a time: the conversation stays
+  /// mounted while collapsed, so a header that kept claiming it would collide
+  /// with the desktop surface over the same identity.
+  Widget _conversation({required bool hostsOrb}) {
+    return ConversationView(
       key: _conversationKey,
       viewModelFactory: widget.composition.createConversationViewModel,
       presenceShaderLoader: widget.presenceShaderLoader,
-      onPresenceController: (AgentPresenceController controller) {
-        _presence.value = controller;
-      },
+      presenceController: _presence,
+      presenceOrb: hostsOrb
+          ? _orb(
+              extent: AgentPresenceOrb.defaultOrbExtent,
+              showLabel: true,
+              continuousMotion: false,
+            )
+          : null,
     );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final DesktopPresentationHost? host = widget.composition.presentationHost;
     if (host == null) {
-      return conversation;
+      return _conversation(hostsOrb: true);
     }
     return ValueListenableBuilder<DesktopPresentation>(
       valueListenable: host.presentation,
-      builder: (BuildContext context, DesktopPresentation mode, Widget? child) {
+      builder: (BuildContext context, DesktopPresentation mode, Widget? _) {
         final bool expanded = mode == DesktopPresentation.expanded;
+        final Widget conversation = _conversation(hostsOrb: expanded);
         return Stack(
           children: <Widget>[
             // The conversation stays mounted in both forms. It owns its
@@ -124,39 +165,32 @@ final class _PresentationSwitchState extends State<_PresentationSwitch> {
               // for the conversation to lay out in. Giving it its own size
               // keeps that layout stable instead of overflowing every frame.
               child: expanded
-                  ? child!
+                  ? conversation
                   : OverflowBox(
                       alignment: Alignment.topLeft,
                       maxWidth: _collapsedConversationSize.width,
                       maxHeight: _collapsedConversationSize.height,
                       child: SizedBox.fromSize(
                         size: _collapsedConversationSize,
-                        child: child,
+                        child: conversation,
                       ),
                     ),
             ),
             if (!expanded)
-              ValueListenableBuilder<AgentPresenceController?>(
-                valueListenable: _presence,
-                builder:
-                    (
-                      BuildContext context,
-                      AgentPresenceController? presence,
-                      Widget? _,
-                    ) {
-                      return DesktopOrbSurface(
-                        controller: presence,
-                        presenceShaderLoader: widget.presenceShaderLoader,
-                        onSummon: () =>
-                            host.setPresentation(DesktopPresentation.expanded),
-                        onDragBy: host.moveWindowBy,
-                      );
-                    },
+              DesktopOrbSurface(
+                orb: _orb(
+                  extent: desktopOrbExtent,
+                  showLabel: false,
+                  continuousMotion: true,
+                ),
+                presenceShaderLoader: widget.presenceShaderLoader,
+                onSummon: () =>
+                    host.setPresentation(DesktopPresentation.expanded),
+                onDragBy: host.moveWindowBy,
               ),
           ],
         );
       },
-      child: conversation,
     );
   }
 }

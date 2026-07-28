@@ -3,6 +3,12 @@ import 'package:flutter/material.dart';
 import 'agent_presence_controller.dart';
 import 'agent_presence_orb.dart';
 
+/// Edge length the orb is drawn at while resting on the desktop.
+///
+/// Shared with the app so the orb it moves here is built at the same size the
+/// surface would have built it at.
+const double desktopOrbExtent = 148;
+
 /// The agent's resting presence on the desktop.
 ///
 /// The window behind this surface is transparent and borderless, so the widget
@@ -14,9 +20,17 @@ final class DesktopOrbSurface extends StatefulWidget {
     required this.onSummon,
     this.onDragBy,
     this.controller,
+    this.orb,
     this.presenceShaderLoader = loadAgentPresenceShader,
     super.key,
   });
+
+  /// The orb to rest here, or null to build one belonging to this surface.
+  ///
+  /// The app supplies the single orb it moves between the conversation header
+  /// and the desktop. Building one here instead would restart its clock and
+  /// reload its shader every time the window collapses.
+  final Widget? orb;
 
   /// Presence to follow, or null to rest idle.
   ///
@@ -138,13 +152,15 @@ final class _DesktopOrbSurfaceState extends State<DesktopOrbSurface> {
                     : 1,
                 duration: const Duration(milliseconds: 180),
                 curve: Curves.easeOutCubic,
-                child: AgentPresenceOrb(
-                  controller: _controller,
-                  shaderLoader: widget.presenceShaderLoader,
-                  extent: 148,
-                  showLabel: false,
-                  continuousMotion: true,
-                ),
+                child:
+                    widget.orb ??
+                    AgentPresenceOrb(
+                      controller: _controller,
+                      shaderLoader: widget.presenceShaderLoader,
+                      extent: desktopOrbExtent,
+                      showLabel: false,
+                      continuousMotion: true,
+                    ),
               ),
             ),
           ),

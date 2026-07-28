@@ -171,6 +171,57 @@ void main() {
           'controller, so it rested while the agent was speaking.',
     );
   });
+
+  testWidgets('changing form never rebuilds the presence orb', (
+    WidgetTester tester,
+  ) async {
+    final _FakePresentationHost host = _FakePresentationHost();
+    final AppComposition composition = AppComposition(
+      () {},
+      storageService: InMemoryConversationStorageService(),
+      inferenceService: _HoldingInferenceService(),
+      presentationHost: host,
+    );
+    addTearDown(() => unawaited(composition.dispose()));
+
+    // Each mounted orb loads the shader program once, so the number of loads
+    // counts how many orbs the app has built. The agent is one presence: it
+    // should be built once and moved between the two forms, not torn down and
+    // recreated on every collapse.
+    int shaderLoads = 0;
+    Future<Never> countShaderLoad() async {
+      shaderLoads += 1;
+      throw UnsupportedError('Runtime shader rendering is outside this test.');
+    }
+
+    host.presentation.value = DesktopPresentation.expanded;
+    await tester.pumpWidget(
+      LocalAgentApp(
+        composition: composition,
+        presenceShaderLoader: countShaderLoad,
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+    expect(shaderLoads, 1, reason: 'The app built more than one presence.');
+
+    for (int cycle = 0; cycle < 2; cycle += 1) {
+      host.presentation.value = DesktopPresentation.orb;
+      await tester.pump();
+      await tester.pump();
+      host.presentation.value = DesktopPresentation.expanded;
+      await tester.pump();
+      await tester.pump();
+    }
+
+    expect(
+      shaderLoads,
+      1,
+      reason:
+          'Changing form rebuilt the orb, which restarts its clock and '
+          'reloads its shader every time the window collapses.',
+    );
+  });
 }
 
 final class _FakePresentationHost implements DesktopPresentationHost {
