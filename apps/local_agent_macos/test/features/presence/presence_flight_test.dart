@@ -37,6 +37,52 @@ void main() {
     expect(middle.width, middle.height);
   });
 
+  test('the conversation goes as the presence leaves, not after it lands', () {
+    // The complaint this exists for: the presence reached the desktop and the
+    // window was still sitting there at full strength, then vanished.
+    expect(conversationOpacityAt(t: 0, collapsing: true), 1);
+    expect(
+      conversationOpacityAt(t: 0.3, collapsing: true),
+      lessThan(0.5),
+      reason: 'The window was still solid a third of the way through.',
+    );
+    expect(
+      conversationOpacityAt(t: 0.55, collapsing: true),
+      0,
+      reason: 'The window outlived the presence it belongs to.',
+    );
+  });
+
+  test('the conversation arrives with the presence, not before it', () {
+    expect(conversationOpacityAt(t: 0, collapsing: false), 0);
+    expect(
+      conversationOpacityAt(t: 0.3, collapsing: false),
+      0,
+      reason: 'The window appeared while the presence was still travelling.',
+    );
+    expect(conversationOpacityAt(t: 1, collapsing: false), 1);
+  });
+
+  test('a settling spring never drives opacity out of range', () {
+    for (final double t in <double>[-0.05, 1.08, 1.2]) {
+      for (final bool collapsing in <bool>[true, false]) {
+        final double opacity = conversationOpacityAt(
+          t: t,
+          collapsing: collapsing,
+        );
+        expect(opacity, inInclusiveRange(0, 1), reason: 't=$t');
+      }
+    }
+  });
+
+  test('the conversation shrinks away rather than only fading', () {
+    final double early = conversationScaleAt(t: 0.05, collapsing: true);
+    final double late = conversationScaleAt(t: 0.5, collapsing: true);
+
+    expect(early, closeTo(1, 0.02));
+    expect(late, lessThan(early));
+  });
+
   test('an overshooting spring still leaves the presence on the canvas', () {
     // A lively spring passes its target before settling back. The canvas ends
     // exactly at the resting place, so an unclamped overshoot is drawn off

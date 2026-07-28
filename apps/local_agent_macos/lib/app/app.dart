@@ -113,6 +113,9 @@ final class _PresentationSwitchState extends State<_PresentationSwitch>
   Rect? _flightFrom;
   Rect? _flightTo;
 
+  /// Whether the presence is on its way to the desktop rather than back.
+  bool _collapsing = false;
+
   /// The canvas covering both forms, held only while the presence is moving.
   DesktopTransitionGeometry? _canvas;
 
@@ -211,6 +214,7 @@ final class _PresentationSwitchState extends State<_PresentationSwitch>
       _canvas = canvas;
       _flightFrom = from;
       _flightTo = to;
+      _collapsing = collapsing;
     });
 
     if (!collapsing) {
@@ -297,9 +301,40 @@ final class _PresentationSwitchState extends State<_PresentationSwitch>
           // Held at the size it was, because the canvas is a different shape
           // and laying the conversation out to fill it would be a visible
           // reflow in the middle of the move.
-          child: SizedBox.fromSize(
-            size: canvas.conversation.size,
-            child: _conversation(hostsOrb: false),
+          // The window's own corners are rounded by AppKit, but during a
+          // change of form that mask belongs to the canvas covering both
+          // shapes, so the conversation has to keep its own.
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(windowCornerRadius),
+            child: SizedBox.fromSize(
+              size: canvas.conversation.size,
+              child: AnimatedBuilder(
+                animation: _flight,
+                builder: (BuildContext context, Widget? conversation) {
+                  // The window leaves with the presence rather than after it.
+                  // Waiting for the spring to settle left it standing at full
+                  // strength while the agent was already resting on the desktop.
+                  final double solid = conversationOpacityAt(
+                    t: _flight.value,
+                    collapsing: _collapsing,
+                  );
+                  // Never dropped from the tree, even at zero: the header anchor
+                  // the presence lands on is measured from this layout, and
+                  // Opacity already skips painting when there is nothing to see.
+                  return Opacity(
+                    opacity: solid,
+                    child: Transform.scale(
+                      scale: conversationScaleAt(
+                        t: _flight.value,
+                        collapsing: _collapsing,
+                      ),
+                      child: conversation,
+                    ),
+                  );
+                },
+                child: _conversation(hostsOrb: false),
+              ),
+            ),
           ),
         ),
         AnimatedBuilder(

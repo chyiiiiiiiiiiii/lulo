@@ -11,15 +11,76 @@ import 'package:flutter/physics.dart';
 /// kept on the canvas by [presenceFlightRect].
 const SpringDescription presenceFlightSpring = SpringDescription(
   mass: 1,
-  stiffness: 170,
-  damping: 21,
+  stiffness: 260,
+  damping: 30,
 );
+
+/// When the journey counts as over.
+///
+/// The default tolerance is far tighter than the eye, and waiting for it left
+/// the presence sitting still at its destination while the window had not
+/// settled yet — a pause with nothing happening in it. Progress runs 0 to 1
+/// across the whole journey, so a thousandth of it is well under a pixel.
+const Tolerance presenceFlightTolerance = Tolerance(
+  distance: 0.004,
+  velocity: 0.08,
+);
+
+/// Radius of the window's own corners, in logical points.
+///
+/// The conversation is normally rounded by AppKit's window mask. During a
+/// change of form the window is the canvas covering both shapes, so that mask
+/// rounds the canvas instead and the conversation drawn inside it would have
+/// hard square corners unless it rounds itself.
+const double windowCornerRadius = 12;
 
 /// How far the path bows away from the straight line between the two ends.
 ///
 /// Expressed as a fraction of the distance travelled, so a short hop curves as
 /// much as a long one relative to how far it goes.
 const double _arcDepth = 0.16;
+
+/// How much of the journey the conversation takes to go, or to arrive.
+///
+/// Deliberately much shorter than the flight. The presence settles on a spring
+/// with a long tail, and a window that waited for that tail read as having been
+/// left behind: it stood at full strength while the agent was already resting
+/// on the desktop, then disappeared.
+const double _conversationFadeSpan = 0.5;
+
+/// How far the conversation shrinks as it goes.
+///
+/// Small. It is leaving with the presence, not being thrown itself, and a
+/// large scale reads as a separate animation competing with the one that
+/// matters.
+const double _conversationShrink = 0.06;
+
+/// How solid the conversation is when the presence is [t] of the way across.
+///
+/// Leaving, it goes early so that it is gone by the time the presence reaches
+/// the desktop. Arriving, it holds off until the presence is nearly home, so
+/// the window does not appear around a presence still in flight.
+double conversationOpacityAt({required double t, required bool collapsing}) {
+  final double progress = clampDouble(t, 0, 1);
+  // Eased at both ends rather than linearly, so the window neither snaps into
+  // fading nor stops dead once it has.
+  if (collapsing) {
+    final double gone = clampDouble(progress / _conversationFadeSpan, 0, 1);
+    return (1 + math.cos(math.pi * gone)) / 2;
+  }
+  final double arrival = clampDouble(
+    (progress - (1 - _conversationFadeSpan)) / _conversationFadeSpan,
+    0,
+    1,
+  );
+  return (1 - math.cos(math.pi * arrival)) / 2;
+}
+
+/// How large the conversation is when the presence is [t] of the way across.
+double conversationScaleAt({required double t, required bool collapsing}) {
+  final double solid = conversationOpacityAt(t: t, collapsing: collapsing);
+  return 1 - (1 - solid) * _conversationShrink;
+}
 
 /// Where the presence is when it is [t] of the way between [from] and [to].
 ///
