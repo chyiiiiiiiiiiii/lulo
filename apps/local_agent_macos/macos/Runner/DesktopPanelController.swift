@@ -76,13 +76,11 @@ final class DesktopPanelController: DesktopPanelControlling {
     panel.styleMask.insert(.fullSizeContentView)
     panel.titlebarAppearsTransparent = true
     panel.titleVisibility = .hidden
-    for button in [
-      NSWindow.ButtonType.closeButton,
-      .miniaturizeButton,
-      .zoomButton,
-    ] {
-      panel.standardWindowButton(button)?.isHidden = true
-    }
+    // The conversation is an ordinary window and should close, minimise and
+    // zoom like one, so the buttons have to exist even though the orb hides
+    // them. A nib that omits these masks would leave them nil forever.
+    panel.styleMask.formUnion([.closable, .miniaturizable, .resizable])
+    Self.applyTitlebarChrome(for: storedMode, on: panel)
     // The two forms have very different sizes, so a remembered frame is a
     // liability: macOS would restore the orb's frame on the next launch and the
     // conversation would open at orb size. Each form positions itself instead.
@@ -125,6 +123,7 @@ final class DesktopPanelController: DesktopPanelControlling {
       expandedSize = retainedPanel.frame.size
     }
     storedMode = mode
+    Self.applyTitlebarChrome(for: mode, on: retainedPanel)
     applyFrame(for: mode)
     switch mode {
     case .orb:
@@ -150,6 +149,26 @@ final class DesktopPanelController: DesktopPanelControlling {
     retainedPanel.setFrameOrigin(
       NSPoint(x: origin.x + deltaX, y: origin.y - deltaY)
     )
+  }
+
+  /// Shows the window buttons with the conversation and hides them with the orb.
+  ///
+  /// Static and taking its panel so it can run from `init`, before `self` is
+  /// fully formed.
+  private static func applyTitlebarChrome(
+    for mode: DesktopPresentationMode,
+    on panel: NSPanel
+  ) {
+    // The orb is a shader with a soft silhouette resting on the desktop.
+    // Chrome floating beside it would frame it as a window again.
+    let hidden = mode == .orb
+    for button in [
+      NSWindow.ButtonType.closeButton,
+      .miniaturizeButton,
+      .zoomButton,
+    ] {
+      panel.standardWindowButton(button)?.isHidden = hidden
+    }
   }
 
   /// Places both screen rects inside the window that covers them.

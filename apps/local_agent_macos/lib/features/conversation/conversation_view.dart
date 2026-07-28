@@ -178,9 +178,15 @@ final class _ConversationChrome extends StatelessWidget {
   final VoidCallback onPresenceSemanticBuild;
   final AgentPresenceShaderLoader presenceShaderLoader;
 
+  /// Leading room kept clear for the standard close, minimise and zoom buttons.
+  ///
+  /// The conversation runs under a transparent titlebar so the surface reaches
+  /// the top of the window, which also means the buttons sit on top of it.
+  static const double _windowButtonsWidth = 78;
+
   @override
   Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.fromLTRB(24, 20, 24, 8),
+    padding: const EdgeInsets.fromLTRB(_windowButtonsWidth, 20, 24, 8),
     child: Row(
       children: <Widget>[
         Text('Pocket Agent', style: Theme.of(context).textTheme.titleMedium),

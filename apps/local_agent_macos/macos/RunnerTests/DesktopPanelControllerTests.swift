@@ -75,6 +75,41 @@ final class DesktopPanelControllerTests: XCTestCase {
     XCTAssertEqual(geometry.orb, CGRect(x: 1200, y: 692, width: 168, height: 168))
   }
 
+  func testWindowButtonsBelongToTheConversationAndNotToTheOrb() {
+    let panel = NSPanel(
+      contentRect: NSRect(x: 0, y: 0, width: 480, height: 640),
+      styleMask: [.titled, .closable, .miniaturizable, .resizable],
+      backing: .buffered,
+      defer: false
+    )
+    let controller = DesktopPanelController(panel: panel) {
+      FlutterPanelContent(engine: NSObject(), viewController: NSViewController())
+    }
+    let buttons: [NSWindow.ButtonType] = [
+      .closeButton, .miniaturizeButton, .zoomButton,
+    ]
+
+    // The orb is a shader with a soft silhouette resting on the desktop.
+    // Window chrome floating beside it would frame it as a window again.
+    controller.setPresentationMode(.orb)
+    for button in buttons {
+      XCTAssertTrue(
+        panel.standardWindowButton(button)?.isHidden ?? false,
+        "\(button) was visible beside the orb"
+      )
+    }
+
+    // The conversation is an ordinary window and should close and zoom like
+    // one, so the buttons come back with it.
+    controller.setPresentationMode(.expanded)
+    for button in buttons {
+      XCTAssertFalse(
+        panel.standardWindowButton(button)?.isHidden ?? true,
+        "\(button) stayed hidden on the conversation"
+      )
+    }
+  }
+
   func testPanelCanJoinSpacesAndRemainAvailableBesideFullscreenApps() {
     let panel = NSPanel(
       contentRect: NSRect(x: 0, y: 0, width: 480, height: 640),
