@@ -42,14 +42,6 @@ final class DesktopPanelController: DesktopPanelControlling {
     self.screenProvider = screenProvider
 
     panel.contentViewController = content.viewController
-    // A transparent window is not enough on macOS: the Flutter view draws its
-    // own background, so it has to be cleared too or the orb is composited
-    // against an opaque surface inside a window that shows nothing.
-    if let flutterView = content.viewController.view as? NSView {
-      flutterView.wantsLayer = true
-      flutterView.layer?.backgroundColor = NSColor.clear.cgColor
-      flutterView.layer?.isOpaque = false
-    }
     panel.isReleasedWhenClosed = false
     panel.level = .floating
     panel.isFloatingPanel = true
@@ -65,12 +57,35 @@ final class DesktopPanelController: DesktopPanelControlling {
     panel.backgroundColor = .clear
     panel.hasShadow = false
     panel.isMovableByWindowBackground = true
-    expandedSize = panel.frame.size
+    // A titlebar would frame the vapour in chrome, so the content runs the full
+    // height and the standard buttons are hidden. The titled mask itself is
+    // kept because a borderless panel cannot take key for the conversation.
+    panel.styleMask.insert(.fullSizeContentView)
+    panel.titlebarAppearsTransparent = true
+    panel.titleVisibility = .hidden
+    for button in [
+      NSWindow.ButtonType.closeButton,
+      .miniaturizeButton,
+      .zoomButton,
+    ] {
+      panel.standardWindowButton(button)?.isHidden = true
+    }
+    // The two forms have very different sizes, so a remembered frame is a
+    // liability: macOS would restore the orb's frame on the next launch and the
+    // conversation would open at orb size. Each form positions itself instead.
+    panel.setFrameAutosaveName("")
   }
 
   /// Size the window returns to when the conversation is shown.
+  ///
+  /// Deliberately a fixed starting size rather than whatever the window happens
+  /// to be at construction: at that point the window may still be carrying the
+  /// orb's frame, which would make the conversation open at orb size. It is
+  /// updated only when the user leaves the conversation, so a resize is kept.
   private var expandedSize: NSSize = NSSize(width: 720, height: 560)
   private var storedMode: DesktopPresentationMode = .expanded
+  /// Whether the conversation frame has been applied at least once.
+  private var hasPresentedExpanded = false
 
   /// Reports every mode change, including ones the hotkey initiates, so the
   /// Flutter surface can render the matching form.
@@ -85,7 +100,10 @@ final class DesktopPanelController: DesktopPanelControlling {
     guard mode != storedMode else {
       return
     }
-    if storedMode == .expanded {
+    // Only remember a size the conversation actually used. At launch the mode
+    // is nominally expanded while the window still carries its loaded frame,
+    // and adopting that would fix the conversation at the wrong size.
+    if storedMode == .expanded, hasPresentedExpanded {
       expandedSize = retainedPanel.frame.size
     }
     storedMode = mode
@@ -122,6 +140,7 @@ final class DesktopPanelController: DesktopPanelControlling {
         display: true
       )
     case .expanded:
+      hasPresentedExpanded = true
       let size = expandedSize
       let origin = NSPoint(
         x: visible.midX - size.width / 2,

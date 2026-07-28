@@ -30,6 +30,11 @@ class MainFlutterWindow: NSPanel {
       bundle: nil
     )
 
+    // The desktop orb sits on a transparent window, and a Flutter view paints
+    // an opaque background of its own unless it is cleared here. Without this
+    // the vapour is composited onto a black square.
+    viewController.backgroundColor = .clear
+
     RegisterGeneratedPlugins(registry: engine)
     flutterEngine = engine
     flutterViewController = viewController
