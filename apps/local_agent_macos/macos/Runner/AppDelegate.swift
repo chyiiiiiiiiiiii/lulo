@@ -40,9 +40,18 @@ class AppDelegate: FlutterAppDelegate {
     }
 
     let binaryMessenger = window.flutterEngine.binaryMessenger
-    let eventSink = PigeonGenerationEventSink(
-      api: DesktopHostEventApi(binaryMessenger: binaryMessenger)
-    )
+    let eventApi = DesktopHostEventApi(binaryMessenger: binaryMessenger)
+    // The hotkey and the menu bar can both change the form, so the Flutter
+    // surface is told about every change rather than only the ones it asked
+    // for. Otherwise the orb and the conversation can disagree about which is
+    // on screen.
+    panelController.onPresentationModeChanged = { mode in
+      eventApi.onPresentationModeChanged(
+        mode: mode == .orb ? .orb : .expanded,
+        completion: { _ in }
+      )
+    }
+    let eventSink = PigeonGenerationEventSink(api: eventApi)
     let eventBridge = GenerationEventBridge(
       sink: eventSink,
       scheduler: MainQueueRuntimeEventScheduler(),
@@ -79,6 +88,9 @@ class AppDelegate: FlutterAppDelegate {
     self.hotKeyController = hotKeyController
     self.desktopHostApi = desktopHostApi
     self.binaryMessenger = binaryMessenger
+    // The agent rests on the desktop as the orb. Launching straight into the
+    // conversation would put a panel in front of whatever the user is doing.
+    panelController.setPresentationMode(.orb)
     super.applicationDidFinishLaunching(notification)
   }
 

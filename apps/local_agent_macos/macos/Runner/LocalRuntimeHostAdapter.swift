@@ -178,6 +178,16 @@ final class LocalRuntimeDesktopHostApi: DesktopHostApi {
     onMain { self.panelController.toggle() }
   }
 
+  func setPresentationMode(
+    request: HostRequest,
+    mode: HostPresentationMode
+  ) throws {
+    try validatePanelRequest(request)
+    let resolved: DesktopPresentationMode =
+      mode == .orb ? .orb : .expanded
+    onMain { self.panelController.setPresentationMode(resolved) }
+  }
+
   /// Stops delivering events to Flutter, then drains the coordinator within a
   /// bounded window so termination cannot hang on a running generation.
   ///

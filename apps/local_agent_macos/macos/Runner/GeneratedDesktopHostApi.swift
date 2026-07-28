@@ -186,6 +186,15 @@ enum HostGenerationEventType: Int {
   case failed = 4
 }
 
+/// How the desktop window is currently presented.
+///
+/// The window is always on screen. In [orb] it is a small transparent presence
+/// on the desktop; in [expanded] it is the full conversation surface.
+enum HostPresentationMode: Int {
+  case orb = 0
+  case expanded = 1
+}
+
 enum HostFailureCode: Int {
   case modelNotInstalled = 0
   case modelLoadFailed = 1
@@ -602,26 +611,32 @@ private class GeneratedDesktopHostApiPigeonCodecReader: FlutterStandardReader {
     case 130:
       let enumResultAsInt: Int? = nilOrValue(self.readValue() as! Int?)
       if let enumResultAsInt = enumResultAsInt {
-        return HostFailureCode(rawValue: enumResultAsInt)
+        return HostPresentationMode(rawValue: enumResultAsInt)
       }
       return nil
     case 131:
-      return HostRequest.fromList(self.readValue() as! [Any?])
+      let enumResultAsInt: Int? = nilOrValue(self.readValue() as! Int?)
+      if let enumResultAsInt = enumResultAsInt {
+        return HostFailureCode(rawValue: enumResultAsInt)
+      }
+      return nil
     case 132:
-      return HostHandshakeResult.fromList(self.readValue() as! [Any?])
+      return HostRequest.fromList(self.readValue() as! [Any?])
     case 133:
-      return HostModelRequest.fromList(self.readValue() as! [Any?])
+      return HostHandshakeResult.fromList(self.readValue() as! [Any?])
     case 134:
-      return HostModelLoadResult.fromList(self.readValue() as! [Any?])
+      return HostModelRequest.fromList(self.readValue() as! [Any?])
     case 135:
-      return HostGenerationRequest.fromList(self.readValue() as! [Any?])
+      return HostModelLoadResult.fromList(self.readValue() as! [Any?])
     case 136:
-      return HostGenerationAcknowledgement.fromList(self.readValue() as! [Any?])
+      return HostGenerationRequest.fromList(self.readValue() as! [Any?])
     case 137:
-      return HostCancellationAcknowledgement.fromList(self.readValue() as! [Any?])
+      return HostGenerationAcknowledgement.fromList(self.readValue() as! [Any?])
     case 138:
-      return HostOperationCompletion.fromList(self.readValue() as! [Any?])
+      return HostCancellationAcknowledgement.fromList(self.readValue() as! [Any?])
     case 139:
+      return HostOperationCompletion.fromList(self.readValue() as! [Any?])
+    case 140:
       return HostGenerationEvent.fromList(self.readValue() as! [Any?])
     default:
       return super.readValue(ofType: type)
@@ -634,35 +649,38 @@ private class GeneratedDesktopHostApiPigeonCodecWriter: FlutterStandardWriter {
     if let value = value as? HostGenerationEventType {
       super.writeByte(129)
       super.writeValue(value.rawValue)
-    } else if let value = value as? HostFailureCode {
+    } else if let value = value as? HostPresentationMode {
       super.writeByte(130)
       super.writeValue(value.rawValue)
-    } else if let value = value as? HostRequest {
+    } else if let value = value as? HostFailureCode {
       super.writeByte(131)
-      super.writeValue(value.toList())
-    } else if let value = value as? HostHandshakeResult {
+      super.writeValue(value.rawValue)
+    } else if let value = value as? HostRequest {
       super.writeByte(132)
       super.writeValue(value.toList())
-    } else if let value = value as? HostModelRequest {
+    } else if let value = value as? HostHandshakeResult {
       super.writeByte(133)
       super.writeValue(value.toList())
-    } else if let value = value as? HostModelLoadResult {
+    } else if let value = value as? HostModelRequest {
       super.writeByte(134)
       super.writeValue(value.toList())
-    } else if let value = value as? HostGenerationRequest {
+    } else if let value = value as? HostModelLoadResult {
       super.writeByte(135)
       super.writeValue(value.toList())
-    } else if let value = value as? HostGenerationAcknowledgement {
+    } else if let value = value as? HostGenerationRequest {
       super.writeByte(136)
       super.writeValue(value.toList())
-    } else if let value = value as? HostCancellationAcknowledgement {
+    } else if let value = value as? HostGenerationAcknowledgement {
       super.writeByte(137)
       super.writeValue(value.toList())
-    } else if let value = value as? HostOperationCompletion {
+    } else if let value = value as? HostCancellationAcknowledgement {
       super.writeByte(138)
       super.writeValue(value.toList())
-    } else if let value = value as? HostGenerationEvent {
+    } else if let value = value as? HostOperationCompletion {
       super.writeByte(139)
+      super.writeValue(value.toList())
+    } else if let value = value as? HostGenerationEvent {
+      super.writeByte(140)
       super.writeValue(value.toList())
     } else {
       super.writeValue(value)
@@ -696,6 +714,7 @@ protocol DesktopHostApi {
   func showPanel(request: HostRequest) throws
   func hidePanel(request: HostRequest) throws
   func togglePanel(request: HostRequest) throws
+  func setPresentationMode(request: HostRequest, mode: HostPresentationMode) throws
 }
 
 /// Generated setup class from Pigeon to handle messages through the `binaryMessenger`.
@@ -855,11 +874,28 @@ class DesktopHostApiSetup {
     } else {
       togglePanelChannel.setMessageHandler(nil)
     }
+    let setPresentationModeChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.local_agent_macos.DesktopHostApi.setPresentationMode\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
+    if let api = api {
+      setPresentationModeChannel.setMessageHandler { message, reply in
+        let args = message as! [Any?]
+        let requestArg = args[0] as! HostRequest
+        let modeArg = args[1] as! HostPresentationMode
+        do {
+          try api.setPresentationMode(request: requestArg, mode: modeArg)
+          reply(wrapResult(nil))
+        } catch {
+          reply(wrapError(error))
+        }
+      }
+    } else {
+      setPresentationModeChannel.setMessageHandler(nil)
+    }
   }
 }
 /// Generated protocol from Pigeon that represents Flutter messages that can be called from Swift.
 protocol DesktopHostEventApiProtocol {
   func onGenerationEvent(event eventArg: HostGenerationEvent, completion: @escaping (Result<Void, PigeonError>) -> Void)
+  func onPresentationModeChanged(mode modeArg: HostPresentationMode, completion: @escaping (Result<Void, PigeonError>) -> Void)
 }
 class DesktopHostEventApi: DesktopHostEventApiProtocol {
   private let binaryMessenger: FlutterBinaryMessenger
@@ -875,6 +911,24 @@ class DesktopHostEventApi: DesktopHostEventApiProtocol {
     let channelName: String = "dev.flutter.pigeon.local_agent_macos.DesktopHostEventApi.onGenerationEvent\(messageChannelSuffix)"
     let channel = FlutterBasicMessageChannel(name: channelName, binaryMessenger: binaryMessenger, codec: codec)
     channel.sendMessage([eventArg] as [Any?]) { response in
+      guard let listResponse = response as? [Any?] else {
+        completion(.failure(createConnectionError(withChannelName: channelName)))
+        return
+      }
+      if listResponse.count > 1 {
+        let code: String = listResponse[0] as! String
+        let message: String? = nilOrValue(listResponse[1])
+        let details: String? = nilOrValue(listResponse[2])
+        completion(.failure(PigeonError(code: code, message: message, details: details)))
+      } else {
+        completion(.success(()))
+      }
+    }
+  }
+  func onPresentationModeChanged(mode modeArg: HostPresentationMode, completion: @escaping (Result<Void, PigeonError>) -> Void) {
+    let channelName: String = "dev.flutter.pigeon.local_agent_macos.DesktopHostEventApi.onPresentationModeChanged\(messageChannelSuffix)"
+    let channel = FlutterBasicMessageChannel(name: channelName, binaryMessenger: binaryMessenger, codec: codec)
+    channel.sendMessage([modeArg] as [Any?]) { response in
       guard let listResponse = response as? [Any?] else {
         completion(.failure(createConnectionError(withChannelName: channelName)))
         return

@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:collection';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
 import '../generated/desktop_host_api.g.dart';
@@ -32,6 +33,8 @@ final class PigeonDesktopHostService extends DesktopHostEventApi
   int? _lastActiveSequence;
   int _nextRequest = 0;
   bool _disposed = false;
+  final ValueNotifier<DesktopPresentation> _presentation =
+      ValueNotifier<DesktopPresentation>(DesktopPresentation.orb);
 
   @override
   Stream<DesktopGenerationEvent> get generationEvents => _events.stream;
@@ -130,6 +133,33 @@ final class PigeonDesktopHostService extends DesktopHostEventApi
 
   @override
   Future<void> togglePanel() => _invoke(_hostApi.togglePanel);
+
+  @override
+  ValueListenable<DesktopPresentation> get presentation => _presentation;
+
+  @override
+  Future<void> setPresentation(DesktopPresentation mode) {
+    return _invoke(
+      (HostRequest request) =>
+          _hostApi.setPresentationMode(request, _hostMode(mode)),
+    );
+  }
+
+  @override
+  void onPresentationModeChanged(HostPresentationMode mode) {
+    if (_disposed) {
+      return;
+    }
+    _presentation.value = mode == HostPresentationMode.orb
+        ? DesktopPresentation.orb
+        : DesktopPresentation.expanded;
+  }
+
+  static HostPresentationMode _hostMode(DesktopPresentation mode) {
+    return mode == DesktopPresentation.orb
+        ? HostPresentationMode.orb
+        : HostPresentationMode.expanded;
+  }
 
   @override
   void onGenerationEvent(HostGenerationEvent event) {

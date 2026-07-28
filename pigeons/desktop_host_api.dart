@@ -12,6 +12,12 @@ import 'package:pigeon/pigeon.dart';
 )
 enum HostGenerationEventType { started, delta, completed, cancelled, failed }
 
+/// How the desktop window is currently presented.
+///
+/// The window is always on screen. In [orb] it is a small transparent presence
+/// on the desktop; in [expanded] it is the full conversation surface.
+enum HostPresentationMode { orb, expanded }
+
 enum HostFailureCode {
   modelNotInstalled,
   modelLoadFailed,
@@ -166,9 +172,13 @@ abstract class DesktopHostApi {
   void hidePanel(HostRequest request);
 
   void togglePanel(HostRequest request);
+
+  void setPresentationMode(HostRequest request, HostPresentationMode mode);
 }
 
 @FlutterApi()
 abstract class DesktopHostEventApi {
   void onGenerationEvent(HostGenerationEvent event);
+
+  void onPresentationModeChanged(HostPresentationMode mode);
 }

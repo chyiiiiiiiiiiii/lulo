@@ -1,10 +1,20 @@
 import AppKit
 
+/// How the always-on-screen window is presented.
+enum DesktopPresentationMode: Equatable {
+  /// A small transparent presence that lives on the desktop.
+  case orb
+  /// The full conversation surface.
+  case expanded
+}
+
 protocol DesktopPanelControlling: AnyObject {
   var isVisible: Bool { get }
+  var presentationMode: DesktopPresentationMode { get }
   func show()
   func hide()
   func toggle()
+  func setPresentationMode(_ mode: DesktopPresentationMode)
 }
 
 struct FlutterPanelContent {
@@ -32,6 +42,14 @@ final class DesktopPanelController: DesktopPanelControlling {
     self.screenProvider = screenProvider
 
     panel.contentViewController = content.viewController
+    // A transparent window is not enough on macOS: the Flutter view draws its
+    // own background, so it has to be cleared too or the orb is composited
+    // against an opaque surface inside a window that shows nothing.
+    if let flutterView = content.viewController.view as? NSView {
+      flutterView.wantsLayer = true
+      flutterView.layer?.backgroundColor = NSColor.clear.cgColor
+      flutterView.layer?.isOpaque = false
+    }
     panel.isReleasedWhenClosed = false
     panel.level = .floating
     panel.isFloatingPanel = true
@@ -39,7 +57,87 @@ final class DesktopPanelController: DesktopPanelControlling {
     panel.animationBehavior = .none
     panel.styleMask.insert(.nonactivatingPanel)
     panel.collectionBehavior.formUnion([.canJoinAllSpaces, .fullScreenAuxiliary])
+
+    // The orb is drawn by a shader with a soft, partly transparent silhouette,
+    // so the window itself must contribute no background and no rectangular
+    // shadow. Otherwise the vapour sits inside a visible box.
+    panel.isOpaque = false
+    panel.backgroundColor = .clear
+    panel.hasShadow = false
+    panel.isMovableByWindowBackground = true
+    expandedSize = panel.frame.size
   }
+
+  /// Size the window returns to when the conversation is shown.
+  private var expandedSize: NSSize = NSSize(width: 720, height: 560)
+  private var storedMode: DesktopPresentationMode = .expanded
+
+  /// Reports every mode change, including ones the hotkey initiates, so the
+  /// Flutter surface can render the matching form.
+  var onPresentationModeChanged: ((DesktopPresentationMode) -> Void)?
+
+  var presentationMode: DesktopPresentationMode {
+    storedMode
+  }
+
+  func setPresentationMode(_ mode: DesktopPresentationMode) {
+    precondition(Thread.isMainThread)
+    guard mode != storedMode else {
+      return
+    }
+    if storedMode == .expanded {
+      expandedSize = retainedPanel.frame.size
+    }
+    storedMode = mode
+    applyFrame(for: mode)
+    switch mode {
+    case .orb:
+      // Give up focus so the desktop orb never sits in front of the user's
+      // typing target.
+      retainedPanel.resignKey()
+      retainedPanel.orderFrontRegardless()
+    case .expanded:
+      NSApp.activate(ignoringOtherApps: true)
+      retainedPanel.orderFrontRegardless()
+      retainedPanel.makeKey()
+    }
+    onPresentationModeChanged?(mode)
+  }
+
+  private func applyFrame(for mode: DesktopPresentationMode) {
+    guard let screen = screenProvider() ?? NSScreen.main else {
+      return
+    }
+    let visible = screen.visibleFrame
+    switch mode {
+    case .orb:
+      let side = Self.orbSide
+      // Park the orb near the lower trailing corner, clear of the Dock.
+      let origin = NSPoint(
+        x: visible.maxX - side - Self.orbMargin,
+        y: visible.minY + Self.orbMargin
+      )
+      retainedPanel.setFrame(
+        NSRect(origin: origin, size: NSSize(width: side, height: side)),
+        display: true
+      )
+    case .expanded:
+      let size = expandedSize
+      let origin = NSPoint(
+        x: visible.midX - size.width / 2,
+        y: visible.midY - size.height / 2
+      )
+      retainedPanel.setFrame(
+        NSRect(origin: origin, size: size),
+        display: true
+      )
+    }
+  }
+
+  /// Edge length of the desktop orb, in points.
+  static let orbSide: CGFloat = 168
+  /// Gap kept between the orb and the screen edges.
+  static let orbMargin: CGFloat = 32
 
   var isVisible: Bool {
     retainedPanel.isVisible
@@ -49,14 +147,23 @@ final class DesktopPanelController: DesktopPanelControlling {
     precondition(Thread.isMainThread)
     let startedAt = performanceTimestamp()
     if !retainedPanel.isVisible {
-      moveToActiveDisplay()
+      // Position for the current form: centring the orb would drop it in the
+      // middle of the screen instead of its resting corner.
+      applyFrame(for: storedMode)
     }
     let movedAt = performanceTimestamp()
-    NSApp.activate(ignoringOtherApps: true)
+    // The resting orb must never pull focus away from what the user is typing
+    // into, so only the conversation form activates and takes key.
+    let takesFocus = storedMode == .expanded
+    if takesFocus {
+      NSApp.activate(ignoringOtherApps: true)
+    }
     let activatedAt = performanceTimestamp()
     retainedPanel.orderFrontRegardless()
     let orderedAt = performanceTimestamp()
-    retainedPanel.makeKey()
+    if takesFocus {
+      retainedPanel.makeKey()
+    }
     let completedAt = performanceTimestamp()
     if let startedAt, let movedAt, let activatedAt, let orderedAt, let completedAt {
       reportPanelPerformance(
@@ -102,9 +209,19 @@ final class DesktopPanelController: DesktopPanelControlling {
     return DispatchTime.now().uptimeNanoseconds
   }
 
+  /// Switches between the desktop orb and the conversation.
+  ///
+  /// The window stays on screen in both forms, because the orb is the agent's
+  /// resting presence rather than a hidden window. If it was ordered out
+  /// entirely, this brings the orb back first.
   func toggle() {
     precondition(Thread.isMainThread)
-    isVisible ? hide() : show()
+    guard isVisible else {
+      setPresentationMode(.orb)
+      show()
+      return
+    }
+    setPresentationMode(storedMode == .expanded ? .orb : .expanded)
   }
 
   private func moveToActiveDisplay() {

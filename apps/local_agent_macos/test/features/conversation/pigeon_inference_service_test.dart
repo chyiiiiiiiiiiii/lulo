@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:agent_core/agent_core.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:local_agent_macos/features/conversation/pigeon_inference_service.dart';
 import 'package:local_agent_macos/generated/desktop_host_api.g.dart';
@@ -569,6 +570,15 @@ final class RecordingDesktopHostService implements DesktopHostService {
   Future<DesktopOperationCompletion> unloadModel() async {
     lifecycleOperations.add('unload');
     return const DesktopOperationCompletion(completed: true);
+  }
+
+  @override
+  final ValueNotifier<DesktopPresentation> presentation =
+      ValueNotifier<DesktopPresentation>(DesktopPresentation.expanded);
+
+  @override
+  Future<void> setPresentation(DesktopPresentation mode) async {
+    presentation.value = mode;
   }
 
   @override

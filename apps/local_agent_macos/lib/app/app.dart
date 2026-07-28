@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 
 import '../features/conversation/conversation_view.dart';
 import '../features/presence/agent_presence_orb.dart';
+import '../features/presence/desktop_orb_surface.dart';
+import '../platform/desktop_host_service.dart';
 import 'app_composition.dart';
 
 /// Root application widget that owns the application composition lifecycle.
@@ -41,10 +43,49 @@ final class _LocalAgentAppState extends State<LocalAgentApp> {
       themeMode: ThemeMode.system,
       theme: _theme(Brightness.light, seed),
       darkTheme: _theme(Brightness.dark, seed),
-      home: ConversationView(
-        viewModelFactory: widget.composition.createConversationViewModel,
+      home: _PresentationSwitch(
+        composition: widget.composition,
         presenceShaderLoader: widget.presenceShaderLoader,
       ),
+    );
+  }
+}
+
+/// Chooses the surface for the window's current form.
+///
+/// Only this widget rebuilds when the form changes, so switching between the
+/// desktop orb and the conversation never rebuilds the conversation itself.
+final class _PresentationSwitch extends StatelessWidget {
+  const _PresentationSwitch({
+    required this.composition,
+    required this.presenceShaderLoader,
+  });
+
+  final AppComposition composition;
+  final AgentPresenceShaderLoader presenceShaderLoader;
+
+  @override
+  Widget build(BuildContext context) {
+    final DesktopPresentationHost? host = composition.presentationHost;
+    final Widget conversation = ConversationView(
+      viewModelFactory: composition.createConversationViewModel,
+      presenceShaderLoader: presenceShaderLoader,
+    );
+    if (host == null) {
+      return conversation;
+    }
+    return ValueListenableBuilder<DesktopPresentation>(
+      valueListenable: host.presentation,
+      builder: (BuildContext context, DesktopPresentation mode, Widget? child) {
+        if (mode == DesktopPresentation.expanded) {
+          return child!;
+        }
+        return DesktopOrbSurface(
+          presenceShaderLoader: presenceShaderLoader,
+          onSummon: () => host.setPresentation(DesktopPresentation.expanded),
+        );
+      },
+      child: conversation,
     );
   }
 }

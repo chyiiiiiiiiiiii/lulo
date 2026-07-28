@@ -113,6 +113,12 @@ int _deepHash(Object? value) {
 
 enum HostGenerationEventType { started, delta, completed, cancelled, failed }
 
+/// How the desktop window is currently presented.
+///
+/// The window is always on screen. In [orb] it is a small transparent presence
+/// on the desktop; in [expanded] it is the full conversation surface.
+enum HostPresentationMode { orb, expanded }
+
 enum HostFailureCode {
   modelNotInstalled,
   modelLoadFailed,
@@ -616,35 +622,38 @@ class _PigeonCodec extends StandardMessageCodec {
     } else if (value is HostGenerationEventType) {
       buffer.putUint8(129);
       writeValue(buffer, value.index);
-    } else if (value is HostFailureCode) {
+    } else if (value is HostPresentationMode) {
       buffer.putUint8(130);
       writeValue(buffer, value.index);
-    } else if (value is HostRequest) {
+    } else if (value is HostFailureCode) {
       buffer.putUint8(131);
-      writeValue(buffer, value.encode());
-    } else if (value is HostHandshakeResult) {
+      writeValue(buffer, value.index);
+    } else if (value is HostRequest) {
       buffer.putUint8(132);
       writeValue(buffer, value.encode());
-    } else if (value is HostModelRequest) {
+    } else if (value is HostHandshakeResult) {
       buffer.putUint8(133);
       writeValue(buffer, value.encode());
-    } else if (value is HostModelLoadResult) {
+    } else if (value is HostModelRequest) {
       buffer.putUint8(134);
       writeValue(buffer, value.encode());
-    } else if (value is HostGenerationRequest) {
+    } else if (value is HostModelLoadResult) {
       buffer.putUint8(135);
       writeValue(buffer, value.encode());
-    } else if (value is HostGenerationAcknowledgement) {
+    } else if (value is HostGenerationRequest) {
       buffer.putUint8(136);
       writeValue(buffer, value.encode());
-    } else if (value is HostCancellationAcknowledgement) {
+    } else if (value is HostGenerationAcknowledgement) {
       buffer.putUint8(137);
       writeValue(buffer, value.encode());
-    } else if (value is HostOperationCompletion) {
+    } else if (value is HostCancellationAcknowledgement) {
       buffer.putUint8(138);
       writeValue(buffer, value.encode());
-    } else if (value is HostGenerationEvent) {
+    } else if (value is HostOperationCompletion) {
       buffer.putUint8(139);
+      writeValue(buffer, value.encode());
+    } else if (value is HostGenerationEvent) {
+      buffer.putUint8(140);
       writeValue(buffer, value.encode());
     } else {
       super.writeValue(buffer, value);
@@ -659,24 +668,27 @@ class _PigeonCodec extends StandardMessageCodec {
         return value == null ? null : HostGenerationEventType.values[value];
       case 130:
         final value = readValue(buffer) as int?;
-        return value == null ? null : HostFailureCode.values[value];
+        return value == null ? null : HostPresentationMode.values[value];
       case 131:
-        return HostRequest.decode(readValue(buffer)!);
+        final value = readValue(buffer) as int?;
+        return value == null ? null : HostFailureCode.values[value];
       case 132:
-        return HostHandshakeResult.decode(readValue(buffer)!);
+        return HostRequest.decode(readValue(buffer)!);
       case 133:
-        return HostModelRequest.decode(readValue(buffer)!);
+        return HostHandshakeResult.decode(readValue(buffer)!);
       case 134:
-        return HostModelLoadResult.decode(readValue(buffer)!);
+        return HostModelRequest.decode(readValue(buffer)!);
       case 135:
-        return HostGenerationRequest.decode(readValue(buffer)!);
+        return HostModelLoadResult.decode(readValue(buffer)!);
       case 136:
-        return HostGenerationAcknowledgement.decode(readValue(buffer)!);
+        return HostGenerationRequest.decode(readValue(buffer)!);
       case 137:
-        return HostCancellationAcknowledgement.decode(readValue(buffer)!);
+        return HostGenerationAcknowledgement.decode(readValue(buffer)!);
       case 138:
-        return HostOperationCompletion.decode(readValue(buffer)!);
+        return HostCancellationAcknowledgement.decode(readValue(buffer)!);
       case 139:
+        return HostOperationCompletion.decode(readValue(buffer)!);
+      case 140:
         return HostGenerationEvent.decode(readValue(buffer)!);
       default:
         return super.readValueOfType(type, buffer);
@@ -898,12 +910,37 @@ class DesktopHostApi {
       isNullValid: true,
     );
   }
+
+  Future<void> setPresentationMode(
+    HostRequest request,
+    HostPresentationMode mode,
+  ) async {
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.local_agent_macos.DesktopHostApi.setPresentationMode$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channel = BasicMessageChannel<Object?>(
+      pigeonVar_channelName,
+      pigeonChannelCodec,
+      binaryMessenger: pigeonVar_binaryMessenger,
+    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(
+      <Object?>[request, mode],
+    );
+    final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
+
+    _extractReplyValueOrThrow(
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: true,
+    );
+  }
 }
 
 abstract class DesktopHostEventApi {
   static const MessageCodec<Object?> pigeonChannelCodec = _PigeonCodec();
 
   void onGenerationEvent(HostGenerationEvent event);
+
+  void onPresentationModeChanged(HostPresentationMode mode);
 
   static void setUp(
     DesktopHostEventApi? api, {
@@ -927,6 +964,32 @@ abstract class DesktopHostEventApi {
           final HostGenerationEvent arg_event = args[0]! as HostGenerationEvent;
           try {
             api.onGenerationEvent(arg_event);
+            return wrapResponse(empty: true);
+          } on PlatformException catch (e) {
+            return wrapResponse(error: e);
+          } catch (e) {
+            return wrapResponse(
+              error: PlatformException(code: 'error', message: e.toString()),
+            );
+          }
+        });
+      }
+    }
+    {
+      final pigeonVar_channel = BasicMessageChannel<Object?>(
+        'dev.flutter.pigeon.local_agent_macos.DesktopHostEventApi.onPresentationModeChanged$messageChannelSuffix',
+        pigeonChannelCodec,
+        binaryMessenger: binaryMessenger,
+      );
+      if (api == null) {
+        pigeonVar_channel.setMessageHandler(null);
+      } else {
+        pigeonVar_channel.setMessageHandler((Object? message) async {
+          final List<Object?> args = message! as List<Object?>;
+          final HostPresentationMode arg_mode =
+              args[0]! as HostPresentationMode;
+          try {
+            api.onPresentationModeChanged(arg_mode);
             return wrapResponse(empty: true);
           } on PlatformException catch (e) {
             return wrapResponse(error: e);

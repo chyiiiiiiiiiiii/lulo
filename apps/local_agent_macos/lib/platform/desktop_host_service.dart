@@ -1,7 +1,9 @@
+import 'package:flutter/foundation.dart';
+
 import '../generated/desktop_host_api.g.dart';
 
 /// App-facing contract for the typed macOS host boundary.
-abstract interface class DesktopHostService {
+abstract interface class DesktopHostService implements DesktopPresentationHost {
   /// Current schema shared by Dart and the generated host bridge.
   static const int schemaVersion = 2;
 
@@ -38,6 +40,12 @@ abstract interface class DesktopHostService {
 
   /// Toggles visibility of the retained desktop panel.
   Future<void> togglePanel();
+
+  @override
+  ValueListenable<DesktopPresentation> get presentation;
+
+  @override
+  Future<void> setPresentation(DesktopPresentation mode);
 
   /// Releases message handlers and stream resources.
   Future<void> dispose();
@@ -344,4 +352,25 @@ final class DesktopGenerationEvent {
 
   /// Safe terminal diagnostic text.
   final String? message;
+}
+
+/// The narrow desktop-window capability the app shell needs.
+///
+/// Declared separately from [DesktopHostService] so the shell can depend on the
+/// window form alone rather than on the whole host surface.
+abstract interface class DesktopPresentationHost {
+  /// The form the window is currently presented in.
+  ValueListenable<DesktopPresentation> get presentation;
+
+  /// Asks the host to present the window in [mode].
+  Future<void> setPresentation(DesktopPresentation mode);
+}
+
+/// How the always-on-screen desktop window is presented.
+enum DesktopPresentation {
+  /// A small transparent presence resting on the desktop.
+  orb,
+
+  /// The full conversation surface.
+  expanded,
 }

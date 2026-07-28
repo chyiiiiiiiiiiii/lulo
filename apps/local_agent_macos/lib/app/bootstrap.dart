@@ -83,6 +83,7 @@ AppComposition createAppComposition({
       },
       storageService: storageService,
       inferenceService: inferenceService,
+      presentationHost: desktopHostService,
     );
   }
 

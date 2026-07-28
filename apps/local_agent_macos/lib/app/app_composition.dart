@@ -6,6 +6,7 @@ import '../features/conversation/conversation_repository.dart';
 import '../features/conversation/conversation_storage_service.dart';
 import '../features/conversation/conversation_view_model.dart';
 import '../features/conversation/inference_service.dart';
+import '../platform/desktop_host_service.dart';
 
 /// Owns app-scoped dependencies and creates feature-scoped ViewModels.
 final class AppComposition {
@@ -14,10 +15,18 @@ final class AppComposition {
     this._disposeServices, {
     required ConversationStorageService storageService,
     required InferenceService inferenceService,
+    this.presentationHost,
   }) : _conversationRepository = ConversationRepository(
          storageService: storageService,
          inferenceService: inferenceService,
        );
+
+  /// Drives the desktop window between its orb and conversation forms.
+  ///
+  /// Null when there is no desktop host to talk to, which is the case for the
+  /// deterministic preview and for widget tests. The shell then stays in the
+  /// conversation form so those surfaces are unaffected.
+  final DesktopPresentationHost? presentationHost;
 
   final FutureOr<void> Function() _disposeServices;
   final ConversationRepository _conversationRepository;

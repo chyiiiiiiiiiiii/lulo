@@ -41,8 +41,18 @@ final class AgentPresenceOrb extends StatefulWidget {
     this.shaderLoader = loadAgentPresenceShader,
     this.shaderBackendFactory = createAgentPresenceShaderBackend,
     this.onRenderingPathChanged,
+    this.extent = defaultOrbExtent,
     super.key,
   });
+
+  /// Edge length used when no [extent] is supplied.
+  static const double defaultOrbExtent = 56;
+
+  /// Edge length of the orb, in logical pixels.
+  ///
+  /// The shader renders at this size rather than being scaled afterwards, so a
+  /// large desktop presence stays as crisp as the small inline one.
+  final double extent;
 
   /// Supplies narrow semantic and visual presence updates.
   final AgentPresenceController controller;
@@ -70,7 +80,6 @@ final class _AgentPresenceOrbState extends State<AgentPresenceOrb>
     with SingleTickerProviderStateMixin {
   static const Duration _placeholderCycle = Duration(milliseconds: 5600);
   static const Duration _idleFrameInterval = Duration(milliseconds: 200);
-  static const double _orbExtent = 56;
 
   late final AnimationController _motion;
   late final ValueNotifier<bool> _motionEnabled;
@@ -261,7 +270,7 @@ final class _AgentPresenceOrbState extends State<AgentPresenceOrb>
                   mainAxisSize: MainAxisSize.min,
                   children: <Widget>[
                     SizedBox.square(
-                      dimension: _orbExtent,
+                      dimension: widget.extent,
                       child: KeyedSubtree(
                         key:
                             _shaderLoadPhase == _ShaderLoadPhase.ready &&
