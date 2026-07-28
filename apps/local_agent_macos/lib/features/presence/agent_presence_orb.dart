@@ -42,8 +42,16 @@ final class AgentPresenceOrb extends StatefulWidget {
     this.shaderBackendFactory = createAgentPresenceShaderBackend,
     this.onRenderingPathChanged,
     this.extent = defaultOrbExtent,
+    this.showLabel = true,
     super.key,
   });
+
+  /// Whether the state name is drawn beside the orb.
+  ///
+  /// The inline presence pairs the orb with a readable label. The desktop
+  /// presence is the orb alone, so the label is omitted there and the state is
+  /// carried by semantics only.
+  final bool showLabel;
 
   /// Edge length used when no [extent] is supplied.
   static const double defaultOrbExtent = 56;
@@ -266,36 +274,43 @@ final class _AgentPresenceOrbState extends State<AgentPresenceOrb>
                 label: label,
                 container: true,
                 excludeSemantics: true,
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: <Widget>[
-                    SizedBox.square(
-                      dimension: widget.extent,
-                      child: KeyedSubtree(
-                        key:
+                child: _wrapWithLabel(
+                  label,
+                  SizedBox.square(
+                    dimension: widget.extent,
+                    child: KeyedSubtree(
+                      key:
+                          _shaderLoadPhase == _ShaderLoadPhase.ready &&
+                              _shaderPainter != null
+                          ? const Key('agent-presence-shader-ready')
+                          : _shaderLoadPhase == _ShaderLoadPhase.fallback
+                          ? const Key('agent-presence-fallback')
+                          : const Key('agent-presence-shader-pending'),
+                      child: CustomPaint(
+                        key: const Key('agent-presence-canvas'),
+                        painter:
                             _shaderLoadPhase == _ShaderLoadPhase.ready &&
                                 _shaderPainter != null
-                            ? const Key('agent-presence-shader-ready')
-                            : _shaderLoadPhase == _ShaderLoadPhase.fallback
-                            ? const Key('agent-presence-fallback')
-                            : const Key('agent-presence-shader-pending'),
-                        child: CustomPaint(
-                          key: const Key('agent-presence-canvas'),
-                          painter:
-                              _shaderLoadPhase == _ShaderLoadPhase.ready &&
-                                  _shaderPainter != null
-                              ? _shaderPainter
-                              : _fallbackPainter,
-                        ),
+                            ? _shaderPainter
+                            : _fallbackPainter,
                       ),
                     ),
-                    const SizedBox(width: 8),
-                    Text(label),
-                  ],
+                  ),
                 ),
               );
             },
       ),
+    );
+  }
+
+  /// Pairs the orb with its readable state, or returns it alone.
+  Widget _wrapWithLabel(String label, Widget orb) {
+    if (!widget.showLabel) {
+      return orb;
+    }
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: <Widget>[orb, const SizedBox(width: 8), Text(label)],
     );
   }
 }

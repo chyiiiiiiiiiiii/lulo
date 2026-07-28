@@ -46,10 +46,12 @@ final class _DesktopOrbSurfaceState extends State<DesktopOrbSurface> {
 
   @override
   Widget build(BuildContext context) {
-    // A transparent scaffold: the orb is the only thing on screen.
-    return Scaffold(
-      backgroundColor: Colors.transparent,
-      body: MouseRegion(
+    // No Scaffold and no surface colour: the window behind this is transparent,
+    // so anything that fills the bounds would show on the desktop as a box
+    // around the orb.
+    return Material(
+      type: MaterialType.transparency,
+      child: MouseRegion(
         cursor: SystemMouseCursors.click,
         onEnter: (_) => setState(() => _hovered = true),
         onExit: (_) => setState(() => _hovered = false),
@@ -70,6 +72,7 @@ final class _DesktopOrbSurfaceState extends State<DesktopOrbSurface> {
                   controller: _controller,
                   shaderLoader: widget.presenceShaderLoader,
                   extent: 148,
+                  showLabel: false,
                 ),
               ),
             ),
