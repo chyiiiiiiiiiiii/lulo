@@ -582,6 +582,9 @@ final class RecordingDesktopHostService implements DesktopHostService {
   }
 
   @override
+  Future<void> moveWindowBy(Offset delta) async {}
+
+  @override
   Future<void> showPanel() async {}
 
   @override

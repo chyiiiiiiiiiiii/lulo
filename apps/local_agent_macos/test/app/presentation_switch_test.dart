@@ -80,6 +80,13 @@ final class _FakePresentationHost implements DesktopPresentationHost {
   Future<void> setPresentation(DesktopPresentation mode) async {
     presentation.value = mode;
   }
+
+  final List<Offset> moves = <Offset>[];
+
+  @override
+  Future<void> moveWindowBy(Offset delta) async {
+    moves.add(delta);
+  }
 }
 
 /// Streams a started event and then holds, so a generation stays in flight.

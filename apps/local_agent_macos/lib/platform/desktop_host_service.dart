@@ -1,3 +1,4 @@
+import 'dart:ui' show Offset;
 import 'package:flutter/foundation.dart';
 
 import '../generated/desktop_host_api.g.dart';
@@ -46,6 +47,9 @@ abstract interface class DesktopHostService implements DesktopPresentationHost {
 
   @override
   Future<void> setPresentation(DesktopPresentation mode);
+
+  @override
+  Future<void> moveWindowBy(Offset delta);
 
   /// Releases message handlers and stream resources.
   Future<void> dispose();
@@ -364,6 +368,9 @@ abstract interface class DesktopPresentationHost {
 
   /// Asks the host to present the window in [mode].
   Future<void> setPresentation(DesktopPresentation mode);
+
+  /// Drags the window by [delta], in logical points.
+  Future<void> moveWindowBy(Offset delta);
 }
 
 /// How the always-on-screen desktop window is presented.

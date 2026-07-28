@@ -715,6 +715,8 @@ protocol DesktopHostApi {
   func hidePanel(request: HostRequest) throws
   func togglePanel(request: HostRequest) throws
   func setPresentationMode(request: HostRequest, mode: HostPresentationMode) throws
+  /// Moves the window by a delta in logical points, for dragging the orb.
+  func moveWindowBy(request: HostRequest, deltaX: Double, deltaY: Double) throws
 }
 
 /// Generated setup class from Pigeon to handle messages through the `binaryMessenger`.
@@ -889,6 +891,24 @@ class DesktopHostApiSetup {
       }
     } else {
       setPresentationModeChannel.setMessageHandler(nil)
+    }
+    /// Moves the window by a delta in logical points, for dragging the orb.
+    let moveWindowByChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.local_agent_macos.DesktopHostApi.moveWindowBy\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
+    if let api = api {
+      moveWindowByChannel.setMessageHandler { message, reply in
+        let args = message as! [Any?]
+        let requestArg = args[0] as! HostRequest
+        let deltaXArg = args[1] as! Double
+        let deltaYArg = args[2] as! Double
+        do {
+          try api.moveWindowBy(request: requestArg, deltaX: deltaXArg, deltaY: deltaYArg)
+          reply(wrapResult(nil))
+        } catch {
+          reply(wrapError(error))
+        }
+      }
+    } else {
+      moveWindowByChannel.setMessageHandler(nil)
     }
   }
 }

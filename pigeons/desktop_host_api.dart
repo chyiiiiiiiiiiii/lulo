@@ -174,6 +174,9 @@ abstract class DesktopHostApi {
   void togglePanel(HostRequest request);
 
   void setPresentationMode(HostRequest request, HostPresentationMode mode);
+
+  /// Moves the window by a delta in logical points, for dragging the orb.
+  void moveWindowBy(HostRequest request, double deltaX, double deltaY);
 }
 
 @FlutterApi()

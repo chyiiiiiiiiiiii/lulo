@@ -15,6 +15,7 @@ protocol DesktopPanelControlling: AnyObject {
   func hide()
   func toggle()
   func setPresentationMode(_ mode: DesktopPresentationMode)
+  func moveBy(deltaX: CGFloat, deltaY: CGFloat)
 }
 
 struct FlutterPanelContent {
@@ -120,6 +121,18 @@ final class DesktopPanelController: DesktopPanelControlling {
       retainedPanel.makeKey()
     }
     onPresentationModeChanged?(mode)
+  }
+
+  /// Drags the window by a delta expressed in Flutter's coordinates.
+  ///
+  /// Flutter measures downwards and AppKit upwards, so the vertical delta is
+  /// inverted here rather than at the call site.
+  func moveBy(deltaX: CGFloat, deltaY: CGFloat) {
+    precondition(Thread.isMainThread)
+    let origin = retainedPanel.frame.origin
+    retainedPanel.setFrameOrigin(
+      NSPoint(x: origin.x + deltaX, y: origin.y - deltaY)
+    )
   }
 
   private func applyFrame(for mode: DesktopPresentationMode) {

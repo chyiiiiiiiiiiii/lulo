@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:ui' show Offset;
 import 'dart:collection';
 
 import 'package:flutter/foundation.dart';
@@ -153,6 +154,14 @@ final class PigeonDesktopHostService extends DesktopHostEventApi
     _presentation.value = mode == HostPresentationMode.orb
         ? DesktopPresentation.orb
         : DesktopPresentation.expanded;
+  }
+
+  @override
+  Future<void> moveWindowBy(Offset delta) {
+    return _invoke(
+      (HostRequest request) =>
+          _hostApi.moveWindowBy(request, delta.dx, delta.dy),
+    );
   }
 
   static HostPresentationMode _hostMode(DesktopPresentation mode) {

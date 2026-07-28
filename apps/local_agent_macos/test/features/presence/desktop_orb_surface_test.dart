@@ -67,4 +67,44 @@ void main() {
       reason: 'The surface painted into its corners, which shows as a box.',
     );
   });
+
+  testWidgets('dragging the orb moves the window without summoning', (
+    WidgetTester tester,
+  ) async {
+    int summons = 0;
+    final List<Offset> moves = <Offset>[];
+    await tester.pumpWidget(
+      MaterialApp(
+        home: DesktopOrbSurface(
+          onSummon: () => summons += 1,
+          onDragBy: moves.add,
+        ),
+      ),
+    );
+    await tester.pump();
+
+    final Offset centre = tester.getCenter(find.byType(DesktopOrbSurface));
+    await tester.dragFrom(centre, const Offset(60, -25));
+    await tester.pump();
+
+    expect(moves, isNotEmpty, reason: 'The drag did not move the window.');
+    // The gesture recogniser absorbs the first few points as drag slop before
+    // it reports any delta, so the reported movement trails the gesture by that
+    // much. What matters is that it follows the same direction and covers most
+    // of the distance.
+    final Offset total = moves.reduce((Offset a, Offset b) => a + b);
+    expect(total.dx, greaterThan(30));
+    expect(total.dx, lessThanOrEqualTo(60));
+    expect(total.dy, lessThan(0));
+    expect(total.dy, greaterThanOrEqualTo(-25));
+    expect(
+      summons,
+      0,
+      reason: 'Dragging the orb also opened the conversation.',
+    );
+
+    await tester.tap(find.byType(DesktopOrbSurface));
+    await tester.pump();
+    expect(summons, 1, reason: 'A tap must still open the conversation.');
+  });
 }

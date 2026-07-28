@@ -58,6 +58,7 @@ final class ConversationView extends StatefulWidget {
     required this.viewModelFactory,
     this.buildObserver,
     this.presenceShaderLoader = loadAgentPresenceShader,
+    this.onPresenceController,
     super.key,
   });
 
@@ -69,6 +70,12 @@ final class ConversationView extends StatefulWidget {
 
   /// Loads the presence shader, with deterministic substitution in tests.
   final AgentPresenceShaderLoader presenceShaderLoader;
+
+  /// Reports the presence controller this view drives from conversation state.
+  ///
+  /// The desktop presence shows the same agent, so it follows this controller
+  /// rather than projecting the conversation a second time.
+  final ValueChanged<AgentPresenceController>? onPresenceController;
 
   /// Creates the state that owns the feature-scoped ViewModel.
   @override
@@ -102,9 +109,10 @@ final class _ConversationViewState extends State<ConversationView> {
               completedTurns: _viewModel.completedTurnsListenable,
               activeTurn: _viewModel.activeTurnListenable,
               onPresenceControllerCreated:
-                  (AgentPresenceController controller) =>
-                      widget.buildObserver?.agentPresenceController =
-                          controller,
+                  (AgentPresenceController controller) {
+                    widget.buildObserver?.agentPresenceController = controller;
+                    widget.onPresenceController?.call(controller);
+                  },
               onPresenceOrbPaint: () =>
                   widget.buildObserver?.agentPresenceOrbPaints += 1,
               onPresenceSemanticBuild: () =>

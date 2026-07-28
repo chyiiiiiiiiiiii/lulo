@@ -933,6 +933,31 @@ class DesktopHostApi {
       isNullValid: true,
     );
   }
+
+  /// Moves the window by a delta in logical points, for dragging the orb.
+  Future<void> moveWindowBy(
+    HostRequest request,
+    double deltaX,
+    double deltaY,
+  ) async {
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.local_agent_macos.DesktopHostApi.moveWindowBy$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channel = BasicMessageChannel<Object?>(
+      pigeonVar_channelName,
+      pigeonChannelCodec,
+      binaryMessenger: pigeonVar_binaryMessenger,
+    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(
+      <Object?>[request, deltaX, deltaY],
+    );
+    final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
+
+    _extractReplyValueOrThrow(
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: true,
+    );
+  }
 }
 
 abstract class DesktopHostEventApi {

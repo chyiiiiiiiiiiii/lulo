@@ -188,6 +188,20 @@ final class LocalRuntimeDesktopHostApi: DesktopHostApi {
     onMain { self.panelController.setPresentationMode(resolved) }
   }
 
+  func moveWindowBy(
+    request: HostRequest,
+    deltaX: Double,
+    deltaY: Double
+  ) throws {
+    try validatePanelRequest(request)
+    onMain {
+      self.panelController.moveBy(
+        deltaX: CGFloat(deltaX),
+        deltaY: CGFloat(deltaY)
+      )
+    }
+  }
+
   /// Stops delivering events to Flutter, then drains the coordinator within a
   /// bounded window so termination cannot hang on a running generation.
   ///

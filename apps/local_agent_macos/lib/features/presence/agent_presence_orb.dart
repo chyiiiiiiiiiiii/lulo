@@ -43,8 +43,17 @@ final class AgentPresenceOrb extends StatefulWidget {
     this.onRenderingPathChanged,
     this.extent = defaultOrbExtent,
     this.showLabel = true,
+    this.continuousMotion = false,
     super.key,
   });
+
+  /// Whether idle motion runs on every frame instead of a low-rate timer.
+  ///
+  /// The inline presence is a small ornament beside a conversation, so when it
+  /// is idle it steps a few times a second to stay cheap. The desktop presence
+  /// is the only thing on screen and that stepping reads as a stutter, so it
+  /// animates on the display's own cadence instead.
+  final bool continuousMotion;
 
   /// Whether the state name is drawn beside the orb.
   ///
@@ -158,7 +167,7 @@ final class _AgentPresenceOrbState extends State<AgentPresenceOrb>
       _motion.value = 0;
       return;
     }
-    if (state == AgentPresenceState.idle) {
+    if (state == AgentPresenceState.idle && !widget.continuousMotion) {
       _motion.stop();
       _updateIdlePhase();
       _idleFrameTimer ??= Timer.periodic(

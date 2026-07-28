@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../features/conversation/conversation_view.dart';
+import '../features/presence/agent_presence_controller.dart';
 import '../features/presence/agent_presence_orb.dart';
 import '../features/presence/desktop_orb_surface.dart';
 import '../platform/desktop_host_service.dart';
@@ -80,6 +81,19 @@ final class _PresentationSwitchState extends State<_PresentationSwitch> {
   /// ViewModel, so the answer being generated would be cancelled.
   final GlobalKey _conversationKey = GlobalKey();
 
+  /// The conversation's presence, once it has been built.
+  ///
+  /// Held as a listenable so the orb starts following the real agent the moment
+  /// the conversation reports it, without rebuilding the conversation itself.
+  final ValueNotifier<AgentPresenceController?> _presence =
+      ValueNotifier<AgentPresenceController?>(null);
+
+  @override
+  void dispose() {
+    _presence.dispose();
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
     final DesktopPresentationHost? host = widget.composition.presentationHost;
@@ -87,6 +101,9 @@ final class _PresentationSwitchState extends State<_PresentationSwitch> {
       key: _conversationKey,
       viewModelFactory: widget.composition.createConversationViewModel,
       presenceShaderLoader: widget.presenceShaderLoader,
+      onPresenceController: (AgentPresenceController controller) {
+        _presence.value = controller;
+      },
     );
     if (host == null) {
       return conversation;
@@ -119,10 +136,22 @@ final class _PresentationSwitchState extends State<_PresentationSwitch> {
                     ),
             ),
             if (!expanded)
-              DesktopOrbSurface(
-                presenceShaderLoader: widget.presenceShaderLoader,
-                onSummon: () =>
-                    host.setPresentation(DesktopPresentation.expanded),
+              ValueListenableBuilder<AgentPresenceController?>(
+                valueListenable: _presence,
+                builder:
+                    (
+                      BuildContext context,
+                      AgentPresenceController? presence,
+                      Widget? _,
+                    ) {
+                      return DesktopOrbSurface(
+                        controller: presence,
+                        presenceShaderLoader: widget.presenceShaderLoader,
+                        onSummon: () =>
+                            host.setPresentation(DesktopPresentation.expanded),
+                        onDragBy: host.moveWindowBy,
+                      );
+                    },
               ),
           ],
         );
