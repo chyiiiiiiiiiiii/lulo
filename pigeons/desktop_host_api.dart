@@ -141,6 +141,36 @@ class HostGenerationEvent {
   String? message;
 }
 
+/// The canvas a change of form is drawn on, in Flutter logical points.
+///
+/// While the window is settling between the two forms it is grown to cover
+/// both of them, so the presence can be drawn travelling from one to the other
+/// instead of being cut off at the edge of whichever window is current. Every
+/// rectangle here is measured from the top-left of that grown window.
+class HostTransitionGeometry {
+  HostTransitionGeometry({
+    required this.width,
+    required this.height,
+    required this.conversationLeft,
+    required this.conversationTop,
+    required this.conversationWidth,
+    required this.conversationHeight,
+    required this.orbLeft,
+    required this.orbTop,
+    required this.orbExtent,
+  });
+
+  double width;
+  double height;
+  double conversationLeft;
+  double conversationTop;
+  double conversationWidth;
+  double conversationHeight;
+  double orbLeft;
+  double orbTop;
+  double orbExtent;
+}
+
 @HostApi()
 abstract class DesktopHostApi {
   @async
@@ -177,6 +207,24 @@ abstract class DesktopHostApi {
 
   /// Moves the window by a delta in logical points, for dragging the orb.
   void moveWindowBy(HostRequest request, double deltaX, double deltaY);
+
+  /// Grows the window to cover both forms and stops it taking the mouse.
+  ///
+  /// Returns where each form sits inside that grown window, so the move
+  /// between them is drawn by Flutter on one canvas and one clock. Animating
+  /// the window itself instead would put the frame on AppKit's clock and the
+  /// presence on Flutter's, and the two drift apart.
+  @async
+  HostTransitionGeometry beginPresentationTransition(
+    HostRequest request,
+    HostPresentationMode target,
+  );
+
+  /// Settles the window into [mode] and lets it take the mouse again.
+  void endPresentationTransition(
+    HostRequest request,
+    HostPresentationMode mode,
+  );
 }
 
 @FlutterApi()

@@ -599,6 +599,84 @@ struct HostGenerationEvent: Hashable {
   }
 }
 
+/// The canvas a change of form is drawn on, in Flutter logical points.
+///
+/// While the window is settling between the two forms it is grown to cover
+/// both of them, so the presence can be drawn travelling from one to the other
+/// instead of being cut off at the edge of whichever window is current. Every
+/// rectangle here is measured from the top-left of that grown window.
+///
+/// Generated class from Pigeon that represents data sent in messages.
+struct HostTransitionGeometry: Hashable {
+  var width: Double
+  var height: Double
+  var conversationLeft: Double
+  var conversationTop: Double
+  var conversationWidth: Double
+  var conversationHeight: Double
+  var orbLeft: Double
+  var orbTop: Double
+  var orbExtent: Double
+
+
+  // swift-format-ignore: AlwaysUseLowerCamelCase
+  static func fromList(_ pigeonVar_list: [Any?]) -> HostTransitionGeometry? {
+    let width = pigeonVar_list[0] as! Double
+    let height = pigeonVar_list[1] as! Double
+    let conversationLeft = pigeonVar_list[2] as! Double
+    let conversationTop = pigeonVar_list[3] as! Double
+    let conversationWidth = pigeonVar_list[4] as! Double
+    let conversationHeight = pigeonVar_list[5] as! Double
+    let orbLeft = pigeonVar_list[6] as! Double
+    let orbTop = pigeonVar_list[7] as! Double
+    let orbExtent = pigeonVar_list[8] as! Double
+
+    return HostTransitionGeometry(
+      width: width,
+      height: height,
+      conversationLeft: conversationLeft,
+      conversationTop: conversationTop,
+      conversationWidth: conversationWidth,
+      conversationHeight: conversationHeight,
+      orbLeft: orbLeft,
+      orbTop: orbTop,
+      orbExtent: orbExtent
+    )
+  }
+  func toList() -> [Any?] {
+    return [
+      width,
+      height,
+      conversationLeft,
+      conversationTop,
+      conversationWidth,
+      conversationHeight,
+      orbLeft,
+      orbTop,
+      orbExtent,
+    ]
+  }
+  static func == (lhs: HostTransitionGeometry, rhs: HostTransitionGeometry) -> Bool {
+    if Swift.type(of: lhs) != Swift.type(of: rhs) {
+      return false
+    }
+    return deepEqualsGeneratedDesktopHostApi(lhs.width, rhs.width) && deepEqualsGeneratedDesktopHostApi(lhs.height, rhs.height) && deepEqualsGeneratedDesktopHostApi(lhs.conversationLeft, rhs.conversationLeft) && deepEqualsGeneratedDesktopHostApi(lhs.conversationTop, rhs.conversationTop) && deepEqualsGeneratedDesktopHostApi(lhs.conversationWidth, rhs.conversationWidth) && deepEqualsGeneratedDesktopHostApi(lhs.conversationHeight, rhs.conversationHeight) && deepEqualsGeneratedDesktopHostApi(lhs.orbLeft, rhs.orbLeft) && deepEqualsGeneratedDesktopHostApi(lhs.orbTop, rhs.orbTop) && deepEqualsGeneratedDesktopHostApi(lhs.orbExtent, rhs.orbExtent)
+  }
+
+  func hash(into hasher: inout Hasher) {
+    hasher.combine("HostTransitionGeometry")
+    deepHashGeneratedDesktopHostApi(value: width, hasher: &hasher)
+    deepHashGeneratedDesktopHostApi(value: height, hasher: &hasher)
+    deepHashGeneratedDesktopHostApi(value: conversationLeft, hasher: &hasher)
+    deepHashGeneratedDesktopHostApi(value: conversationTop, hasher: &hasher)
+    deepHashGeneratedDesktopHostApi(value: conversationWidth, hasher: &hasher)
+    deepHashGeneratedDesktopHostApi(value: conversationHeight, hasher: &hasher)
+    deepHashGeneratedDesktopHostApi(value: orbLeft, hasher: &hasher)
+    deepHashGeneratedDesktopHostApi(value: orbTop, hasher: &hasher)
+    deepHashGeneratedDesktopHostApi(value: orbExtent, hasher: &hasher)
+  }
+}
+
 private class GeneratedDesktopHostApiPigeonCodecReader: FlutterStandardReader {
   override func readValue(ofType type: UInt8) -> Any? {
     switch type {
@@ -638,6 +716,8 @@ private class GeneratedDesktopHostApiPigeonCodecReader: FlutterStandardReader {
       return HostOperationCompletion.fromList(self.readValue() as! [Any?])
     case 140:
       return HostGenerationEvent.fromList(self.readValue() as! [Any?])
+    case 141:
+      return HostTransitionGeometry.fromList(self.readValue() as! [Any?])
     default:
       return super.readValue(ofType: type)
     }
@@ -682,6 +762,9 @@ private class GeneratedDesktopHostApiPigeonCodecWriter: FlutterStandardWriter {
     } else if let value = value as? HostGenerationEvent {
       super.writeByte(140)
       super.writeValue(value.toList())
+    } else if let value = value as? HostTransitionGeometry {
+      super.writeByte(141)
+      super.writeValue(value.toList())
     } else {
       super.writeValue(value)
     }
@@ -717,6 +800,15 @@ protocol DesktopHostApi {
   func setPresentationMode(request: HostRequest, mode: HostPresentationMode) throws
   /// Moves the window by a delta in logical points, for dragging the orb.
   func moveWindowBy(request: HostRequest, deltaX: Double, deltaY: Double) throws
+  /// Grows the window to cover both forms and stops it taking the mouse.
+  ///
+  /// Returns where each form sits inside that grown window, so the move
+  /// between them is drawn by Flutter on one canvas and one clock. Animating
+  /// the window itself instead would put the frame on AppKit's clock and the
+  /// presence on Flutter's, and the two drift apart.
+  func beginPresentationTransition(request: HostRequest, target: HostPresentationMode, completion: @escaping (Result<HostTransitionGeometry, Error>) -> Void)
+  /// Settles the window into [mode] and lets it take the mouse again.
+  func endPresentationTransition(request: HostRequest, mode: HostPresentationMode) throws
 }
 
 /// Generated setup class from Pigeon to handle messages through the `binaryMessenger`.
@@ -909,6 +1001,47 @@ class DesktopHostApiSetup {
       }
     } else {
       moveWindowByChannel.setMessageHandler(nil)
+    }
+    /// Grows the window to cover both forms and stops it taking the mouse.
+    ///
+    /// Returns where each form sits inside that grown window, so the move
+    /// between them is drawn by Flutter on one canvas and one clock. Animating
+    /// the window itself instead would put the frame on AppKit's clock and the
+    /// presence on Flutter's, and the two drift apart.
+    let beginPresentationTransitionChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.local_agent_macos.DesktopHostApi.beginPresentationTransition\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
+    if let api = api {
+      beginPresentationTransitionChannel.setMessageHandler { message, reply in
+        let args = message as! [Any?]
+        let requestArg = args[0] as! HostRequest
+        let targetArg = args[1] as! HostPresentationMode
+        api.beginPresentationTransition(request: requestArg, target: targetArg) { result in
+          switch result {
+          case .success(let res):
+            reply(wrapResult(res))
+          case .failure(let error):
+            reply(wrapError(error))
+          }
+        }
+      }
+    } else {
+      beginPresentationTransitionChannel.setMessageHandler(nil)
+    }
+    /// Settles the window into [mode] and lets it take the mouse again.
+    let endPresentationTransitionChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.local_agent_macos.DesktopHostApi.endPresentationTransition\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
+    if let api = api {
+      endPresentationTransitionChannel.setMessageHandler { message, reply in
+        let args = message as! [Any?]
+        let requestArg = args[0] as! HostRequest
+        let modeArg = args[1] as! HostPresentationMode
+        do {
+          try api.endPresentationTransition(request: requestArg, mode: modeArg)
+          reply(wrapResult(nil))
+        } catch {
+          reply(wrapError(error))
+        }
+      }
+    } else {
+      endPresentationTransitionChannel.setMessageHandler(nil)
     }
   }
 }

@@ -188,6 +188,46 @@ final class LocalRuntimeDesktopHostApi: DesktopHostApi {
     onMain { self.panelController.setPresentationMode(resolved) }
   }
 
+  func beginPresentationTransition(
+    request: HostRequest,
+    target: HostPresentationMode,
+    completion: @escaping (Result<HostTransitionGeometry, Error>) -> Void
+  ) {
+    do {
+      try validatePanelRequest(request)
+    } catch {
+      completion(.failure(error))
+      return
+    }
+    onMain {
+      let geometry = self.panelController.beginTransition()
+      completion(
+        .success(
+          HostTransitionGeometry(
+            width: Double(geometry.size.width),
+            height: Double(geometry.size.height),
+            conversationLeft: Double(geometry.conversation.minX),
+            conversationTop: Double(geometry.conversation.minY),
+            conversationWidth: Double(geometry.conversation.width),
+            conversationHeight: Double(geometry.conversation.height),
+            orbLeft: Double(geometry.orb.minX),
+            orbTop: Double(geometry.orb.minY),
+            orbExtent: Double(geometry.orb.width)
+          )
+        )
+      )
+    }
+  }
+
+  func endPresentationTransition(
+    request: HostRequest,
+    mode: HostPresentationMode
+  ) throws {
+    try validatePanelRequest(request)
+    let resolved: DesktopPresentationMode = mode == .orb ? .orb : .expanded
+    onMain { self.panelController.endTransition(resolved) }
+  }
+
   func moveWindowBy(
     request: HostRequest,
     deltaX: Double,

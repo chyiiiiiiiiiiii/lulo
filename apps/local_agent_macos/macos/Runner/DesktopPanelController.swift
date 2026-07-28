@@ -8,6 +8,16 @@ enum DesktopPresentationMode: Equatable {
   case expanded
 }
 
+/// Where each form sits inside the window that covers both of them.
+///
+/// Measured from the top-left of that window with y growing downwards, which
+/// is how Flutter lays out, rather than AppKit's bottom-left origin.
+struct DesktopTransitionGeometry: Equatable {
+  let size: CGSize
+  let conversation: CGRect
+  let orb: CGRect
+}
+
 protocol DesktopPanelControlling: AnyObject {
   var isVisible: Bool { get }
   var presentationMode: DesktopPresentationMode { get }
@@ -16,6 +26,8 @@ protocol DesktopPanelControlling: AnyObject {
   func toggle()
   func setPresentationMode(_ mode: DesktopPresentationMode)
   func moveBy(deltaX: CGFloat, deltaY: CGFloat)
+  func beginTransition() -> DesktopTransitionGeometry
+  func endTransition(_ mode: DesktopPresentationMode)
 }
 
 struct FlutterPanelContent {
@@ -85,6 +97,8 @@ final class DesktopPanelController: DesktopPanelControlling {
   /// updated only when the user leaves the conversation, so a resize is kept.
   private var expandedSize: NSSize = NSSize(width: 720, height: 560)
   private var storedMode: DesktopPresentationMode = .expanded
+  /// Whether the window is currently the canvas that covers both forms.
+  private var isTransitioning = false
   /// Whether the conversation frame has been applied at least once.
   private var hasPresentedExpanded = false
 
@@ -104,7 +118,10 @@ final class DesktopPanelController: DesktopPanelControlling {
     // Only remember a size the conversation actually used. At launch the mode
     // is nominally expanded while the window still carries its loaded frame,
     // and adopting that would fix the conversation at the wrong size.
-    if storedMode == .expanded, hasPresentedExpanded {
+    // While transitioning the frame is the canvas covering both forms, not a
+    // size the conversation ever used; beginTransition already recorded the
+    // real one before growing.
+    if storedMode == .expanded, hasPresentedExpanded, !isTransitioning {
       expandedSize = retainedPanel.frame.size
     }
     storedMode = mode
@@ -135,6 +152,102 @@ final class DesktopPanelController: DesktopPanelControlling {
     )
   }
 
+  /// Places both screen rects inside the window that covers them.
+  ///
+  /// Pure so the flip between AppKit's upward y and Flutter's downward y can be
+  /// tested without a window or a screen.
+  static func transitionGeometry(
+    conversation: NSRect,
+    orb: NSRect
+  ) -> (canvas: NSRect, geometry: DesktopTransitionGeometry) {
+    let canvas = conversation.union(orb)
+    func placed(_ rect: NSRect) -> CGRect {
+      CGRect(
+        x: rect.minX - canvas.minX,
+        y: canvas.maxY - rect.maxY,
+        width: rect.width,
+        height: rect.height
+      )
+    }
+    return (
+      canvas,
+      DesktopTransitionGeometry(
+        size: canvas.size,
+        conversation: placed(conversation),
+        orb: placed(orb)
+      )
+    )
+  }
+
+  /// Grows the window to cover both forms and stops it taking the mouse.
+  ///
+  /// The presence has to be drawn travelling between two places that no single
+  /// form's window contains, so for the length of the move the window is the
+  /// union of both and Flutter owns every pixel of it. The window is inert
+  /// while it is this large, otherwise it would swallow clicks meant for
+  /// whatever is underneath.
+  func beginTransition() -> DesktopTransitionGeometry {
+    precondition(Thread.isMainThread)
+    guard let screen = screenProvider() ?? NSScreen.main else {
+      let empty = NSRect.zero
+      return Self.transitionGeometry(conversation: empty, orb: empty).geometry
+    }
+    // Remember the conversation's size before growing. Leaving the expanded
+    // form normally records it, but during a transition the frame is the
+    // union, and adopting that would reopen the conversation at canvas size.
+    if storedMode == .expanded, hasPresentedExpanded {
+      expandedSize = retainedPanel.frame.size
+    }
+    isTransitioning = true
+    let visible = screen.visibleFrame
+    let (canvas, geometry) = Self.transitionGeometry(
+      conversation: conversationFrame(in: visible),
+      orb: orbFrame(in: visible)
+    )
+    retainedPanel.ignoresMouseEvents = true
+    retainedPanel.setFrame(canvas, display: true)
+    retainedPanel.orderFrontRegardless()
+    return geometry
+  }
+
+  /// Settles the window into `mode` and lets it take the mouse again.
+  func endTransition(_ mode: DesktopPresentationMode) {
+    precondition(Thread.isMainThread)
+    retainedPanel.ignoresMouseEvents = false
+    if mode == storedMode {
+      // The form did not change after all, so nothing reports it; the frame
+      // still has to come back from the canvas.
+      applyFrame(for: mode)
+    } else {
+      setPresentationMode(mode)
+    }
+    isTransitioning = false
+  }
+
+  /// Where the orb rests on `visible`, in screen coordinates.
+  ///
+  /// Parked near the lower trailing corner, clear of the Dock.
+  private func orbFrame(in visible: NSRect) -> NSRect {
+    let side = Self.orbSide
+    return NSRect(
+      x: visible.maxX - side - Self.orbMargin,
+      y: visible.minY + Self.orbMargin,
+      width: side,
+      height: side
+    )
+  }
+
+  /// Where the conversation opens on `visible`, in screen coordinates.
+  private func conversationFrame(in visible: NSRect) -> NSRect {
+    let size = expandedSize
+    return NSRect(
+      x: visible.midX - size.width / 2,
+      y: visible.midY - size.height / 2,
+      width: size.width,
+      height: size.height
+    )
+  }
+
   private func applyFrame(for mode: DesktopPresentationMode) {
     guard let screen = screenProvider() ?? NSScreen.main else {
       return
@@ -142,27 +255,10 @@ final class DesktopPanelController: DesktopPanelControlling {
     let visible = screen.visibleFrame
     switch mode {
     case .orb:
-      let side = Self.orbSide
-      // Park the orb near the lower trailing corner, clear of the Dock.
-      let origin = NSPoint(
-        x: visible.maxX - side - Self.orbMargin,
-        y: visible.minY + Self.orbMargin
-      )
-      retainedPanel.setFrame(
-        NSRect(origin: origin, size: NSSize(width: side, height: side)),
-        display: true
-      )
+      retainedPanel.setFrame(orbFrame(in: visible), display: true)
     case .expanded:
       hasPresentedExpanded = true
-      let size = expandedSize
-      let origin = NSPoint(
-        x: visible.midX - size.width / 2,
-        y: visible.midY - size.height / 2
-      )
-      retainedPanel.setFrame(
-        NSRect(origin: origin, size: size),
-        display: true
-      )
+      retainedPanel.setFrame(conversationFrame(in: visible), display: true)
     }
   }
 

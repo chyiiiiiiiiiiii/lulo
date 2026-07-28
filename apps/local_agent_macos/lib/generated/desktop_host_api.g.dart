@@ -612,6 +612,101 @@ class HostGenerationEvent {
   int get hashCode => _deepHash(<Object?>[runtimeType, ..._toList()]);
 }
 
+/// The canvas a change of form is drawn on, in Flutter logical points.
+///
+/// While the window is settling between the two forms it is grown to cover
+/// both of them, so the presence can be drawn travelling from one to the other
+/// instead of being cut off at the edge of whichever window is current. Every
+/// rectangle here is measured from the top-left of that grown window.
+class HostTransitionGeometry {
+  HostTransitionGeometry({
+    required this.width,
+    required this.height,
+    required this.conversationLeft,
+    required this.conversationTop,
+    required this.conversationWidth,
+    required this.conversationHeight,
+    required this.orbLeft,
+    required this.orbTop,
+    required this.orbExtent,
+  });
+
+  double width;
+
+  double height;
+
+  double conversationLeft;
+
+  double conversationTop;
+
+  double conversationWidth;
+
+  double conversationHeight;
+
+  double orbLeft;
+
+  double orbTop;
+
+  double orbExtent;
+
+  List<Object?> _toList() {
+    return <Object?>[
+      width,
+      height,
+      conversationLeft,
+      conversationTop,
+      conversationWidth,
+      conversationHeight,
+      orbLeft,
+      orbTop,
+      orbExtent,
+    ];
+  }
+
+  Object encode() {
+    return _toList();
+  }
+
+  static HostTransitionGeometry decode(Object result) {
+    result as List<Object?>;
+    return HostTransitionGeometry(
+      width: result[0]! as double,
+      height: result[1]! as double,
+      conversationLeft: result[2]! as double,
+      conversationTop: result[3]! as double,
+      conversationWidth: result[4]! as double,
+      conversationHeight: result[5]! as double,
+      orbLeft: result[6]! as double,
+      orbTop: result[7]! as double,
+      orbExtent: result[8]! as double,
+    );
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  bool operator ==(Object other) {
+    if (other is! HostTransitionGeometry || other.runtimeType != runtimeType) {
+      return false;
+    }
+    if (identical(this, other)) {
+      return true;
+    }
+    return _deepEquals(width, other.width) &&
+        _deepEquals(height, other.height) &&
+        _deepEquals(conversationLeft, other.conversationLeft) &&
+        _deepEquals(conversationTop, other.conversationTop) &&
+        _deepEquals(conversationWidth, other.conversationWidth) &&
+        _deepEquals(conversationHeight, other.conversationHeight) &&
+        _deepEquals(orbLeft, other.orbLeft) &&
+        _deepEquals(orbTop, other.orbTop) &&
+        _deepEquals(orbExtent, other.orbExtent);
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  int get hashCode => _deepHash(<Object?>[runtimeType, ..._toList()]);
+}
+
 class _PigeonCodec extends StandardMessageCodec {
   const _PigeonCodec();
   @override
@@ -655,6 +750,9 @@ class _PigeonCodec extends StandardMessageCodec {
     } else if (value is HostGenerationEvent) {
       buffer.putUint8(140);
       writeValue(buffer, value.encode());
+    } else if (value is HostTransitionGeometry) {
+      buffer.putUint8(141);
+      writeValue(buffer, value.encode());
     } else {
       super.writeValue(buffer, value);
     }
@@ -690,6 +788,8 @@ class _PigeonCodec extends StandardMessageCodec {
         return HostOperationCompletion.decode(readValue(buffer)!);
       case 140:
         return HostGenerationEvent.decode(readValue(buffer)!);
+      case 141:
+        return HostTransitionGeometry.decode(readValue(buffer)!);
       default:
         return super.readValueOfType(type, buffer);
     }
@@ -949,6 +1049,60 @@ class DesktopHostApi {
     );
     final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(
       <Object?>[request, deltaX, deltaY],
+    );
+    final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
+
+    _extractReplyValueOrThrow(
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: true,
+    );
+  }
+
+  /// Grows the window to cover both forms and stops it taking the mouse.
+  ///
+  /// Returns where each form sits inside that grown window, so the move
+  /// between them is drawn by Flutter on one canvas and one clock. Animating
+  /// the window itself instead would put the frame on AppKit's clock and the
+  /// presence on Flutter's, and the two drift apart.
+  Future<HostTransitionGeometry> beginPresentationTransition(
+    HostRequest request,
+    HostPresentationMode target,
+  ) async {
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.local_agent_macos.DesktopHostApi.beginPresentationTransition$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channel = BasicMessageChannel<Object?>(
+      pigeonVar_channelName,
+      pigeonChannelCodec,
+      binaryMessenger: pigeonVar_binaryMessenger,
+    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(
+      <Object?>[request, target],
+    );
+    final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
+
+    final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: false,
+    );
+    return pigeonVar_replyValue! as HostTransitionGeometry;
+  }
+
+  /// Settles the window into [mode] and lets it take the mouse again.
+  Future<void> endPresentationTransition(
+    HostRequest request,
+    HostPresentationMode mode,
+  ) async {
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.local_agent_macos.DesktopHostApi.endPresentationTransition$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channel = BasicMessageChannel<Object?>(
+      pigeonVar_channelName,
+      pigeonChannelCodec,
+      binaryMessenger: pigeonVar_binaryMessenger,
+    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(
+      <Object?>[request, mode],
     );
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
