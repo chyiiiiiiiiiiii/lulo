@@ -34,7 +34,9 @@ AppComposition createAppComposition({
     defaultValue: 'fake',
   ),
   String localModelPath = const String.fromEnvironment('LOCAL_MODEL_PATH'),
+  SettingsStore? settingsStore,
 }) {
+  final SettingsStore store = settingsStore ?? createSettingsStore();
   if (inferenceRuntime != 'fake' && inferenceRuntime != 'litert') {
     throw UnsupportedError(
       'Unsupported INFERENCE_RUNTIME "$inferenceRuntime". '
@@ -85,7 +87,7 @@ AppComposition createAppComposition({
       },
       storageService: storageService,
       inferenceService: inferenceService,
-      settingsStore: _settingsStore(),
+      settingsStore: store,
       presentationHost: desktopHostService,
     );
   }
@@ -102,7 +104,7 @@ AppComposition createAppComposition({
     },
     storageService: storageService,
     inferenceService: inferenceService,
-    settingsStore: _settingsStore(),
+    settingsStore: store,
     presentationHost: desktopHostService,
   );
 }
@@ -112,7 +114,7 @@ AppComposition createAppComposition({
 /// Under Application Support like any other Mac app's own data. A home that
 /// cannot be resolved falls back to memory, so settings are forgotten rather
 /// than the app refusing to start.
-SettingsStore _settingsStore() {
+SettingsStore createSettingsStore() {
   final String? home = Platform.environment['HOME'];
   if (home == null || home.isEmpty) {
     return InMemorySettingsStore();

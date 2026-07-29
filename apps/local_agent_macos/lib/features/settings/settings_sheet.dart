@@ -13,8 +13,13 @@ final class SettingsSheet extends StatelessWidget {
     required this.settings,
     required this.onChanged,
     required this.onClose,
+    required this.onChooseModel,
     super.key,
   });
+
+  /// Asks the user for a model file. Returns the path, or empty if they keep
+  /// what they had.
+  final Future<String> Function() onChooseModel;
 
   /// The choices currently in force.
   final AppSettings settings;
@@ -96,6 +101,35 @@ final class SettingsSheet extends StatelessWidget {
                         ),
                         onChanged: (bool value) => onChanged(
                           settings.copyWith(openConversationOnLaunch: value),
+                        ),
+                      ),
+                    ],
+                  ),
+                  _Section(
+                    title: 'The model it thinks with',
+                    children: <Widget>[
+                      ListTile(
+                        key: const Key('setting-model-path'),
+                        title: Text(
+                          settings.modelPath.isEmpty
+                              ? 'No model chosen'
+                              : settings.modelPath.split('/').last,
+                        ),
+                        subtitle: Text(
+                          settings.modelPath.isEmpty
+                              ? 'Lulo is answering from its built-in preview, '
+                                    'which says the same thing every time.'
+                              : 'Takes effect the next time Lulo starts.',
+                        ),
+                        trailing: FilledButton.tonal(
+                          key: const Key('setting-choose-model'),
+                          onPressed: () async {
+                            final String chosen = await onChooseModel();
+                            if (chosen.isNotEmpty) {
+                              onChanged(settings.copyWith(modelPath: chosen));
+                            }
+                          },
+                          child: const Text('Choose…'),
                         ),
                       ),
                     ],

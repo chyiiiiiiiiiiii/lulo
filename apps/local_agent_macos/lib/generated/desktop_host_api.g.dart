@@ -1059,6 +1059,31 @@ class DesktopHostApi {
     );
   }
 
+  /// Asks the user for a model file and returns its path, or empty.
+  ///
+  /// The chooser is the system's own, so the app never has to be told where
+  /// files live or be trusted with a path the user did not pick.
+  Future<String> chooseModelFile(HostRequest request) async {
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.local_agent_macos.DesktopHostApi.chooseModelFile$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channel = BasicMessageChannel<Object?>(
+      pigeonVar_channelName,
+      pigeonChannelCodec,
+      binaryMessenger: pigeonVar_binaryMessenger,
+    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(
+      <Object?>[request],
+    );
+    final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
+
+    final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: false,
+    );
+    return pigeonVar_replyValue! as String;
+  }
+
   /// Applies the user's choices about how the resting orb behaves.
   ///
   /// Held natively rather than consulted per change of form, because the

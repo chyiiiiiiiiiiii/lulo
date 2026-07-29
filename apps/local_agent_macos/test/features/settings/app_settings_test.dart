@@ -16,6 +16,12 @@ void main() {
     expect(settings.openConversationOnLaunch, isFalse);
   });
 
+  test('an untouched install has no model and says so', () {
+    // Empty is not a missing setting: it means the preview, which answers the
+    // same thing every time. Naming a model is what makes the agent think.
+    expect(const AppSettings().modelPath, isEmpty);
+  });
+
   test('choices survive being written and read back', () async {
     final Directory directory = await _tempDirectory();
     final FileSettingsStore store = FileSettingsStore(directory: directory);
@@ -23,6 +29,7 @@ void main() {
       keepOrbOnTop: false,
       followAcrossSpaces: false,
       openConversationOnLaunch: true,
+      modelPath: '/models/gemma.litertlm',
     );
 
     await store.save(chosen);

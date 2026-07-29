@@ -86,11 +86,15 @@ class AppDelegate: FlutterAppDelegate {
   }
 
   private func collapseConversation() {
-    NSApp.windows
-      .compactMap { $0 as? MainFlutterWindow }
-      .first?
-      .panelController?
-      .windowShouldClose(NSApp.mainWindow ?? NSWindow())
+    guard
+      let controller = NSApp.windows
+        .compactMap({ $0 as? MainFlutterWindow })
+        .first?
+        .panelController
+    else {
+      return
+    }
+    _ = controller.windowShouldClose(controller.retainedPanel)
   }
 
   private var menuBarController: MenuBarController?

@@ -14,6 +14,7 @@ final class AppSettings {
     this.keepOrbOnTop = true,
     this.followAcrossSpaces = true,
     this.openConversationOnLaunch = false,
+    this.modelPath = '',
   });
 
   /// Reads settings written by [toJson], ignoring anything unrecognised.
@@ -32,6 +33,9 @@ final class AppSettings {
         json['openConversationOnLaunch'],
         defaults.openConversationOnLaunch,
       ),
+      modelPath: json['modelPath'] is String
+          ? json['modelPath']! as String
+          : defaults.modelPath,
     );
   }
 
@@ -44,17 +48,25 @@ final class AppSettings {
   /// Whether launching opens the conversation instead of resting as an orb.
   final bool openConversationOnLaunch;
 
+  /// The LiteRT-LM file the agent thinks with, or empty for the preview.
+  ///
+  /// Chosen here rather than fixed when the app is built, so changing model
+  /// does not mean compiling a new app.
+  final String modelPath;
+
   /// Returns a copy with the named choices replaced.
   AppSettings copyWith({
     bool? keepOrbOnTop,
     bool? followAcrossSpaces,
     bool? openConversationOnLaunch,
+    String? modelPath,
   }) {
     return AppSettings(
       keepOrbOnTop: keepOrbOnTop ?? this.keepOrbOnTop,
       followAcrossSpaces: followAcrossSpaces ?? this.followAcrossSpaces,
       openConversationOnLaunch:
           openConversationOnLaunch ?? this.openConversationOnLaunch,
+      modelPath: modelPath ?? this.modelPath,
     );
   }
 
@@ -63,6 +75,7 @@ final class AppSettings {
     'keepOrbOnTop': keepOrbOnTop,
     'followAcrossSpaces': followAcrossSpaces,
     'openConversationOnLaunch': openConversationOnLaunch,
+    'modelPath': modelPath,
   };
 
   @override
@@ -70,17 +83,22 @@ final class AppSettings {
       other is AppSettings &&
       other.keepOrbOnTop == keepOrbOnTop &&
       other.followAcrossSpaces == followAcrossSpaces &&
-      other.openConversationOnLaunch == openConversationOnLaunch;
+      other.openConversationOnLaunch == openConversationOnLaunch &&
+      other.modelPath == modelPath;
 
   @override
-  int get hashCode =>
-      Object.hash(keepOrbOnTop, followAcrossSpaces, openConversationOnLaunch);
+  int get hashCode => Object.hash(
+    keepOrbOnTop,
+    followAcrossSpaces,
+    openConversationOnLaunch,
+    modelPath,
+  );
 
   @override
   String toString() =>
       'AppSettings(keepOrbOnTop: $keepOrbOnTop, followAcrossSpaces: '
       '$followAcrossSpaces, openConversationOnLaunch: '
-      '$openConversationOnLaunch)';
+      '$openConversationOnLaunch, modelPath: $modelPath)';
 }
 
 /// Where the user's choices are kept between runs.

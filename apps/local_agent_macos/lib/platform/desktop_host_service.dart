@@ -382,6 +382,10 @@ abstract interface class DesktopPresentationHost {
   /// Requests from the menu bar to show the app's settings.
   Stream<void> get settingsRequests;
 
+  /// Asks the user for a model file, returning its path or empty when they
+  /// keep what they had.
+  Future<String> chooseModelFile();
+
   /// Applies the user's choices about how the resting orb behaves.
   Future<void> setWindowBehaviour({
     required bool keepOrbOnTop,

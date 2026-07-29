@@ -208,6 +208,13 @@ abstract class DesktopHostApi {
   /// Moves the window by a delta in logical points, for dragging the orb.
   void moveWindowBy(HostRequest request, double deltaX, double deltaY);
 
+  /// Asks the user for a model file and returns its path, or empty.
+  ///
+  /// The chooser is the system's own, so the app never has to be told where
+  /// files live or be trusted with a path the user did not pick.
+  @async
+  String chooseModelFile(HostRequest request);
+
   /// Applies the user's choices about how the resting orb behaves.
   ///
   /// Held natively rather than consulted per change of form, because the

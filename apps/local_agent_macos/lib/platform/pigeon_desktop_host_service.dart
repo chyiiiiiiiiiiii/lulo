@@ -197,6 +197,9 @@ final class PigeonDesktopHostService extends DesktopHostEventApi
   }
 
   @override
+  Future<String> chooseModelFile() => _invokeResult(_hostApi.chooseModelFile);
+
+  @override
   Future<void> setWindowBehaviour({
     required bool keepOrbOnTop,
     required bool followAcrossSpaces,

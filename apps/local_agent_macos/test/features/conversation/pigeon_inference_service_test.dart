@@ -593,6 +593,9 @@ final class RecordingDesktopHostService implements DesktopHostService {
   Stream<void> get settingsRequests => const Stream<void>.empty();
 
   @override
+  Future<String> chooseModelFile() async => '';
+
+  @override
   Future<void> setWindowBehaviour({
     required bool keepOrbOnTop,
     required bool followAcrossSpaces,

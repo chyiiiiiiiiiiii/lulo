@@ -276,6 +276,17 @@ void main() {
       reason: 'The choice would not have survived a restart.',
     );
 
+    // A model is chosen in settings rather than fixed when the app is built,
+    // so choosing one has to be written down or it is gone on the next run.
+    host.chosenModelFile = '/models/gemma-4-E4B-it.litertlm';
+    await tester.tap(find.byKey(const Key('setting-choose-model')));
+    await tester.pump();
+    await tester.pump();
+    expect(
+      (await composition.settingsStore.load()).modelPath,
+      '/models/gemma-4-E4B-it.litertlm',
+    );
+
     await tester.tap(find.byKey(const Key('settings-close-button')));
     await tester.pump();
     expect(find.byKey(const Key('settings-sheet')), findsNothing);
@@ -390,6 +401,12 @@ final class _FakePresentationHost implements DesktopPresentationHost {
 
   /// Choices the app has pushed to the host, in order.
   final List<(bool, bool)> windowBehaviours = <(bool, bool)>[];
+
+  /// What the chooser answers with in tests.
+  String chosenModelFile = '';
+
+  @override
+  Future<String> chooseModelFile() async => chosenModelFile;
 
   @override
   Future<void> setWindowBehaviour({

@@ -1,5 +1,7 @@
 import Dispatch
+import AppKit
 import Foundation
+import UniformTypeIdentifiers
 import InferenceService
 
 /// Bridges the generated Pigeon host boundary to the asynchronous
@@ -186,6 +188,34 @@ final class LocalRuntimeDesktopHostApi: DesktopHostApi {
     let resolved: DesktopPresentationMode =
       mode == .orb ? .orb : .expanded
     onMain { self.panelController.setPresentationMode(resolved) }
+  }
+
+  func chooseModelFile(
+    request: HostRequest,
+    completion: @escaping (Result<String, Error>) -> Void
+  ) {
+    do {
+      try validatePanelRequest(request)
+    } catch {
+      completion(.failure(error))
+      return
+    }
+    onMain {
+      let panel = NSOpenPanel()
+      panel.title = "Choose a model"
+      panel.message = "Pick the LiteRT-LM file Lulo should think with."
+      // The extension is not one the system knows, so it is declared here
+      // rather than looked up.
+      if let litertlm = UTType(filenameExtension: "litertlm") {
+        panel.allowedContentTypes = [litertlm]
+      }
+      panel.allowsMultipleSelection = false
+      panel.canChooseDirectories = false
+      // Cancelling is an answer, not a failure: it means the user kept what
+      // they already had.
+      let chosen = panel.runModal() == .OK ? panel.url?.path ?? "" : ""
+      completion(.success(chosen))
+    }
   }
 
   func setWindowBehaviour(

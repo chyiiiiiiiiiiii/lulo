@@ -800,6 +800,11 @@ protocol DesktopHostApi {
   func setPresentationMode(request: HostRequest, mode: HostPresentationMode) throws
   /// Moves the window by a delta in logical points, for dragging the orb.
   func moveWindowBy(request: HostRequest, deltaX: Double, deltaY: Double) throws
+  /// Asks the user for a model file and returns its path, or empty.
+  ///
+  /// The chooser is the system's own, so the app never has to be told where
+  /// files live or be trusted with a path the user did not pick.
+  func chooseModelFile(request: HostRequest, completion: @escaping (Result<String, Error>) -> Void)
   /// Applies the user's choices about how the resting orb behaves.
   ///
   /// Held natively rather than consulted per change of form, because the
@@ -1011,6 +1016,27 @@ class DesktopHostApiSetup {
       }
     } else {
       moveWindowByChannel.setMessageHandler(nil)
+    }
+    /// Asks the user for a model file and returns its path, or empty.
+    ///
+    /// The chooser is the system's own, so the app never has to be told where
+    /// files live or be trusted with a path the user did not pick.
+    let chooseModelFileChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.local_agent_macos.DesktopHostApi.chooseModelFile\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
+    if let api = api {
+      chooseModelFileChannel.setMessageHandler { message, reply in
+        let args = message as! [Any?]
+        let requestArg = args[0] as! HostRequest
+        api.chooseModelFile(request: requestArg) { result in
+          switch result {
+          case .success(let res):
+            reply(wrapResult(res))
+          case .failure(let error):
+            reply(wrapError(error))
+          }
+        }
+      }
+    } else {
+      chooseModelFileChannel.setMessageHandler(nil)
     }
     /// Applies the user's choices about how the resting orb behaves.
     ///

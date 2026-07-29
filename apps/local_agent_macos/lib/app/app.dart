@@ -505,6 +505,8 @@ final class _PresentationSwitchState extends State<_PresentationSwitch>
                           settings: _settings,
                           onChanged: (AppSettings settings) =>
                               unawaited(_changeSettings(settings)),
+                          onChooseModel: () async =>
+                              await host.chooseModelFile(),
                           onClose: () =>
                               setState(() => _showingSettings = false),
                         ),
