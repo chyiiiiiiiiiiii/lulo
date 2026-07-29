@@ -214,9 +214,20 @@ final class DesktopPanelControllerTests: XCTestCase {
       "The resting agent is still taking clicks meant for other apps"
     )
 
+    // Giving up the mouse takes the orb's own clicks with it, so something
+    // the size of the orb and nothing more has to carry them back.
+    XCTAssertTrue(
+      controller.orbInputIsPlaced,
+      "Nothing is left to click the resting agent with"
+    )
+
     // The conversation is an ordinary window and answers for itself.
     controller.setPresentationMode(.expanded)
     XCTAssertFalse(controller.retainedPanel.ignoresMouseEvents)
+    XCTAssertFalse(
+      controller.orbInputIsPlaced,
+      "The catcher stayed over a conversation that answers for itself"
+    )
   }
 
   func testTheStageOnlyAnswersTheMouseWhereItIsDrawn() {

@@ -18,6 +18,101 @@ struct DesktopTransitionGeometry: Equatable {
   let orb: CGRect
 }
 
+
+/// Carries the resting orb's clicks, because the window itself must not.
+///
+/// While the agent rests, the window covering both forms gives up the mouse
+/// so that nothing behind it is blocked. That takes the orb's own clicks with
+/// it, so this panel — the size of the orb and nothing more — gets them back.
+/// It draws nothing; the orb is still rendered by the engine behind it.
+final class OrbInputPanel {
+  /// Creates the catcher, off screen until the agent rests.
+  init(
+    onSummon: @escaping () -> Void,
+    onDragBy: @escaping (CGFloat, CGFloat) -> Void
+  ) {
+    let panel = NSPanel(
+      contentRect: NSRect(x: 0, y: 0, width: 1, height: 1),
+      styleMask: [.borderless, .nonactivatingPanel],
+      backing: .buffered,
+      defer: false
+    )
+    panel.isOpaque = false
+    panel.backgroundColor = .clear
+    panel.hasShadow = false
+    panel.level = .floating
+    panel.isFloatingPanel = true
+    panel.hidesOnDeactivate = false
+    panel.animationBehavior = .none
+    panel.collectionBehavior.formUnion([.canJoinAllSpaces, .fullScreenAuxiliary])
+    panel.contentView = OrbCatcherView(onSummon: onSummon, onDragBy: onDragBy)
+    self.panel = panel
+  }
+
+  private let panel: NSPanel
+
+  /// Puts the catcher exactly over the orb, or takes it away.
+  func place(over rect: NSRect?) {
+    guard let rect else {
+      panel.orderOut(nil)
+      return
+    }
+    panel.setFrame(rect, display: false)
+    panel.orderFrontRegardless()
+  }
+
+  /// Whether the catcher is on screen, for tests.
+  var isPlaced: Bool { panel.isVisible }
+
+  /// What it covers, for tests.
+  var placedFrame: NSRect { panel.frame }
+
+  /// How far a press may travel and still count as a click.
+  static let dragSlop: CGFloat = 3
+}
+
+/// Turns presses on the orb into either a summon or a drag.
+final class OrbCatcherView: NSView {
+  init(
+    onSummon: @escaping () -> Void,
+    onDragBy: @escaping (CGFloat, CGFloat) -> Void
+  ) {
+    self.onSummon = onSummon
+    self.onDragBy = onDragBy
+    super.init(frame: .zero)
+  }
+
+  @available(*, unavailable)
+  required init?(coder: NSCoder) {
+    fatalError("init(coder:) is not used")
+  }
+
+  private let onSummon: () -> Void
+  private let onDragBy: (CGFloat, CGFloat) -> Void
+  private var travelled: CGFloat = 0
+
+  /// Answers the very first click even when the app is not in front, or the
+  /// click that reaches a background app is spent activating it and the agent
+  /// would have to be clicked twice.
+  override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+
+  override func mouseDown(with event: NSEvent) { travelled = 0 }
+
+  override func mouseDragged(with event: NSEvent) {
+    travelled += abs(event.deltaX) + abs(event.deltaY)
+    onDragBy(event.deltaX, event.deltaY)
+  }
+
+  override func mouseUp(with event: NSEvent) {
+    if travelled <= OrbInputPanel.dragSlop { onSummon() }
+    travelled = 0
+  }
+
+  override func resetCursorRects() {
+    addCursorRect(bounds, cursor: .pointingHand)
+  }
+}
+
 protocol DesktopPanelControlling: AnyObject {
   var isVisible: Bool { get }
   var presentationMode: DesktopPresentationMode { get }
@@ -85,6 +180,15 @@ final class DesktopPanelController: NSObject, DesktopPanelControlling, NSWindowD
   /// controller.
   private(set) var retainedViewController: NSViewController!
   private var retainedStage: StagePassThroughView!
+
+  /// Built the first time the agent rests, never during init.
+  private lazy var orbInput: OrbInputPanel = OrbInputPanel(
+    onSummon: { [weak self] in self?.requestPresentationMode(.expanded) },
+    onDragBy: { [weak self] dx, dy in self?.moveBy(deltaX: dx, deltaY: dy) }
+  )
+
+  /// Whether the orb's catcher is on screen, for tests.
+  var orbInputIsPlaced: Bool { orbInput.isPlaced }
   private let screenProvider: () -> NSScreen?
 
   init(
@@ -154,6 +258,20 @@ final class DesktopPanelController: NSObject, DesktopPanelControlling, NSWindowD
     // could be clicked. While the agent rests it gives up the mouse outright.
     // A resident assistant must not be in the way of anything.
     retainedPanel.ignoresMouseEvents = storedMode == .orb
+    orbInput.place(over: storedMode == .orb ? orbScreenRect(geometry.orb) : nil)
+  }
+
+  /// Where a rectangle placed inside the stage sits on the screen.
+  private func orbScreenRect(_ placed: CGRect) -> NSRect {
+    let frame = retainedPanel.frame
+    // Flutter measures from the top-left with y growing downwards; AppKit
+    // measures from the bottom-left with y growing upwards.
+    return NSRect(
+      x: frame.minX + placed.minX,
+      y: frame.maxY - placed.maxY,
+      width: placed.width,
+      height: placed.height
+    )
   }
 
   /// Size the window returns to when the conversation is shown.
@@ -237,6 +355,7 @@ final class DesktopPanelController: NSObject, DesktopPanelControlling, NSWindowD
     retainedPanel.setFrameOrigin(
       NSPoint(x: origin.x + deltaX, y: origin.y - deltaY)
     )
+    updateInteractiveRect()
   }
 
   /// Whether the resting orb floats above other windows.
