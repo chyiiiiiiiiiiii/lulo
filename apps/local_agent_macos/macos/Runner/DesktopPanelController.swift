@@ -104,6 +104,8 @@ final class DesktopPanelController: DesktopPanelControlling {
   /// How long the app is given to start drawing a requested change of form.
   static let transitionRequestGrace: TimeInterval = 0.25
   private var pendingRequest: DispatchWorkItem?
+  /// When the current change of form was asked for, for latency reporting.
+  private var requestedAt: UInt64?
   /// Whether the conversation frame has been applied at least once.
   private var hasPresentedExpanded = false
 
@@ -131,17 +133,34 @@ final class DesktopPanelController: DesktopPanelControlling {
     }
     storedMode = mode
     Self.applyTitlebarChrome(for: mode, on: retainedPanel)
+    let chromed = performanceTimestamp()
     applyFrame(for: mode)
+    let framed = performanceTimestamp()
+    var focused: UInt64?
     switch mode {
     case .orb:
       // Give up focus so the desktop orb never sits in front of the user's
       // typing target.
       retainedPanel.resignKey()
+      focused = performanceTimestamp()
       retainedPanel.orderFrontRegardless()
     case .expanded:
       NSApp.activate(ignoringOtherApps: true)
+      focused = performanceTimestamp()
       retainedPanel.orderFrontRegardless()
       retainedPanel.makeKey()
+    }
+    if let chromed, let framed, let focused,
+      let ordered = performanceTimestamp()
+    {
+      reportPanelPerformance(
+        operation: "present_\(mode == .orb ? "orb" : "expanded")",
+        stages: [
+          "apply_frame": framed - chromed,
+          "hand_over_focus": focused - framed,
+          "order_front": ordered - focused,
+        ]
+      )
     }
     onPresentationModeChanged?(mode)
   }
@@ -217,6 +236,7 @@ final class DesktopPanelController: DesktopPanelControlling {
     // The app answered, so the window must not settle itself underneath it.
     pendingRequest?.cancel()
     pendingRequest = nil
+    let answered = performanceTimestamp()
     guard let screen = screenProvider() ?? NSScreen.main else {
       let empty = NSRect.zero
       return Self.transitionGeometry(conversation: empty, orb: empty).geometry
@@ -236,12 +256,25 @@ final class DesktopPanelController: DesktopPanelControlling {
     retainedPanel.ignoresMouseEvents = true
     retainedPanel.setFrame(canvas, display: true)
     retainedPanel.orderFrontRegardless()
+    if let requestedAt, let answered, let grown = performanceTimestamp() {
+      // Splits the wait before anything can move into the part spent getting
+      // the request to the app and back, and the part spent resizing the
+      // window. They need different fixes, so they are reported apart.
+      reportPanelPerformance(
+        operation: "transition_begin",
+        stages: [
+          "round_trip": answered - requestedAt,
+          "grow_window": grown - answered,
+        ]
+      )
+    }
     return geometry
   }
 
   /// Settles the window into `mode` and lets it take the mouse again.
   func endTransition(_ mode: DesktopPresentationMode) {
     precondition(Thread.isMainThread)
+    let landed = performanceTimestamp()
     retainedPanel.ignoresMouseEvents = false
     if mode == storedMode {
       // The form did not change after all, so nothing reports it; the frame
@@ -250,6 +283,16 @@ final class DesktopPanelController: DesktopPanelControlling {
     } else {
       setPresentationMode(mode)
     }
+    if let landed, let settled = performanceTimestamp(), let requestedAt {
+      reportPanelPerformance(
+        operation: "transition_end",
+        stages: [
+          "settle_window": settled - landed,
+          "whole_change": settled - requestedAt,
+        ]
+      )
+    }
+    requestedAt = nil
     isTransitioning = false
   }
 
@@ -400,6 +443,7 @@ final class DesktopPanelController: DesktopPanelControlling {
       self.pendingRequest = nil
       self.setPresentationMode(mode)
     }
+    requestedAt = performanceTimestamp()
     pendingRequest = fallback
     DispatchQueue.main.asyncAfter(
       deadline: .now() + Self.transitionRequestGrace,
