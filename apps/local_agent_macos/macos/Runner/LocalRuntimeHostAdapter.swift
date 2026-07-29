@@ -259,7 +259,10 @@ final class LocalRuntimeDesktopHostApi: DesktopHostApi {
   }
 
   /// Restates a stage geometry in the shape the app is handed.
-  private static func hostGeometry(
+  ///
+  /// Shared with the delegate, which reports the same geometry as an event
+  /// whenever the user changes the window's frame.
+  static func hostGeometry(
     _ geometry: DesktopTransitionGeometry
   ) -> HostTransitionGeometry {
     HostTransitionGeometry(

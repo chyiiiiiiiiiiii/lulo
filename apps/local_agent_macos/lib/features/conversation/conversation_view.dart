@@ -191,7 +191,9 @@ final class _ConversationChrome extends StatelessWidget {
   ///
   /// The conversation runs under a transparent titlebar so the surface reaches
   /// the top of the window, which also means the buttons sit on top of it.
-  static const double _windowButtonsWidth = 78;
+  /// They end 61 points in, so this is them plus the same breath of space a
+  /// titled window leaves before its title.
+  static const double _windowButtonsWidth = 70;
 
   @override
   Widget build(BuildContext context) => Padding(

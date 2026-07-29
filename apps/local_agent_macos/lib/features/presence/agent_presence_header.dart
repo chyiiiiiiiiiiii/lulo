@@ -164,6 +164,10 @@ final class _AgentPresenceHeaderState extends State<AgentPresenceHeader> {
       onPaint: widget.onOrbPaint,
       onSemanticBuild: widget.onSemanticBuild,
       shaderLoader: widget.shaderLoader,
+      // The header names the agent right beside this orb, and the orb's whole
+      // body already shows what it is doing. The state stays readable to
+      // assistive tech; only the caption goes.
+      showLabel: false,
     );
   }
 }

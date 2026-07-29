@@ -1135,6 +1135,12 @@ protocol DesktopHostEventApiProtocol {
   func onPresentationChangeRequested(target targetArg: HostPresentationMode, completion: @escaping (Result<Void, PigeonError>) -> Void)
   /// Asks the app to show its settings, from the menu bar or its shortcut.
   func onSettingsRequested(completion: @escaping (Result<Void, PigeonError>) -> Void)
+  /// Tells the app the window's frame has changed under its layout.
+  ///
+  /// The forms are laid out against the window's frame, and the frame belongs
+  /// to the user: they resize it, zoom it, and take it full screen. Without
+  /// this the conversation keeps drawing at the size the window no longer is.
+  func onPresentationGeometryChanged(geometry geometryArg: HostTransitionGeometry, completion: @escaping (Result<Void, PigeonError>) -> Void)
 }
 class DesktopHostEventApi: DesktopHostEventApiProtocol {
   private let binaryMessenger: FlutterBinaryMessenger
@@ -1212,6 +1218,29 @@ class DesktopHostEventApi: DesktopHostEventApiProtocol {
     let channelName: String = "dev.flutter.pigeon.local_agent_macos.DesktopHostEventApi.onSettingsRequested\(messageChannelSuffix)"
     let channel = FlutterBasicMessageChannel(name: channelName, binaryMessenger: binaryMessenger, codec: codec)
     channel.sendMessage(nil) { response in
+      guard let listResponse = response as? [Any?] else {
+        completion(.failure(createConnectionError(withChannelName: channelName)))
+        return
+      }
+      if listResponse.count > 1 {
+        let code: String = listResponse[0] as! String
+        let message: String? = nilOrValue(listResponse[1])
+        let details: String? = nilOrValue(listResponse[2])
+        completion(.failure(PigeonError(code: code, message: message, details: details)))
+      } else {
+        completion(.success(()))
+      }
+    }
+  }
+  /// Tells the app the window's frame has changed under its layout.
+  ///
+  /// The forms are laid out against the window's frame, and the frame belongs
+  /// to the user: they resize it, zoom it, and take it full screen. Without
+  /// this the conversation keeps drawing at the size the window no longer is.
+  func onPresentationGeometryChanged(geometry geometryArg: HostTransitionGeometry, completion: @escaping (Result<Void, PigeonError>) -> Void) {
+    let channelName: String = "dev.flutter.pigeon.local_agent_macos.DesktopHostEventApi.onPresentationGeometryChanged\(messageChannelSuffix)"
+    let channel = FlutterBasicMessageChannel(name: channelName, binaryMessenger: binaryMessenger, codec: codec)
+    channel.sendMessage([geometryArg] as [Any?]) { response in
       guard let listResponse = response as? [Any?] else {
         completion(.failure(createConnectionError(withChannelName: channelName)))
         return

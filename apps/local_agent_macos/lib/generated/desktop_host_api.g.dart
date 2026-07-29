@@ -1213,6 +1213,13 @@ abstract class DesktopHostEventApi {
   /// Asks the app to show its settings, from the menu bar or its shortcut.
   void onSettingsRequested();
 
+  /// Tells the app the window's frame has changed under its layout.
+  ///
+  /// The forms are laid out against the window's frame, and the frame belongs
+  /// to the user: they resize it, zoom it, and take it full screen. Without
+  /// this the conversation keeps drawing at the size the window no longer is.
+  void onPresentationGeometryChanged(HostTransitionGeometry geometry);
+
   static void setUp(
     DesktopHostEventApi? api, {
     BinaryMessenger? binaryMessenger,
@@ -1310,6 +1317,32 @@ abstract class DesktopHostEventApi {
         pigeonVar_channel.setMessageHandler((Object? message) async {
           try {
             api.onSettingsRequested();
+            return wrapResponse(empty: true);
+          } on PlatformException catch (e) {
+            return wrapResponse(error: e);
+          } catch (e) {
+            return wrapResponse(
+              error: PlatformException(code: 'error', message: e.toString()),
+            );
+          }
+        });
+      }
+    }
+    {
+      final pigeonVar_channel = BasicMessageChannel<Object?>(
+        'dev.flutter.pigeon.local_agent_macos.DesktopHostEventApi.onPresentationGeometryChanged$messageChannelSuffix',
+        pigeonChannelCodec,
+        binaryMessenger: binaryMessenger,
+      );
+      if (api == null) {
+        pigeonVar_channel.setMessageHandler(null);
+      } else {
+        pigeonVar_channel.setMessageHandler((Object? message) async {
+          final List<Object?> args = message! as List<Object?>;
+          final HostTransitionGeometry arg_geometry =
+              args[0]! as HostTransitionGeometry;
+          try {
+            api.onPresentationGeometryChanged(arg_geometry);
             return wrapResponse(empty: true);
           } on PlatformException catch (e) {
             return wrapResponse(error: e);

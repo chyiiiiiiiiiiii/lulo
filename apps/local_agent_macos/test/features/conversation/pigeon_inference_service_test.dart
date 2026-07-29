@@ -593,6 +593,10 @@ final class RecordingDesktopHostService implements DesktopHostService {
   Stream<void> get settingsRequests => const Stream<void>.empty();
 
   @override
+  Stream<DesktopTransitionGeometry> get geometryChanges =>
+      const Stream<DesktopTransitionGeometry>.empty();
+
+  @override
   Future<String> chooseModelFile() async => '';
 
   @override

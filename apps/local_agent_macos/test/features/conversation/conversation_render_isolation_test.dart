@@ -134,10 +134,10 @@ void main() {
         publishedStates.add(controller.semanticStateListenable.value);
       });
 
-      expect(find.text('Agent ready'), findsOneWidget);
+      expect(find.bySemanticsLabel('Agent ready'), findsOneWidget);
       await harness.start();
       await tester.pump();
-      expect(find.text('Thinking'), findsOneWidget);
+      expect(find.bySemanticsLabel('Thinking'), findsOneWidget);
       expect(publishedStates, <AgentPresenceState>[
         AgentPresenceState.thinking,
       ]);
@@ -150,7 +150,7 @@ void main() {
         ),
       );
       await tester.pump();
-      expect(find.text('Speaking'), findsOneWidget);
+      expect(find.bySemanticsLabel('Speaking'), findsOneWidget);
       expect(publishedStates, <AgentPresenceState>[
         AgentPresenceState.speaking,
       ]);
@@ -174,14 +174,14 @@ void main() {
       expect(observer.chromeBuilds, 0);
       expect(observer.modelStatusBuilds, 0);
       expect(publishedStates, isEmpty);
-      expect(find.text('Speaking'), findsOneWidget);
+      expect(find.bySemanticsLabel('Speaking'), findsOneWidget);
 
       publishedStates.clear();
       harness.inference.emit(
         const GenerationCompleted(GenerationId('generation-1')),
       );
       await tester.pumpAndSettle();
-      expect(find.text('Agent ready'), findsOneWidget);
+      expect(find.bySemanticsLabel('Agent ready'), findsOneWidget);
       expect(publishedStates, <AgentPresenceState>[AgentPresenceState.idle]);
       expect(publishedStates, isNot(contains(AgentPresenceState.listening)));
       expect(publishedStates, isNot(contains(AgentPresenceState.working)));
@@ -236,7 +236,7 @@ void main() {
     );
     await tester.pump();
 
-    expect(find.text('Attention needed'), findsOneWidget);
+    expect(find.bySemanticsLabel('Attention needed'), findsOneWidget);
     await tester.pumpWidget(const SizedBox.shrink());
   });
 

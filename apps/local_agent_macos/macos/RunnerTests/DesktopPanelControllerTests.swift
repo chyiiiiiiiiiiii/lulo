@@ -278,6 +278,72 @@ final class DesktopPanelControllerTests: XCTestCase {
     )
   }
 
+  func testTheWindowStaysWhereTheUserPutIt() {
+    let controller = Self.makeController()
+    controller.show()
+    controller.setPresentationMode(.expanded)
+    let placed = controller.retainedPanel.frame
+
+    // The user drags the window somewhere of their own choosing.
+    controller.moveBy(deltaX: -180, deltaY: -120)
+    let chosen = controller.retainedPanel.frame
+    XCTAssertNotEqual(chosen, placed)
+
+    // A change of form must not move it back: the frame belongs to the user,
+    // and a window that teleports home on every collapse and summon makes
+    // dragging it pointless.
+    controller.setPresentationMode(.orb)
+    XCTAssertEqual(controller.retainedPanel.frame, chosen)
+    controller.setPresentationMode(.expanded)
+    XCTAssertEqual(controller.retainedPanel.frame, chosen)
+
+    // Nor may a drawn change of form.
+    _ = controller.beginTransition()
+    controller.endTransition(.orb)
+    XCTAssertEqual(controller.retainedPanel.frame, chosen)
+  }
+
+  func testResizingTheWindowReportsTheNewGeometry() {
+    let controller = Self.makeController()
+    controller.show()
+    controller.setPresentationMode(.expanded)
+    var reported: [DesktopTransitionGeometry] = []
+    controller.onGeometryChanged = { reported.append($0) }
+
+    // The user makes the window larger; the forms are laid out against its
+    // frame, so the app has to hear about the new one or the conversation
+    // keeps drawing at the size the window no longer is.
+    var frame = controller.retainedPanel.frame
+    frame.size = NSSize(width: 900, height: 700)
+    controller.retainedPanel.setFrame(frame, display: true)
+
+    XCTAssertEqual(reported.last?.size, CGSize(width: 900, height: 700))
+    XCTAssertEqual(
+      reported.last?.conversation,
+      CGRect(x: 0, y: 0, width: 900, height: 700),
+      "The conversation does not fill the resized window"
+    )
+  }
+
+  func testTheButtonsAreAwayWhileTheChangeOfFormIsDrawn() {
+    let controller = Self.makeController()
+    controller.show()
+    controller.setPresentationMode(.expanded)
+    let close = controller.retainedPanel.standardWindowButton(.closeButton)
+    XCTAssertEqual(close?.isHidden, false)
+
+    // The buttons belong to the conversation. Left standing while it shrinks,
+    // they hang detached beside a form that is visibly leaving underneath
+    // them.
+    _ = controller.beginTransition()
+    XCTAssertEqual(close?.isHidden, true)
+
+    // And they come back with the conversation, including when the change of
+    // form lands back where it started.
+    controller.endTransition(.expanded)
+    XCTAssertEqual(close?.isHidden, false)
+  }
+
   func testTheWindowIsNoBiggerThanTheConversationItIsShowing() {
     // The window is the union of both forms, and it answers the mouse across
     // the whole of its frame however little it draws there — measured: a

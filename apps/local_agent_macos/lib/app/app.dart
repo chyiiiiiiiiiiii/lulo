@@ -132,6 +132,7 @@ final class _PresentationSwitchState extends State<_PresentationSwitch>
 
   StreamSubscription<DesktopPresentation>? _requests;
   StreamSubscription<void>? _settingsRequests;
+  StreamSubscription<DesktopTransitionGeometry>? _geometryChanges;
 
   /// The user's choices, and whether they are currently being looked at.
   AppSettings _settings = const AppSettings();
@@ -164,6 +165,14 @@ final class _PresentationSwitchState extends State<_PresentationSwitch>
         .listen((void _) {
           if (mounted) {
             setState(() => _showingSettings = true);
+          }
+        });
+    // The window's frame belongs to the user — resized, zoomed, or taken full
+    // screen — and the forms are laid out against it, so the layout follows.
+    _geometryChanges = widget.composition.presentationHost?.geometryChanges
+        .listen((DesktopTransitionGeometry stage) {
+          if (mounted && _canvas == null) {
+            setState(() => _stage = stage);
           }
         });
     // The form can also change without having been asked for here: the host
@@ -237,6 +246,7 @@ final class _PresentationSwitchState extends State<_PresentationSwitch>
   void dispose() {
     unawaited(_requests?.cancel());
     unawaited(_settingsRequests?.cancel());
+    unawaited(_geometryChanges?.cancel());
     widget.composition.presentationHost?.presentation.removeListener(
       _followPresentation,
     );
@@ -455,7 +465,10 @@ final class _PresentationSwitchState extends State<_PresentationSwitch>
         presenceOrb: hostsOrb
             ? _orb(
                 extent: AgentPresenceOrb.defaultOrbExtent,
-                showLabel: true,
+                // The orb already says what the agent is doing with its whole
+                // body; a caption spelling it out beside the title is noise.
+                // Its state stays readable to assistive tech.
+                showLabel: false,
                 // On the display's own cadence rather than the cheap stepped
                 // idle. The stepping was chosen when this was a small ornament
                 // nobody looked at; it is 5fps, and at that rate the vapour

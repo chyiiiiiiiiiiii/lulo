@@ -152,6 +152,14 @@ class AppDelegate: FlutterAppDelegate {
         completion: { _ in }
       )
     }
+    // The frame belongs to the user — resized, zoomed, or taken full screen —
+    // and the forms are laid out against it, so every change is reported.
+    panelController.onGeometryChanged = { geometry in
+      eventApi.onPresentationGeometryChanged(
+        geometry: LocalRuntimeDesktopHostApi.hostGeometry(geometry),
+        completion: { _ in }
+      )
+    }
     installSettingsMenuItem { eventApi.onSettingsRequested(completion: { _ in }) }
     installFileMenu()
     let eventSink = PigeonGenerationEventSink(api: eventApi)

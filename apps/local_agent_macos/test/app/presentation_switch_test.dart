@@ -231,6 +231,48 @@ void main() {
     expect(host.presentation.value, DesktopPresentation.orb);
   });
 
+  testWidgets('the conversation follows the window the user resizes', (
+    WidgetTester tester,
+  ) async {
+    final _FakePresentationHost host = _FakePresentationHost();
+    addTearDown(() => unawaited(host.dispose()));
+    final AppComposition composition = AppComposition(
+      () {},
+      storageService: InMemoryConversationStorageService(),
+      inferenceService: _HoldingInferenceService(),
+      presentationHost: host,
+    );
+    addTearDown(() => unawaited(composition.dispose()));
+
+    host.presentation.value = DesktopPresentation.expanded;
+    await tester.pumpWidget(
+      LocalAgentApp(
+        composition: composition,
+        presenceShaderLoader: _failShaderLoad,
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    // The user grows the window — a drag of its edge, the zoom button, or
+    // full screen; the layout must not keep drawing at the size it was.
+    host.changeGeometry(
+      const DesktopTransitionGeometry(
+        size: Size(1000, 700),
+        conversation: Rect.fromLTWH(0, 0, 1000, 700),
+        orb: Rect.fromLTWH(832, 532, 168, 168),
+      ),
+    );
+    await tester.pump();
+
+    expect(
+      tester.getRect(find.byKey(const Key('conversation-visibility'))).size,
+      const Size(1000, 700),
+      reason:
+          'The window was resized and the conversation stayed the old size.',
+    );
+  });
+
   testWidgets('the conversation keeps its corners rounded as it leaves', (
     WidgetTester tester,
   ) async {
@@ -443,10 +485,24 @@ final class _FakePresentationHost implements DesktopPresentationHost {
     _requests.add(target);
   }
 
+  final StreamController<DesktopTransitionGeometry> _geometryChanges =
+      StreamController<DesktopTransitionGeometry>.broadcast();
+
+  @override
+  Stream<DesktopTransitionGeometry> get geometryChanges =>
+      _geometryChanges.stream;
+
+  /// Stands in for the user resizing the window.
+  void changeGeometry(DesktopTransitionGeometry stage) {
+    geometry = stage;
+    _geometryChanges.add(stage);
+  }
+
   /// Releases the request stream.
   Future<void> dispose() async {
     await _requests.close();
     await _settings.close();
+    await _geometryChanges.close();
   }
 
   /// A canvas holding a centred conversation and an orb in the lower corner.

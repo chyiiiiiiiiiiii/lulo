@@ -196,6 +196,21 @@ final class PigeonDesktopHostService extends DesktopHostEventApi
     _settingsRequests.add(null);
   }
 
+  final StreamController<DesktopTransitionGeometry> _geometryChanges =
+      StreamController<DesktopTransitionGeometry>.broadcast();
+
+  @override
+  Stream<DesktopTransitionGeometry> get geometryChanges =>
+      _geometryChanges.stream;
+
+  @override
+  void onPresentationGeometryChanged(HostTransitionGeometry geometry) {
+    if (_disposed) {
+      return;
+    }
+    _geometryChanges.add(_geometry(geometry));
+  }
+
   @override
   Future<String> chooseModelFile() => _invokeResult(_hostApi.chooseModelFile);
 
@@ -396,6 +411,7 @@ final class PigeonDesktopHostService extends DesktopHostEventApi
     await _events.close();
     await _presentationRequests.close();
     await _settingsRequests.close();
+    await _geometryChanges.close();
   }
 }
 

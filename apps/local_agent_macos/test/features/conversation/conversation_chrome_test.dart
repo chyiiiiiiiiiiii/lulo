@@ -37,7 +37,7 @@ void main() {
 ///
 /// Three buttons starting near the leading edge and evenly spaced, plus the
 /// gap that keeps the title from crowding the last of them.
-const double _windowButtonsWidth = 78;
+const double _windowButtonsWidth = 70;
 
 ConversationViewModel _viewModel() {
   final RecordingConversationStorageService storage =

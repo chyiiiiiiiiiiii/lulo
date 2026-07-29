@@ -398,6 +398,13 @@ abstract interface class DesktopPresentationHost {
   /// than filling it.
   Future<DesktopTransitionGeometry> presentationGeometry();
 
+  /// The window's frame changing under the layout: resized, zoomed, or taken
+  /// full screen.
+  ///
+  /// The frame belongs to the user, so the forms are laid out against
+  /// whatever it currently is rather than against a size chosen at launch.
+  Stream<DesktopTransitionGeometry> get geometryChanges;
+
   /// Grows the window to cover both forms so a move between them can be drawn.
   ///
   /// The window is inert until [endPresentationTransition] settles it.

@@ -267,4 +267,11 @@ abstract class DesktopHostEventApi {
 
   /// Asks the app to show its settings, from the menu bar or its shortcut.
   void onSettingsRequested();
+
+  /// Tells the app the window's frame has changed under its layout.
+  ///
+  /// The forms are laid out against the window's frame, and the frame belongs
+  /// to the user: they resize it, zoom it, and take it full screen. Without
+  /// this the conversation keeps drawing at the size the window no longer is.
+  void onPresentationGeometryChanged(HostTransitionGeometry geometry);
 }
