@@ -54,9 +54,6 @@ final class _LocalAgentAppState extends State<LocalAgentApp> {
   }
 }
 
-/// Layout size the conversation keeps while the window is orb-sized.
-const Size _collapsedConversationSize = Size(720, 560);
-
 /// Chooses the surface for the window's current form.
 ///
 /// Only this widget rebuilds when the form changes, so switching between the
@@ -124,6 +121,13 @@ final class _PresentationSwitchState extends State<_PresentationSwitch>
   /// The canvas covering both forms, held only while the presence is moving.
   DesktopTransitionGeometry? _canvas;
 
+  /// Where each form sits inside the window, which never changes size.
+  ///
+  /// Both forms are drawn inside one window, so each is placed rather than
+  /// filling it. Until this arrives there is nothing to place anything
+  /// against, which lasts one round trip at launch.
+  DesktopTransitionGeometry? _stage;
+
   StreamSubscription<DesktopPresentation>? _requests;
 
   @override
@@ -147,11 +151,43 @@ final class _PresentationSwitchState extends State<_PresentationSwitch>
     // nothing left to draw.
     _requests = widget.composition.presentationHost?.presentationRequests
         .listen(_flyTo);
+    unawaited(_loadStage());
+    // The form can also change without having been asked for here: the host
+    // settles the window itself when the app does not answer in time. Leaving
+    // follows the form as well as the flight, or the conversation is left
+    // standing on a desktop that has already collapsed.
+    widget.composition.presentationHost?.presentation.addListener(
+      _followPresentation,
+    );
+  }
+
+  void _followPresentation() {
+    if (_canvas != null) {
+      return;
+    }
+    final DesktopPresentation? mode =
+        widget.composition.presentationHost?.presentation.value;
+    _leaving.value = mode == DesktopPresentation.orb ? 1 : 0;
+  }
+
+  Future<void> _loadStage() async {
+    final DesktopPresentationHost? host = widget.composition.presentationHost;
+    if (host == null) {
+      return;
+    }
+    final DesktopTransitionGeometry stage = await host.presentationGeometry();
+    if (!mounted) {
+      return;
+    }
+    setState(() => _stage = stage);
   }
 
   @override
   void dispose() {
     unawaited(_requests?.cancel());
+    widget.composition.presentationHost?.presentation.removeListener(
+      _followPresentation,
+    );
     _flight.dispose();
     _leaving.dispose();
     _presence.dispose();
@@ -341,6 +377,7 @@ final class _PresentationSwitchState extends State<_PresentationSwitch>
         // anchor the presence lands on is measured from this layout, and
         // Opacity already skips painting when there is nothing to see.
         return Opacity(
+          key: const Key('conversation-visibility'),
           opacity: leavingOpacityAt(_leaving.value),
           child: Transform.scale(
             scale: leavingScaleAt(_leaving.value),
@@ -365,65 +402,18 @@ final class _PresentationSwitchState extends State<_PresentationSwitch>
     );
   }
 
-  /// The window while it covers both forms and the presence is travelling.
-  ///
-  /// The conversation is placed where it actually is on screen rather than
-  /// filling the canvas, so it neither reflows nor appears to jump as the
-  /// window grows around it. The presence is drawn on top, in flight.
-  Widget _flightLayout(DesktopTransitionGeometry canvas) {
-    return Stack(
-      children: <Widget>[
-        Positioned.fromRect(
-          rect: canvas.conversation,
-          // Held at the size it was, because the canvas is a different shape
-          // and laying the conversation out to fill it would be a visible
-          // reflow in the middle of the move.
-          // The window's own corners are rounded by AppKit, but during a
-          // change of form that mask belongs to the canvas covering both
-          // shapes, so the conversation has to keep its own.
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(windowCornerRadius),
-            child: SizedBox.fromSize(
-              size: canvas.conversation.size,
-              // The conversation carries its own departure, on its own clock,
-              // which started when the user asked rather than when the canvas
-              // was ready.
-              child: _conversation(hostsOrb: false),
-            ),
-          ),
-        ),
-        AnimatedBuilder(
-          animation: _flight,
-          builder: (BuildContext context, Widget? _) {
-            final Rect rect = _flightRect(canvas);
-            return Positioned.fromRect(
-              rect: rect,
-              // The shader renders at the size it is given rather than being
-              // scaled afterwards, so the presence stays crisp all the way.
-              child: _orb(
-                extent: rect.width,
-                showLabel: false,
-                continuousMotion: true,
-              ),
-            );
-          },
-        ),
-      ],
-    );
-  }
-
   /// Where the presence is right now, between the two forms.
-  Rect _flightRect(DesktopTransitionGeometry canvas) {
+  Rect _flightRect(DesktopTransitionGeometry stage) {
     final Rect? from = _flightFrom;
     final Rect? to = _flightTo;
     if (from == null || to == null) {
-      return from ?? to ?? Rect.zero;
+      return from ?? to ?? stage.orb;
     }
     return presenceFlightRect(
       from: from,
       to: to,
       t: _flight.value,
-      bounds: Offset.zero & canvas.size,
+      bounds: Offset.zero & stage.size,
     );
   }
 
@@ -433,49 +423,63 @@ final class _PresentationSwitchState extends State<_PresentationSwitch>
     if (host == null) {
       return _conversation(hostsOrb: true);
     }
-    final DesktopTransitionGeometry? canvas = _canvas;
-    if (canvas != null) {
-      return _flightLayout(canvas);
+    // The canvas of a change of form and the resting stage are the same
+    // rectangle now that the window keeps one size, so one layout serves both.
+    final DesktopTransitionGeometry? stage = _canvas ?? _stage;
+    if (stage == null) {
+      return const SizedBox.shrink();
     }
     return ValueListenableBuilder<DesktopPresentation>(
       valueListenable: host.presentation,
       builder: (BuildContext context, DesktopPresentation mode, Widget? _) {
         final bool expanded = mode == DesktopPresentation.expanded;
-        final Widget conversation = _conversation(hostsOrb: expanded);
+        final bool travelling = _canvas != null;
         return Stack(
           children: <Widget>[
-            // The conversation stays mounted in both forms. It owns its
-            // ViewModel and tearing it down cancels whatever is being
-            // generated, so collapsing to the orb mid-answer would throw the
-            // answer away. Offstage keeps it alive without painting it.
-            Offstage(
-              offstage: !expanded,
-              // While collapsed the window is orb-sized, which is far too small
-              // for the conversation to lay out in. Giving it its own size
-              // keeps that layout stable instead of overflowing every frame.
-              child: expanded
-                  ? conversation
-                  : OverflowBox(
-                      alignment: Alignment.topLeft,
-                      maxWidth: _collapsedConversationSize.width,
-                      maxHeight: _collapsedConversationSize.height,
-                      child: SizedBox.fromSize(
-                        size: _collapsedConversationSize,
-                        child: conversation,
-                      ),
-                    ),
-            ),
-            if (!expanded)
-              DesktopOrbSurface(
-                orb: _orb(
-                  extent: desktopOrbExtent,
-                  showLabel: false,
-                  continuousMotion: true,
+            Positioned.fromRect(
+              rect: stage.conversation,
+              // The window's own corners are rounded by AppKit, but that mask
+              // belongs to the whole stage, so the conversation drawn inside
+              // it keeps its own.
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(windowCornerRadius),
+                child: SizedBox.fromSize(
+                  size: stage.conversation.size,
+                  child: _conversation(hostsOrb: expanded && !travelling),
                 ),
-                presenceShaderLoader: widget.presenceShaderLoader,
-                onSummon: () =>
-                    host.setPresentation(DesktopPresentation.expanded),
-                onDragBy: host.moveWindowBy,
+              ),
+            ),
+            if (travelling)
+              AnimatedBuilder(
+                animation: _flight,
+                builder: (BuildContext context, Widget? _) {
+                  final Rect rect = _flightRect(stage);
+                  return Positioned.fromRect(
+                    rect: rect,
+                    // Rendered at the size it is passing through rather than
+                    // scaled, so the shader stays crisp all the way.
+                    child: _orb(
+                      extent: rect.width,
+                      showLabel: false,
+                      continuousMotion: true,
+                    ),
+                  );
+                },
+              )
+            else if (!expanded)
+              Positioned.fromRect(
+                rect: stage.orb,
+                child: DesktopOrbSurface(
+                  orb: _orb(
+                    extent: desktopOrbExtent,
+                    showLabel: false,
+                    continuousMotion: true,
+                  ),
+                  presenceShaderLoader: widget.presenceShaderLoader,
+                  onSummon: () =>
+                      host.setPresentation(DesktopPresentation.expanded),
+                  onDragBy: host.moveWindowBy,
+                ),
               ),
           ],
         );

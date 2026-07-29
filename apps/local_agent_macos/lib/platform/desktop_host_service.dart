@@ -379,6 +379,12 @@ abstract interface class DesktopPresentationHost {
   /// Drags the window by [delta], in logical points.
   Future<void> moveWindowBy(Offset delta);
 
+  /// Where each form sits inside the window, which never changes size.
+  ///
+  /// Both forms are drawn inside one window, so each has to be placed rather
+  /// than filling it.
+  Future<DesktopTransitionGeometry> presentationGeometry();
+
   /// Grows the window to cover both forms so a move between them can be drawn.
   ///
   /// The window is inert until [endPresentationTransition] settles it.

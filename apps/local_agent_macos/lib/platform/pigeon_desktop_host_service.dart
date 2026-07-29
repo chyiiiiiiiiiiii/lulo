@@ -183,26 +183,38 @@ final class PigeonDesktopHostService extends DesktopHostEventApi
   }
 
   @override
+  Future<DesktopTransitionGeometry> presentationGeometry() {
+    return _invokeResult((HostRequest request) async {
+      return _geometry(await _hostApi.presentationGeometry(request));
+    });
+  }
+
+  /// Restates a host geometry in the app's own vocabulary.
+  static DesktopTransitionGeometry _geometry(HostTransitionGeometry geometry) {
+    return DesktopTransitionGeometry(
+      size: Size(geometry.width, geometry.height),
+      conversation: Rect.fromLTWH(
+        geometry.conversationLeft,
+        geometry.conversationTop,
+        geometry.conversationWidth,
+        geometry.conversationHeight,
+      ),
+      orb: Rect.fromLTWH(
+        geometry.orbLeft,
+        geometry.orbTop,
+        geometry.orbExtent,
+        geometry.orbExtent,
+      ),
+    );
+  }
+
+  @override
   Future<DesktopTransitionGeometry> beginPresentationTransition(
     DesktopPresentation target,
   ) {
     return _invokeResult((HostRequest request) async {
-      final HostTransitionGeometry geometry = await _hostApi
-          .beginPresentationTransition(request, _hostMode(target));
-      return DesktopTransitionGeometry(
-        size: Size(geometry.width, geometry.height),
-        conversation: Rect.fromLTWH(
-          geometry.conversationLeft,
-          geometry.conversationTop,
-          geometry.conversationWidth,
-          geometry.conversationHeight,
-        ),
-        orb: Rect.fromLTWH(
-          geometry.orbLeft,
-          geometry.orbTop,
-          geometry.orbExtent,
-          geometry.orbExtent,
-        ),
+      return _geometry(
+        await _hostApi.beginPresentationTransition(request, _hostMode(target)),
       );
     });
   }

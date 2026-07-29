@@ -54,9 +54,15 @@ void main() {
       isEmpty,
       reason: 'Collapsing to the orb cancelled the running generation.',
     );
+    // Both forms live in one window that never changes size, so the
+    // conversation is hidden by being fully transparent rather than by being
+    // taken out of the tree — it stays laid out so the presence has a place
+    // to land when it comes back.
     expect(
-      find.byKey(const Key('conversation-composer-field')),
-      findsNothing,
+      tester
+          .widget<Opacity>(find.byKey(const Key('conversation-visibility')))
+          .opacity,
+      0,
       reason: 'The conversation must not be visible while collapsed.',
     );
 
@@ -319,6 +325,9 @@ final class _FakePresentationHost implements DesktopPresentationHost {
 
   /// Modes passed to [endPresentationTransition], in order.
   final List<DesktopPresentation> endedTransitions = <DesktopPresentation>[];
+
+  @override
+  Future<DesktopTransitionGeometry> presentationGeometry() async => geometry;
 
   @override
   Future<DesktopTransitionGeometry> beginPresentationTransition(

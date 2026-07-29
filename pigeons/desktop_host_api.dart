@@ -208,6 +208,12 @@ abstract class DesktopHostApi {
   /// Moves the window by a delta in logical points, for dragging the orb.
   void moveWindowBy(HostRequest request, double deltaX, double deltaY);
 
+  /// Where each form sits inside the window, which never changes size.
+  ///
+  /// Needed at rest and not only during a change of form: both forms are
+  /// drawn inside one window, so each has to be placed rather than filling it.
+  HostTransitionGeometry presentationGeometry(HostRequest request);
+
   /// Grows the window to cover both forms and stops it taking the mouse.
   ///
   /// Returns where each form sits inside that grown window, so the move

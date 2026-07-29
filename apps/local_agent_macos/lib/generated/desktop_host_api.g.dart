@@ -1059,6 +1059,33 @@ class DesktopHostApi {
     );
   }
 
+  /// Where each form sits inside the window, which never changes size.
+  ///
+  /// Needed at rest and not only during a change of form: both forms are
+  /// drawn inside one window, so each has to be placed rather than filling it.
+  Future<HostTransitionGeometry> presentationGeometry(
+    HostRequest request,
+  ) async {
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.local_agent_macos.DesktopHostApi.presentationGeometry$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channel = BasicMessageChannel<Object?>(
+      pigeonVar_channelName,
+      pigeonChannelCodec,
+      binaryMessenger: pigeonVar_binaryMessenger,
+    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(
+      <Object?>[request],
+    );
+    final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
+
+    final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: false,
+    );
+    return pigeonVar_replyValue! as HostTransitionGeometry;
+  }
+
   /// Grows the window to cover both forms and stops it taking the mouse.
   ///
   /// Returns where each form sits inside that grown window, so the move

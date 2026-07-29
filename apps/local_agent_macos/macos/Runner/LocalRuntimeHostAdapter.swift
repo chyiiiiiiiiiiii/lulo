@@ -188,6 +188,30 @@ final class LocalRuntimeDesktopHostApi: DesktopHostApi {
     onMain { self.panelController.setPresentationMode(resolved) }
   }
 
+  func presentationGeometry(request: HostRequest) throws -> HostTransitionGeometry {
+    try validatePanelRequest(request)
+    var geometry: DesktopTransitionGeometry?
+    onMain { geometry = self.panelController.currentGeometry() }
+    return Self.hostGeometry(geometry!)
+  }
+
+  /// Restates a stage geometry in the shape the app is handed.
+  private static func hostGeometry(
+    _ geometry: DesktopTransitionGeometry
+  ) -> HostTransitionGeometry {
+    HostTransitionGeometry(
+      width: Double(geometry.size.width),
+      height: Double(geometry.size.height),
+      conversationLeft: Double(geometry.conversation.minX),
+      conversationTop: Double(geometry.conversation.minY),
+      conversationWidth: Double(geometry.conversation.width),
+      conversationHeight: Double(geometry.conversation.height),
+      orbLeft: Double(geometry.orb.minX),
+      orbTop: Double(geometry.orb.minY),
+      orbExtent: Double(geometry.orb.width)
+    )
+  }
+
   func beginPresentationTransition(
     request: HostRequest,
     target: HostPresentationMode,
@@ -201,21 +225,7 @@ final class LocalRuntimeDesktopHostApi: DesktopHostApi {
     }
     onMain {
       let geometry = self.panelController.beginTransition()
-      completion(
-        .success(
-          HostTransitionGeometry(
-            width: Double(geometry.size.width),
-            height: Double(geometry.size.height),
-            conversationLeft: Double(geometry.conversation.minX),
-            conversationTop: Double(geometry.conversation.minY),
-            conversationWidth: Double(geometry.conversation.width),
-            conversationHeight: Double(geometry.conversation.height),
-            orbLeft: Double(geometry.orb.minX),
-            orbTop: Double(geometry.orb.minY),
-            orbExtent: Double(geometry.orb.width)
-          )
-        )
-      )
+      completion(.success(Self.hostGeometry(geometry)))
     }
   }
 

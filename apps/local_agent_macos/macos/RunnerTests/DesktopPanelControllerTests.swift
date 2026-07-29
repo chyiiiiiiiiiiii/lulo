@@ -172,6 +172,30 @@ final class DesktopPanelControllerTests: XCTestCase {
     }
   }
 
+  func testTheWindowIsTheSameSizeInBothForms() {
+    let controller = Self.makeController()
+    controller.show()
+
+    controller.setPresentationMode(.expanded)
+    let conversation = controller.retainedPanel.frame
+
+    controller.setPresentationMode(.orb)
+    let orb = controller.retainedPanel.frame
+
+    // Resizing a window that hosts the engine blocks until the engine returns
+    // a frame at the new size, and that wait is released by a one second
+    // timeout rather than by the frame arriving. Measured at 1.004s on every
+    // collapse. A window that never changes size never enters that wait.
+    XCTAssertEqual(
+      conversation,
+      orb,
+      "The window changed size between forms and will stall for a second"
+    )
+
+    // It has to be large enough for both, or one of them is cut off.
+    XCTAssertTrue(orb.width >= 720 && orb.height >= 560)
+  }
+
   func testPanelCanJoinSpacesAndRemainAvailableBesideFullscreenApps() {
     let panel = NSPanel(
       contentRect: NSRect(x: 0, y: 0, width: 480, height: 640),

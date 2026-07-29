@@ -800,6 +800,11 @@ protocol DesktopHostApi {
   func setPresentationMode(request: HostRequest, mode: HostPresentationMode) throws
   /// Moves the window by a delta in logical points, for dragging the orb.
   func moveWindowBy(request: HostRequest, deltaX: Double, deltaY: Double) throws
+  /// Where each form sits inside the window, which never changes size.
+  ///
+  /// Needed at rest and not only during a change of form: both forms are
+  /// drawn inside one window, so each has to be placed rather than filling it.
+  func presentationGeometry(request: HostRequest) throws -> HostTransitionGeometry
   /// Grows the window to cover both forms and stops it taking the mouse.
   ///
   /// Returns where each form sits inside that grown window, so the move
@@ -1001,6 +1006,25 @@ class DesktopHostApiSetup {
       }
     } else {
       moveWindowByChannel.setMessageHandler(nil)
+    }
+    /// Where each form sits inside the window, which never changes size.
+    ///
+    /// Needed at rest and not only during a change of form: both forms are
+    /// drawn inside one window, so each has to be placed rather than filling it.
+    let presentationGeometryChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.local_agent_macos.DesktopHostApi.presentationGeometry\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
+    if let api = api {
+      presentationGeometryChannel.setMessageHandler { message, reply in
+        let args = message as! [Any?]
+        let requestArg = args[0] as! HostRequest
+        do {
+          let result = try api.presentationGeometry(request: requestArg)
+          reply(wrapResult(result))
+        } catch {
+          reply(wrapError(error))
+        }
+      }
+    } else {
+      presentationGeometryChannel.setMessageHandler(nil)
     }
     /// Grows the window to cover both forms and stops it taking the mouse.
     ///

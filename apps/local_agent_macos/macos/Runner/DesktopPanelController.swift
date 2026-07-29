@@ -26,6 +26,7 @@ protocol DesktopPanelControlling: AnyObject {
   func toggle()
   func setPresentationMode(_ mode: DesktopPresentationMode)
   func moveBy(deltaX: CGFloat, deltaY: CGFloat)
+  func currentGeometry() -> DesktopTransitionGeometry
   func beginTransition() -> DesktopTransitionGeometry
   func endTransition(_ mode: DesktopPresentationMode)
 }
@@ -85,6 +86,62 @@ final class DesktopPanelController: DesktopPanelControlling {
     // liability: macOS would restore the orb's frame on the next launch and the
     // conversation would open at orb size. Each form positions itself instead.
     panel.setFrameAutosaveName("")
+    startTrackingPointer()
+  }
+
+  deinit {
+    for monitor in pointerMonitors {
+      NSEvent.removeMonitor(monitor)
+    }
+  }
+
+  /// Follows the pointer so the stage only takes the mouse where it is drawn.
+  ///
+  /// A window that ignores the mouse receives no events at all, so it cannot
+  /// notice the pointer coming back. Watching globally is what lets it be
+  /// given up and taken again.
+  private func startTrackingPointer() {
+    let events: NSEvent.EventTypeMask = [
+      .mouseMoved, .leftMouseDragged, .rightMouseDragged,
+    ]
+    let global = NSEvent.addGlobalMonitorForEvents(matching: events) {
+      [weak self] _ in
+      self?.updatePointerPassThrough()
+    }
+    if let global {
+      pointerMonitors.append(global)
+    }
+    let local = NSEvent.addLocalMonitorForEvents(matching: events) {
+      [weak self] event in
+      self?.updatePointerPassThrough()
+      return event
+    }
+    if let local {
+      pointerMonitors.append(local)
+    }
+  }
+
+  private func updatePointerPassThrough() {
+    let wanted = !interactiveRect.contains(NSEvent.mouseLocation)
+    if retainedPanel.ignoresMouseEvents != wanted {
+      retainedPanel.ignoresMouseEvents = wanted
+    }
+  }
+
+  /// Recomputes the part of the stage that is currently drawn on.
+  private func updateInteractiveRect() {
+    let geometry = currentGeometry()
+    let placed = storedMode == .orb ? geometry.orb : geometry.conversation
+    let frame = retainedPanel.frame
+    // Flutter measures from the top-left with y growing downwards; AppKit
+    // measures from the bottom-left with y growing upwards.
+    interactiveRect = NSRect(
+      x: frame.minX + placed.minX,
+      y: frame.maxY - placed.maxY,
+      width: placed.width,
+      height: placed.height
+    )
+    updatePointerPassThrough()
   }
 
   /// Size the window returns to when the conversation is shown.
@@ -106,6 +163,15 @@ final class DesktopPanelController: DesktopPanelControlling {
   private var pendingRequest: DispatchWorkItem?
   /// When the current change of form was asked for, for latency reporting.
   private var requestedAt: UInt64?
+
+  /// Where on screen the window currently has something to click on.
+  ///
+  /// The window is the stage covering both forms and is therefore far larger
+  /// than whichever form is showing. Left as it is, it would swallow every
+  /// click over that whole area, including ones meant for whatever is behind
+  /// it. Only the part actually being drawn takes the mouse.
+  private var interactiveRect: NSRect = .zero
+  private var pointerMonitors: [Any] = []
   /// Whether the conversation frame has been applied at least once.
   private var hasPresentedExpanded = false
 
@@ -121,15 +187,6 @@ final class DesktopPanelController: DesktopPanelControlling {
     precondition(Thread.isMainThread)
     guard mode != storedMode else {
       return
-    }
-    // Only remember a size the conversation actually used. At launch the mode
-    // is nominally expanded while the window still carries its loaded frame,
-    // and adopting that would fix the conversation at the wrong size.
-    // While transitioning the frame is the canvas covering both forms, not a
-    // size the conversation ever used; beginTransition already recorded the
-    // real one before growing.
-    if storedMode == .expanded, hasPresentedExpanded, !isTransitioning {
-      expandedSize = retainedPanel.frame.size
     }
     storedMode = mode
     Self.applyTitlebarChrome(for: mode, on: retainedPanel)
@@ -175,6 +232,7 @@ final class DesktopPanelController: DesktopPanelControlling {
     retainedPanel.setFrameOrigin(
       NSPoint(x: origin.x + deltaX, y: origin.y - deltaY)
     )
+    updateInteractiveRect()
   }
 
   /// Shows the window buttons with the conversation and hides them with the orb.
@@ -241,12 +299,6 @@ final class DesktopPanelController: DesktopPanelControlling {
       let empty = NSRect.zero
       return Self.transitionGeometry(conversation: empty, orb: empty).geometry
     }
-    // Remember the conversation's size before growing. Leaving the expanded
-    // form normally records it, but during a transition the frame is the
-    // union, and adopting that would reopen the conversation at canvas size.
-    if storedMode == .expanded, hasPresentedExpanded {
-      expandedSize = retainedPanel.frame.size
-    }
     isTransitioning = true
     let visible = screen.visibleFrame
     let (canvas, geometry) = Self.transitionGeometry(
@@ -275,7 +327,6 @@ final class DesktopPanelController: DesktopPanelControlling {
   func endTransition(_ mode: DesktopPresentationMode) {
     precondition(Thread.isMainThread)
     let landed = performanceTimestamp()
-    retainedPanel.ignoresMouseEvents = false
     if mode == storedMode {
       // The form did not change after all, so nothing reports it; the frame
       // still has to come back from the canvas.
@@ -294,6 +345,8 @@ final class DesktopPanelController: DesktopPanelControlling {
     }
     requestedAt = nil
     isTransitioning = false
+    // Handed back to the pointer, which decides it from where the cursor is.
+    updateInteractiveRect()
   }
 
   /// Where the orb rests on `visible`, in screen coordinates.
@@ -320,18 +373,43 @@ final class DesktopPanelController: DesktopPanelControlling {
     )
   }
 
+  /// Where each form sits inside the window, which never changes size.
+  func currentGeometry() -> DesktopTransitionGeometry {
+    precondition(Thread.isMainThread)
+    guard let screen = screenProvider() ?? NSScreen.main else {
+      return Self.transitionGeometry(conversation: .zero, orb: .zero).geometry
+    }
+    let visible = screen.visibleFrame
+    return Self.transitionGeometry(
+      conversation: conversationFrame(in: visible),
+      orb: orbFrame(in: visible)
+    ).geometry
+  }
+
+  /// The one frame the window keeps, whichever form it is showing.
+  ///
+  /// Both forms are drawn inside it and the window itself never changes size.
+  /// Resizing a window that hosts the engine blocks until the engine returns a
+  /// frame at the new size, and that wait is released by a one second timeout
+  /// rather than by the frame arriving — measured at 1.004s on every collapse,
+  /// a number too round to be work. A window that keeps one size never enters
+  /// that wait, and there is nothing left for a change of form to stall on.
+  func stageFrame(in visible: NSRect) -> NSRect {
+    return Self.transitionGeometry(
+      conversation: conversationFrame(in: visible),
+      orb: orbFrame(in: visible)
+    ).canvas
+  }
+
   private func applyFrame(for mode: DesktopPresentationMode) {
     guard let screen = screenProvider() ?? NSScreen.main else {
       return
     }
-    let visible = screen.visibleFrame
-    switch mode {
-    case .orb:
-      retainedPanel.setFrame(orbFrame(in: visible), display: true)
-    case .expanded:
+    if mode == .expanded {
       hasPresentedExpanded = true
-      retainedPanel.setFrame(conversationFrame(in: visible), display: true)
     }
+    retainedPanel.setFrame(stageFrame(in: screen.visibleFrame), display: true)
+    updateInteractiveRect()
   }
 
   /// Edge length of the desktop orb, in points.
