@@ -1059,6 +1059,34 @@ class DesktopHostApi {
     );
   }
 
+  /// Applies the user's choices about how the resting orb behaves.
+  ///
+  /// Held natively rather than consulted per change of form, because the
+  /// window has to behave correctly even when the app is busy.
+  Future<void> setWindowBehaviour(
+    HostRequest request,
+    bool keepOrbOnTop,
+    bool followAcrossSpaces,
+  ) async {
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.local_agent_macos.DesktopHostApi.setWindowBehaviour$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channel = BasicMessageChannel<Object?>(
+      pigeonVar_channelName,
+      pigeonChannelCodec,
+      binaryMessenger: pigeonVar_binaryMessenger,
+    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(
+      <Object?>[request, keepOrbOnTop, followAcrossSpaces],
+    );
+    final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
+
+    _extractReplyValueOrThrow(
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: true,
+    );
+  }
+
   /// Where each form sits inside the window, which never changes size.
   ///
   /// Needed at rest and not only during a change of form: both forms are
@@ -1157,6 +1185,9 @@ abstract class DesktopHostEventApi {
   /// Dart side is busy or wedged.
   void onPresentationChangeRequested(HostPresentationMode target);
 
+  /// Asks the app to show its settings, from the menu bar or its shortcut.
+  void onSettingsRequested();
+
   static void setUp(
     DesktopHostEventApi? api, {
     BinaryMessenger? binaryMessenger,
@@ -1231,6 +1262,29 @@ abstract class DesktopHostEventApi {
               args[0]! as HostPresentationMode;
           try {
             api.onPresentationChangeRequested(arg_target);
+            return wrapResponse(empty: true);
+          } on PlatformException catch (e) {
+            return wrapResponse(error: e);
+          } catch (e) {
+            return wrapResponse(
+              error: PlatformException(code: 'error', message: e.toString()),
+            );
+          }
+        });
+      }
+    }
+    {
+      final pigeonVar_channel = BasicMessageChannel<Object?>(
+        'dev.flutter.pigeon.local_agent_macos.DesktopHostEventApi.onSettingsRequested$messageChannelSuffix',
+        pigeonChannelCodec,
+        binaryMessenger: binaryMessenger,
+      );
+      if (api == null) {
+        pigeonVar_channel.setMessageHandler(null);
+      } else {
+        pigeonVar_channel.setMessageHandler((Object? message) async {
+          try {
+            api.onSettingsRequested();
             return wrapResponse(empty: true);
           } on PlatformException catch (e) {
             return wrapResponse(error: e);

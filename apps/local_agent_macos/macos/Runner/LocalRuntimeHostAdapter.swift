@@ -188,6 +188,20 @@ final class LocalRuntimeDesktopHostApi: DesktopHostApi {
     onMain { self.panelController.setPresentationMode(resolved) }
   }
 
+  func setWindowBehaviour(
+    request: HostRequest,
+    keepOrbOnTop: Bool,
+    followAcrossSpaces: Bool
+  ) throws {
+    try validatePanelRequest(request)
+    onMain {
+      self.panelController.setWindowBehaviour(
+        keepOrbOnTop: keepOrbOnTop,
+        followAcrossSpaces: followAcrossSpaces
+      )
+    }
+  }
+
   func presentationGeometry(request: HostRequest) throws -> HostTransitionGeometry {
     try validatePanelRequest(request)
     var geometry: DesktopTransitionGeometry?

@@ -26,6 +26,7 @@ protocol DesktopPanelControlling: AnyObject {
   func toggle()
   func setPresentationMode(_ mode: DesktopPresentationMode)
   func moveBy(deltaX: CGFloat, deltaY: CGFloat)
+  func setWindowBehaviour(keepOrbOnTop: Bool, followAcrossSpaces: Bool)
   func currentGeometry() -> DesktopTransitionGeometry
   func beginTransition() -> DesktopTransitionGeometry
   func endTransition(_ mode: DesktopPresentationMode)
@@ -230,6 +231,19 @@ final class DesktopPanelController: DesktopPanelControlling {
     )
   }
 
+  /// Whether the resting orb floats above other windows.
+  private var keepOrbOnTop = true
+  /// Whether the resting orb follows the user between Spaces.
+  private var followAcrossSpaces = true
+
+  /// Applies the user's choices about how the resting orb behaves.
+  func setWindowBehaviour(keepOrbOnTop: Bool, followAcrossSpaces: Bool) {
+    precondition(Thread.isMainThread)
+    self.keepOrbOnTop = keepOrbOnTop
+    self.followAcrossSpaces = followAcrossSpaces
+    applyWindowBehaviour(for: storedMode)
+  }
+
   /// Makes the window behave like what it currently is.
   ///
   /// The conversation is an ordinary window: it sits in the normal order, it
@@ -240,12 +254,24 @@ final class DesktopPanelController: DesktopPanelControlling {
   private func applyWindowBehaviour(for mode: DesktopPresentationMode) {
     switch mode {
     case .orb:
-      retainedPanel.level = .floating
+      // Back to an accessory: no Dock tile and no menu bar for something that
+      // is only a presence on the desktop.
+      NSApp.setActivationPolicy(.accessory)
+      retainedPanel.level = keepOrbOnTop ? .floating : .normal
       retainedPanel.styleMask.insert(.nonactivatingPanel)
-      retainedPanel.collectionBehavior.formUnion([
-        .canJoinAllSpaces, .fullScreenAuxiliary,
-      ])
+      if followAcrossSpaces {
+        retainedPanel.collectionBehavior.formUnion([
+          .canJoinAllSpaces, .fullScreenAuxiliary,
+        ])
+      } else {
+        retainedPanel.collectionBehavior.subtract([.canJoinAllSpaces])
+        retainedPanel.collectionBehavior.formUnion([.fullScreenAuxiliary])
+      }
     case .expanded:
+      // An accessory app has no menu bar at all, so its own commands would
+      // have nowhere to live. The conversation is a real window and the app
+      // becomes a real app for as long as it is showing.
+      NSApp.setActivationPolicy(.regular)
       retainedPanel.level = .normal
       retainedPanel.styleMask.remove(.nonactivatingPanel)
       retainedPanel.collectionBehavior.subtract([

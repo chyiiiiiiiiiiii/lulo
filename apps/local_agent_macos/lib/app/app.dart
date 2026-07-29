@@ -8,6 +8,8 @@ import '../features/presence/agent_presence_controller.dart';
 import '../features/presence/agent_presence_orb.dart';
 import '../features/presence/desktop_orb_surface.dart';
 import '../features/presence/presence_flight.dart';
+import '../features/settings/app_settings.dart';
+import '../features/settings/settings_sheet.dart';
 import '../platform/desktop_host_service.dart';
 import 'app_composition.dart';
 
@@ -129,6 +131,11 @@ final class _PresentationSwitchState extends State<_PresentationSwitch>
   DesktopTransitionGeometry? _stage;
 
   StreamSubscription<DesktopPresentation>? _requests;
+  StreamSubscription<void>? _settingsRequests;
+
+  /// The user's choices, and whether they are currently being looked at.
+  AppSettings _settings = const AppSettings();
+  bool _showingSettings = false;
 
   @override
   void initState() {
@@ -152,6 +159,13 @@ final class _PresentationSwitchState extends State<_PresentationSwitch>
     _requests = widget.composition.presentationHost?.presentationRequests
         .listen(_flyTo);
     unawaited(_loadStage());
+    unawaited(_loadSettings());
+    _settingsRequests = widget.composition.presentationHost?.settingsRequests
+        .listen((void _) {
+          if (mounted) {
+            setState(() => _showingSettings = true);
+          }
+        });
     // The form can also change without having been asked for here: the host
     // settles the window itself when the app does not answer in time. Leaving
     // follows the form as well as the flight, or the conversation is left
@@ -170,6 +184,36 @@ final class _PresentationSwitchState extends State<_PresentationSwitch>
     _leaving.value = mode == DesktopPresentation.orb ? 1 : 0;
   }
 
+  /// Reads the user's choices and puts the window into them.
+  Future<void> _loadSettings() async {
+    final AppSettings settings = await widget.composition.settingsStore.load();
+    if (!mounted) {
+      return;
+    }
+    setState(() => _settings = settings);
+    await _applySettings(settings);
+    if (settings.openConversationOnLaunch) {
+      await widget.composition.presentationHost?.setPresentation(
+        DesktopPresentation.expanded,
+      );
+    }
+  }
+
+  /// Hands the choices to the window and writes them down.
+  Future<void> _applySettings(AppSettings settings) async {
+    await widget.composition.presentationHost?.setWindowBehaviour(
+      keepOrbOnTop: settings.keepOrbOnTop,
+      followAcrossSpaces: settings.followAcrossSpaces,
+    );
+  }
+
+  /// Applies a choice as it is made, rather than behind a save button.
+  Future<void> _changeSettings(AppSettings settings) async {
+    setState(() => _settings = settings);
+    await _applySettings(settings);
+    await widget.composition.settingsStore.save(settings);
+  }
+
   Future<void> _loadStage() async {
     final DesktopPresentationHost? host = widget.composition.presentationHost;
     if (host == null) {
@@ -185,6 +229,7 @@ final class _PresentationSwitchState extends State<_PresentationSwitch>
   @override
   void dispose() {
     unawaited(_requests?.cancel());
+    unawaited(_settingsRequests?.cancel());
     widget.composition.presentationHost?.presentation.removeListener(
       _followPresentation,
     );
@@ -449,7 +494,22 @@ final class _PresentationSwitchState extends State<_PresentationSwitch>
                 borderRadius: BorderRadius.circular(windowCornerRadius),
                 child: SizedBox.fromSize(
                   size: stage.conversation.size,
-                  child: _conversation(hostsOrb: expanded && !travelling),
+                  child: Stack(
+                    children: <Widget>[
+                      _conversation(hostsOrb: expanded && !travelling),
+                      // Over the conversation rather than in a window of its
+                      // own: the window is the stage and resizing it is what
+                      // this app cannot afford to do.
+                      if (_showingSettings && expanded && !travelling)
+                        SettingsSheet(
+                          settings: _settings,
+                          onChanged: (AppSettings settings) =>
+                              unawaited(_changeSettings(settings)),
+                          onClose: () =>
+                              setState(() => _showingSettings = false),
+                        ),
+                    ],
+                  ),
                 ),
               ),
             ),

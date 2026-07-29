@@ -379,6 +379,15 @@ abstract interface class DesktopPresentationHost {
   /// Drags the window by [delta], in logical points.
   Future<void> moveWindowBy(Offset delta);
 
+  /// Requests from the menu bar to show the app's settings.
+  Stream<void> get settingsRequests;
+
+  /// Applies the user's choices about how the resting orb behaves.
+  Future<void> setWindowBehaviour({
+    required bool keepOrbOnTop,
+    required bool followAcrossSpaces,
+  });
+
   /// Where each form sits inside the window, which never changes size.
   ///
   /// Both forms are drawn inside one window, so each has to be placed rather

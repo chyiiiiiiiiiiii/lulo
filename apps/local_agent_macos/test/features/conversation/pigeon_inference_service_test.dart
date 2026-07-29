@@ -590,6 +590,15 @@ final class RecordingDesktopHostService implements DesktopHostService {
       const Stream<DesktopPresentation>.empty();
 
   @override
+  Stream<void> get settingsRequests => const Stream<void>.empty();
+
+  @override
+  Future<void> setWindowBehaviour({
+    required bool keepOrbOnTop,
+    required bool followAcrossSpaces,
+  }) async {}
+
+  @override
   Future<DesktopTransitionGeometry> presentationGeometry() async =>
       beginPresentationTransition(DesktopPresentation.orb);
 

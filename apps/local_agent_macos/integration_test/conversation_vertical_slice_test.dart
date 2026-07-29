@@ -28,7 +28,10 @@ void main() {
       await composition.presentationHost!.setPresentation(
         DesktopPresentation.expanded,
       );
-      await tester.pumpAndSettle();
+      // Not pumpAndSettle: the presence animates continuously on the display's
+      // cadence, so there is never a frame with nothing scheduled to settle on.
+      await tester.pump(const Duration(milliseconds: 400));
+      await tester.pump();
 
       expect(find.text('Start a conversation'), findsOneWidget);
       expect(find.byKey(const Key('agent-presence-fallback')), findsOneWidget);
@@ -79,7 +82,7 @@ void main() {
       );
 
       await tester.pumpWidget(const SizedBox.shrink());
-      await tester.pumpAndSettle();
+      await tester.pump();
     },
   );
 }

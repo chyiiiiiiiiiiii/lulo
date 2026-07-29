@@ -208,6 +208,16 @@ abstract class DesktopHostApi {
   /// Moves the window by a delta in logical points, for dragging the orb.
   void moveWindowBy(HostRequest request, double deltaX, double deltaY);
 
+  /// Applies the user's choices about how the resting orb behaves.
+  ///
+  /// Held natively rather than consulted per change of form, because the
+  /// window has to behave correctly even when the app is busy.
+  void setWindowBehaviour(
+    HostRequest request,
+    bool keepOrbOnTop,
+    bool followAcrossSpaces,
+  );
+
   /// Where each form sits inside the window, which never changes size.
   ///
   /// Needed at rest and not only during a change of form: both forms are
@@ -247,4 +257,7 @@ abstract class DesktopHostEventApi {
   /// itself if the app does not answer, so the hotkey still works when the
   /// Dart side is busy or wedged.
   void onPresentationChangeRequested(HostPresentationMode target);
+
+  /// Asks the app to show its settings, from the menu bar or its shortcut.
+  void onSettingsRequested();
 }

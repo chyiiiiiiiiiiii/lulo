@@ -182,6 +182,34 @@ final class PigeonDesktopHostService extends DesktopHostEventApi
     );
   }
 
+  final StreamController<void> _settingsRequests =
+      StreamController<void>.broadcast();
+
+  @override
+  Stream<void> get settingsRequests => _settingsRequests.stream;
+
+  @override
+  void onSettingsRequested() {
+    if (_disposed) {
+      return;
+    }
+    _settingsRequests.add(null);
+  }
+
+  @override
+  Future<void> setWindowBehaviour({
+    required bool keepOrbOnTop,
+    required bool followAcrossSpaces,
+  }) {
+    return _invoke(
+      (HostRequest request) => _hostApi.setWindowBehaviour(
+        request,
+        keepOrbOnTop,
+        followAcrossSpaces,
+      ),
+    );
+  }
+
   @override
   Future<DesktopTransitionGeometry> presentationGeometry() {
     return _invokeResult((HostRequest request) async {
@@ -364,6 +392,7 @@ final class PigeonDesktopHostService extends DesktopHostEventApi
     }
     await _events.close();
     await _presentationRequests.close();
+    await _settingsRequests.close();
   }
 }
 

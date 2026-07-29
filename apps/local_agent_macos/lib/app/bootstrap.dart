@@ -1,6 +1,8 @@
 import 'dart:async';
+import 'dart:io';
 
 import '../features/conversation/pigeon_inference_service.dart';
+import '../features/settings/app_settings.dart';
 import '../platform/pigeon_desktop_host_service.dart';
 import 'app_composition.dart';
 import 'fake_runtime.dart';
@@ -83,6 +85,7 @@ AppComposition createAppComposition({
       },
       storageService: storageService,
       inferenceService: inferenceService,
+      settingsStore: _settingsStore(),
       presentationHost: desktopHostService,
     );
   }
@@ -99,6 +102,22 @@ AppComposition createAppComposition({
     },
     storageService: storageService,
     inferenceService: inferenceService,
+    settingsStore: _settingsStore(),
     presentationHost: desktopHostService,
+  );
+}
+
+/// Where the user's choices live between runs.
+///
+/// Under Application Support like any other Mac app's own data. A home that
+/// cannot be resolved falls back to memory, so settings are forgotten rather
+/// than the app refusing to start.
+SettingsStore _settingsStore() {
+  final String? home = Platform.environment['HOME'];
+  if (home == null || home.isEmpty) {
+    return InMemorySettingsStore();
+  }
+  return FileSettingsStore(
+    directory: Directory('$home/Library/Application Support/Pocket Agent'),
   );
 }

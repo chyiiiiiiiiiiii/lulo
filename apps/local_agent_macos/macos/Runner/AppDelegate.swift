@@ -3,8 +3,56 @@ import Carbon
 import FlutterMacOS
 import InferenceService
 
+/// Carries a menu item's action to a closure.
+final class MenuActionTarget: NSObject {
+  init(action: @escaping () -> Void) {
+    self.action = action
+  }
+
+  private let action: () -> Void
+
+  @objc func run() {
+    action()
+  }
+}
+
 @main
 class AppDelegate: FlutterAppDelegate {
+  /// Kept so the menu item has something to send its action to.
+  private var settingsMenuTarget: MenuActionTarget?
+
+  /// Puts Settings where every Mac app keeps it, under its own menu.
+  ///
+  /// Built in code rather than in the nib because the app menu is assembled
+  /// from the bundle name at load, and this has to attach to whatever it ends
+  /// up being called.
+  private func installSettingsMenuItem(_ action: @escaping () -> Void) {
+    guard let appMenu = NSApp.mainMenu?.item(at: 0)?.submenu else {
+      return
+    }
+    let target = MenuActionTarget(action: action)
+    settingsMenuTarget = target
+    // The template menu already carries the standard settings item, which
+    // macOS renames and places for us. Adding another leaves the user with two
+    // of them, so this takes over the one that is already there and only
+    // builds one when the template has none.
+    if let existing = appMenu.items.first(where: { $0.keyEquivalent == "," }) {
+      existing.target = target
+      existing.action = #selector(MenuActionTarget.run)
+      existing.isEnabled = true
+      return
+    }
+    let item = NSMenuItem(
+      title: "Settings…",
+      action: #selector(MenuActionTarget.run),
+      keyEquivalent: ","
+    )
+    item.target = target
+    // Directly under About, which is where a Mac user reaches for it.
+    appMenu.insertItem(item, at: min(1, appMenu.numberOfItems))
+    appMenu.insertItem(.separator(), at: min(2, appMenu.numberOfItems))
+  }
+
   private var menuBarController: MenuBarController?
   private var hotKeyController: GlobalHotKeyController?
   private var desktopHostApi: LocalRuntimeDesktopHostApi?
@@ -60,6 +108,7 @@ class AppDelegate: FlutterAppDelegate {
         completion: { _ in }
       )
     }
+    installSettingsMenuItem { eventApi.onSettingsRequested(completion: { _ in }) }
     let eventSink = PigeonGenerationEventSink(api: eventApi)
     let eventBridge = GenerationEventBridge(
       sink: eventSink,

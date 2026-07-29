@@ -800,6 +800,11 @@ protocol DesktopHostApi {
   func setPresentationMode(request: HostRequest, mode: HostPresentationMode) throws
   /// Moves the window by a delta in logical points, for dragging the orb.
   func moveWindowBy(request: HostRequest, deltaX: Double, deltaY: Double) throws
+  /// Applies the user's choices about how the resting orb behaves.
+  ///
+  /// Held natively rather than consulted per change of form, because the
+  /// window has to behave correctly even when the app is busy.
+  func setWindowBehaviour(request: HostRequest, keepOrbOnTop: Bool, followAcrossSpaces: Bool) throws
   /// Where each form sits inside the window, which never changes size.
   ///
   /// Needed at rest and not only during a change of form: both forms are
@@ -1007,6 +1012,27 @@ class DesktopHostApiSetup {
     } else {
       moveWindowByChannel.setMessageHandler(nil)
     }
+    /// Applies the user's choices about how the resting orb behaves.
+    ///
+    /// Held natively rather than consulted per change of form, because the
+    /// window has to behave correctly even when the app is busy.
+    let setWindowBehaviourChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.local_agent_macos.DesktopHostApi.setWindowBehaviour\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
+    if let api = api {
+      setWindowBehaviourChannel.setMessageHandler { message, reply in
+        let args = message as! [Any?]
+        let requestArg = args[0] as! HostRequest
+        let keepOrbOnTopArg = args[1] as! Bool
+        let followAcrossSpacesArg = args[2] as! Bool
+        do {
+          try api.setWindowBehaviour(request: requestArg, keepOrbOnTop: keepOrbOnTopArg, followAcrossSpaces: followAcrossSpacesArg)
+          reply(wrapResult(nil))
+        } catch {
+          reply(wrapError(error))
+        }
+      }
+    } else {
+      setWindowBehaviourChannel.setMessageHandler(nil)
+    }
     /// Where each form sits inside the window, which never changes size.
     ///
     /// Needed at rest and not only during a change of form: both forms are
@@ -1081,6 +1107,8 @@ protocol DesktopHostEventApiProtocol {
   /// itself if the app does not answer, so the hotkey still works when the
   /// Dart side is busy or wedged.
   func onPresentationChangeRequested(target targetArg: HostPresentationMode, completion: @escaping (Result<Void, PigeonError>) -> Void)
+  /// Asks the app to show its settings, from the menu bar or its shortcut.
+  func onSettingsRequested(completion: @escaping (Result<Void, PigeonError>) -> Void)
 }
 class DesktopHostEventApi: DesktopHostEventApiProtocol {
   private let binaryMessenger: FlutterBinaryMessenger
@@ -1139,6 +1167,25 @@ class DesktopHostEventApi: DesktopHostEventApiProtocol {
     let channelName: String = "dev.flutter.pigeon.local_agent_macos.DesktopHostEventApi.onPresentationChangeRequested\(messageChannelSuffix)"
     let channel = FlutterBasicMessageChannel(name: channelName, binaryMessenger: binaryMessenger, codec: codec)
     channel.sendMessage([targetArg] as [Any?]) { response in
+      guard let listResponse = response as? [Any?] else {
+        completion(.failure(createConnectionError(withChannelName: channelName)))
+        return
+      }
+      if listResponse.count > 1 {
+        let code: String = listResponse[0] as! String
+        let message: String? = nilOrValue(listResponse[1])
+        let details: String? = nilOrValue(listResponse[2])
+        completion(.failure(PigeonError(code: code, message: message, details: details)))
+      } else {
+        completion(.success(()))
+      }
+    }
+  }
+  /// Asks the app to show its settings, from the menu bar or its shortcut.
+  func onSettingsRequested(completion: @escaping (Result<Void, PigeonError>) -> Void) {
+    let channelName: String = "dev.flutter.pigeon.local_agent_macos.DesktopHostEventApi.onSettingsRequested\(messageChannelSuffix)"
+    let channel = FlutterBasicMessageChannel(name: channelName, binaryMessenger: binaryMessenger, codec: codec)
+    channel.sendMessage(nil) { response in
       guard let listResponse = response as? [Any?] else {
         completion(.failure(createConnectionError(withChannelName: channelName)))
         return

@@ -230,6 +230,57 @@ void main() {
     expect(host.presentation.value, DesktopPresentation.orb);
   });
 
+  testWidgets('a choice made in settings reaches the window itself', (
+    WidgetTester tester,
+  ) async {
+    final _FakePresentationHost host = _FakePresentationHost();
+    addTearDown(() => unawaited(host.dispose()));
+    final AppComposition composition = AppComposition(
+      () {},
+      storageService: InMemoryConversationStorageService(),
+      inferenceService: _HoldingInferenceService(),
+      presentationHost: host,
+    );
+    addTearDown(() => unawaited(composition.dispose()));
+
+    host.presentation.value = DesktopPresentation.expanded;
+    await tester.pumpWidget(
+      LocalAgentApp(
+        composition: composition,
+        presenceShaderLoader: _failShaderLoad,
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    // Settings that only record a preference are decoration. Every switch
+    // here changes how the window behaves, so the window has to hear about it.
+    expect(host.windowBehaviours.last, (true, true));
+
+    host.requestSettings();
+    await tester.pump();
+    expect(find.byKey(const Key('settings-sheet')), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('setting-keep-orb-on-top')));
+    await tester.pump();
+    await tester.pump();
+
+    expect(
+      host.windowBehaviours.last,
+      (false, true),
+      reason: 'Turning the orb off the top never reached the window.',
+    );
+    expect(
+      (await composition.settingsStore.load()).keepOrbOnTop,
+      isFalse,
+      reason: 'The choice would not have survived a restart.',
+    );
+
+    await tester.tap(find.byKey(const Key('settings-close-button')));
+    await tester.pump();
+    expect(find.byKey(const Key('settings-sheet')), findsNothing);
+  });
+
   testWidgets('changing form never rebuilds the presence orb', (
     WidgetTester tester,
   ) async {
@@ -311,7 +362,10 @@ final class _FakePresentationHost implements DesktopPresentationHost {
   }
 
   /// Releases the request stream.
-  Future<void> dispose() => _requests.close();
+  Future<void> dispose() async {
+    await _requests.close();
+    await _settings.close();
+  }
 
   /// A canvas holding a centred conversation and an orb in the lower corner.
   DesktopTransitionGeometry geometry = const DesktopTransitionGeometry(
@@ -325,6 +379,25 @@ final class _FakePresentationHost implements DesktopPresentationHost {
 
   /// Modes passed to [endPresentationTransition], in order.
   final List<DesktopPresentation> endedTransitions = <DesktopPresentation>[];
+
+  final StreamController<void> _settings = StreamController<void>.broadcast();
+
+  @override
+  Stream<void> get settingsRequests => _settings.stream;
+
+  /// Stands in for the menu bar asking for settings.
+  void requestSettings() => _settings.add(null);
+
+  /// Choices the app has pushed to the host, in order.
+  final List<(bool, bool)> windowBehaviours = <(bool, bool)>[];
+
+  @override
+  Future<void> setWindowBehaviour({
+    required bool keepOrbOnTop,
+    required bool followAcrossSpaces,
+  }) async {
+    windowBehaviours.add((keepOrbOnTop, followAcrossSpaces));
+  }
 
   @override
   Future<DesktopTransitionGeometry> presentationGeometry() async => geometry;
