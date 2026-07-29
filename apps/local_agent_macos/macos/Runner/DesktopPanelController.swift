@@ -68,9 +68,6 @@ final class OrbInputPanel {
   /// Whether the catcher is on screen, for tests.
   var isPlaced: Bool { panel.isVisible }
 
-  /// What it covers, for tests.
-  var placedFrame: NSRect { panel.frame }
-
   /// Its identity to the window server, so a test can ask who owns a point.
   var windowNumber: Int { panel.windowNumber }
 
@@ -315,9 +312,6 @@ final class DesktopPanelController: NSObject, DesktopPanelControlling, NSWindowD
   /// When the current change of form was asked for, for latency reporting.
   private var requestedAt: UInt64?
 
-  /// Whether the agent has already settled on a display.
-  private var hasChosenDisplay = false
-
   /// Reports every mode change, including ones the hotkey initiates, so the
   /// Flutter surface can render the matching form.
   var onPresentationModeChanged: ((DesktopPresentationMode) -> Void)?
@@ -347,7 +341,7 @@ final class DesktopPanelController: NSObject, DesktopPanelControlling, NSWindowD
     // wherever the user had it. Reached here as well as through a drawn
     // transition, because the hotkey's fallback settles the window without
     // one and must land in the same place.
-    if !isTransitioning && !retainedPanel.styleMask.contains(.fullScreen) {
+    if !isTransitioning && !isFullScreen {
       retainedPanel.setFrame(homeFrame(for: mode), display: true)
       updateInteractiveRect()
     }
@@ -556,7 +550,9 @@ final class DesktopPanelController: NSObject, DesktopPanelControlling, NSWindowD
     retainedStage.interactiveRect = .zero
     retainedPanel.orderFrontRegardless()
     let home = homeFrame(for: target)
-    if home != retainedPanel.frame {
+    // Never while the window is the screen: a full-screen window's frame
+    // belongs to the system, and setting it from here fights the Space.
+    if !isFullScreen && home != retainedPanel.frame {
       NSAnimationContext.runAnimationGroup { context in
         context.duration = 0.22
         context.timingFunction = CAMediaTimingFunction(name: .easeOut)
@@ -579,8 +575,11 @@ final class DesktopPanelController: NSObject, DesktopPanelControlling, NSWindowD
   func endTransition(_ mode: DesktopPresentationMode) {
     precondition(Thread.isMainThread)
     let landed = performanceTimestamp()
-    // Parked exactly at the target form's home, however far the glide got.
-    retainedPanel.setFrame(homeFrame(for: mode), display: true)
+    // Parked exactly at the target form's home, however far the glide got —
+    // unless the window is the screen, whose frame belongs to the system.
+    if !isFullScreen {
+      retainedPanel.setFrame(homeFrame(for: mode), display: true)
+    }
     if mode == storedMode {
       // The form did not change after all; the buttons it hid for the journey
       // still have to come back.
@@ -632,7 +631,7 @@ final class DesktopPanelController: NSObject, DesktopPanelControlling, NSWindowD
       conversation: frame,
       orb: orbRect(inStage: frame)
     ).geometry
-    geometry.fullScreen = retainedPanel.styleMask.contains(.fullScreen)
+    geometry.fullScreen = isFullScreen
     return geometry
   }
 
@@ -734,14 +733,25 @@ final class DesktopPanelController: NSObject, DesktopPanelControlling, NSWindowD
   /// dragged around the desktop, says nothing about where the user wants
   /// their conversation.
   private func rememberExpandedFrame() {
-    if storedMode == .expanded && !retainedPanel.styleMask.contains(.fullScreen)
-    {
+    if storedMode == .expanded && !isFullScreen {
       rememberedExpandedFrame = retainedPanel.frame
     }
   }
 
   /// Reports the stage's geometry whenever the window's frame changes it.
   var onGeometryChanged: ((DesktopTransitionGeometry) -> Void)?
+
+  /// Stands in for the real full-screen bit in tests.
+  ///
+  /// AppKit refuses to set `.fullScreen` on a window outside a real
+  /// full-screen transition, so the tests that pin full-screen behaviour need
+  /// somewhere else to say it.
+  var isFullScreenOverride: (() -> Bool)?
+
+  /// Whether the window is currently the screen.
+  private var isFullScreen: Bool {
+    isFullScreenOverride?() ?? retainedPanel.styleMask.contains(.fullScreen)
+  }
 
   /// Edge length of the desktop orb, in points.
   static let orbSide: CGFloat = 168
@@ -859,24 +869,6 @@ final class DesktopPanelController: NSObject, DesktopPanelControlling, NSWindowD
       execute: fallback
     )
     request(mode)
-  }
-
-  /// Centres the agent on the display the pointer is on.
-  ///
-  /// Only used the first time it appears. Doing it on every show dragged the
-  /// agent onto whichever display the cursor happened to be over, so putting
-  /// the conversation away could carry it to another screen.
-  private func moveToActiveDisplay() {
-    guard !hasChosenDisplay, let screen = screenProvider() else {
-      return
-    }
-    hasChosenDisplay = true
-    let visibleFrame = screen.visibleFrame
-    let origin = NSPoint(
-      x: visibleFrame.midX - retainedPanel.frame.width / 2,
-      y: visibleFrame.midY - retainedPanel.frame.height / 2
-    )
-    retainedPanel.setFrameOrigin(origin)
   }
 
   /// The display the agent is already on.

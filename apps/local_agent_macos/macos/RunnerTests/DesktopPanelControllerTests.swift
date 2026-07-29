@@ -319,6 +319,30 @@ final class DesktopPanelControllerTests: XCTestCase {
     XCTAssertEqual(controller.retainedPanel.frame, chosen)
   }
 
+  func testAFullScreenWindowIsNeverMovedByAChangeOfForm() {
+    // A full-screen window's frame belongs to the system: setting it from
+    // here fights the Space it lives in. The change of form is still drawn —
+    // the orb rests in the stage's own corner — but the window stays exactly
+    // the screen. AppKit refuses to set the real mask bit outside a genuine
+    // transition, so the tests say it through the override.
+    let controller = Self.makeController()
+    controller.show()
+    controller.setPresentationMode(.expanded)
+    controller.isFullScreenOverride = { true }
+    let frame = controller.retainedPanel.frame
+
+    _ = controller.beginTransition(to: .orb)
+    controller.endTransition(.orb)
+    XCTAssertEqual(controller.retainedPanel.frame, frame)
+
+    controller.setPresentationMode(.expanded)
+    XCTAssertEqual(controller.retainedPanel.frame, frame)
+
+    // And the geometry says the window is the screen, which is how the app
+    // knows the buttons are away.
+    XCTAssertTrue(controller.currentGeometry().fullScreen)
+  }
+
   func testResizingTheWindowReportsTheNewGeometry() {
     let controller = Self.makeController()
     controller.show()
