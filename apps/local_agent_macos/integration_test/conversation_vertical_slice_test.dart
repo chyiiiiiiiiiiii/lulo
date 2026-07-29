@@ -43,7 +43,7 @@ void main() {
       await tester.pump();
       await tester.tap(find.byKey(const Key('conversation-submit-button')));
 
-      await tester.pump(const Duration(milliseconds: 90));
+      await _pumpUntil(tester, find.textContaining('Local inference'));
       expect(find.textContaining('Local inference'), findsOneWidget);
       expect(find.byKey(const Key('conversation-stop-button')), findsOneWidget);
 
@@ -64,7 +64,14 @@ void main() {
       await tester.pump();
       await tester.tap(find.byKey(const Key('conversation-submit-button')));
 
-      await tester.pump(const Duration(milliseconds: 250));
+      await _pumpUntil(
+        tester,
+        find.text(
+          'Local inference is streaming through the real app pipeline. '
+          'This preview is deterministic and runs without a network '
+          'connection.',
+        ),
+      );
 
       expect(
         find.text(
@@ -75,6 +82,11 @@ void main() {
         findsOneWidget,
       );
       expect(find.text('Response stopped'), findsOneWidget);
+      await _pumpUntil(
+        tester,
+        find.byKey(const Key('terminal-markdown')),
+        count: 2,
+      );
       expect(find.byKey(const Key('terminal-markdown')), findsNWidgets(2));
       expect(
         find.byKey(const Key('conversation-submit-button')),
@@ -85,6 +97,24 @@ void main() {
       await tester.pump();
     },
   );
+}
+
+/// Pumps until [finder] matches, or gives up.
+///
+/// The runtime streams on its own clock, so a fixed pump is a guess about how
+/// fast the machine is that day. Waiting for the thing itself is not.
+Future<void> _pumpUntil(
+  WidgetTester tester,
+  Finder finder, {
+  int count = 1,
+}) async {
+  const Duration step = Duration(milliseconds: 50);
+  for (int attempt = 0; attempt < 80; attempt += 1) {
+    if (finder.evaluate().length >= count) {
+      return;
+    }
+    await tester.pump(step);
+  }
 }
 
 Future<ui.FragmentProgram> _failShaderLoad() async {
