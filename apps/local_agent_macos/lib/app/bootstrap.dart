@@ -87,6 +87,19 @@ AppComposition createAppComposition({
   );
 }
 
+/// Native context the local model runs with, in tokens.
+///
+/// Has to hold the conversation so far plus the answer being written.
+const int localModelContextSize = 4096;
+
+/// The most tokens one answer may run to.
+///
+/// Deliberately half the context: enough for a long, structured answer while
+/// leaving the other half for the conversation that prompted it. The old
+/// budget of 512 cut real answers off mid-sentence — a model that stops
+/// halfway through its point reads as broken, not as concise.
+const int localAnswerTokenBudget = 2048;
+
 /// Builds the inference for one model, paired with the way to release it.
 ///
 /// Called once at launch and again whenever the user chooses a different
@@ -111,10 +124,10 @@ OwnedInferenceService createInferenceService({
       config: LocalModelConfig(
         modelId: 'gemma-4-E4B-it',
         modelPath: modelPath,
-        contextSize: 4096,
+        contextSize: localModelContextSize,
         temperature: 0.7,
         topP: 0.95,
-        maxTokens: 512,
+        maxTokens: localAnswerTokenBudget,
         seed: 7,
       ),
     );

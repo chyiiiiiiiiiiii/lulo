@@ -54,6 +54,19 @@ void main() {
     }
   });
 
+  test('an answer is given room to finish', () {
+    // 512 tokens cut real answers off mid-sentence, which reads as the app
+    // being broken rather than the model being concise. The budget has to fit
+    // a long structured answer and still leave the context room for the
+    // conversation that prompted it.
+    expect(localAnswerTokenBudget, greaterThanOrEqualTo(2048));
+    expect(
+      localModelContextSize - localAnswerTokenBudget,
+      greaterThanOrEqualTo(localAnswerTokenBudget),
+      reason: 'The answer budget crowds the conversation out of the context.',
+    );
+  });
+
   test('LiteRT bootstrap rejects a missing model path', () {
     expect(
       () => createAppComposition(
