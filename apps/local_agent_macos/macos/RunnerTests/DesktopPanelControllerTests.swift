@@ -278,6 +278,32 @@ final class DesktopPanelControllerTests: XCTestCase {
     )
   }
 
+  func testTheWindowIsNoBiggerThanTheConversationItIsShowing() {
+    // The window is the union of both forms, and it answers the mouse across
+    // the whole of its frame however little it draws there — measured: a
+    // titled window claims every point it covers whatever its content's alpha
+    // is. Any part of the window the conversation does not fill is therefore
+    // an invisible wall over the desktop, which is exactly what a resident
+    // assistant must never be.
+    let controller = Self.makeController()
+    controller.show()
+    controller.setPresentationMode(.expanded)
+    let geometry = controller.currentGeometry()
+
+    XCTAssertEqual(geometry.size, controller.retainedPanel.frame.size)
+    XCTAssertEqual(
+      geometry.conversation,
+      CGRect(origin: .zero, size: geometry.size),
+      "The window is larger than the conversation, and the difference is a wall"
+    )
+    // Which holds only because the agent rests inside the conversation's own
+    // rectangle rather than somewhere the window would have to stretch to.
+    XCTAssertTrue(
+      geometry.conversation.contains(geometry.orb),
+      "The orb rests outside the conversation, so the window covers both"
+    )
+  }
+
   func testTheStageOnlyAnswersTheMouseWhereItIsDrawn() {
     let controller = Self.makeController()
     controller.show()

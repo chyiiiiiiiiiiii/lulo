@@ -122,6 +122,16 @@ final class _FakeGenerationOperation {
   final List<Timer> _timers = <Timer>[];
   bool _terminal = false;
 
+  /// How long the preview takes to say its piece.
+  ///
+  /// Deliberately about a second rather than the fifth of one it used to be.
+  /// The preview exists to show what a local answer arriving looks like, and
+  /// at the old pace the whole response landed before a person could see it
+  /// stream — the stop button appeared and vanished inside a single frame on a
+  /// busy machine, which is a thing neither a user nor a test can catch.
+  static const Duration _firstChunk = Duration(milliseconds: 140);
+  static const Duration _betweenChunks = Duration(milliseconds: 300);
+
   void start() {
     if (_terminal) {
       return;
@@ -129,7 +139,7 @@ final class _FakeGenerationOperation {
     controller.add(GenerationStarted(generation));
     for (int index = 0; index < chunks.length; index += 1) {
       _timers.add(
-        Timer(Duration(milliseconds: 35 + (index * 55)), () {
+        Timer(_firstChunk + (_betweenChunks * index), () {
           if (!_terminal) {
             controller.add(
               GenerationDelta(
@@ -142,7 +152,7 @@ final class _FakeGenerationOperation {
       );
     }
     _timers.add(
-      Timer(Duration(milliseconds: 35 + (chunks.length * 55)), () async {
+      Timer(_firstChunk + (_betweenChunks * chunks.length), () async {
         if (_terminal) {
           return;
         }

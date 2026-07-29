@@ -15,16 +15,19 @@ final class LocalRuntimeDesktopHostApi: DesktopHostApi {
   init(
     panelController: DesktopPanelControlling,
     coordinator: InferenceCoordinator,
-    eventBridge: GenerationEventBridge
+    eventBridge: GenerationEventBridge,
+    modelAccess: ChosenModelAccess = ChosenModelAccess()
   ) {
     self.panelController = panelController
     self.coordinator = coordinator
     self.eventBridge = eventBridge
+    self.modelAccess = modelAccess
   }
 
   private let panelController: DesktopPanelControlling
   private let coordinator: InferenceCoordinator
   private let eventBridge: GenerationEventBridge
+  private let modelAccess: ChosenModelAccess
 
   func handshake(
     request: HostRequest,
@@ -57,6 +60,11 @@ final class LocalRuntimeDesktopHostApi: DesktopHostApi {
       modelPath: model.modelPath,
       contextSize: model.contextSize
     )
+    // The sandbox lets go of a chosen file at the end of the run it was chosen
+    // in, so the permission written down then has to be taken up again before
+    // anything tries to read gigabytes through it. A model inside the app's
+    // own container needs none of this and is simply readable.
+    modelAccess.beginReading(model.modelPath)
     Task {
       await resolve(completion) {
         let result = try await coordinator.loadModel(
@@ -160,6 +168,9 @@ final class LocalRuntimeDesktopHostApi: DesktopHostApi {
     Task {
       await resolve(completion) {
         let result = try await coordinator.unloadModel(request: envelope)
+        // Nothing is reading the file any more, and a sandboxed app that keeps
+        // taking permissions without giving them back runs out of them.
+        self.modelAccess.stopReadingEverything()
         return HostOperationCompletion(completed: result.completed)
       }
     }
@@ -213,8 +224,16 @@ final class LocalRuntimeDesktopHostApi: DesktopHostApi {
       panel.canChooseDirectories = false
       // Cancelling is an answer, not a failure: it means the user kept what
       // they already had.
-      let chosen = panel.runModal() == .OK ? panel.url?.path ?? "" : ""
-      completion(.success(chosen))
+      guard panel.runModal() == .OK, let url = panel.url else {
+        completion(.success(""))
+        return
+      }
+      // This is the one moment the sandbox grants access to the file. Writing
+      // the grant down here is what lets the model still be readable after a
+      // restart, rather than the choice quietly reverting to the preview.
+      self.modelAccess.remember(url)
+      self.modelAccess.beginReading(url.path)
+      completion(.success(url.path))
     }
   }
 
@@ -304,6 +323,7 @@ final class LocalRuntimeDesktopHostApi: DesktopHostApi {
   /// from deadlocking against the thread it is called on.
   func dispose() {
     eventBridge.dispose()
+    modelAccess.stopReadingEverything()
     let coordinator = self.coordinator
     let drained = DispatchSemaphore(value: 0)
     Task {

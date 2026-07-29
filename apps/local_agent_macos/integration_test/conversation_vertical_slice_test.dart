@@ -43,6 +43,10 @@ void main() {
       await tester.pump();
       await tester.tap(find.byKey(const Key('conversation-submit-button')));
 
+      // Waited on the first words rather than on the button, because what is
+      // being tested is stopping output that has already partly arrived. The
+      // button is there from the moment the request is accepted, which is
+      // before there is anything to have stopped.
       await _pumpUntil(tester, find.textContaining('Local inference'));
       expect(find.textContaining('Local inference'), findsOneWidget);
       expect(find.byKey(const Key('conversation-stop-button')), findsOneWidget);

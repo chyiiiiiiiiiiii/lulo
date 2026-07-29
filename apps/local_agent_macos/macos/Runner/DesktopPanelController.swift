@@ -569,11 +569,21 @@ final class DesktopPanelController: NSObject, DesktopPanelControlling, NSWindowD
   }
 
   /// Where the conversation opens on `visible`, in screen coordinates.
+  ///
+  /// Around the corner the agent rests in, and large enough to contain that
+  /// resting place. The window is the union of both forms, and a window
+  /// answers the mouse across the whole of its frame however little it draws
+  /// there, so a conversation opening anywhere else leaves a wide margin of
+  /// window with nothing in it — an invisible wall over the desktop, measured
+  /// at half again the conversation's width and height. Sharing the orb's
+  /// corner makes the union the conversation itself, and there is no margin
+  /// left to be in anyone's way. It is also simply where a presence that lives
+  /// in this corner should open from.
   private func conversationFrame(in visible: NSRect) -> NSRect {
     let size = expandedSize
     return NSRect(
-      x: visible.midX - size.width / 2,
-      y: visible.midY - size.height / 2,
+      x: visible.maxX - size.width - Self.orbMargin,
+      y: visible.minY + Self.orbMargin,
       width: size.width,
       height: size.height
     )

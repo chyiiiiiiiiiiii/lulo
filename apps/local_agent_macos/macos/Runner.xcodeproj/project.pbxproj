@@ -24,6 +24,7 @@
 		331C80D8294CF71000263BE5 /* RunnerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 331C80D7294CF71000263BE5 /* RunnerTests.swift */; };
 		A10000000000000000000001 /* DesktopPanelControllerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000003 /* DesktopPanelControllerTests.swift */; };
 		A10000000000000000000002 /* GlobalHotKeyControllerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000004 /* GlobalHotKeyControllerTests.swift */; };
+		CA0000000000000000000003 /* ChosenModelAccessTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA0000000000000000000004 /* ChosenModelAccessTests.swift */; };
 		A10000000000000000000006 /* AppDelegateWindowResolutionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000005 /* AppDelegateWindowResolutionTests.swift */; };
 		335BBD1B22A9A15E00E9071D /* GeneratedPluginRegistrant.swift in Sources */ = {isa = PBXBuildFile; fileRef = 335BBD1A22A9A15E00E9071D /* GeneratedPluginRegistrant.swift */; };
 		33CC10F12044A3C60003C045 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 33CC10F02044A3C60003C045 /* AppDelegate.swift */; };
@@ -32,6 +33,7 @@
 		A40000000000000000000005 /* ThirdPartyNotices.txt in Resources */ = {isa = PBXBuildFile; fileRef = A40000000000000000000004 /* ThirdPartyNotices.txt */; };
 		33CC11132044BFA00003C045 /* MainFlutterWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 33CC11122044BFA00003C045 /* MainFlutterWindow.swift */; };
 		A20000000000000000000001 /* DesktopPanelController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000006 /* DesktopPanelController.swift */; };
+		CA0000000000000000000001 /* ChosenModelAccess.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA0000000000000000000002 /* ChosenModelAccess.swift */; };
 		A20000000000000000000002 /* GlobalHotKeyController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000007 /* GlobalHotKeyController.swift */; };
 		A20000000000000000000003 /* MenuBarController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000008 /* MenuBarController.swift */; };
 		A20000000000000000000004 /* GeneratedDesktopHostApi.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000009 /* GeneratedDesktopHostApi.swift */; };
@@ -77,6 +79,7 @@
 		331C80D7294CF71000263BE5 /* RunnerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RunnerTests.swift; sourceTree = "<group>"; };
 		A10000000000000000000003 /* DesktopPanelControllerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DesktopPanelControllerTests.swift; sourceTree = "<group>"; };
 		A10000000000000000000004 /* GlobalHotKeyControllerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GlobalHotKeyControllerTests.swift; sourceTree = "<group>"; };
+		CA0000000000000000000004 /* ChosenModelAccessTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChosenModelAccessTests.swift; sourceTree = "<group>"; };
 		A10000000000000000000005 /* AppDelegateWindowResolutionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegateWindowResolutionTests.swift; sourceTree = "<group>"; };
 		333000ED22D3DE5D00554162 /* Warnings.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Warnings.xcconfig; sourceTree = "<group>"; };
 		335BBD1A22A9A15E00E9071D /* GeneratedPluginRegistrant.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = GeneratedPluginRegistrant.swift; sourceTree = "<group>"; };
@@ -88,6 +91,7 @@
 		33CC10F72044A3C60003C045 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; name = Info.plist; path = Runner/Info.plist; sourceTree = "<group>"; };
 		33CC11122044BFA00003C045 /* MainFlutterWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainFlutterWindow.swift; sourceTree = "<group>"; };
 		A20000000000000000000006 /* DesktopPanelController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DesktopPanelController.swift; sourceTree = "<group>"; };
+		CA0000000000000000000002 /* ChosenModelAccess.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChosenModelAccess.swift; sourceTree = "<group>"; };
 		A20000000000000000000007 /* GlobalHotKeyController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GlobalHotKeyController.swift; sourceTree = "<group>"; };
 		A20000000000000000000008 /* MenuBarController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarController.swift; sourceTree = "<group>"; };
 		A20000000000000000000009 /* GeneratedDesktopHostApi.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeneratedDesktopHostApi.swift; sourceTree = "<group>"; };
@@ -150,6 +154,7 @@
 				331C80D7294CF71000263BE5 /* RunnerTests.swift */,
 				A10000000000000000000003 /* DesktopPanelControllerTests.swift */,
 				A10000000000000000000004 /* GlobalHotKeyControllerTests.swift */,
+				CA0000000000000000000004 /* ChosenModelAccessTests.swift */,
 				A10000000000000000000005 /* AppDelegateWindowResolutionTests.swift */,
 			);
 			path = RunnerTests;
@@ -215,6 +220,7 @@
 				33CC10F02044A3C60003C045 /* AppDelegate.swift */,
 				33CC11122044BFA00003C045 /* MainFlutterWindow.swift */,
 				A20000000000000000000006 /* DesktopPanelController.swift */,
+				CA0000000000000000000002 /* ChosenModelAccess.swift */,
 				A20000000000000000000007 /* GlobalHotKeyController.swift */,
 				A20000000000000000000008 /* MenuBarController.swift */,
 				A20000000000000000000009 /* GeneratedDesktopHostApi.swift */,
@@ -450,6 +456,7 @@
 				331C80D8294CF71000263BE5 /* RunnerTests.swift in Sources */,
 				A10000000000000000000001 /* DesktopPanelControllerTests.swift in Sources */,
 				A10000000000000000000002 /* GlobalHotKeyControllerTests.swift in Sources */,
+				CA0000000000000000000003 /* ChosenModelAccessTests.swift in Sources */,
 				A10000000000000000000006 /* AppDelegateWindowResolutionTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -462,6 +469,7 @@
 				33CC10F12044A3C60003C045 /* AppDelegate.swift in Sources */,
 				335BBD1B22A9A15E00E9071D /* GeneratedPluginRegistrant.swift in Sources */,
 				A20000000000000000000001 /* DesktopPanelController.swift in Sources */,
+				CA0000000000000000000001 /* ChosenModelAccess.swift in Sources */,
 				A20000000000000000000002 /* GlobalHotKeyController.swift in Sources */,
 				A20000000000000000000003 /* MenuBarController.swift in Sources */,
 				A20000000000000000000004 /* GeneratedDesktopHostApi.swift in Sources */,
