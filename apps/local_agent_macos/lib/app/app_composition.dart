@@ -18,7 +18,9 @@ final class AppComposition {
     required InferenceService inferenceService,
     SettingsStore? settingsStore,
     this.presentationHost,
-  }) : settingsStore = settingsStore ?? InMemorySettingsStore(),
+    Future<void> Function(String modelPath)? changeModel,
+  }) : _changeModel = changeModel ?? _keepThePreview,
+       settingsStore = settingsStore ?? InMemorySettingsStore(),
        _conversationRepository = ConversationRepository(
          storageService: storageService,
          inferenceService: inferenceService,
@@ -35,9 +37,25 @@ final class AppComposition {
   final SettingsStore settingsStore;
 
   final FutureOr<void> Function() _disposeServices;
+  final Future<void> Function(String modelPath) _changeModel;
   final ConversationRepository _conversationRepository;
   int _nextConversation = 1;
   bool _disposed = false;
+
+  /// Loads [modelPath] in place of whatever the agent is currently thinking
+  /// with, so choosing a model does not mean restarting.
+  ///
+  /// An empty path returns the agent to its built-in preview. Does nothing
+  /// where there is no runtime to change, which is the case in widget tests.
+  Future<void> useModel(String modelPath) async {
+    if (_disposed) {
+      throw StateError('The application composition is disposed.');
+    }
+    await _changeModel(modelPath);
+  }
+
+  /// What a composition with no runtime behind it does with a chosen model.
+  static Future<void> _keepThePreview(String modelPath) async {}
 
   /// Creates one ViewModel owned by one conversation View.
   ConversationViewModel createConversationViewModel() {

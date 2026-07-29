@@ -2,7 +2,9 @@ import 'dart:async';
 import 'dart:io';
 
 import '../features/conversation/pigeon_inference_service.dart';
+import '../features/conversation/swappable_inference_service.dart';
 import '../features/settings/app_settings.dart';
+import '../platform/desktop_host_service.dart';
 import '../platform/pigeon_desktop_host_service.dart';
 import 'app_composition.dart';
 import 'fake_runtime.dart';
@@ -46,18 +48,64 @@ AppComposition createAppComposition({
 
   final InMemoryConversationStorageService storageService =
       InMemoryConversationStorageService();
+  final PigeonDesktopHostService desktopHostService =
+      PigeonDesktopHostService();
+  final SwappableInferenceService inferenceService;
+  try {
+    inferenceService = SwappableInferenceService(
+      createInferenceService(
+        inferenceRuntime: inferenceRuntime,
+        localModelPath: localModelPath,
+        desktopHostService: desktopHostService,
+      ),
+    );
+  } on Object {
+    storageService.dispose();
+    unawaited(desktopHostService.dispose());
+    rethrow;
+  }
+
+  return AppComposition(
+    () async {
+      await inferenceService.dispose();
+      storageService.dispose();
+      await desktopHostService.dispose();
+    },
+    storageService: storageService,
+    inferenceService: inferenceService,
+    settingsStore: store,
+    presentationHost: desktopHostService,
+    // The model is chosen in settings, and the only part of the graph that has
+    // to change when it does is what sits behind this one service.
+    changeModel: (String modelPath) => inferenceService.replaceWith(
+      () async => createInferenceService(
+        inferenceRuntime: modelPath.trim().isEmpty ? 'fake' : 'litert',
+        localModelPath: modelPath,
+        desktopHostService: desktopHostService,
+      ),
+    ),
+  );
+}
+
+/// Builds the inference for one model, paired with the way to release it.
+///
+/// Called once at launch and again whenever the user chooses a different
+/// model, so it takes everything it needs rather than reading it from the
+/// settings itself: what is being loaded is the caller's decision.
+OwnedInferenceService createInferenceService({
+  required String inferenceRuntime,
+  required String localModelPath,
+  required DesktopHostService desktopHostService,
+}) {
   if (inferenceRuntime == 'litert') {
     final String modelPath = localModelPath.trim();
     if (modelPath.isEmpty) {
-      storageService.dispose();
       throw ArgumentError.value(
         localModelPath,
         'localModelPath',
         'A LiteRT-LM model path is required.',
       );
     }
-    final PigeonDesktopHostService desktopHostService =
-        PigeonDesktopHostService();
     final PigeonInferenceService inferenceService = PigeonInferenceService(
       desktopHostService: desktopHostService,
       config: LocalModelConfig(
@@ -79,33 +127,17 @@ AppComposition createAppComposition({
     // cleared when it fails, so the first real prompt retries and reports the
     // error through the conversation, where the user can actually see it.
     unawaited(inferenceService.warmUp().catchError((Object _) {}));
-    return AppComposition(
-      () async {
-        await inferenceService.dispose();
-        storageService.dispose();
-        await desktopHostService.dispose();
-      },
-      storageService: storageService,
-      inferenceService: inferenceService,
-      settingsStore: store,
-      presentationHost: desktopHostService,
+    return OwnedInferenceService(
+      service: inferenceService,
+      release: inferenceService.dispose,
     );
   }
 
   final DeterministicFakeInferenceService inferenceService =
       DeterministicFakeInferenceService();
-  final PigeonDesktopHostService desktopHostService =
-      PigeonDesktopHostService();
-  return AppComposition(
-    () async {
-      await inferenceService.dispose();
-      storageService.dispose();
-      await desktopHostService.dispose();
-    },
-    storageService: storageService,
-    inferenceService: inferenceService,
-    settingsStore: store,
-    presentationHost: desktopHostService,
+  return OwnedInferenceService(
+    service: inferenceService,
+    release: inferenceService.dispose,
   );
 }
 

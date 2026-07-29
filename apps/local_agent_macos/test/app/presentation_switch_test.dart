@@ -235,11 +235,13 @@ void main() {
   ) async {
     final _FakePresentationHost host = _FakePresentationHost();
     addTearDown(() => unawaited(host.dispose()));
+    final List<String> loaded = <String>[];
     final AppComposition composition = AppComposition(
       () {},
       storageService: InMemoryConversationStorageService(),
       inferenceService: _HoldingInferenceService(),
       presentationHost: host,
+      changeModel: (String modelPath) async => loaded.add(modelPath),
     );
     addTearDown(() => unawaited(composition.dispose()));
 
@@ -286,6 +288,19 @@ void main() {
       (await composition.settingsStore.load()).modelPath,
       '/models/gemma-4-E4B-it.litertlm',
     );
+    // And it is thinking with it now. Writing the choice down and carrying on
+    // with the old model until the next launch is the same decoration as a
+    // switch that changes nothing.
+    expect(loaded, <String>[
+      '/models/gemma-4-E4B-it.litertlm',
+    ], reason: 'The chosen model never reached the runtime.');
+
+    // Every other switch on the sheet must not pay for a model load, which
+    // costs seconds and gigabytes.
+    await tester.tap(find.byKey(const Key('setting-follow-across-spaces')));
+    await tester.pump();
+    await tester.pump();
+    expect(loaded, hasLength(1));
 
     await tester.tap(find.byKey(const Key('settings-close-button')));
     await tester.pump();

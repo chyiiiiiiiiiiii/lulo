@@ -209,9 +209,16 @@ final class _PresentationSwitchState extends State<_PresentationSwitch>
 
   /// Applies a choice as it is made, rather than behind a save button.
   Future<void> _changeSettings(AppSettings settings) async {
+    final String wasThinkingWith = _settings.modelPath;
     setState(() => _settings = settings);
     await _applySettings(settings);
     await widget.composition.settingsStore.save(settings);
+    if (settings.modelPath != wasThinkingWith) {
+      // Only when it actually changed: loading a model costs seconds and
+      // several gigabytes, and every other switch on this sheet would
+      // otherwise pay for it.
+      await widget.composition.useModel(settings.modelPath);
+    }
   }
 
   Future<void> _loadStage() async {

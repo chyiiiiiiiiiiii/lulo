@@ -119,7 +119,8 @@ final class SettingsSheet extends StatelessWidget {
                           settings.modelPath.isEmpty
                               ? 'Lulo is answering from its built-in preview, '
                                     'which says the same thing every time.'
-                              : 'Takes effect the next time Lulo starts.',
+                              : 'Loaded now. Choosing another takes a few '
+                                    'seconds to swap.',
                         ),
                         trailing: FilledButton.tonal(
                           key: const Key('setting-choose-model'),
