@@ -395,7 +395,11 @@ final class _PresentationSwitchState extends State<_PresentationSwitch>
             ? _orb(
                 extent: AgentPresenceOrb.defaultOrbExtent,
                 showLabel: true,
-                continuousMotion: false,
+                // On the display's own cadence rather than the cheap stepped
+                // idle. The stepping was chosen when this was a small ornament
+                // nobody looked at; it is 5fps, and at that rate the vapour
+                // visibly jerks.
+                continuousMotion: true,
               )
             : null,
       ),

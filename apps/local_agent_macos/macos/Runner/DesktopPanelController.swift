@@ -136,6 +136,7 @@ final class DesktopPanelController: DesktopPanelControlling {
     // liability: macOS would restore the orb's frame on the next launch and the
     // conversation would open at orb size. Each form positions itself instead.
     panel.setFrameAutosaveName("")
+    applyWindowBehaviour(for: storedMode)
     updateInteractiveRect()
   }
 
@@ -184,6 +185,7 @@ final class DesktopPanelController: DesktopPanelControlling {
     }
     storedMode = mode
     Self.applyTitlebarChrome(for: mode, on: retainedPanel)
+    applyWindowBehaviour(for: mode)
     let chromed = performanceTimestamp()
     applyFrame(for: mode)
     let framed = performanceTimestamp()
@@ -226,6 +228,31 @@ final class DesktopPanelController: DesktopPanelControlling {
     retainedPanel.setFrameOrigin(
       NSPoint(x: origin.x + deltaX, y: origin.y - deltaY)
     )
+  }
+
+  /// Makes the window behave like what it currently is.
+  ///
+  /// The conversation is an ordinary window: it sits in the normal order, it
+  /// activates the app so the menu bar is its own, and it belongs to one
+  /// Space. The orb is a resting presence: it floats above other work, follows
+  /// the user between Spaces, and never takes focus from what they are typing
+  /// into.
+  private func applyWindowBehaviour(for mode: DesktopPresentationMode) {
+    switch mode {
+    case .orb:
+      retainedPanel.level = .floating
+      retainedPanel.styleMask.insert(.nonactivatingPanel)
+      retainedPanel.collectionBehavior.formUnion([
+        .canJoinAllSpaces, .fullScreenAuxiliary,
+      ])
+    case .expanded:
+      retainedPanel.level = .normal
+      retainedPanel.styleMask.remove(.nonactivatingPanel)
+      retainedPanel.collectionBehavior.subtract([
+        .canJoinAllSpaces, .fullScreenAuxiliary,
+      ])
+      retainedPanel.collectionBehavior.formUnion([.managed])
+    }
   }
 
   /// Shows the window buttons with the conversation and hides them with the orb.

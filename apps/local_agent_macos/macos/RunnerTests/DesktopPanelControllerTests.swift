@@ -223,22 +223,27 @@ final class DesktopPanelControllerTests: XCTestCase {
     )
   }
 
-  func testPanelCanJoinSpacesAndRemainAvailableBesideFullscreenApps() {
-    let panel = NSPanel(
-      contentRect: NSRect(x: 0, y: 0, width: 480, height: 640),
-      styleMask: [.titled, .closable, .resizable],
-      backing: .buffered,
-      defer: false
-    )
+  func testEachFormBehavesLikeTheKindOfWindowItIs() {
+    let controller = Self.makeController()
+    let panel = controller.retainedPanel
+    controller.show()
 
-    _ = DesktopPanelController(panel: panel) {
-      FlutterPanelContent(engine: NSObject(), viewController: NSViewController())
-    }
-
+    // The orb is a resting presence: above other work, on every Space, and
+    // never taking focus from whatever the user is typing into.
+    controller.setPresentationMode(.orb)
     XCTAssertEqual(panel.level, .floating)
     XCTAssertTrue(panel.styleMask.contains(.nonactivatingPanel))
     XCTAssertTrue(panel.collectionBehavior.contains(.canJoinAllSpaces))
     XCTAssertTrue(panel.collectionBehavior.contains(.fullScreenAuxiliary))
+
+    // The conversation is an ordinary window. Floating it above everything is
+    // the wrong default for something the user reads and types in, and a panel
+    // that never activates has no menu bar of its own.
+    controller.setPresentationMode(.expanded)
+    XCTAssertEqual(panel.level, .normal)
+    XCTAssertFalse(panel.styleMask.contains(.nonactivatingPanel))
+    XCTAssertFalse(panel.collectionBehavior.contains(.canJoinAllSpaces))
+
     XCTAssertFalse(panel.hidesOnDeactivate)
     XCTAssertEqual(panel.animationBehavior, .none)
   }
