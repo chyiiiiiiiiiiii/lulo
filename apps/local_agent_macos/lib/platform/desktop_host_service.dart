@@ -427,6 +427,7 @@ final class DesktopTransitionGeometry {
     required this.size,
     required this.conversation,
     required this.orb,
+    this.fullScreen = false,
   });
 
   /// Size of the window covering both forms.
@@ -438,20 +439,28 @@ final class DesktopTransitionGeometry {
   /// Where the resting orb sits inside that window.
   final Rect orb;
 
+  /// Whether the window is the screen.
+  ///
+  /// Full screen keeps the close, minimise and zoom buttons away until the
+  /// pointer visits the top of the screen, so the room the layout normally
+  /// leaves for them would sit there as a meaningless blank.
+  final bool fullScreen;
+
   @override
   bool operator ==(Object other) =>
       other is DesktopTransitionGeometry &&
       other.size == size &&
       other.conversation == conversation &&
-      other.orb == orb;
+      other.orb == orb &&
+      other.fullScreen == fullScreen;
 
   @override
-  int get hashCode => Object.hash(size, conversation, orb);
+  int get hashCode => Object.hash(size, conversation, orb, fullScreen);
 
   @override
   String toString() =>
       'DesktopTransitionGeometry(size: $size, conversation: $conversation, '
-      'orb: $orb)';
+      'orb: $orb, fullScreen: $fullScreen)';
 }
 
 /// How the always-on-screen desktop window is presented.

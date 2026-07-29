@@ -617,6 +617,12 @@ struct HostTransitionGeometry: Hashable {
   var orbLeft: Double
   var orbTop: Double
   var orbExtent: Double
+  /// Whether the window is the screen.
+  ///
+  /// Full screen keeps the close, minimise and zoom buttons off the window
+  /// until the pointer visits the top of the screen, so the room the layout
+  /// normally leaves for them would sit there as a meaningless blank.
+  var fullScreen: Bool
 
 
   // swift-format-ignore: AlwaysUseLowerCamelCase
@@ -630,6 +636,7 @@ struct HostTransitionGeometry: Hashable {
     let orbLeft = pigeonVar_list[6] as! Double
     let orbTop = pigeonVar_list[7] as! Double
     let orbExtent = pigeonVar_list[8] as! Double
+    let fullScreen = pigeonVar_list[9] as! Bool
 
     return HostTransitionGeometry(
       width: width,
@@ -640,7 +647,8 @@ struct HostTransitionGeometry: Hashable {
       conversationHeight: conversationHeight,
       orbLeft: orbLeft,
       orbTop: orbTop,
-      orbExtent: orbExtent
+      orbExtent: orbExtent,
+      fullScreen: fullScreen
     )
   }
   func toList() -> [Any?] {
@@ -654,13 +662,14 @@ struct HostTransitionGeometry: Hashable {
       orbLeft,
       orbTop,
       orbExtent,
+      fullScreen,
     ]
   }
   static func == (lhs: HostTransitionGeometry, rhs: HostTransitionGeometry) -> Bool {
     if Swift.type(of: lhs) != Swift.type(of: rhs) {
       return false
     }
-    return deepEqualsGeneratedDesktopHostApi(lhs.width, rhs.width) && deepEqualsGeneratedDesktopHostApi(lhs.height, rhs.height) && deepEqualsGeneratedDesktopHostApi(lhs.conversationLeft, rhs.conversationLeft) && deepEqualsGeneratedDesktopHostApi(lhs.conversationTop, rhs.conversationTop) && deepEqualsGeneratedDesktopHostApi(lhs.conversationWidth, rhs.conversationWidth) && deepEqualsGeneratedDesktopHostApi(lhs.conversationHeight, rhs.conversationHeight) && deepEqualsGeneratedDesktopHostApi(lhs.orbLeft, rhs.orbLeft) && deepEqualsGeneratedDesktopHostApi(lhs.orbTop, rhs.orbTop) && deepEqualsGeneratedDesktopHostApi(lhs.orbExtent, rhs.orbExtent)
+    return deepEqualsGeneratedDesktopHostApi(lhs.width, rhs.width) && deepEqualsGeneratedDesktopHostApi(lhs.height, rhs.height) && deepEqualsGeneratedDesktopHostApi(lhs.conversationLeft, rhs.conversationLeft) && deepEqualsGeneratedDesktopHostApi(lhs.conversationTop, rhs.conversationTop) && deepEqualsGeneratedDesktopHostApi(lhs.conversationWidth, rhs.conversationWidth) && deepEqualsGeneratedDesktopHostApi(lhs.conversationHeight, rhs.conversationHeight) && deepEqualsGeneratedDesktopHostApi(lhs.orbLeft, rhs.orbLeft) && deepEqualsGeneratedDesktopHostApi(lhs.orbTop, rhs.orbTop) && deepEqualsGeneratedDesktopHostApi(lhs.orbExtent, rhs.orbExtent) && deepEqualsGeneratedDesktopHostApi(lhs.fullScreen, rhs.fullScreen)
   }
 
   func hash(into hasher: inout Hasher) {
@@ -674,6 +683,7 @@ struct HostTransitionGeometry: Hashable {
     deepHashGeneratedDesktopHostApi(value: orbLeft, hasher: &hasher)
     deepHashGeneratedDesktopHostApi(value: orbTop, hasher: &hasher)
     deepHashGeneratedDesktopHostApi(value: orbExtent, hasher: &hasher)
+    deepHashGeneratedDesktopHostApi(value: fullScreen, hasher: &hasher)
   }
 }
 

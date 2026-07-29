@@ -62,8 +62,17 @@ final class ConversationView extends StatefulWidget {
     this.presenceController,
     this.presenceOrb,
     this.presenceAnchorKey,
+    this.windowButtonsBeside = true,
     super.key,
   });
+
+  /// Whether the window's own buttons sit over the leading edge.
+  ///
+  /// They do on an ordinary window; full screen keeps them away until the
+  /// pointer visits the top of the screen. The header only leaves them room
+  /// when they are actually there — otherwise that room is a meaningless
+  /// blank ahead of the title.
+  final bool windowButtonsBeside;
 
   /// Presence to project conversation state into, or null to own one.
   final AgentPresenceController? presenceController;
@@ -121,6 +130,7 @@ final class _ConversationViewState extends State<ConversationView> {
         child: Column(
           children: <Widget>[
             _ConversationChrome(
+              windowButtonsBeside: widget.windowButtonsBeside,
               completedTurns: _viewModel.completedTurnsListenable,
               activeTurn: _viewModel.activeTurnListenable,
               presenceController: widget.presenceController,
@@ -164,6 +174,7 @@ final class _ConversationViewState extends State<ConversationView> {
 
 final class _ConversationChrome extends StatelessWidget {
   const _ConversationChrome({
+    required this.windowButtonsBeside,
     required this.completedTurns,
     required this.activeTurn,
     required this.presenceController,
@@ -174,6 +185,9 @@ final class _ConversationChrome extends StatelessWidget {
     required this.onPresenceSemanticBuild,
     required this.presenceShaderLoader,
   });
+
+  /// Whether the window buttons are over the leading edge to make room for.
+  final bool windowButtonsBeside;
 
   final ValueListenable<List<Turn>> completedTurns;
   final ValueListenable<Turn?> activeTurn;
@@ -197,7 +211,12 @@ final class _ConversationChrome extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.fromLTRB(_windowButtonsWidth, 20, 24, 8),
+    padding: EdgeInsets.fromLTRB(
+      windowButtonsBeside ? _windowButtonsWidth : 24,
+      20,
+      24,
+      8,
+    ),
     child: Row(
       children: <Widget>[
         Text('Lulo', style: Theme.of(context).textTheme.titleMedium),

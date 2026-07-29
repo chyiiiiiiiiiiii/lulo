@@ -273,6 +273,53 @@ void main() {
     );
   });
 
+  testWidgets('full screen closes the gap the window buttons sat in', (
+    WidgetTester tester,
+  ) async {
+    final _FakePresentationHost host = _FakePresentationHost();
+    addTearDown(() => unawaited(host.dispose()));
+    final AppComposition composition = AppComposition(
+      () {},
+      storageService: InMemoryConversationStorageService(),
+      inferenceService: _HoldingInferenceService(),
+      presentationHost: host,
+    );
+    addTearDown(() => unawaited(composition.dispose()));
+
+    host.presentation.value = DesktopPresentation.expanded;
+    await tester.pumpWidget(
+      LocalAgentApp(
+        composition: composition,
+        presenceShaderLoader: _failShaderLoad,
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    // On an ordinary window the title clears the close, minimise and zoom
+    // buttons sitting over the leading edge.
+    final double besideButtons = tester.getTopLeft(find.text('Lulo')).dx;
+    expect(besideButtons, greaterThanOrEqualTo(70));
+
+    // Full screen keeps those buttons away until the pointer visits the top
+    // of the screen, so the room reserved for them is a meaningless blank.
+    host.changeGeometry(
+      const DesktopTransitionGeometry(
+        size: Size(1512, 949),
+        conversation: Rect.fromLTWH(0, 0, 1512, 949),
+        orb: Rect.fromLTWH(1344, 781, 168, 168),
+        fullScreen: true,
+      ),
+    );
+    await tester.pump();
+
+    expect(
+      tester.getTopLeft(find.text('Lulo')).dx,
+      lessThan(besideButtons),
+      reason: 'The title still leaves room for buttons full screen took away.',
+    );
+  });
+
   testWidgets('the conversation keeps its corners rounded as it leaves', (
     WidgetTester tester,
   ) async {

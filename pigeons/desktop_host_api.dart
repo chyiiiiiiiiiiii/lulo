@@ -158,6 +158,7 @@ class HostTransitionGeometry {
     required this.orbLeft,
     required this.orbTop,
     required this.orbExtent,
+    required this.fullScreen,
   });
 
   double width;
@@ -169,6 +170,13 @@ class HostTransitionGeometry {
   double orbLeft;
   double orbTop;
   double orbExtent;
+
+  /// Whether the window is the screen.
+  ///
+  /// Full screen keeps the close, minimise and zoom buttons off the window
+  /// until the pointer visits the top of the screen, so the room the layout
+  /// normally leaves for them would sit there as a meaningless blank.
+  bool fullScreen;
 }
 
 @HostApi()

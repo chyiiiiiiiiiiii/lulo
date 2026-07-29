@@ -130,7 +130,7 @@ final class DesktopPanelControllerTests: XCTestCase {
 
     // Answering cancels the fallback, so the window stays on the canvas for
     // as long as the app needs to draw the move.
-    _ = controller.beginTransition()
+    _ = controller.beginTransition(to: .orb)
     let settled = expectation(description: "the window was not settled for us")
     settled.isInverted = true
     DispatchQueue.main.asyncAfter(
@@ -189,10 +189,11 @@ final class DesktopPanelControllerTests: XCTestCase {
     // Resizing a window that hosts the engine blocks until the engine returns
     // a frame at the new size, and that wait is released by a one second
     // timeout rather than by the frame arriving. Measured at 1.004s on every
-    // collapse. A window that never changes size never enters that wait.
+    // collapse. A change of form may move the window — the orb goes home to
+    // the screen's corner — but it must never change its size.
     XCTAssertEqual(
-      conversation,
-      orb,
+      conversation.size,
+      orb.size,
       "The window changed size between forms and will stall for a second"
     )
 
@@ -289,17 +290,32 @@ final class DesktopPanelControllerTests: XCTestCase {
     let chosen = controller.retainedPanel.frame
     XCTAssertNotEqual(chosen, placed)
 
-    // A change of form must not move it back: the frame belongs to the user,
-    // and a window that teleports home on every collapse and summon makes
-    // dragging it pointless.
+    // Collapsing sends the orb home: whatever place the conversation was
+    // dragged to, the resting presence lives in the screen's lower trailing
+    // corner. A resting place that wandered with the window left the orb
+    // wherever work happened to be.
     controller.setPresentationMode(.orb)
-    XCTAssertEqual(controller.retainedPanel.frame, chosen)
+    guard let visible = controller.retainedPanel.screen?.visibleFrame
+      ?? NSScreen.main?.visibleFrame
+    else {
+      return XCTFail("No screen to rest on")
+    }
+    let atRest = controller.retainedPanel.frame
+    XCTAssertEqual(atRest.maxX, visible.maxX - DesktopPanelController.orbMargin)
+    XCTAssertEqual(atRest.minY, visible.minY + DesktopPanelController.orbMargin)
+    XCTAssertEqual(atRest.size, chosen.size)
+
+    // And summoning brings the conversation back to where the user had it,
+    // not to the corner the orb rests in.
     controller.setPresentationMode(.expanded)
     XCTAssertEqual(controller.retainedPanel.frame, chosen)
 
-    // Nor may a drawn change of form.
-    _ = controller.beginTransition()
+    // Through a drawn change of form as well as the hotkey's fallback.
+    _ = controller.beginTransition(to: .orb)
     controller.endTransition(.orb)
+    XCTAssertEqual(controller.retainedPanel.frame, atRest)
+    _ = controller.beginTransition(to: .expanded)
+    controller.endTransition(.expanded)
     XCTAssertEqual(controller.retainedPanel.frame, chosen)
   }
 
@@ -335,7 +351,7 @@ final class DesktopPanelControllerTests: XCTestCase {
     // The buttons belong to the conversation. Left standing while it shrinks,
     // they hang detached beside a form that is visibly leaving underneath
     // them.
-    _ = controller.beginTransition()
+    _ = controller.beginTransition(to: .orb)
     XCTAssertEqual(close?.isHidden, true)
 
     // And they come back with the conversation, including when the change of

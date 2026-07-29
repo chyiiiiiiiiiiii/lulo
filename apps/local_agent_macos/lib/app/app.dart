@@ -458,6 +458,9 @@ final class _PresentationSwitchState extends State<_PresentationSwitch>
       },
       child: ConversationView(
         key: _conversationKey,
+        // Full screen keeps the window buttons away, so the room the header
+        // leaves for them would sit there as a meaningless blank.
+        windowButtonsBeside: !(_stage?.fullScreen ?? false),
         viewModelFactory: widget.composition.createConversationViewModel,
         presenceShaderLoader: widget.presenceShaderLoader,
         presenceController: _presence,

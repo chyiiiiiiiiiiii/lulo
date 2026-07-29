@@ -274,7 +274,8 @@ final class LocalRuntimeDesktopHostApi: DesktopHostApi {
       conversationHeight: Double(geometry.conversation.height),
       orbLeft: Double(geometry.orb.minX),
       orbTop: Double(geometry.orb.minY),
-      orbExtent: Double(geometry.orb.width)
+      orbExtent: Double(geometry.orb.width),
+      fullScreen: geometry.fullScreen
     )
   }
 
@@ -290,7 +291,9 @@ final class LocalRuntimeDesktopHostApi: DesktopHostApi {
       return
     }
     onMain {
-      let geometry = self.panelController.beginTransition()
+      let geometry = self.panelController.beginTransition(
+        to: target == .orb ? .orb : .expanded
+      )
       completion(.success(Self.hostGeometry(geometry)))
     }
   }

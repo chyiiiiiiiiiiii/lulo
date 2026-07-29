@@ -629,6 +629,7 @@ class HostTransitionGeometry {
     required this.orbLeft,
     required this.orbTop,
     required this.orbExtent,
+    required this.fullScreen,
   });
 
   double width;
@@ -649,6 +650,13 @@ class HostTransitionGeometry {
 
   double orbExtent;
 
+  /// Whether the window is the screen.
+  ///
+  /// Full screen keeps the close, minimise and zoom buttons off the window
+  /// until the pointer visits the top of the screen, so the room the layout
+  /// normally leaves for them would sit there as a meaningless blank.
+  bool fullScreen;
+
   List<Object?> _toList() {
     return <Object?>[
       width,
@@ -660,6 +668,7 @@ class HostTransitionGeometry {
       orbLeft,
       orbTop,
       orbExtent,
+      fullScreen,
     ];
   }
 
@@ -679,6 +688,7 @@ class HostTransitionGeometry {
       orbLeft: result[6]! as double,
       orbTop: result[7]! as double,
       orbExtent: result[8]! as double,
+      fullScreen: result[9]! as bool,
     );
   }
 
@@ -699,7 +709,8 @@ class HostTransitionGeometry {
         _deepEquals(conversationHeight, other.conversationHeight) &&
         _deepEquals(orbLeft, other.orbLeft) &&
         _deepEquals(orbTop, other.orbTop) &&
-        _deepEquals(orbExtent, other.orbExtent);
+        _deepEquals(orbExtent, other.orbExtent) &&
+        _deepEquals(fullScreen, other.fullScreen);
   }
 
   @override

@@ -16,6 +16,10 @@ struct DesktopTransitionGeometry: Equatable {
   let size: CGSize
   let conversation: CGRect
   let orb: CGRect
+
+  /// Whether the window is the screen, which keeps the window buttons away
+  /// until the pointer visits the top edge.
+  var fullScreen: Bool = false
 }
 
 
@@ -141,7 +145,8 @@ protocol DesktopPanelControlling: AnyObject {
   func moveBy(deltaX: CGFloat, deltaY: CGFloat)
   func setWindowBehaviour(keepOrbOnTop: Bool, followAcrossSpaces: Bool)
   func currentGeometry() -> DesktopTransitionGeometry
-  func beginTransition() -> DesktopTransitionGeometry
+  func beginTransition(to target: DesktopPresentationMode)
+    -> DesktopTransitionGeometry
   func endTransition(_ mode: DesktopPresentationMode)
 }
 
@@ -326,11 +331,26 @@ final class DesktopPanelController: NSObject, DesktopPanelControlling, NSWindowD
     guard mode != storedMode else {
       return
     }
+    // Written down before the mode flips, or the frame the conversation is
+    // leaving would be forgotten the moment it left. Never during a drawn
+    // transition: by then the window has already glided towards the orb's
+    // corner, and that corner is not where the user keeps their conversation.
+    if !isTransitioning {
+      rememberExpandedFrame()
+    }
     storedMode = mode
     Self.applyTitlebarChrome(for: mode, on: retainedPanel)
     applyWindowBehaviour(for: mode)
     let chromed = performanceTimestamp()
     placeStageIfNeeded()
+    // Each form has its home: the orb the screen's corner, the conversation
+    // wherever the user had it. Reached here as well as through a drawn
+    // transition, because the hotkey's fallback settles the window without
+    // one and must land in the same place.
+    if !isTransitioning && !retainedPanel.styleMask.contains(.fullScreen) {
+      retainedPanel.setFrame(homeFrame(for: mode), display: true)
+      updateInteractiveRect()
+    }
     let framed = performanceTimestamp()
     var focused: UInt64?
     switch mode {
@@ -507,21 +527,42 @@ final class DesktopPanelController: NSObject, DesktopPanelControlling, NSWindowD
 
   /// Turns the window into the canvas the change of form is drawn on.
   ///
-  /// The window already covers both forms wherever the user has put it, so
-  /// nothing has to grow; it only stops answering the mouse while the presence
-  /// is in flight, and puts its chrome away — the buttons belong to the
-  /// conversation, and left standing they hang beside a form that is visibly
-  /// shrinking out from underneath them.
-  func beginTransition() -> DesktopTransitionGeometry {
+  /// The window covers both forms wherever it stands, so nothing has to grow;
+  /// it stops answering the mouse while the presence is in flight and puts its
+  /// chrome away — the buttons belong to the conversation, and left standing
+  /// they hang beside a form that is visibly shrinking out from underneath
+  /// them.
+  ///
+  /// It also starts gliding towards the target form's home, keeping its size:
+  /// collapsing goes to the screen's corner, summoning back to wherever the
+  /// user had the conversation. Moving alongside the flight rather than after
+  /// it is what makes the presence appear to travel to the corner of the
+  /// screen, not to the corner of a window that then jumps. Only the origin
+  /// moves, so the engine is never asked for a frame at a new size and the
+  /// resize stall stays gone.
+  func beginTransition(
+    to target: DesktopPresentationMode
+  ) -> DesktopTransitionGeometry {
     precondition(Thread.isMainThread)
     // The app answered, so the window must not settle itself underneath it.
     pendingRequest?.cancel()
     pendingRequest = nil
     let answered = performanceTimestamp()
+    // The conversation's place is written down before the window starts
+    // moving away from it.
+    rememberExpandedFrame()
     isTransitioning = true
     Self.applyTitlebarChrome(for: .orb, on: retainedPanel)
     retainedStage.interactiveRect = .zero
     retainedPanel.orderFrontRegardless()
+    let home = homeFrame(for: target)
+    if home != retainedPanel.frame {
+      NSAnimationContext.runAnimationGroup { context in
+        context.duration = 0.22
+        context.timingFunction = CAMediaTimingFunction(name: .easeOut)
+        retainedPanel.animator().setFrame(home, display: true)
+      }
+    }
     if let requestedAt, let answered, let ready = performanceTimestamp() {
       reportPanelPerformance(
         operation: "transition_begin",
@@ -538,6 +579,8 @@ final class DesktopPanelController: NSObject, DesktopPanelControlling, NSWindowD
   func endTransition(_ mode: DesktopPresentationMode) {
     precondition(Thread.isMainThread)
     let landed = performanceTimestamp()
+    // Parked exactly at the target form's home, however far the glide got.
+    retainedPanel.setFrame(homeFrame(for: mode), display: true)
     if mode == storedMode {
       // The form did not change after all; the buttons it hid for the journey
       // still have to come back.
@@ -585,10 +628,12 @@ final class DesktopPanelController: NSObject, DesktopPanelControlling, NSWindowD
   func currentGeometry() -> DesktopTransitionGeometry {
     precondition(Thread.isMainThread)
     let frame = retainedPanel.frame
-    return Self.transitionGeometry(
+    var geometry = Self.transitionGeometry(
       conversation: frame,
       orb: orbRect(inStage: frame)
     ).geometry
+    geometry.fullScreen = retainedPanel.styleMask.contains(.fullScreen)
+    return geometry
   }
 
   /// Where the stage first opens: by the lower trailing corner, clear of the
@@ -606,6 +651,13 @@ final class DesktopPanelController: NSObject, DesktopPanelControlling, NSWindowD
   /// Whether the stage has been given its first place on a screen.
   private var hasPlacedStage = false
 
+  /// The conversation's frame as the user last had it.
+  ///
+  /// The orb always goes home to the screen's corner, so without this the
+  /// conversation would be summoned back at the orb's corner rather than
+  /// where the user had put it.
+  private var rememberedExpandedFrame: NSRect?
+
   /// Places the stage the first time, and afterwards leaves it alone.
   ///
   /// Once only, deliberately: after this the frame belongs to the user.
@@ -615,12 +667,42 @@ final class DesktopPanelController: NSObject, DesktopPanelControlling, NSWindowD
   private func placeStageIfNeeded() {
     if !hasPlacedStage, let screen = currentScreen() {
       hasPlacedStage = true
-      retainedPanel.setFrame(
-        initialStageFrame(in: screen.visibleFrame),
-        display: true
-      )
+      let frame = initialStageFrame(in: screen.visibleFrame)
+      rememberedExpandedFrame = frame
+      retainedPanel.setFrame(frame, display: true)
     }
     updateInteractiveRect()
+  }
+
+  /// Where the window sits for [mode], as the user has arranged things.
+  ///
+  /// The two forms have two homes. The conversation lives wherever the user
+  /// dragged and sized it. The resting orb lives in the screen's lower
+  /// trailing corner — always, because a resting place that wandered with the
+  /// window meant collapsing left the orb wherever work happened to be. Only
+  /// the origin differs: the window never changes size for a change of form,
+  /// which is what keeps the engine out of the resize stall.
+  private func homeFrame(for mode: DesktopPresentationMode) -> NSRect {
+    let current = retainedPanel.frame
+    switch mode {
+    case .expanded:
+      var home = rememberedExpandedFrame ?? current
+      // The size belongs to the user's latest resize even if the remembered
+      // origin is older.
+      home.size = current.size
+      return home
+    case .orb:
+      guard let screen = currentScreen() else {
+        return current
+      }
+      let visible = screen.visibleFrame
+      return NSRect(
+        x: visible.maxX - Self.orbMargin - current.width,
+        y: visible.minY + Self.orbMargin,
+        width: current.width,
+        height: current.height
+      )
+    }
   }
 
   /// Follows the user resizing the window, including into full screen.
@@ -632,8 +714,30 @@ final class DesktopPanelController: NSObject, DesktopPanelControlling, NSWindowD
     guard !isTransitioning else {
       return
     }
+    rememberExpandedFrame()
     updateInteractiveRect()
     onGeometryChanged?(currentGeometry())
+  }
+
+  /// Follows the user dragging the window, which chooses where the
+  /// conversation is summoned back to.
+  func windowDidMove(_ notification: Notification) {
+    guard !isTransitioning else {
+      return
+    }
+    rememberExpandedFrame()
+  }
+
+  /// Writes down the conversation's place whenever the user changes it.
+  ///
+  /// Only the conversation's: the orb going home to its corner, or being
+  /// dragged around the desktop, says nothing about where the user wants
+  /// their conversation.
+  private func rememberExpandedFrame() {
+    if storedMode == .expanded && !retainedPanel.styleMask.contains(.fullScreen)
+    {
+      rememberedExpandedFrame = retainedPanel.frame
+    }
   }
 
   /// Reports the stage's geometry whenever the window's frame changes it.

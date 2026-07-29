@@ -245,6 +245,7 @@ final class PigeonDesktopHostService extends DesktopHostEventApi
         geometry.conversationWidth,
         geometry.conversationHeight,
       ),
+      fullScreen: geometry.fullScreen,
       orb: Rect.fromLTWH(
         geometry.orbLeft,
         geometry.orbTop,
