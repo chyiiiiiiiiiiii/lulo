@@ -273,7 +273,7 @@ void main() {
     );
   });
 
-  testWidgets('full screen closes the gap the window buttons sat in', (
+  testWidgets('the title keeps its place windowed and full screen', (
     WidgetTester tester,
   ) async {
     final _FakePresentationHost host = _FakePresentationHost();
@@ -296,13 +296,11 @@ void main() {
     await tester.pump();
     await tester.pump();
 
-    // On an ordinary window the title clears the close, minimise and zoom
-    // buttons sitting over the leading edge.
-    final double besideButtons = tester.getTopLeft(find.text('Lulo')).dx;
-    expect(besideButtons, greaterThanOrEqualTo(70));
+    // The title sits flush with the content margin, windowed and full screen
+    // alike: the window buttons live on the line above it, so there is
+    // nothing for it to clear in either state.
+    expect(tester.getTopLeft(find.text('Lulo')).dx, 24);
 
-    // Full screen keeps those buttons away until the pointer visits the top
-    // of the screen, so the room reserved for them is a meaningless blank.
     host.changeGeometry(
       const DesktopTransitionGeometry(
         size: Size(1512, 949),
@@ -315,8 +313,8 @@ void main() {
 
     expect(
       tester.getTopLeft(find.text('Lulo')).dx,
-      lessThan(besideButtons),
-      reason: 'The title still leaves room for buttons full screen took away.',
+      24,
+      reason: 'Full screen moved a title that had nothing to clear.',
     );
   });
 

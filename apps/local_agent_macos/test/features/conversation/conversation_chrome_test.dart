@@ -22,22 +22,16 @@ void main() {
     );
     await tester.pump();
 
-    // The conversation runs under a transparent titlebar, so its own chrome
-    // starts after the close, minimise and zoom buttons rather than beneath
-    // them.
+    // The window buttons live on the line above the title, so the title sits
+    // flush with the content's own margin. Indenting it their width left a
+    // hole in the header with nothing in it.
     expect(
       tester.getTopLeft(find.text('Lulo')).dx,
-      greaterThanOrEqualTo(_windowButtonsWidth),
-      reason: 'The title was drawn underneath the window buttons.',
+      24,
+      reason: 'The title is not flush with the content margin.',
     );
   });
 }
-
-/// How much of the leading edge the standard window buttons occupy.
-///
-/// Three buttons starting near the leading edge and evenly spaced, plus the
-/// gap that keeps the title from crowding the last of them.
-const double _windowButtonsWidth = 70;
 
 ConversationViewModel _viewModel() {
   final RecordingConversationStorageService storage =

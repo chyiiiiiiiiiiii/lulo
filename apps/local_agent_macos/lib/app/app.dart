@@ -311,7 +311,7 @@ final class _PresentationSwitchState extends State<_PresentationSwitch>
     // measured inside it becomes a canvas position by shifting it there.
     final Rect leaving = collapsing ? canvas.conversation : canvas.orb;
     final double fromExtent = collapsing
-        ? AgentPresenceOrb.headerOrbExtent
+        ? AgentPresenceOrb.defaultOrbExtent
         : desktopOrbExtent;
     final Rect from = origin == null
         ? Rect.fromCenter(
@@ -324,8 +324,8 @@ final class _PresentationSwitchState extends State<_PresentationSwitch>
         ? canvas.orb
         : Rect.fromCenter(
             center: canvas.conversation.center,
-            width: AgentPresenceOrb.headerOrbExtent,
-            height: AgentPresenceOrb.headerOrbExtent,
+            width: AgentPresenceOrb.defaultOrbExtent,
+            height: AgentPresenceOrb.defaultOrbExtent,
           );
 
     setState(() {
@@ -458,16 +458,13 @@ final class _PresentationSwitchState extends State<_PresentationSwitch>
       },
       child: ConversationView(
         key: _conversationKey,
-        // Full screen keeps the window buttons away, so the room the header
-        // leaves for them would sit there as a meaningless blank.
-        windowButtonsBeside: !(_stage?.fullScreen ?? false),
         viewModelFactory: widget.composition.createConversationViewModel,
         presenceShaderLoader: widget.presenceShaderLoader,
         presenceController: _presence,
         presenceAnchorKey: _anchorKey,
         presenceOrb: hostsOrb
             ? _orb(
-                extent: AgentPresenceOrb.headerOrbExtent,
+                extent: AgentPresenceOrb.defaultOrbExtent,
                 // The orb already says what the agent is doing with its whole
                 // body; a caption spelling it out beside the title is noise.
                 // Its state stays readable to assistive tech.
