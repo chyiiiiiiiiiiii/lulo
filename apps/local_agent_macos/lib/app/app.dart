@@ -75,7 +75,7 @@ final class _PresentationSwitch extends StatefulWidget {
 }
 
 final class _PresentationSwitchState extends State<_PresentationSwitch>
-    with SingleTickerProviderStateMixin {
+    with TickerProviderStateMixin {
   /// Identifies the conversation so it keeps its state when the form changes.
   ///
   /// Collapsing wraps the conversation differently so it can lay out at its own
@@ -109,12 +109,17 @@ final class _PresentationSwitchState extends State<_PresentationSwitch>
   /// Drives the presence between the two forms.
   late final AnimationController _flight;
 
+  /// Drives the conversation away and back: 0 is present, 1 is gone.
+  ///
+  /// Deliberately not the flight's clock. The flight cannot start until the
+  /// window has been resized and its surface reallocated, and leaving depends
+  /// on none of that, so it answers the keystroke straight away and covers
+  /// the wait that would otherwise be a still screen.
+  late final AnimationController _leaving;
+
   /// Where the presence starts and ends its journey, in canvas coordinates.
   Rect? _flightFrom;
   Rect? _flightTo;
-
-  /// Whether the presence is on its way to the desktop rather than back.
-  bool _collapsing = false;
 
   /// The canvas covering both forms, held only while the presence is moving.
   DesktopTransitionGeometry? _canvas;
@@ -128,6 +133,15 @@ final class _PresentationSwitchState extends State<_PresentationSwitch>
     // and built here rather than lazily: a controller first touched in dispose
     // would ask a deactivated element for its TickerMode.
     _flight = AnimationController.unbounded(vsync: this);
+    _leaving = AnimationController(
+      vsync: this,
+      duration: leavingDuration,
+      value:
+          widget.composition.presentationHost?.presentation.value ==
+              DesktopPresentation.orb
+          ? 1
+          : 0,
+    );
     // The hotkey and the menu bar are native, so collapsing is asked for from
     // there. Without listening the window would simply move and there would be
     // nothing left to draw.
@@ -139,6 +153,7 @@ final class _PresentationSwitchState extends State<_PresentationSwitch>
   void dispose() {
     unawaited(_requests?.cancel());
     _flight.dispose();
+    _leaving.dispose();
     _presence.dispose();
     super.dispose();
   }
@@ -179,6 +194,11 @@ final class _PresentationSwitchState extends State<_PresentationSwitch>
       return;
     }
     final bool collapsing = target == DesktopPresentation.orb;
+    // Answered before anything is asked of the host, so the keystroke has a
+    // visible effect while the window is still being prepared.
+    if (collapsing) {
+      unawaited(_leaving.forward());
+    }
     // Measured before the window grows, so it is still in the coordinates of
     // the form being left.
     final Offset? origin = _orbOrigin();
@@ -214,7 +234,6 @@ final class _PresentationSwitchState extends State<_PresentationSwitch>
       _canvas = canvas;
       _flightFrom = from;
       _flightTo = to;
-      _collapsing = collapsing;
     });
 
     if (!collapsing) {
@@ -283,6 +302,12 @@ final class _PresentationSwitchState extends State<_PresentationSwitch>
       _flightFrom = null;
       _flightTo = null;
     });
+    if (!collapsing) {
+      // Faded in after the window has settled rather than on the canvas: by
+      // then the surface is the conversation's own size, so this costs a
+      // fraction of what it would have on the canvas covering both forms.
+      unawaited(_leaving.reverse());
+    }
   }
 
   /// Builds the one orb at the size and cadence its current host wants.
@@ -309,19 +334,34 @@ final class _PresentationSwitchState extends State<_PresentationSwitch>
   /// mounted while collapsed, so a header that kept claiming it would collide
   /// with the desktop surface over the same identity.
   Widget _conversation({required bool hostsOrb}) {
-    return ConversationView(
-      key: _conversationKey,
-      viewModelFactory: widget.composition.createConversationViewModel,
-      presenceShaderLoader: widget.presenceShaderLoader,
-      presenceController: _presence,
-      presenceAnchorKey: _anchorKey,
-      presenceOrb: hostsOrb
-          ? _orb(
-              extent: AgentPresenceOrb.defaultOrbExtent,
-              showLabel: true,
-              continuousMotion: false,
-            )
-          : null,
+    return AnimatedBuilder(
+      animation: _leaving,
+      builder: (BuildContext context, Widget? view) {
+        // Never removed from the tree, even when fully gone: the header
+        // anchor the presence lands on is measured from this layout, and
+        // Opacity already skips painting when there is nothing to see.
+        return Opacity(
+          opacity: leavingOpacityAt(_leaving.value),
+          child: Transform.scale(
+            scale: leavingScaleAt(_leaving.value),
+            child: view,
+          ),
+        );
+      },
+      child: ConversationView(
+        key: _conversationKey,
+        viewModelFactory: widget.composition.createConversationViewModel,
+        presenceShaderLoader: widget.presenceShaderLoader,
+        presenceController: _presence,
+        presenceAnchorKey: _anchorKey,
+        presenceOrb: hostsOrb
+            ? _orb(
+                extent: AgentPresenceOrb.defaultOrbExtent,
+                showLabel: true,
+                continuousMotion: false,
+              )
+            : null,
+      ),
     );
   }
 
@@ -345,32 +385,10 @@ final class _PresentationSwitchState extends State<_PresentationSwitch>
             borderRadius: BorderRadius.circular(windowCornerRadius),
             child: SizedBox.fromSize(
               size: canvas.conversation.size,
-              child: AnimatedBuilder(
-                animation: _flight,
-                builder: (BuildContext context, Widget? conversation) {
-                  // The window leaves with the presence rather than after it.
-                  // Waiting for the spring to settle left it standing at full
-                  // strength while the agent was already resting on the desktop.
-                  final double solid = conversationOpacityAt(
-                    t: _flight.value,
-                    collapsing: _collapsing,
-                  );
-                  // Never dropped from the tree, even at zero: the header anchor
-                  // the presence lands on is measured from this layout, and
-                  // Opacity already skips painting when there is nothing to see.
-                  return Opacity(
-                    opacity: solid,
-                    child: Transform.scale(
-                      scale: conversationScaleAt(
-                        t: _flight.value,
-                        collapsing: _collapsing,
-                      ),
-                      child: conversation,
-                    ),
-                  );
-                },
-                child: _conversation(hostsOrb: false),
-              ),
+              // The conversation carries its own departure, on its own clock,
+              // which started when the user asked rather than when the canvas
+              // was ready.
+              child: _conversation(hostsOrb: false),
             ),
           ),
         ),

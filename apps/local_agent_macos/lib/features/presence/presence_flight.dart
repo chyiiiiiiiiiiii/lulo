@@ -46,14 +46,6 @@ const double windowCornerRadius = 12;
 /// much as a long one relative to how far it goes.
 const double _arcDepth = 0.16;
 
-/// How much of the journey the conversation takes to go, or to arrive.
-///
-/// Deliberately much shorter than the flight. The presence settles on a spring
-/// with a long tail, and a window that waited for that tail read as having been
-/// left behind: it stood at full strength while the agent was already resting
-/// on the desktop, then disappeared.
-const double _conversationFadeSpan = 0.5;
-
 /// How far the conversation shrinks as it goes.
 ///
 /// Small. It is leaving with the presence, not being thrown itself, and a
@@ -61,32 +53,24 @@ const double _conversationFadeSpan = 0.5;
 /// matters.
 const double _conversationShrink = 0.06;
 
-/// How solid the conversation is when the presence is [t] of the way across.
+/// How long the conversation takes to go once it has been asked to.
 ///
-/// Leaving, it goes early so that it is gone by the time the presence reaches
-/// the desktop. Arriving, it holds off until the presence is nearly home, so
-/// the window does not appear around a presence still in flight.
-double conversationOpacityAt({required double t, required bool collapsing}) {
-  final double progress = clampDouble(t, 0, 1);
-  // Eased at both ends rather than linearly, so the window neither snaps into
-  // fading nor stops dead once it has.
-  if (collapsing) {
-    final double gone = clampDouble(progress / _conversationFadeSpan, 0, 1);
-    return (1 + math.cos(math.pi * gone)) / 2;
-  }
-  final double arrival = clampDouble(
-    (progress - (1 - _conversationFadeSpan)) / _conversationFadeSpan,
-    0,
-    1,
-  );
-  return (1 - math.cos(math.pi * arrival)) / 2;
+/// Runs on its own clock rather than on the flight's, because the flight
+/// cannot begin until the window has been resized and its surface
+/// reallocated — measured at about a quarter of a second, as long as the
+/// flight itself, with the screen completely still throughout. Leaving needs
+/// none of that, so it starts on the keystroke and covers the wait.
+const Duration leavingDuration = Duration(milliseconds: 190);
+
+/// How solid the conversation is [progress] of the way through leaving.
+double leavingOpacityAt(double progress) {
+  final double gone = clampDouble(progress, 0, 1);
+  return (1 + math.cos(math.pi * gone)) / 2;
 }
 
-/// How large the conversation is when the presence is [t] of the way across.
-double conversationScaleAt({required double t, required bool collapsing}) {
-  final double solid = conversationOpacityAt(t: t, collapsing: collapsing);
-  return 1 - (1 - solid) * _conversationShrink;
-}
+/// How large the conversation is [progress] of the way through leaving.
+double leavingScaleAt(double progress) =>
+    1 - (1 - leavingOpacityAt(progress)) * _conversationShrink;
 
 /// Where the presence is when it is [t] of the way between [from] and [to].
 ///

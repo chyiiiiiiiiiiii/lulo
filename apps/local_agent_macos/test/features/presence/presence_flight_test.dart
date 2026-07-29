@@ -38,52 +38,6 @@ void main() {
     expect(middle.width, middle.height);
   });
 
-  test('the conversation goes as the presence leaves, not after it lands', () {
-    // The complaint this exists for: the presence reached the desktop and the
-    // window was still sitting there at full strength, then vanished.
-    expect(conversationOpacityAt(t: 0, collapsing: true), 1);
-    expect(
-      conversationOpacityAt(t: 0.3, collapsing: true),
-      lessThan(0.5),
-      reason: 'The window was still solid a third of the way through.',
-    );
-    expect(
-      conversationOpacityAt(t: 0.55, collapsing: true),
-      0,
-      reason: 'The window outlived the presence it belongs to.',
-    );
-  });
-
-  test('the conversation arrives with the presence, not before it', () {
-    expect(conversationOpacityAt(t: 0, collapsing: false), 0);
-    expect(
-      conversationOpacityAt(t: 0.3, collapsing: false),
-      0,
-      reason: 'The window appeared while the presence was still travelling.',
-    );
-    expect(conversationOpacityAt(t: 1, collapsing: false), 1);
-  });
-
-  test('a settling spring never drives opacity out of range', () {
-    for (final double t in <double>[-0.05, 1.08, 1.2]) {
-      for (final bool collapsing in <bool>[true, false]) {
-        final double opacity = conversationOpacityAt(
-          t: t,
-          collapsing: collapsing,
-        );
-        expect(opacity, inInclusiveRange(0, 1), reason: 't=$t');
-      }
-    }
-  });
-
-  test('the conversation shrinks away rather than only fading', () {
-    final double early = conversationScaleAt(t: 0.05, collapsing: true);
-    final double late = conversationScaleAt(t: 0.5, collapsing: true);
-
-    expect(early, closeTo(1, 0.02));
-    expect(late, lessThan(early));
-  });
-
   test('the presence is home before the wait becomes noticeable', () {
     // The fault this guards: the presence reached the desktop and then sat
     // there while the spring's tail was still being declared settled, which
@@ -111,6 +65,26 @@ void main() {
     );
     // Still thrown rather than eased into place: it passes the target.
     expect(flight.x(arrival + 0.02), greaterThan(1));
+  });
+
+  test('leaving starts before the canvas it will be drawn on exists', () {
+    // Preparing the canvas means resizing the window and reallocating the
+    // surface behind it, and nothing can move until that returns. Measured at
+    // roughly a quarter of a second — as long as the whole flight — during
+    // which the screen was completely still after the user asked for it.
+    //
+    // The conversation's departure does not depend on any of that, so it is
+    // driven on its own and begins on the keystroke.
+    expect(leavingOpacityAt(0), 1);
+    // What matters is that the answer to the keystroke is visible almost at
+    // once, not that it is finished quickly.
+    expect(
+      leavingOpacityAt(0.15),
+      lessThan(0.95),
+      reason: 'The screen was still unchanged after the user asked.',
+    );
+    expect(leavingOpacityAt(0.5), lessThanOrEqualTo(0.5));
+    expect(leavingOpacityAt(1), 0);
   });
 
   test('an overshooting spring still leaves the presence on the canvas', () {
