@@ -31,6 +31,44 @@ protocol DesktopPanelControlling: AnyObject {
   func endTransition(_ mode: DesktopPresentationMode)
 }
 
+/// The window's content, which only answers the mouse where it is drawn.
+///
+/// The window is the stage covering both forms and is far larger than
+/// whichever one is showing, so left alone it would swallow every click across
+/// that whole area — including ones meant for whatever is behind it. Returning
+/// nil from `hitTest` is what makes AppKit hand the event to the window below,
+/// and it needs no permission to do it: watching the pointer with a global
+/// event monitor does, and without that permission the window can never notice
+/// the pointer coming back and stays deaf forever.
+final class StagePassThroughView: NSView {
+  /// The part of this view that is drawn on, in its own coordinates.
+  var interactiveRect: NSRect = .zero
+
+  /// Measured from the top-left, so the rectangles the app works in can be
+  /// used here without being flipped first.
+  override var isFlipped: Bool { true }
+
+  /// Keeps the hosted content filling the stage.
+  ///
+  /// Set outright rather than by autoresizing, which scales proportionally and
+  /// therefore keeps a subview that started with no bounds at no bounds — the
+  /// app renders nothing and only the window chrome shows.
+  override func layout() {
+    super.layout()
+    for subview in subviews where subview.frame != bounds {
+      subview.frame = bounds
+    }
+  }
+
+  override func hitTest(_ point: NSPoint) -> NSView? {
+    let local = convert(point, from: superview)
+    guard interactiveRect.contains(local) else {
+      return nil
+    }
+    return super.hitTest(point)
+  }
+}
+
 struct FlutterPanelContent {
   let engine: AnyObject
   let viewController: NSViewController
@@ -42,6 +80,10 @@ final class DesktopPanelController: DesktopPanelControlling {
 
   private(set) var retainedPanel: NSPanel
   private(set) var retainedEngine: AnyObject
+  /// Held here because the window no longer owns it through a content
+  /// controller.
+  private(set) var retainedViewController: NSViewController!
+  private var retainedStage: StagePassThroughView!
   private let screenProvider: () -> NSScreen?
 
   init(
@@ -55,7 +97,15 @@ final class DesktopPanelController: DesktopPanelControlling {
     retainedEngine = content.engine
     self.screenProvider = screenProvider
 
-    panel.contentViewController = content.viewController
+    // The Flutter view is hosted inside a view that decides where the window
+    // answers the mouse, so `contentViewController` cannot own the content.
+    let stage = StagePassThroughView(frame: panel.contentLayoutRect)
+    stage.autoresizingMask = [.width, .height]
+    let hosted = content.viewController.view
+    stage.addSubview(hosted)
+    retainedViewController = content.viewController
+    retainedStage = stage
+    panel.contentView = stage
     panel.isReleasedWhenClosed = false
     panel.level = .floating
     panel.isFloatingPanel = true
@@ -86,62 +136,14 @@ final class DesktopPanelController: DesktopPanelControlling {
     // liability: macOS would restore the orb's frame on the next launch and the
     // conversation would open at orb size. Each form positions itself instead.
     panel.setFrameAutosaveName("")
-    startTrackingPointer()
+    updateInteractiveRect()
   }
 
-  deinit {
-    for monitor in pointerMonitors {
-      NSEvent.removeMonitor(monitor)
-    }
-  }
-
-  /// Follows the pointer so the stage only takes the mouse where it is drawn.
-  ///
-  /// A window that ignores the mouse receives no events at all, so it cannot
-  /// notice the pointer coming back. Watching globally is what lets it be
-  /// given up and taken again.
-  private func startTrackingPointer() {
-    let events: NSEvent.EventTypeMask = [
-      .mouseMoved, .leftMouseDragged, .rightMouseDragged,
-    ]
-    let global = NSEvent.addGlobalMonitorForEvents(matching: events) {
-      [weak self] _ in
-      self?.updatePointerPassThrough()
-    }
-    if let global {
-      pointerMonitors.append(global)
-    }
-    let local = NSEvent.addLocalMonitorForEvents(matching: events) {
-      [weak self] event in
-      self?.updatePointerPassThrough()
-      return event
-    }
-    if let local {
-      pointerMonitors.append(local)
-    }
-  }
-
-  private func updatePointerPassThrough() {
-    let wanted = !interactiveRect.contains(NSEvent.mouseLocation)
-    if retainedPanel.ignoresMouseEvents != wanted {
-      retainedPanel.ignoresMouseEvents = wanted
-    }
-  }
-
-  /// Recomputes the part of the stage that is currently drawn on.
+  /// Tells the content which part of the stage is currently drawn on.
   private func updateInteractiveRect() {
     let geometry = currentGeometry()
-    let placed = storedMode == .orb ? geometry.orb : geometry.conversation
-    let frame = retainedPanel.frame
-    // Flutter measures from the top-left with y growing downwards; AppKit
-    // measures from the bottom-left with y growing upwards.
-    interactiveRect = NSRect(
-      x: frame.minX + placed.minX,
-      y: frame.maxY - placed.maxY,
-      width: placed.width,
-      height: placed.height
-    )
-    updatePointerPassThrough()
+    retainedStage.interactiveRect =
+      storedMode == .orb ? geometry.orb : geometry.conversation
   }
 
   /// Size the window returns to when the conversation is shown.
@@ -164,14 +166,6 @@ final class DesktopPanelController: DesktopPanelControlling {
   /// When the current change of form was asked for, for latency reporting.
   private var requestedAt: UInt64?
 
-  /// Where on screen the window currently has something to click on.
-  ///
-  /// The window is the stage covering both forms and is therefore far larger
-  /// than whichever form is showing. Left as it is, it would swallow every
-  /// click over that whole area, including ones meant for whatever is behind
-  /// it. Only the part actually being drawn takes the mouse.
-  private var interactiveRect: NSRect = .zero
-  private var pointerMonitors: [Any] = []
   /// Whether the conversation frame has been applied at least once.
   private var hasPresentedExpanded = false
 
@@ -232,7 +226,6 @@ final class DesktopPanelController: DesktopPanelControlling {
     retainedPanel.setFrameOrigin(
       NSPoint(x: origin.x + deltaX, y: origin.y - deltaY)
     )
-    updateInteractiveRect()
   }
 
   /// Shows the window buttons with the conversation and hides them with the orb.
@@ -305,7 +298,7 @@ final class DesktopPanelController: DesktopPanelControlling {
       conversation: conversationFrame(in: visible),
       orb: orbFrame(in: visible)
     )
-    retainedPanel.ignoresMouseEvents = true
+    retainedStage.interactiveRect = .zero
     retainedPanel.setFrame(canvas, display: true)
     retainedPanel.orderFrontRegardless()
     if let requestedAt, let answered, let grown = performanceTimestamp() {

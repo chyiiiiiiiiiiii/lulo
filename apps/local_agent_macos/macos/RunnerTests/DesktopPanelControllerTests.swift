@@ -24,7 +24,11 @@ final class DesktopPanelControllerTests: XCTestCase {
     XCTAssertEqual(contentFactoryCalls, 1)
     XCTAssertTrue(controller.retainedPanel === panel)
     XCTAssertTrue(controller.retainedEngine === engine)
-    XCTAssertTrue(panel.contentViewController === viewController)
+    // The window hosts the Flutter view inside a view that decides where it
+    // answers the mouse, so it is a subview rather than the content itself.
+    XCTAssertTrue(controller.retainedViewController === viewController)
+    XCTAssertTrue(viewController.view.superview === panel.contentView)
+    XCTAssertTrue(panel.contentView is StagePassThroughView)
 
     controller.show()
     controller.toggle()
@@ -194,6 +198,29 @@ final class DesktopPanelControllerTests: XCTestCase {
 
     // It has to be large enough for both, or one of them is cut off.
     XCTAssertTrue(orb.width >= 720 && orb.height >= 560)
+  }
+
+  func testTheStageOnlyAnswersTheMouseWhereItIsDrawn() {
+    let controller = Self.makeController()
+    controller.show()
+    controller.setPresentationMode(.orb)
+    guard let stage = controller.retainedPanel.contentView as? StagePassThroughView
+    else {
+      return XCTFail("The window is not hosting the pass-through stage")
+    }
+
+    // Watching the pointer instead needs accessibility permission, and without
+    // it the window can never notice the pointer coming back — it goes deaf
+    // once and stays that way. Returning nil from hitTest needs no permission.
+    let orb = stage.interactiveRect
+    XCTAssertFalse(orb.isEmpty, "Nothing on the stage answers the mouse")
+    XCTAssertNotNil(stage.hitTest(stage.convert(CGPoint(x: orb.midX, y: orb.midY), to: stage.superview)))
+
+    let outside = CGPoint(x: orb.midX, y: orb.minY - 40)
+    XCTAssertNil(
+      stage.hitTest(stage.convert(outside, to: stage.superview)),
+      "A click clear of the orb was swallowed instead of passing through"
+    )
   }
 
   func testPanelCanJoinSpacesAndRemainAvailableBesideFullscreenApps() {
