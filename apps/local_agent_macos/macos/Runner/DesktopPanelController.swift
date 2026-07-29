@@ -296,6 +296,8 @@ final class DesktopPanelController: NSObject, DesktopPanelControlling, NSWindowD
 
   /// Whether the conversation frame has been applied at least once.
   private var hasPresentedExpanded = false
+  /// Whether the agent has already settled on a display.
+  private var hasChosenDisplay = false
 
   /// Reports every mode change, including ones the hotkey initiates, so the
   /// Flutter surface can render the matching form.
@@ -481,7 +483,7 @@ final class DesktopPanelController: NSObject, DesktopPanelControlling, NSWindowD
     pendingRequest?.cancel()
     pendingRequest = nil
     let answered = performanceTimestamp()
-    guard let screen = screenProvider() ?? NSScreen.main else {
+    guard let screen = currentScreen() else {
       let empty = NSRect.zero
       return Self.transitionGeometry(conversation: empty, orb: empty).geometry
     }
@@ -562,7 +564,7 @@ final class DesktopPanelController: NSObject, DesktopPanelControlling, NSWindowD
   /// Where each form sits inside the window, which never changes size.
   func currentGeometry() -> DesktopTransitionGeometry {
     precondition(Thread.isMainThread)
-    guard let screen = screenProvider() ?? NSScreen.main else {
+    guard let screen = currentScreen() else {
       return Self.transitionGeometry(conversation: .zero, orb: .zero).geometry
     }
     let visible = screen.visibleFrame
@@ -588,7 +590,7 @@ final class DesktopPanelController: NSObject, DesktopPanelControlling, NSWindowD
   }
 
   private func applyFrame(for mode: DesktopPresentationMode) {
-    guard let screen = screenProvider() ?? NSScreen.main else {
+    guard let screen = currentScreen() else {
       return
     }
     if mode == .expanded {
@@ -716,16 +718,33 @@ final class DesktopPanelController: NSObject, DesktopPanelControlling, NSWindowD
     request(mode)
   }
 
+  /// Centres the agent on the display the pointer is on.
+  ///
+  /// Only used the first time it appears. Doing it on every show dragged the
+  /// agent onto whichever display the cursor happened to be over, so putting
+  /// the conversation away could carry it to another screen.
   private func moveToActiveDisplay() {
-    guard let screen = screenProvider() else {
+    guard !hasChosenDisplay, let screen = screenProvider() else {
       return
     }
+    hasChosenDisplay = true
     let visibleFrame = screen.visibleFrame
     let origin = NSPoint(
       x: visibleFrame.midX - retainedPanel.frame.width / 2,
       y: visibleFrame.midY - retainedPanel.frame.height / 2
     )
     retainedPanel.setFrameOrigin(origin)
+  }
+
+  /// The display the agent is already on.
+  ///
+  /// Deliberately not the one the pointer happens to be over. Asking the
+  /// pointer meant every change of form dragged the agent onto whichever
+  /// display the cursor was on at that instant, so putting the conversation
+  /// away could move it to another screen entirely. It stays where it is; the
+  /// pointer only decides where it appears the very first time.
+  private func currentScreen() -> NSScreen? {
+    retainedPanel.screen ?? screenProvider() ?? NSScreen.main
   }
 
   private static func screenAtPointer() -> NSScreen? {

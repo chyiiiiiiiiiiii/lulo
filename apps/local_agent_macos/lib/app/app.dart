@@ -397,7 +397,7 @@ final class _PresentationSwitchState extends State<_PresentationSwitch>
   Widget _orb({
     required double extent,
     required bool showLabel,
-    required bool continuousMotion,
+    bool continuousMotion = false,
   }) {
     return AgentPresenceOrb(
       key: _orbKey,
@@ -536,11 +536,7 @@ final class _PresentationSwitchState extends State<_PresentationSwitch>
               Positioned.fromRect(
                 rect: stage.orb,
                 child: DesktopOrbSurface(
-                  orb: _orb(
-                    extent: desktopOrbExtent,
-                    showLabel: false,
-                    continuousMotion: true,
-                  ),
+                  orb: _orb(extent: desktopOrbExtent, showLabel: false),
                   presenceShaderLoader: widget.presenceShaderLoader,
                   onSummon: () =>
                       host.setPresentation(DesktopPresentation.expanded),
