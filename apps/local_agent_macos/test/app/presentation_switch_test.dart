@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:local_agent_macos/app/app.dart';
 import 'package:local_agent_macos/app/app_composition.dart';
 import 'package:local_agent_macos/app/fake_runtime.dart';
+import 'package:local_agent_macos/features/conversation/conversation_view.dart';
 import 'package:local_agent_macos/features/conversation/inference_service.dart';
 import 'package:local_agent_macos/features/presence/desktop_orb_surface.dart';
 import 'package:local_agent_macos/platform/desktop_host_service.dart';
@@ -228,6 +229,61 @@ void main() {
       reason: 'The window never settled once the presence had arrived.',
     );
     expect(host.presentation.value, DesktopPresentation.orb);
+  });
+
+  testWidgets('the conversation keeps its corners rounded as it leaves', (
+    WidgetTester tester,
+  ) async {
+    final _FakePresentationHost host = _FakePresentationHost();
+    addTearDown(() => unawaited(host.dispose()));
+    final AppComposition composition = AppComposition(
+      () {},
+      storageService: InMemoryConversationStorageService(),
+      inferenceService: _HoldingInferenceService(),
+      presentationHost: host,
+    );
+    addTearDown(() => unawaited(composition.dispose()));
+
+    host.presentation.value = DesktopPresentation.expanded;
+    await tester.pumpWidget(
+      LocalAgentApp(
+        composition: composition,
+        presenceShaderLoader: _failShaderLoad,
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    final Rect slot = tester.getRect(
+      find.byKey(const Key('conversation-visibility')),
+    );
+    expect(
+      tester.getRect(find.byKey(const Key('conversation-corners'))),
+      slot,
+      reason: 'The conversation is not rounded at the size it is drawn at.',
+    );
+
+    // Leaving shrinks the conversation. Rounding it from outside that shrink
+    // leaves the corners cut at the size it no longer is, so the conversation
+    // pulls away from its own rounding and four square corners appear for as
+    // long as the change of form lasts.
+    host.presentation.value = DesktopPresentation.orb;
+    await tester.pump();
+    await tester.pump();
+
+    final Rect rounded = tester.getRect(
+      find.byKey(const Key('conversation-corners')),
+    );
+    expect(
+      rounded.width,
+      lessThan(slot.width),
+      reason: 'The rounding stayed at full size while the conversation shrank.',
+    );
+    expect(
+      tester.getRect(find.byType(ConversationView)).size,
+      rounded.size,
+      reason: 'The rounding and the conversation are drawn at different sizes.',
+    );
   });
 
   testWidgets('a choice made in settings reaches the window itself', (

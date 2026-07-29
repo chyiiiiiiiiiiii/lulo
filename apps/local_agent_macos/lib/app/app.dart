@@ -433,7 +433,16 @@ final class _PresentationSwitchState extends State<_PresentationSwitch>
           opacity: leavingOpacityAt(_leaving.value),
           child: Transform.scale(
             scale: leavingScaleAt(_leaving.value),
-            child: view,
+            // Rounded from inside the shrink rather than around it. Leaving
+            // makes the conversation smaller than the space it occupies, so a
+            // rounding applied outside is cut at a size the conversation no
+            // longer is: it pulls away from its own corners and shows four
+            // square ones for as long as the change of form lasts.
+            child: ClipRRect(
+              key: const Key('conversation-corners'),
+              borderRadius: BorderRadius.circular(windowCornerRadius),
+              child: view,
+            ),
           ),
         );
       },
