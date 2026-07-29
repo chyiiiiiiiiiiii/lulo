@@ -14,6 +14,12 @@ const double desktopOrbExtent = 148;
 /// The window behind this surface is transparent and borderless, so the widget
 /// paints nothing but the orb. Anything opaque here would show up as a floating
 /// rectangle on the desktop.
+///
+/// The gesture layer here never sees a real click: while the agent rests the
+/// window gives up the mouse entirely and a native catcher the size of the
+/// orb carries its clicks. It is kept because assistive technology activates
+/// through Flutter semantics, not through the mouse — removing it would make
+/// the resting agent unreachable to VoiceOver.
 final class DesktopOrbSurface extends StatefulWidget {
   /// Creates the desktop orb.
   const DesktopOrbSurface({

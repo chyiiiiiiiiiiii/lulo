@@ -41,6 +41,9 @@ final class ConversationList extends StatefulWidget {
 }
 
 final class _ConversationListState extends State<ConversationList> {
+  /// Breathing room above the first turn and below the last.
+  static const double _verticalPadding = 12;
+
   final ScrollController _scrollController = ScrollController();
 
   /// How far from the end still counts as being at the newest answer.
@@ -228,7 +231,7 @@ final class _ConversationListState extends State<ConversationList> {
       controller: _scrollController,
       padding: const EdgeInsets.symmetric(
         horizontal: conversationContentMargin,
-        vertical: 12,
+        vertical: _verticalPadding,
       ),
       // The turns live in the same centred column as the header and the
       // composer, so a message's edge lines up with both at any window size.

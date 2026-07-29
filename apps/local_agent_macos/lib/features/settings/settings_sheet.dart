@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
+import '../conversation/widgets/conversation_content_column.dart';
 import 'app_settings.dart';
 
 /// The app's own settings, shown over the conversation.
@@ -36,119 +38,152 @@ final class SettingsSheet extends StatelessWidget {
     return Material(
       key: const Key('settings-sheet'),
       color: colors.surface,
-      child: SafeArea(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: <Widget>[
-            Padding(
-              padding: const EdgeInsets.fromLTRB(78, 20, 16, 8),
-              child: Row(
-                children: <Widget>[
-                  Text(
-                    'Settings',
-                    style: Theme.of(context).textTheme.titleMedium,
-                  ),
-                  const Spacer(),
-                  IconButton(
-                    key: const Key('settings-close-button'),
-                    tooltip: 'Close settings',
-                    icon: const Icon(Icons.close_rounded),
-                    onPressed: onClose,
-                  ),
-                ],
+      // Esc is how a Mac user backs out of anything transient. Autofocus so
+      // the key lands here while the sheet is what they are looking at.
+      child: Focus(
+        autofocus: true,
+        onKeyEvent: (FocusNode node, KeyEvent event) {
+          if (event is KeyDownEvent &&
+              event.logicalKey == LogicalKeyboardKey.escape) {
+            onClose();
+            return KeyEventResult.handled;
+          }
+          return KeyEventResult.ignored;
+        },
+        child: SafeArea(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: <Widget>[
+              Padding(
+                // The conversation's own grid: the window buttons live on the
+                // line above, so the title has nothing to clear.
+                padding: const EdgeInsets.fromLTRB(
+                  conversationContentMargin,
+                  28,
+                  16,
+                  8,
+                ),
+                child: Row(
+                  children: <Widget>[
+                    Text(
+                      'Settings',
+                      style: Theme.of(context).textTheme.titleMedium,
+                    ),
+                    const Spacer(),
+                    IconButton(
+                      key: const Key('settings-close-button'),
+                      tooltip: 'Close settings',
+                      icon: const Icon(Icons.close_rounded),
+                      onPressed: onClose,
+                    ),
+                  ],
+                ),
               ),
-            ),
-            Expanded(
-              child: ListView(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                children: <Widget>[
-                  _Section(
-                    title: 'On the desktop',
+              Expanded(
+                child: ConversationContentColumn(
+                  child: ListView(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: conversationContentMargin,
+                    ),
                     children: <Widget>[
-                      SwitchListTile(
-                        key: const Key('setting-keep-orb-on-top'),
-                        value: settings.keepOrbOnTop,
-                        title: const Text('Keep the orb above other windows'),
-                        subtitle: const Text(
-                          'Off puts it in the normal window order, where other '
-                          'windows can cover it.',
-                        ),
-                        onChanged: (bool value) =>
-                            onChanged(settings.copyWith(keepOrbOnTop: value)),
+                      _Section(
+                        title: 'On the desktop',
+                        children: <Widget>[
+                          SwitchListTile(
+                            key: const Key('setting-keep-orb-on-top'),
+                            value: settings.keepOrbOnTop,
+                            title: const Text(
+                              'Keep the orb above other windows',
+                            ),
+                            subtitle: const Text(
+                              'Off puts it in the normal window order, where other '
+                              'windows can cover it.',
+                            ),
+                            onChanged: (bool value) => onChanged(
+                              settings.copyWith(keepOrbOnTop: value),
+                            ),
+                          ),
+                          SwitchListTile(
+                            key: const Key('setting-follow-across-spaces'),
+                            value: settings.followAcrossSpaces,
+                            title: const Text('Follow me between Spaces'),
+                            subtitle: const Text(
+                              'Off leaves the orb on the Space it was opened in.',
+                            ),
+                            onChanged: (bool value) => onChanged(
+                              settings.copyWith(followAcrossSpaces: value),
+                            ),
+                          ),
+                        ],
                       ),
-                      SwitchListTile(
-                        key: const Key('setting-follow-across-spaces'),
-                        value: settings.followAcrossSpaces,
-                        title: const Text('Follow me between Spaces'),
-                        subtitle: const Text(
-                          'Off leaves the orb on the Space it was opened in.',
-                        ),
-                        onChanged: (bool value) => onChanged(
-                          settings.copyWith(followAcrossSpaces: value),
-                        ),
+                      _Section(
+                        title: 'When it starts',
+                        children: <Widget>[
+                          SwitchListTile(
+                            key: const Key('setting-open-on-launch'),
+                            value: settings.openConversationOnLaunch,
+                            title: const Text(
+                              'Open the conversation on launch',
+                            ),
+                            subtitle: const Text(
+                              'Off rests as an orb until you summon it.',
+                            ),
+                            onChanged: (bool value) => onChanged(
+                              settings.copyWith(
+                                openConversationOnLaunch: value,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      _Section(
+                        title: 'The model it thinks with',
+                        children: <Widget>[
+                          ListTile(
+                            key: const Key('setting-model-path'),
+                            title: Text(
+                              settings.modelPath.isEmpty
+                                  ? 'No model chosen'
+                                  : settings.modelPath.split('/').last,
+                            ),
+                            subtitle: Text(
+                              settings.modelPath.isEmpty
+                                  ? 'Lulo is answering from its built-in preview, '
+                                        'which says the same thing every time.'
+                                  : 'Loaded now. Choosing another takes a few '
+                                        'seconds to swap.',
+                            ),
+                            trailing: FilledButton.tonal(
+                              key: const Key('setting-choose-model'),
+                              onPressed: () async {
+                                final String chosen = await onChooseModel();
+                                if (chosen.isNotEmpty) {
+                                  onChanged(
+                                    settings.copyWith(modelPath: chosen),
+                                  );
+                                }
+                              },
+                              child: const Text('Choose…'),
+                            ),
+                          ),
+                        ],
+                      ),
+                      _Section(
+                        title: 'Summoning',
+                        children: const <Widget>[
+                          ListTile(
+                            title: Text('Show or hide the conversation'),
+                            subtitle: Text('Anywhere on the Mac.'),
+                            trailing: Text('⌘⇧Space'),
+                          ),
+                        ],
                       ),
                     ],
                   ),
-                  _Section(
-                    title: 'When it starts',
-                    children: <Widget>[
-                      SwitchListTile(
-                        key: const Key('setting-open-on-launch'),
-                        value: settings.openConversationOnLaunch,
-                        title: const Text('Open the conversation on launch'),
-                        subtitle: const Text(
-                          'Off rests as an orb until you summon it.',
-                        ),
-                        onChanged: (bool value) => onChanged(
-                          settings.copyWith(openConversationOnLaunch: value),
-                        ),
-                      ),
-                    ],
-                  ),
-                  _Section(
-                    title: 'The model it thinks with',
-                    children: <Widget>[
-                      ListTile(
-                        key: const Key('setting-model-path'),
-                        title: Text(
-                          settings.modelPath.isEmpty
-                              ? 'No model chosen'
-                              : settings.modelPath.split('/').last,
-                        ),
-                        subtitle: Text(
-                          settings.modelPath.isEmpty
-                              ? 'Lulo is answering from its built-in preview, '
-                                    'which says the same thing every time.'
-                              : 'Loaded now. Choosing another takes a few '
-                                    'seconds to swap.',
-                        ),
-                        trailing: FilledButton.tonal(
-                          key: const Key('setting-choose-model'),
-                          onPressed: () async {
-                            final String chosen = await onChooseModel();
-                            if (chosen.isNotEmpty) {
-                              onChanged(settings.copyWith(modelPath: chosen));
-                            }
-                          },
-                          child: const Text('Choose…'),
-                        ),
-                      ),
-                    ],
-                  ),
-                  _Section(
-                    title: 'Summoning',
-                    children: const <Widget>[
-                      ListTile(
-                        title: Text('Show or hide the conversation'),
-                        subtitle: Text('Anywhere on the Mac.'),
-                        trailing: Text('⌘⇧Space'),
-                      ),
-                    ],
-                  ),
-                ],
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
