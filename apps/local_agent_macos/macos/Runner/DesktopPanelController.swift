@@ -148,6 +148,12 @@ final class DesktopPanelController: NSObject, DesktopPanelControlling, NSWindowD
     let geometry = currentGeometry()
     retainedStage.interactiveRect =
       storedMode == .orb ? geometry.orb : geometry.conversation
+    // Returning nil from a view's hitTest is not enough on a titled window:
+    // the window's own frame still takes the event, so the transparent stage
+    // stood as an invisible wall across the desktop and nothing behind it
+    // could be clicked. While the agent rests it gives up the mouse outright.
+    // A resident assistant must not be in the way of anything.
+    retainedPanel.ignoresMouseEvents = storedMode == .orb
   }
 
   /// Size the window returns to when the conversation is shown.

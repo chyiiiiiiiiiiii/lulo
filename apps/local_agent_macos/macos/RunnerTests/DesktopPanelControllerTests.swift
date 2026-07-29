@@ -200,6 +200,25 @@ final class DesktopPanelControllerTests: XCTestCase {
     XCTAssertTrue(orb.width >= 720 && orb.height >= 560)
   }
 
+  func testTheRestingAgentStandsInNobodysWay() {
+    let controller = Self.makeController()
+    controller.show()
+
+    // Returning nil from a view's hitTest is not enough on a titled window:
+    // the frame still takes the event, so the transparent stage stood as an
+    // invisible wall over everything behind it. A resident assistant must not
+    // be in the way of anything, so while it rests it gives up the mouse.
+    controller.setPresentationMode(.orb)
+    XCTAssertTrue(
+      controller.retainedPanel.ignoresMouseEvents,
+      "The resting agent is still taking clicks meant for other apps"
+    )
+
+    // The conversation is an ordinary window and answers for itself.
+    controller.setPresentationMode(.expanded)
+    XCTAssertFalse(controller.retainedPanel.ignoresMouseEvents)
+  }
+
   func testTheStageOnlyAnswersTheMouseWhereItIsDrawn() {
     let controller = Self.makeController()
     controller.show()
