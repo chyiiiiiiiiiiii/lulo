@@ -61,6 +61,34 @@ Future<void> main() async {
       arguments: const <String>['build', 'macos', '--profile'],
       workingDirectory: _join(workspaceRoot.path, 'apps/local_agent_macos'),
     ),
+    // The window is where this app's hardest bugs live, and its tests were
+    // being written but never run: nothing here invoked them, so a rename of
+    // the app quietly broke the test target and a click that went straight
+    // through the resting orb was reported as covered. Run through the
+    // workspace rather than the project, because the pods the app links are
+    // only wired up there, and into the build directory Flutter already uses
+    // rather than a second multi-gigabyte copy under DerivedData.
+    _VerificationCommand(
+      name: 'macOS window tests',
+      executable: 'xcodebuild',
+      arguments: const <String>[
+        'test',
+        '-workspace',
+        'Runner.xcworkspace',
+        '-scheme',
+        'Runner',
+        '-configuration',
+        'Debug',
+        '-destination',
+        'platform=macOS',
+        '-derivedDataPath',
+        '../build/macos',
+      ],
+      workingDirectory: _join(
+        workspaceRoot.path,
+        'apps/local_agent_macos/macos',
+      ),
+    ),
   ];
   final File swiftPackage = File(
     _join(workspaceRoot.path, 'native/inference_service/Package.swift'),

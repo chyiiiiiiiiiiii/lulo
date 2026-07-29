@@ -1,7 +1,7 @@
 import AppKit
 import XCTest
 
-@testable import local_agent_macos
+@testable import Lulo
 
 @MainActor
 final class DesktopPanelControllerTests: XCTestCase {
@@ -227,6 +227,54 @@ final class DesktopPanelControllerTests: XCTestCase {
     XCTAssertFalse(
       controller.orbInputIsPlaced,
       "The catcher stayed over a conversation that answers for itself"
+    )
+  }
+
+  func testAClickOnTheRestingOrbReachesTheCatcher() {
+    // The window server, not AppKit, decides which window a click belongs to,
+    // and for a window it can see through it decides on the drawn alpha rather
+    // than on the frame. A catcher that painted nothing was therefore not
+    // merely invisible but absent: every click went straight through to the
+    // desktop and the orb answered nothing but the hotkey. Asking the server
+    // who owns the point is the only check that catches that — the frame was
+    // right the whole time it was broken.
+    guard let screen = NSScreen.main else {
+      return XCTFail("There is no screen to rest the orb on")
+    }
+    let catcher = OrbInputPanel(onSummon: {}, onDragBy: { _, _ in })
+    let side = DesktopPanelController.orbSide
+    let visible = screen.visibleFrame
+    let rect = NSRect(
+      x: visible.midX - side / 2,
+      y: visible.midY - side / 2,
+      width: side,
+      height: side
+    )
+    catcher.place(over: rect)
+    // The server takes the window's shape from the drawing, so it is given the
+    // run loop long enough to have received it.
+    RunLoop.current.run(until: Date().addingTimeInterval(0.3))
+    defer { catcher.place(over: nil) }
+
+    XCTAssertEqual(
+      NSWindow.windowNumber(
+        at: NSPoint(x: rect.midX, y: rect.midY),
+        belowWindowWithWindowNumber: 0
+      ),
+      catcher.windowNumber,
+      "A click on the resting orb went straight through the catcher"
+    )
+
+    // And nothing beyond the orb itself: a corner of the square clear of it
+    // still belongs to whatever is behind, because a resident assistant must
+    // not be in anyone's way.
+    XCTAssertNotEqual(
+      NSWindow.windowNumber(
+        at: NSPoint(x: rect.minX + 4, y: rect.minY + 4),
+        belowWindowWithWindowNumber: 0
+      ),
+      catcher.windowNumber,
+      "The catcher took a click that was clear of the orb"
     )
   }
 

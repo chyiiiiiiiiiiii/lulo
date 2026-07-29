@@ -24,7 +24,7 @@ struct DesktopTransitionGeometry: Equatable {
 /// While the agent rests, the window covering both forms gives up the mouse
 /// so that nothing behind it is blocked. That takes the orb's own clicks with
 /// it, so this panel — the size of the orb and nothing more — gets them back.
-/// It draws nothing; the orb is still rendered by the engine behind it.
+/// The orb itself is still drawn by the engine behind it.
 final class OrbInputPanel {
   /// Creates the catcher, off screen until the agent rests.
   init(
@@ -67,6 +67,9 @@ final class OrbInputPanel {
   /// What it covers, for tests.
   var placedFrame: NSRect { panel.frame }
 
+  /// Its identity to the window server, so a test can ask who owns a point.
+  var windowNumber: Int { panel.windowNumber }
+
   /// How far a press may travel and still count as a click.
   static let dragSlop: CGFloat = 3
 }
@@ -90,6 +93,21 @@ final class OrbCatcherView: NSView {
   private let onSummon: () -> Void
   private let onDragBy: (CGFloat, CGFloat) -> Void
   private var travelled: CGFloat = 0
+
+  /// Faint enough that no display can show it, solid enough to be there.
+  ///
+  /// The window server decides which window a click belongs to from the alpha
+  /// a see-through window actually draws, not from its frame, so a catcher
+  /// that painted nothing was not invisible but absent: every click on the orb
+  /// went through it to the desktop and the agent answered only the hotkey.
+  /// Anything below one part in 255 rounds away to nothing again.
+  static let catchingTint = NSColor(white: 0, alpha: 0.01)
+
+  /// Draws the orb's own circle, so the corners of the square stay passable.
+  override func draw(_ dirtyRect: NSRect) {
+    Self.catchingTint.setFill()
+    NSBezierPath(ovalIn: bounds).fill()
+  }
 
   /// Answers the very first click even when the app is not in front, or the
   /// click that reaches a background app is spent activating it and the agent

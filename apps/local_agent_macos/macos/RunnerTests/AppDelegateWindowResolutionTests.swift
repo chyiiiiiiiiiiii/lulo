@@ -1,7 +1,7 @@
 import AppKit
 import XCTest
 
-@testable import local_agent_macos
+@testable import Lulo
 
 @MainActor
 final class AppDelegateWindowResolutionTests: XCTestCase {

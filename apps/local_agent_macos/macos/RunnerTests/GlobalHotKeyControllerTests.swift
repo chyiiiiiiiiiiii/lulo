@@ -1,7 +1,7 @@
 import Carbon
 import XCTest
 
-@testable import local_agent_macos
+@testable import Lulo
 
 @MainActor
 final class GlobalHotKeyControllerTests: XCTestCase {

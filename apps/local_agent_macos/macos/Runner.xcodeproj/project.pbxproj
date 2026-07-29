@@ -508,7 +508,7 @@
 				PRODUCT_BUNDLE_IDENTIFIER = com.flutterlocalagent.localAgentMacos.RunnerTests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_VERSION = 5.0;
-				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/local_agent_macos.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/local_agent_macos";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Lulo.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Lulo";
 			};
 			name = Debug;
 		};
@@ -523,7 +523,7 @@
 				PRODUCT_BUNDLE_IDENTIFIER = com.flutterlocalagent.localAgentMacos.RunnerTests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_VERSION = 5.0;
-				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/local_agent_macos.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/local_agent_macos";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Lulo.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Lulo";
 			};
 			name = Release;
 		};
@@ -538,7 +538,7 @@
 				PRODUCT_BUNDLE_IDENTIFIER = com.flutterlocalagent.localAgentMacos.RunnerTests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_VERSION = 5.0;
-				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/local_agent_macos.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/local_agent_macos";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Lulo.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Lulo";
 			};
 			name = Profile;
 		};
