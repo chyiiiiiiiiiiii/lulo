@@ -26,7 +26,7 @@ void main() {
     // starts after the close, minimise and zoom buttons rather than beneath
     // them.
     expect(
-      tester.getTopLeft(find.text('Pocket Agent')).dx,
+      tester.getTopLeft(find.text('Lulo')).dx,
       greaterThanOrEqualTo(_windowButtonsWidth),
       reason: 'The title was drawn underneath the window buttons.',
     );

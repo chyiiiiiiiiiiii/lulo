@@ -53,6 +53,46 @@ class AppDelegate: FlutterAppDelegate {
     appMenu.insertItem(.separator(), at: min(2, appMenu.numberOfItems))
   }
 
+  /// Kept so the close item has something to send its action to.
+  private var closeMenuTarget: MenuActionTarget?
+
+  /// Gives the app the File menu a Mac user expects to find.
+  ///
+  /// One item, because there is one thing to put in it. Closing puts the
+  /// conversation away rather than closing the agent, which has no closed
+  /// state to go to.
+  private func installFileMenu() {
+    guard let mainMenu = NSApp.mainMenu,
+      !mainMenu.items.contains(where: { $0.title == "File" })
+    else {
+      return
+    }
+    let target = MenuActionTarget { [weak self] in
+      self?.collapseConversation()
+    }
+    closeMenuTarget = target
+    let fileMenu = NSMenu(title: "File")
+    let close = NSMenuItem(
+      title: "Close",
+      action: #selector(MenuActionTarget.run),
+      keyEquivalent: "w"
+    )
+    close.target = target
+    fileMenu.addItem(close)
+    let fileItem = NSMenuItem(title: "File", action: nil, keyEquivalent: "")
+    fileItem.submenu = fileMenu
+    // Right after the app's own menu, where File always sits.
+    mainMenu.insertItem(fileItem, at: min(1, mainMenu.numberOfItems))
+  }
+
+  private func collapseConversation() {
+    NSApp.windows
+      .compactMap { $0 as? MainFlutterWindow }
+      .first?
+      .panelController?
+      .windowShouldClose(NSApp.mainWindow ?? NSWindow())
+  }
+
   private var menuBarController: MenuBarController?
   private var hotKeyController: GlobalHotKeyController?
   private var desktopHostApi: LocalRuntimeDesktopHostApi?
@@ -109,6 +149,7 @@ class AppDelegate: FlutterAppDelegate {
       )
     }
     installSettingsMenuItem { eventApi.onSettingsRequested(completion: { _ in }) }
+    installFileMenu()
     let eventSink = PigeonGenerationEventSink(api: eventApi)
     let eventBridge = GenerationEventBridge(
       sink: eventSink,

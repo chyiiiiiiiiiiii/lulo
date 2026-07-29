@@ -43,7 +43,7 @@ final class _LocalAgentAppState extends State<LocalAgentApp> {
   Widget build(BuildContext context) {
     const Color seed = Color(0xFF7357E8);
     return MaterialApp(
-      title: 'Pocket Agent',
+      title: 'Lulo',
       debugShowCheckedModeBanner: false,
       themeMode: ThemeMode.system,
       theme: _theme(Brightness.light, seed),

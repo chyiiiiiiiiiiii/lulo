@@ -106,7 +106,7 @@ final class _ConversationComposerState extends State<ConversationComposer> {
                   maxLines: 6,
                   textInputAction: TextInputAction.newline,
                   decoration: InputDecoration(
-                    hintText: 'Message your local agent',
+                    hintText: 'Message Lulo',
                     filled: true,
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(22),

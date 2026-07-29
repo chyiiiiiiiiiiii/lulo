@@ -198,7 +198,7 @@ final class _ConversationChrome extends StatelessWidget {
     padding: const EdgeInsets.fromLTRB(_windowButtonsWidth, 20, 24, 8),
     child: Row(
       children: <Widget>[
-        Text('Pocket Agent', style: Theme.of(context).textTheme.titleMedium),
+        Text('Lulo', style: Theme.of(context).textTheme.titleMedium),
         const SizedBox(width: 12),
         AgentPresenceHeader(
           completedTurns: completedTurns,

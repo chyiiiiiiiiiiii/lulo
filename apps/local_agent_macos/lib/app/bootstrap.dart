@@ -118,6 +118,6 @@ SettingsStore _settingsStore() {
     return InMemorySettingsStore();
   }
   return FileSettingsStore(
-    directory: Directory('$home/Library/Application Support/Pocket Agent'),
+    directory: Directory('$home/Library/Application Support/Lulo'),
   );
 }

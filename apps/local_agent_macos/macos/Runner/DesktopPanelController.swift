@@ -75,7 +75,7 @@ struct FlutterPanelContent {
   let viewController: NSViewController
 }
 
-final class DesktopPanelController: DesktopPanelControlling {
+final class DesktopPanelController: NSObject, DesktopPanelControlling, NSWindowDelegate {
   private static let performanceMetricsEnabled =
     ProcessInfo.processInfo.environment["LOCAL_AGENT_PANEL_METRICS"] == "1"
 
@@ -97,6 +97,7 @@ final class DesktopPanelController: DesktopPanelControlling {
     retainedPanel = panel
     retainedEngine = content.engine
     self.screenProvider = screenProvider
+    super.init()
 
     // The Flutter view is hosted inside a view that decides where the window
     // answers the mouse, so `contentViewController` cannot own the content.
@@ -137,6 +138,7 @@ final class DesktopPanelController: DesktopPanelControlling {
     // liability: macOS would restore the orb's frame on the next launch and the
     // conversation would open at orb size. Each form positions itself instead.
     panel.setFrameAutosaveName("")
+    panel.delegate = self
     applyWindowBehaviour(for: storedMode)
     updateInteractiveRect()
   }
@@ -242,6 +244,19 @@ final class DesktopPanelController: DesktopPanelControlling {
     self.keepOrbOnTop = keepOrbOnTop
     self.followAcrossSpaces = followAcrossSpaces
     applyWindowBehaviour(for: storedMode)
+  }
+
+  /// Puts the conversation away rather than closing the agent.
+  ///
+  /// Lulo is resident: it has no closed state, only a resting one. Letting the
+  /// close button do what it usually does would take the agent off the screen
+  /// with nothing left to bring it back but the hotkey.
+  func windowShouldClose(_ sender: NSWindow) -> Bool {
+    precondition(Thread.isMainThread)
+    if storedMode == .expanded {
+      requestPresentationMode(.orb)
+    }
+    return false
   }
 
   /// Makes the window behave like what it currently is.

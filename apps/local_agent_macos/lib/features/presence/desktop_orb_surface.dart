@@ -139,7 +139,7 @@ final class _DesktopOrbSurfaceState extends State<DesktopOrbSurface> {
           child: Semantics(
             button: true,
             label:
-                'Yi, the local agent. Activate to open the conversation, or '
+                'Lulo, your local agent. Activate to open the conversation, or '
                 'drag to move it.',
             child: Center(
               child: AnimatedScale(
