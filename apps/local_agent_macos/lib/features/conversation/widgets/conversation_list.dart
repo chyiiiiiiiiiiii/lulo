@@ -7,6 +7,7 @@ import 'package:flutter/rendering.dart';
 
 import 'active_streaming_turn.dart';
 import 'completed_turn.dart';
+import 'conversation_content_column.dart';
 
 /// Scrollable terminal history plus an independently listening active turn.
 final class ConversationList extends StatefulWidget {
@@ -225,34 +226,42 @@ final class _ConversationListState extends State<ConversationList> {
     return SingleChildScrollView(
       key: const Key('conversation-scroll-surface'),
       controller: _scrollController,
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
-      child: Column(
-        children: <Widget>[
-          ValueListenableBuilder<List<Turn>>(
-            valueListenable: widget.completedTurns,
-            builder: (BuildContext context, List<Turn> turns, Widget? child) {
-              widget.onCompletedTurnsBuild?.call();
-              if (turns.isEmpty) {
-                return SizedBox(
-                  height: (constraints.maxHeight - 40).clamp(
-                    0,
-                    double.infinity,
-                  ),
-                  child: const _EmptyConversation(),
+      padding: const EdgeInsets.symmetric(
+        horizontal: conversationContentMargin,
+        vertical: 12,
+      ),
+      // The turns live in the same centred column as the header and the
+      // composer, so a message's edge lines up with both at any window size.
+      child: ConversationContentColumn(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: <Widget>[
+            ValueListenableBuilder<List<Turn>>(
+              valueListenable: widget.completedTurns,
+              builder: (BuildContext context, List<Turn> turns, Widget? child) {
+                widget.onCompletedTurnsBuild?.call();
+                if (turns.isEmpty) {
+                  return SizedBox(
+                    height: (constraints.maxHeight - 40).clamp(
+                      0,
+                      double.infinity,
+                    ),
+                    child: const _EmptyConversation(),
+                  );
+                }
+                return Column(
+                  children: <Widget>[
+                    for (final Turn turn in turns) CompletedTurn(turn: turn),
+                  ],
                 );
-              }
-              return Column(
-                children: <Widget>[
-                  for (final Turn turn in turns) CompletedTurn(turn: turn),
-                ],
-              );
-            },
-          ),
-          ActiveStreamingTurn(
-            activeTurn: widget.activeTurn,
-            onBuild: widget.onActiveTurnBuild,
-          ),
-        ],
+              },
+            ),
+            ActiveStreamingTurn(
+              activeTurn: widget.activeTurn,
+              onBuild: widget.onActiveTurnBuild,
+            ),
+          ],
+        ),
       ),
     );
   }

@@ -2,6 +2,8 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import 'conversation_content_column.dart';
+
 /// Desktop-first prompt composer that owns all of its UI controllers.
 final class ConversationComposer extends StatefulWidget {
   /// Creates a desktop prompt composer.
@@ -88,47 +90,49 @@ final class _ConversationComposerState extends State<ConversationComposer> {
       valueListenable: widget.canSubmit,
       builder: (BuildContext context, bool canSubmit, Widget? child) {
         return Padding(
-          padding: const EdgeInsets.fromLTRB(24, 12, 24, 22),
-          child: Center(
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 820),
-              child: CallbackShortcuts(
-                bindings: <ShortcutActivator, VoidCallback>{
-                  const SingleActivator(LogicalKeyboardKey.enter): _submit,
-                  const SingleActivator(LogicalKeyboardKey.enter, shift: true):
-                      _insertNewline,
-                },
-                child: TextField(
-                  key: const Key('conversation-composer-field'),
-                  controller: _controller,
-                  focusNode: _focusNode,
-                  minLines: 1,
-                  maxLines: 6,
-                  textInputAction: TextInputAction.newline,
-                  decoration: InputDecoration(
-                    hintText: 'Message Lulo',
-                    filled: true,
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(22),
-                      borderSide: BorderSide.none,
-                    ),
-                    contentPadding: const EdgeInsets.fromLTRB(18, 14, 8, 14),
-                    suffixIcon: canSubmit
-                        ? IconButton(
-                            key: const Key('conversation-submit-button'),
-                            tooltip: 'Send message',
-                            onPressed: _controller.text.trim().isEmpty
-                                ? null
-                                : _submit,
-                            icon: const Icon(Icons.arrow_upward_rounded),
-                          )
-                        : IconButton(
-                            key: const Key('conversation-stop-button'),
-                            tooltip: 'Stop response',
-                            onPressed: _stop,
-                            icon: const Icon(Icons.stop_rounded),
-                          ),
+          padding: const EdgeInsets.fromLTRB(
+            conversationContentMargin,
+            12,
+            conversationContentMargin,
+            24,
+          ),
+          child: ConversationContentColumn(
+            child: CallbackShortcuts(
+              bindings: <ShortcutActivator, VoidCallback>{
+                const SingleActivator(LogicalKeyboardKey.enter): _submit,
+                const SingleActivator(LogicalKeyboardKey.enter, shift: true):
+                    _insertNewline,
+              },
+              child: TextField(
+                key: const Key('conversation-composer-field'),
+                controller: _controller,
+                focusNode: _focusNode,
+                minLines: 1,
+                maxLines: 6,
+                textInputAction: TextInputAction.newline,
+                decoration: InputDecoration(
+                  hintText: 'Message Lulo',
+                  filled: true,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(22),
+                    borderSide: BorderSide.none,
                   ),
+                  contentPadding: const EdgeInsets.fromLTRB(18, 14, 8, 14),
+                  suffixIcon: canSubmit
+                      ? IconButton(
+                          key: const Key('conversation-submit-button'),
+                          tooltip: 'Send message',
+                          onPressed: _controller.text.trim().isEmpty
+                              ? null
+                              : _submit,
+                          icon: const Icon(Icons.arrow_upward_rounded),
+                        )
+                      : IconButton(
+                          key: const Key('conversation-stop-button'),
+                          tooltip: 'Stop response',
+                          onPressed: _stop,
+                          icon: const Icon(Icons.stop_rounded),
+                        ),
                 ),
               ),
             ),

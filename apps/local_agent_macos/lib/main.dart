@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 
 import 'app/app.dart';
@@ -11,11 +13,19 @@ Future<void> main() async {
   final SettingsStore store = createSettingsStore();
   final AppSettings settings = await store.load();
   final bool hasModel = settings.modelPath.trim().isNotEmpty;
+  // The native test suite runs inside this app, and the app shares its
+  // settings with the one the user really uses — same bundle, same container.
+  // Left alone it would start loading a multi-gigabyte model the moment the
+  // test host launched, which starved the test runner's connection window
+  // often enough to fail runs. The tests are about the window, not the model.
+  final bool hostingTests = Platform.environment.keys.any(
+    (String key) => key.startsWith('XCTest'),
+  );
   runApp(
     LocalAgentApp(
       composition: createAppComposition(
         settingsStore: store,
-        inferenceRuntime: hasModel ? 'litert' : 'fake',
+        inferenceRuntime: hasModel && !hostingTests ? 'litert' : 'fake',
         localModelPath: settings.modelPath,
       ),
     ),

@@ -23,12 +23,13 @@ void main() {
     await tester.pump();
 
     // The window buttons live on the line above the title, so the title sits
-    // flush with the content's own margin. Indenting it their width left a
-    // hole in the header with nothing in it.
+    // on the content column's own edge — which is the composer's edge.
     expect(
       tester.getTopLeft(find.text('Lulo')).dx,
-      24,
-      reason: 'The title is not flush with the content margin.',
+      tester
+          .getTopLeft(find.byKey(const Key('conversation-composer-field')))
+          .dx,
+      reason: 'The title and the composer do not share a leading edge.',
     );
   });
 }

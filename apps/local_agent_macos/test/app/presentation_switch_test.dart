@@ -8,6 +8,7 @@ import 'package:local_agent_macos/app/app_composition.dart';
 import 'package:local_agent_macos/app/fake_runtime.dart';
 import 'package:local_agent_macos/features/conversation/conversation_view.dart';
 import 'package:local_agent_macos/features/conversation/inference_service.dart';
+import 'package:local_agent_macos/features/conversation/widgets/conversation_content_column.dart';
 import 'package:local_agent_macos/features/presence/desktop_orb_surface.dart';
 import 'package:local_agent_macos/platform/desktop_host_service.dart';
 
@@ -273,7 +274,7 @@ void main() {
     );
   });
 
-  testWidgets('the title keeps its place windowed and full screen', (
+  testWidgets('the title and the composer share one leading edge', (
     WidgetTester tester,
   ) async {
     final _FakePresentationHost host = _FakePresentationHost();
@@ -296,11 +297,17 @@ void main() {
     await tester.pump();
     await tester.pump();
 
-    // The title sits flush with the content margin, windowed and full screen
-    // alike: the window buttons live on the line above it, so there is
-    // nothing for it to clear in either state.
-    expect(tester.getTopLeft(find.text('Lulo')).dx, 24);
+    // The title, the messages and the composer share one content column, so
+    // the title's leading edge is the composer's leading edge — at this size
+    // and at every other.
+    double titleLeads() => tester.getTopLeft(find.text('Lulo')).dx;
+    double composerLeads() => tester
+        .getTopLeft(find.byKey(const Key('conversation-composer-field')))
+        .dx;
+    expect(titleLeads(), composerLeads());
 
+    // Wider than the column: both centre together rather than the composer
+    // walking away from a title pinned to the window's edge.
     host.changeGeometry(
       const DesktopTransitionGeometry(
         size: Size(1512, 949),
@@ -312,9 +319,14 @@ void main() {
     await tester.pump();
 
     expect(
-      tester.getTopLeft(find.text('Lulo')).dx,
-      24,
-      reason: 'Full screen moved a title that had nothing to clear.',
+      titleLeads(),
+      composerLeads(),
+      reason: 'The window grew and the title left the composer\'s edge.',
+    );
+    expect(
+      titleLeads(),
+      greaterThan(conversationContentMargin),
+      reason: 'A window wider than the column should centre the content.',
     );
   });
 

@@ -7,6 +7,7 @@ import '../presence/agent_presence_header.dart';
 import '../presence/agent_presence_orb.dart';
 import 'conversation_view_model.dart';
 import 'widgets/conversation_composer.dart';
+import 'widgets/conversation_content_column.dart';
 import 'widgets/conversation_list.dart';
 
 /// Optional build instrumentation used by rendering-isolation tests.
@@ -189,46 +190,53 @@ final class _ConversationChrome extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Padding(
-    // Flush with the content's own margin. The window buttons live on the
-    // line above this one, so the title never needs to clear them — an indent
-    // their width was a hole in the header, and squeezing the title up onto
-    // the buttons' own line glued it to the top of a full screen.
-    padding: const EdgeInsets.fromLTRB(24, 14, 24, 8),
-    child: Row(
-      children: <Widget>[
-        Text('Lulo', style: Theme.of(context).textTheme.titleMedium),
-        const SizedBox(width: 12),
-        AgentPresenceHeader(
-          completedTurns: completedTurns,
-          activeTurn: activeTurn,
-          controller: presenceController,
-          orb: presenceOrb,
-          anchorKey: presenceAnchorKey,
-          onControllerCreated: onPresenceControllerCreated,
-          onOrbPaint: onPresenceOrbPaint,
-          onSemanticBuild: onPresenceSemanticBuild,
-          shaderLoader: presenceShaderLoader,
-        ),
-        const Spacer(),
-        Semantics(
-          label: 'Local model',
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: <Widget>[
-              Container(
-                width: 8,
-                height: 8,
-                decoration: BoxDecoration(
-                  color: Theme.of(context).colorScheme.primary,
-                  shape: BoxShape.circle,
-                ),
-              ),
-              const SizedBox(width: 8),
-              const Text('Local'),
-            ],
+    // In the shared content column, so the title's leading edge is the
+    // composer's leading edge at every window size. The window buttons live
+    // on the line above, and the clear space over the title keeps this bar
+    // from crowding them.
+    padding: const EdgeInsets.fromLTRB(
+      conversationContentMargin,
+      28,
+      conversationContentMargin,
+      12,
+    ),
+    child: ConversationContentColumn(
+      child: Row(
+        children: <Widget>[
+          Text('Lulo', style: Theme.of(context).textTheme.titleMedium),
+          const SizedBox(width: 12),
+          AgentPresenceHeader(
+            completedTurns: completedTurns,
+            activeTurn: activeTurn,
+            controller: presenceController,
+            orb: presenceOrb,
+            anchorKey: presenceAnchorKey,
+            onControllerCreated: onPresenceControllerCreated,
+            onOrbPaint: onPresenceOrbPaint,
+            onSemanticBuild: onPresenceSemanticBuild,
+            shaderLoader: presenceShaderLoader,
           ),
-        ),
-      ],
+          const Spacer(),
+          Semantics(
+            label: 'Local model',
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
+                Container(
+                  width: 8,
+                  height: 8,
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).colorScheme.primary,
+                    shape: BoxShape.circle,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                const Text('Local'),
+              ],
+            ),
+          ),
+        ],
+      ),
     ),
   );
 }
