@@ -327,6 +327,30 @@ final class DesktopPanelControllerTests: XCTestCase {
     )
   }
 
+  func testSummoningTheConversationDoesNotCarryYouToAnotherSpace() {
+    let controller = Self.makeController()
+    controller.show()
+    controller.setWindowBehaviour(keepOrbOnTop: true, followAcrossSpaces: true)
+
+    controller.setPresentationMode(.expanded)
+
+    // Binding the window to one Space and then activating the app is what
+    // makes macOS carry the user off to that Space. A summoned assistant
+    // appears where the user already is; it does not take them somewhere else
+    // and leave them to find their way back.
+    XCTAssertTrue(
+      controller.retainedPanel.collectionBehavior.contains(.canJoinAllSpaces),
+      "The conversation was tied to one Space, so summoning it moves the user"
+    )
+
+    // Unless the user asked for the opposite, in which case it stays where it
+    // was opened and summoning it is their way of going back to it.
+    controller.setWindowBehaviour(keepOrbOnTop: true, followAcrossSpaces: false)
+    XCTAssertFalse(
+      controller.retainedPanel.collectionBehavior.contains(.canJoinAllSpaces)
+    )
+  }
+
   func testEachFormBehavesLikeTheKindOfWindowItIs() {
     let controller = Self.makeController()
     let panel = controller.retainedPanel
@@ -342,11 +366,11 @@ final class DesktopPanelControllerTests: XCTestCase {
 
     // The conversation is an ordinary window. Floating it above everything is
     // the wrong default for something the user reads and types in, and a panel
-    // that never activates has no menu bar of its own.
+    // that never activates has no menu bar of its own. Which Space it is on is
+    // deliberately not part of that — see the test above.
     controller.setPresentationMode(.expanded)
     XCTAssertEqual(panel.level, .normal)
     XCTAssertFalse(panel.styleMask.contains(.nonactivatingPanel))
-    XCTAssertFalse(panel.collectionBehavior.contains(.canJoinAllSpaces))
 
     XCTAssertFalse(panel.hidesOnDeactivate)
     XCTAssertEqual(panel.animationBehavior, .none)

@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:agent_core/agent_core.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 
 import 'active_streaming_turn.dart';
 import 'completed_turn.dart';
@@ -50,6 +51,20 @@ final class _ConversationListState extends State<ConversationList> {
   /// Whether the newest answer is what the user is looking at.
   bool _atBottom = true;
 
+  /// Whether the newest answer is being followed as it grows.
+  ///
+  /// Kept apart from [_atBottom], which only decides whether to offer the way
+  /// back. Being near the bottom is not the same as wanting to be taken there:
+  /// a scroll that has only just begun is still within a hair of the end, and
+  /// treating that as consent is what made reading back impossible.
+  bool _following = true;
+
+  /// Whether the user currently has hold of the list.
+  bool _held = false;
+
+  /// How many completed turns have been accounted for.
+  int _seenTurns = 0;
+
   @override
   void initState() {
     super.initState();
@@ -58,21 +73,53 @@ final class _ConversationListState extends State<ConversationList> {
     _scrollController.addListener(_watchPosition);
   }
 
-  /// Follows the newest answer only while the user is already reading it.
-  ///
-  /// Scrolling back is a deliberate act, so an answer that arrives afterwards
-  /// must not drag the view away from whatever is being read.
+  /// Decides whether the way back to the newest answer is worth offering.
   void _watchPosition() {
-    if (!_scrollController.hasClients) {
-      return;
-    }
-    final ScrollPosition position = _scrollController.position;
-    final bool atBottom =
-        position.pixels >= position.maxScrollExtent - _bottomTolerance;
+    final bool atBottom = _isAtBottom();
     if (atBottom == _atBottom) {
       return;
     }
     setState(() => _atBottom = atBottom);
+  }
+
+  bool _isAtBottom() {
+    if (!_scrollController.hasClients) {
+      return true;
+    }
+    final ScrollPosition position = _scrollController.position;
+    return position.pixels >= position.maxScrollExtent - _bottomTolerance;
+  }
+
+  /// Follows the scroll the user is performing, rather than their position.
+  ///
+  /// Scrolling back towards what has already been said is a deliberate act and
+  /// stops the follow the moment it starts, not once it has travelled far
+  /// enough to count. Letting go at the newest answer takes it up again, which
+  /// is how every chat window a Mac user already knows behaves.
+  bool _watchScroll(ScrollNotification notification) {
+    // Rendered turns bring scrollables of their own; only this one is the
+    // conversation.
+    if (notification.depth != 0) {
+      return false;
+    }
+    if (notification is ScrollStartNotification) {
+      _held = notification.dragDetails != null;
+    } else if (notification is UserScrollNotification) {
+      if (notification.direction == ScrollDirection.forward) {
+        _setFollowing(false);
+      }
+    } else if (notification is ScrollEndNotification) {
+      _held = false;
+      _setFollowing(_isAtBottom());
+    }
+    return false;
+  }
+
+  void _setFollowing(bool following) {
+    if (_following == following) {
+      return;
+    }
+    _following = following;
   }
 
   /// Returns to the newest answer, which also resumes following it.
@@ -115,15 +162,35 @@ final class _ConversationListState extends State<ConversationList> {
   /// height until it has been laid out, so the distance to scroll does not
   /// exist yet while this is being notified.
   void _followNewContent() {
-    if (!_atBottom) {
+    _resumeIfTheUserJustSpoke();
+    // Never while the list is being held: a jump ends the scroll the user is
+    // performing, and answers arrive often enough that every attempt to read
+    // back would be ended in turn.
+    if (!_following || _held) {
       return;
     }
     WidgetsBinding.instance.addPostFrameCallback((Duration _) {
-      if (!mounted || !_atBottom || !_scrollController.hasClients) {
+      if (!mounted || !_following || _held || !_scrollController.hasClients) {
         return;
       }
       _scrollController.jumpTo(_scrollController.position.maxScrollExtent);
     });
+  }
+
+  /// Sending something is asking to see it, so it takes the follow up again.
+  void _resumeIfTheUserJustSpoke() {
+    final List<Turn> turns = widget.completedTurns.value;
+    if (turns.length <= _seenTurns) {
+      _seenTurns = turns.length;
+      return;
+    }
+    final bool spoke = turns
+        .skip(_seenTurns)
+        .any((Turn turn) => turn.role == TurnRole.user);
+    _seenTurns = turns.length;
+    if (spoke) {
+      _setFollowing(true);
+    }
   }
 
   @override
@@ -133,7 +200,10 @@ final class _ConversationListState extends State<ConversationList> {
       builder: (BuildContext context, BoxConstraints constraints) {
         return Stack(
           children: <Widget>[
-            _scrollSurface(constraints),
+            NotificationListener<ScrollNotification>(
+              onNotification: _watchScroll,
+              child: _scrollSurface(constraints),
+            ),
             // Only offered when it is needed: while the newest answer is on
             // screen there is nothing to go back to.
             if (!_atBottom)

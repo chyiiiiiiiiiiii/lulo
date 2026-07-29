@@ -419,14 +419,6 @@ final class DesktopPanelController: NSObject, DesktopPanelControlling, NSWindowD
       NSApp.setActivationPolicy(.accessory)
       retainedPanel.level = keepOrbOnTop ? .floating : .normal
       retainedPanel.styleMask.insert(.nonactivatingPanel)
-      if followAcrossSpaces {
-        retainedPanel.collectionBehavior.formUnion([
-          .canJoinAllSpaces, .fullScreenAuxiliary,
-        ])
-      } else {
-        retainedPanel.collectionBehavior.subtract([.canJoinAllSpaces])
-        retainedPanel.collectionBehavior.formUnion([.fullScreenAuxiliary])
-      }
     case .expanded:
       // An accessory app has no menu bar at all, so its own commands would
       // have nowhere to live. The conversation is a real window and the app
@@ -434,10 +426,32 @@ final class DesktopPanelController: NSObject, DesktopPanelControlling, NSWindowD
       NSApp.setActivationPolicy(.regular)
       retainedPanel.level = .normal
       retainedPanel.styleMask.remove(.nonactivatingPanel)
-      retainedPanel.collectionBehavior.subtract([
+    }
+    applySpaceBehaviour()
+  }
+
+  /// Puts the window on the Spaces the user asked for, in either form.
+  ///
+  /// The conversation used to be tied to a single Space, on the reasoning that
+  /// an ordinary window belongs to one. But this window is not opened, it is
+  /// summoned — and summoning activates the app, which is what makes macOS
+  /// carry the user off to whichever Space the window was tied to. An
+  /// assistant answering a keystroke has to appear where the user already is.
+  ///
+  /// The one setting decides it for both forms, because a user who asked the
+  /// resting orb to stay on one Space did not ask for the conversation to
+  /// follow them everywhere.
+  private func applySpaceBehaviour() {
+    if followAcrossSpaces {
+      retainedPanel.collectionBehavior.subtract([.managed])
+      retainedPanel.collectionBehavior.formUnion([
         .canJoinAllSpaces, .fullScreenAuxiliary,
       ])
-      retainedPanel.collectionBehavior.formUnion([.managed])
+    } else {
+      retainedPanel.collectionBehavior.subtract([.canJoinAllSpaces])
+      retainedPanel.collectionBehavior.formUnion([
+        .managed, .fullScreenAuxiliary,
+      ])
     }
   }
 
