@@ -156,7 +156,7 @@ final class _AgentPresenceHeaderState extends State<AgentPresenceHeader> {
       // leaves and returns.
       return SizedBox.square(
         key: widget.anchorKey,
-        dimension: AgentPresenceOrb.defaultOrbExtent,
+        dimension: AgentPresenceOrb.headerOrbExtent,
       );
     }
     return AgentPresenceOrb(

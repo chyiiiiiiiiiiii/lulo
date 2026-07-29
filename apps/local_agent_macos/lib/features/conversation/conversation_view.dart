@@ -209,49 +209,62 @@ final class _ConversationChrome extends StatelessWidget {
   /// titled window leaves before its title.
   static const double _windowButtonsWidth = 70;
 
+  /// How far the buttons' own line sits from the top of the window.
+  ///
+  /// The title shares their line — this is one bar, not a row of buttons with
+  /// a title floating somewhere below it. Their centre is at 15 points, so a
+  /// 28-point line starting here is centred on it.
+  static const double _titleBarInset = 1;
+
+  /// The height of that shared line.
+  static const double _titleBarHeight = 28;
+
   @override
   Widget build(BuildContext context) => Padding(
     padding: EdgeInsets.fromLTRB(
       windowButtonsBeside ? _windowButtonsWidth : 24,
-      20,
+      _titleBarInset,
       24,
-      8,
+      10,
     ),
-    child: Row(
-      children: <Widget>[
-        Text('Lulo', style: Theme.of(context).textTheme.titleMedium),
-        const SizedBox(width: 12),
-        AgentPresenceHeader(
-          completedTurns: completedTurns,
-          activeTurn: activeTurn,
-          controller: presenceController,
-          orb: presenceOrb,
-          anchorKey: presenceAnchorKey,
-          onControllerCreated: onPresenceControllerCreated,
-          onOrbPaint: onPresenceOrbPaint,
-          onSemanticBuild: onPresenceSemanticBuild,
-          shaderLoader: presenceShaderLoader,
-        ),
-        const Spacer(),
-        Semantics(
-          label: 'Local model',
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: <Widget>[
-              Container(
-                width: 8,
-                height: 8,
-                decoration: BoxDecoration(
-                  color: Theme.of(context).colorScheme.primary,
-                  shape: BoxShape.circle,
-                ),
-              ),
-              const SizedBox(width: 8),
-              const Text('Local'),
-            ],
+    child: SizedBox(
+      height: _titleBarHeight,
+      child: Row(
+        children: <Widget>[
+          Text('Lulo', style: Theme.of(context).textTheme.titleMedium),
+          const SizedBox(width: 12),
+          AgentPresenceHeader(
+            completedTurns: completedTurns,
+            activeTurn: activeTurn,
+            controller: presenceController,
+            orb: presenceOrb,
+            anchorKey: presenceAnchorKey,
+            onControllerCreated: onPresenceControllerCreated,
+            onOrbPaint: onPresenceOrbPaint,
+            onSemanticBuild: onPresenceSemanticBuild,
+            shaderLoader: presenceShaderLoader,
           ),
-        ),
-      ],
+          const Spacer(),
+          Semantics(
+            label: 'Local model',
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
+                Container(
+                  width: 8,
+                  height: 8,
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).colorScheme.primary,
+                    shape: BoxShape.circle,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                const Text('Local'),
+              ],
+            ),
+          ),
+        ],
+      ),
     ),
   );
 }

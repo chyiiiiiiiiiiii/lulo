@@ -311,7 +311,7 @@ final class _PresentationSwitchState extends State<_PresentationSwitch>
     // measured inside it becomes a canvas position by shifting it there.
     final Rect leaving = collapsing ? canvas.conversation : canvas.orb;
     final double fromExtent = collapsing
-        ? AgentPresenceOrb.defaultOrbExtent
+        ? AgentPresenceOrb.headerOrbExtent
         : desktopOrbExtent;
     final Rect from = origin == null
         ? Rect.fromCenter(
@@ -324,8 +324,8 @@ final class _PresentationSwitchState extends State<_PresentationSwitch>
         ? canvas.orb
         : Rect.fromCenter(
             center: canvas.conversation.center,
-            width: AgentPresenceOrb.defaultOrbExtent,
-            height: AgentPresenceOrb.defaultOrbExtent,
+            width: AgentPresenceOrb.headerOrbExtent,
+            height: AgentPresenceOrb.headerOrbExtent,
           );
 
     setState(() {
@@ -467,7 +467,7 @@ final class _PresentationSwitchState extends State<_PresentationSwitch>
         presenceAnchorKey: _anchorKey,
         presenceOrb: hostsOrb
             ? _orb(
-                extent: AgentPresenceOrb.defaultOrbExtent,
+                extent: AgentPresenceOrb.headerOrbExtent,
                 // The orb already says what the agent is doing with its whole
                 // body; a caption spelling it out beside the title is noise.
                 // Its state stays readable to assistive tech.

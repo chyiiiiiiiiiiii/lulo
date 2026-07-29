@@ -65,6 +65,13 @@ final class AgentPresenceOrb extends StatefulWidget {
   /// Edge length used when no [extent] is supplied.
   static const double defaultOrbExtent = 56;
 
+  /// Edge length the orb is drawn at beside the window's title.
+  ///
+  /// The title sits on the same line as the close, minimise and zoom buttons,
+  /// so the presence resting beside it has to fit that line rather than set
+  /// its height.
+  static const double headerOrbExtent = 28;
+
   /// Edge length of the orb, in logical pixels.
   ///
   /// The shader renders at this size rather than being scaled afterwards, so a
