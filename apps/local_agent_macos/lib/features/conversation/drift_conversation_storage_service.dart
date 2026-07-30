@@ -59,9 +59,18 @@ final class ConversationDatabase extends _$ConversationDatabase {
   @override
   MigrationStrategy get migration => MigrationStrategy(
     beforeOpen: (OpeningDetails details) async {
-      // Crash consistency over raw speed, per the ADR's conservative control.
       await customStatement('PRAGMA journal_mode = WAL');
-      await customStatement('PRAGMA synchronous = FULL');
+      // NORMAL, not FULL: in WAL mode NORMAL still cannot corrupt the file —
+      // a power cut costs at most the last commits — and FULL's per-commit
+      // F_FULLFSYNC is a 10-50ms device-cache flush that now lands on the
+      // calling isolate, right at the moment the user presses send.
+      await customStatement('PRAGMA synchronous = NORMAL');
+      // The conversation list derives everything from the turns; without
+      // this the derivation is a full scan with a correlated subquery.
+      await customStatement(
+        'CREATE INDEX IF NOT EXISTS idx_turn_rows_conversation '
+        'ON turn_rows (conversation_id, id)',
+      );
     },
   );
 }

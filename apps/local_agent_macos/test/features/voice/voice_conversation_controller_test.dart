@@ -488,6 +488,54 @@ void main() {
     expect(voice.calls, isNot(contains('finalizeUtterance')));
   });
 
+  test('listening is what the host reports, not what was asked', () async {
+    // startListening does not return until the first-run asset download
+    // finishes — minutes — and the indicator must not claim an open
+    // microphone for that whole wait.
+    final _NeverStartsVoice slow = _NeverStartsVoice();
+    final VoiceConversationController waiting = VoiceConversationController(
+      voice: slow,
+      conversation: vm,
+    );
+    addTearDown(waiting.dispose);
+
+    unawaited(waiting.enable());
+    await pump();
+    expect(waiting.listening, isFalse);
+
+    slow.events_.add(const ListeningStarted());
+    await pump();
+    expect(waiting.listening, isTrue);
+
+    slow.events_.add(const ListeningStopped());
+    await pump();
+    expect(waiting.listening, isFalse);
+  });
+
+  test('a settle that produced no final tries again', () async {
+    final _HandVoiceScheduler timers = _HandVoiceScheduler();
+    final VoiceConversationController timed = VoiceConversationController(
+      voice: voice,
+      conversation: vm,
+      utteranceScheduler: timers,
+    );
+    addTearDown(timed.dispose);
+    await timed.enable();
+
+    voice.hear(const PartialTranscript('明天天氣'));
+    await pump();
+    timers.fireLast();
+    expect(voice.calls, contains('finalizeUtterance'));
+
+    // No final ever arrives; the settle must be re-armed rather than the
+    // utterance hanging on screen forever.
+    expect(
+      timers.scheduled.length,
+      2,
+      reason: 'A finalize that yields nothing leaves no retry armed.',
+    );
+  });
+
   test('nothing heard while disabled goes anywhere', () async {
     voice.hear(const FinalTranscript('to someone else entirely'));
     await pump();
@@ -553,4 +601,28 @@ final class _HandCancel implements CancelBatch {
       _owner.cancelled += 1;
     }
   }
+}
+
+/// A voice whose startListening never returns, as on first-run downloads.
+final class _NeverStartsVoice implements VoiceService {
+  final StreamController<VoiceEvent> events_ =
+      StreamController<VoiceEvent>.broadcast();
+
+  @override
+  Stream<VoiceEvent> get events => events_.stream;
+
+  @override
+  Future<void> startListening() => Completer<void>().future;
+
+  @override
+  Future<void> stopListening() async {}
+
+  @override
+  Future<void> finalizeUtterance() async {}
+
+  @override
+  Future<void> speak(String text) async {}
+
+  @override
+  Future<void> stopSpeaking() async {}
 }

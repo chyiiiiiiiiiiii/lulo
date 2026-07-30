@@ -44,7 +44,7 @@ final class VoiceConversationController extends ChangeNotifier {
   /// The transcriber's own endpointing waits out seconds of silence; a
   /// partial that has stopped changing for this long is the user having
   /// finished their sentence.
-  static const Duration _utteranceSettleDelay = Duration(milliseconds: 800);
+  static const Duration _utteranceSettleDelay = Duration(milliseconds: 1500);
 
   CancelBatch? _pendingSettle;
 
@@ -54,6 +54,7 @@ final class VoiceConversationController extends ChangeNotifier {
   bool _enabling = false;
   bool _disposed = false;
   bool _speaking = false;
+  bool _listening = false;
 
   /// True from asking the synthesizer to speak until it reports finishing.
   ///
@@ -88,6 +89,12 @@ final class VoiceConversationController extends ChangeNotifier {
 
   /// Whether the agent is being spoken aloud right now.
   bool get speaking => _speaking;
+
+  /// Whether the microphone is truly open, as the host reported it.
+  ///
+  /// Deliberately not [enabled]: starting can sit in a minutes-long asset
+  /// download, and an indicator must not claim an open microphone then.
+  bool get listening => _listening;
 
   /// What is being heard, before the transcriber settles it.
   String get partialTranscript => _partialTranscript;
@@ -137,6 +144,7 @@ final class VoiceConversationController extends ChangeNotifier {
     _pendingUtterance = null;
     _pendingSettle?.cancel();
     _pendingSettle = null;
+    _listening = false;
     _speaking = false;
     _speechRequested = false;
     notifyListeners();
@@ -190,6 +198,7 @@ final class VoiceConversationController extends ChangeNotifier {
         // gone dark and disable can no longer reach it.
         _pendingSettle?.cancel();
         _pendingSettle = null;
+        _listening = false;
         if (_speaking || _speechRequested) {
           unawaited(_voice.stopSpeaking());
         }
@@ -200,7 +209,11 @@ final class VoiceConversationController extends ChangeNotifier {
         _speechRequested = false;
         _failure = message;
         notifyListeners();
-      case ListeningStarted() || ListeningStopped():
+      case ListeningStarted():
+        _listening = true;
+        notifyListeners();
+      case ListeningStopped():
+        _listening = false;
         notifyListeners();
     }
   }
@@ -241,6 +254,12 @@ final class VoiceConversationController extends ChangeNotifier {
     _pendingSettle = null;
     if (_enabled && _partialTranscript.trim().isNotEmpty) {
       unawaited(_voice.finalizeUtterance());
+      // Re-armed until the final actually arrives: a finalize the analyzer
+      // ignored must not leave the utterance hanging on screen forever.
+      _pendingSettle = _utteranceScheduler.schedule(
+        _utteranceSettleDelay,
+        _settleUtterance,
+      );
     }
   }
 
@@ -274,7 +293,10 @@ final class VoiceConversationController extends ChangeNotifier {
       final Turn turn = turns[_spokenThrough];
       if (turn.role == TurnRole.assistant &&
           turn.status == TurnStatus.completed) {
-        // Only what the streaming dispatch has not already said.
+        // Only what the streaming dispatch has not already said. This
+        // leans on the ViewModel notifying completedTurns BEFORE nulling
+        // the active turn: the counter below is read here first, and only
+        // then reset by _onActiveTurnChanged seeing null.
         final int alreadySpoken = _dispatchedOfActive <= turn.text.length
             ? _dispatchedOfActive
             : turn.text.length;

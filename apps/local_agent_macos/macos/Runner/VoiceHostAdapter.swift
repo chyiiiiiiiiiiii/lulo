@@ -41,6 +41,14 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
   /// Read on the real-time audio thread, written here.
   private let mute = MuteBox()
 
+  /// Utterances in flight, streamed one sentence at a time.
+  ///
+  /// The mute and the SpeakingFinished event belong to the whole answer:
+  /// the first sentence mutes, and only the last one back unmutes —
+  /// otherwise sentence one's return reopens the microphone while
+  /// sentences two onward are still playing, and the agent hears itself.
+  private var outstandingUtterances = 0
+
   init(events: VoiceHostEvents) {
     self.events = events
     super.init()
@@ -116,27 +124,42 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
     voice: String?,
     completion: @escaping (Result<Void, Error>) -> Void
   ) {
-    // Muted before the first sample leaves the speaker, not when the
-    // delegate reports it: the gap is exactly long enough for the agent to
-    // hear its own opening words.
-    mute.muted = true
+    utteranceBegan()
     Task { @MainActor in
-      self.emit(.speakingStarted)
       let spoke = await self.speakThroughSidecar(text: text, voice: voice)
       if !spoke {
         // The resident voice is not running: fall back to the system
-        // synthesizer rather than going silent.
+        // synthesizer rather than going silent. The delegate's
+        // didFinish/didCancel ends this utterance.
         let utterance = AVSpeechUtterance(string: text)
         if let systemVoice = Self.bestVoice() {
           utterance.voice = systemVoice
         }
         self.synthesizer.speak(utterance)
       } else {
-        self.mute.muted = false
-        self.emit(.speakingFinished)
+        self.utteranceEnded()
       }
     }
     completion(.success(()))
+  }
+
+  private func utteranceBegan() {
+    outstandingUtterances += 1
+    if outstandingUtterances == 1 {
+      // Muted before the first sample leaves the speaker, not when a
+      // delegate reports it: the gap is exactly long enough for the agent
+      // to hear its own opening words.
+      mute.muted = true
+      emit(.speakingStarted)
+    }
+  }
+
+  private func utteranceEnded() {
+    outstandingUtterances = max(0, outstandingUtterances - 1)
+    if outstandingUtterances == 0 {
+      mute.muted = false
+      emit(.speakingFinished)
+    }
   }
 
   /// Speaks through the resident Qwen3-TTS sidecar; false when unreachable.
@@ -185,7 +208,8 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
       request.timeoutInterval = 3
       URLSession.shared.dataTask(with: request).resume()
     }
-    mute.muted = false
+    // The outstanding requests unwind through their own returns; the mute
+    // lifts when the count reaches zero.
     completion(.success(()))
   }
 
@@ -464,20 +488,14 @@ extension VoiceHostAdapter: AVSpeechSynthesizerDelegate {
     _ synthesizer: AVSpeechSynthesizer,
     didFinish utterance: AVSpeechUtterance
   ) {
-    Task { @MainActor in
-      self.mute.muted = false
-      self.emit(.speakingFinished)
-    }
+    Task { @MainActor in self.utteranceEnded() }
   }
 
   nonisolated func speechSynthesizer(
     _ synthesizer: AVSpeechSynthesizer,
     didCancel utterance: AVSpeechUtterance
   ) {
-    Task { @MainActor in
-      self.mute.muted = false
-      self.emit(.speakingFinished)
-    }
+    Task { @MainActor in self.utteranceEnded() }
   }
 }
 

@@ -337,7 +337,7 @@ final class _HeardSoFar extends StatelessWidget {
           );
         }
         final String heard = voice.partialTranscript;
-        if (!voice.enabled) {
+        if (!voice.listening) {
           return const SizedBox.shrink();
         }
         if (heard.isEmpty) {
