@@ -24,6 +24,7 @@ final class VoiceConversationController extends ChangeNotifier {
     _events = _voice.events.listen(_onVoiceEvent);
     _conversation.completedTurnsListenable.addListener(_onTurnsChanged);
     _conversation.canSubmitListenable.addListener(_onCanSubmitChanged);
+    _conversation.activeTurnListenable.addListener(_onActiveTurnChanged);
     _spokenThrough = _conversation.completedTurnsListenable.value.length;
   }
 
@@ -49,6 +50,16 @@ final class VoiceConversationController extends ChangeNotifier {
   /// An utterance finished while the previous answer was still winding
   /// down; submitted the moment the conversation can take it.
   String? _pendingUtterance;
+
+  /// How much of the streaming answer has already been sent to the voice.
+  ///
+  /// Speech begins with the first finished sentence rather than waiting for
+  /// the whole answer: generation, synthesis, and playback overlap instead
+  /// of stacking end to end.
+  int _dispatchedOfActive = 0;
+
+  /// Where a spoken chunk may end: a sentence has visibly finished.
+  static final RegExp _sentenceEnd = RegExp(r'[。！？!?.…；;\n]');
 
   /// How many completed turns have already been considered for speaking.
   ///
@@ -166,6 +177,37 @@ final class VoiceConversationController extends ChangeNotifier {
     }
   }
 
+  void _onActiveTurnChanged() {
+    final Turn? active = _conversation.activeTurnListenable.value;
+    if (active == null) {
+      _dispatchedOfActive = 0;
+      return;
+    }
+    if (!_enabled) {
+      return;
+    }
+    final String text = active.text;
+    if (text.length <= _dispatchedOfActive) {
+      return;
+    }
+    final String undispatched = text.substring(_dispatchedOfActive);
+    final int lastEnd = undispatched.lastIndexOf(_sentenceEnd);
+    if (lastEnd < 0) {
+      return;
+    }
+    final String chunk = undispatched.substring(0, lastEnd + 1);
+    _dispatchedOfActive += chunk.length;
+    _speakAloud(chunk);
+  }
+
+  void _speakAloud(String text) {
+    final String spoken = speakableText(text);
+    if (spoken.isNotEmpty) {
+      _speechRequested = true;
+      unawaited(_voice.speak(spoken));
+    }
+  }
+
   void _onCanSubmitChanged() {
     final String? pending = _pendingUtterance;
     if (pending == null || !_enabled || !_conversation.canSubmit) {
@@ -196,11 +238,12 @@ final class VoiceConversationController extends ChangeNotifier {
       final Turn turn = turns[_spokenThrough];
       if (turn.role == TurnRole.assistant &&
           turn.status == TurnStatus.completed) {
-        final String spoken = speakableText(turn.text);
-        if (spoken.isNotEmpty) {
-          _speechRequested = true;
-          unawaited(_voice.speak(spoken));
-        }
+        // Only what the streaming dispatch has not already said.
+        final int alreadySpoken = _dispatchedOfActive <= turn.text.length
+            ? _dispatchedOfActive
+            : turn.text.length;
+        _dispatchedOfActive = 0;
+        _speakAloud(turn.text.substring(alreadySpoken));
       }
     }
   }
@@ -219,6 +262,7 @@ final class VoiceConversationController extends ChangeNotifier {
     _events = null;
     _conversation.completedTurnsListenable.removeListener(_onTurnsChanged);
     _conversation.canSubmitListenable.removeListener(_onCanSubmitChanged);
+    _conversation.activeTurnListenable.removeListener(_onActiveTurnChanged);
     super.dispose();
   }
 }
