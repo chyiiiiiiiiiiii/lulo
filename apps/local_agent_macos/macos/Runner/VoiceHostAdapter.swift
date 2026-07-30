@@ -34,6 +34,15 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
   /// A volatile transcript is on screen and unsettled.
   private var utteranceInProgress = false
 
+  /// When the current utterance's first volatile arrived.
+  ///
+  /// The VAD's clock freezes while the microphone is muted, so right after
+  /// an answer its "last voice" is minutes stale. The endpointer must only
+  /// trust a silence measured against voice heard for THIS utterance, or
+  /// the first volatile after an answer would be finalized on the spot —
+  /// the user's sentence cut off at its first word.
+  private var utteranceHeardAt: TimeInterval = .infinity
+
   /// The endpointer has already asked for this utterance; asked once.
   private var endpointFinalizeRequested = false
 
@@ -392,6 +401,9 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
             // session's trailing results still reach the other side, but
             // must not steer the new session's endpointer.
             if let self, id == self.sessionCounter {
+              if !result.isFinal && !self.utteranceInProgress {
+                self.utteranceHeardAt = ProcessInfo.processInfo.systemUptime
+              }
               self.utteranceInProgress = !result.isFinal
               if result.isFinal {
                 self.endpointFinalizeRequested = false
@@ -472,6 +484,12 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
     guard silence.isFinite, silence > Self.endpointSilence else {
       return
     }
+    // Recognition trails the voice it heard, so the first volatile may
+    // arrive after the room already went quiet — the margin covers that
+    // lag. Anything staler than the utterance is the pre-answer past.
+    guard vad.lastVoiceAt() >= utteranceHeardAt - 1.5 else {
+      return
+    }
     endpointFinalizeRequested = true
     NSLog("Lulo voice: endpointing after %.2fs of silence", silence)
     Task {
@@ -490,6 +508,7 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
     NotificationCenter.default.removeObserver(session.configObserver)
     session.endpointTask.cancel()
     utteranceInProgress = false
+    utteranceHeardAt = .infinity
     endpointFinalizeRequested = false
     session.builder.finish()
     session.engine.inputNode.removeTap(onBus: 0)
@@ -661,7 +680,11 @@ final class VoiceActivityBox: @unchecked Sendable {
     if rms < floor {
       floor = 0.9 * floor + 0.1 * rms
     } else {
-      floor = 0.995 * floor + 0.005 * rms
+      // Slowly: a long monologue must not raise the floor high enough to
+      // swallow its own voice. Speech is bursty — every inter-word dip
+      // pulls the floor back down fast — but steady hum climbs it all the
+      // way and is absorbed within a couple of minutes.
+      floor = 0.998 * floor + 0.002 * rms
     }
     if rms > max(Self.minimumVoice, floor * Self.floorRatio) {
       lastVoice = now
@@ -676,6 +699,13 @@ final class VoiceActivityBox: @unchecked Sendable {
     lock.lock()
     defer { lock.unlock() }
     return now - lastVoice
+  }
+
+  /// When a voice was last heard, on the clock [observe] was given.
+  func lastVoiceAt() -> TimeInterval {
+    lock.lock()
+    defer { lock.unlock() }
+    return lastVoice
   }
 
   /// The floor and loudest RMS since the last snapshot, for calibration.

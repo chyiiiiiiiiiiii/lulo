@@ -34,6 +34,23 @@ final class VoiceActivityTests: XCTestCase {
     XCTAssertGreaterThan(box.silence(asOf: t), 5.0)
   }
 
+  func testALongMonologueIsNotSwallowedByItsOwnFloor() {
+    // Speech is bursty: loud syllables with quiet gaps between words. The
+    // gaps pull the floor back down, so even a minute of talking must not
+    // raise it high enough to stop counting the voice as a voice.
+    let box = VoiceActivityBox()
+    var t = 0.0
+    for _ in 0..<20 {
+      box.observe(rms: 0.001, at: t)
+      t += 0.085
+    }
+    for beat in 0..<700 {
+      box.observe(rms: beat % 4 == 3 ? 0.005 : 0.05, at: t)
+      t += 0.085
+    }
+    XCTAssertLessThan(box.silence(asOf: t), 0.5)
+  }
+
   func testAVoiceAboveTheFanIsStillHeard() {
     let box = VoiceActivityBox()
     var t = 0.0
