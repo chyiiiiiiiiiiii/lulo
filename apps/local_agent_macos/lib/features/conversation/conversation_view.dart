@@ -57,6 +57,7 @@ final class ConversationView extends StatefulWidget {
   /// Creates a conversation view with a feature-scoped ViewModel factory.
   const ConversationView({
     required this.viewModelFactory,
+    this.onShowHistory,
     this.buildObserver,
     this.presenceShaderLoader = loadAgentPresenceShader,
     this.onPresenceController,
@@ -80,6 +81,12 @@ final class ConversationView extends StatefulWidget {
 
   /// Creates the ViewModel owned by this view.
   final ConversationViewModel Function() viewModelFactory;
+
+  /// Called when the user asks for the list of conversations.
+  ///
+  /// Null hides the button: surfaces with no store behind them have no list
+  /// to show.
+  final VoidCallback? onShowHistory;
 
   /// Optional render instrumentation used by tests.
   final ConversationBuildObserver? buildObserver;
@@ -122,6 +129,7 @@ final class _ConversationViewState extends State<ConversationView> {
         child: Column(
           children: <Widget>[
             _ConversationChrome(
+              onShowHistory: widget.onShowHistory,
               completedTurns: _viewModel.completedTurnsListenable,
               activeTurn: _viewModel.activeTurnListenable,
               presenceController: widget.presenceController,
@@ -165,6 +173,7 @@ final class _ConversationViewState extends State<ConversationView> {
 
 final class _ConversationChrome extends StatelessWidget {
   const _ConversationChrome({
+    required this.onShowHistory,
     required this.completedTurns,
     required this.activeTurn,
     required this.presenceController,
@@ -176,6 +185,7 @@ final class _ConversationChrome extends StatelessWidget {
     required this.presenceShaderLoader,
   });
 
+  final VoidCallback? onShowHistory;
   final ValueListenable<List<Turn>> completedTurns;
   final ValueListenable<Turn?> activeTurn;
   final AgentPresenceController? presenceController;
@@ -217,6 +227,13 @@ final class _ConversationChrome extends StatelessWidget {
             shaderLoader: presenceShaderLoader,
           ),
           const Spacer(),
+          if (onShowHistory != null)
+            IconButton(
+              key: const Key('conversation-history-button'),
+              tooltip: 'Conversations',
+              icon: const Icon(Icons.history_rounded),
+              onPressed: onShowHistory,
+            ),
           Semantics(
             label: 'Local model',
             child: Row(

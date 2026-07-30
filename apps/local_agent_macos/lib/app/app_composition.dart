@@ -61,10 +61,12 @@ final class AppComposition {
   ///
   /// Given a [conversationId] it opens that conversation; given none it
   /// resumes the most recently spoken-in one, or starts fresh when nothing is
-  /// stored. New identities carry the launch instant, so two runs of the app
-  /// can never mint the same conversation.
+  /// stored. [startFresh] skips the store deliberately: a new conversation on
+  /// the user's say-so. New identities carry the launch instant, so two runs
+  /// of the app can never mint the same conversation.
   ConversationViewModel createConversationViewModel({
     ConversationId? conversationId,
+    bool startFresh = false,
   }) {
     if (_disposed) {
       throw StateError('The application composition is disposed.');
@@ -76,6 +78,7 @@ final class AppComposition {
         '${_nextConversation++}',
       ),
       conversationId: conversationId,
+      startFresh: startFresh,
     );
   }
 

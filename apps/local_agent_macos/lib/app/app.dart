@@ -1,9 +1,12 @@
 import 'dart:async';
 
+import 'package:agent_core/agent_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/physics.dart';
 
+import '../features/conversation/conversation_storage_service.dart';
 import '../features/conversation/conversation_view.dart';
+import '../features/conversation/widgets/conversation_history_sheet.dart';
 import '../features/presence/agent_presence_controller.dart';
 import '../features/presence/agent_presence_orb.dart';
 import '../features/presence/desktop_orb_surface.dart';
@@ -81,7 +84,11 @@ final class _PresentationSwitchState extends State<_PresentationSwitch>
   /// size inside an orb-sized window. That moves it in the tree, and without a
   /// stable identity Flutter would rebuild it from scratch: the view owns its
   /// ViewModel, so the answer being generated would be cancelled.
-  final GlobalKey _conversationKey = GlobalKey();
+  ///
+  /// Replaced only when the user changes conversation: that rebuild is the
+  /// point, because the view owns its ViewModel and a new conversation is a
+  /// new ViewModel.
+  GlobalKey _conversationKey = GlobalKey();
 
   /// Identifies the one orb, so that changing form moves it.
   ///
@@ -138,6 +145,18 @@ final class _PresentationSwitchState extends State<_PresentationSwitch>
   AppSettings _settings = const AppSettings();
   bool _showingSettings = false;
 
+  /// The stored conversations, and whether they are currently being looked at.
+  List<ConversationSummary> _conversations = const <ConversationSummary>[];
+  bool _showingConversations = false;
+
+  /// Which conversation the view was asked to hold.
+  ///
+  /// Null with [_startFresh] unset means the most recently spoken-in one,
+  /// which is what launch resumes; null with it set means a deliberately new
+  /// conversation.
+  ConversationId? _openConversation;
+  bool _startFresh = false;
+
   @override
   void initState() {
     super.initState();
@@ -191,6 +210,65 @@ final class _PresentationSwitchState extends State<_PresentationSwitch>
     final DesktopPresentation? mode =
         widget.composition.presentationHost?.presentation.value;
     _leaving.value = mode == DesktopPresentation.orb ? 1 : 0;
+  }
+
+  /// Reads the store and puts its conversations in front of the user.
+  Future<void> _showConversations() async {
+    final List<ConversationSummary> conversations = await widget.composition
+        .listConversations();
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _conversations = conversations;
+      _showingConversations = true;
+    });
+  }
+
+  /// Puts [conversationId] into the view, in place of what it held.
+  void _openStoredConversation(ConversationId conversationId) {
+    setState(() {
+      _openConversation = conversationId;
+      _startFresh = false;
+      _conversationKey = GlobalKey();
+      _showingConversations = false;
+    });
+  }
+
+  /// Starts an empty conversation, leaving the stored ones where they are.
+  void _startNewConversation() {
+    setState(() {
+      _openConversation = null;
+      _startFresh = true;
+      _conversationKey = GlobalKey();
+      _showingConversations = false;
+    });
+  }
+
+  /// Forgets [conversationId]; a view still holding it starts fresh.
+  Future<void> _forgetConversation(ConversationId conversationId) async {
+    // Launch resumes the most recently spoken-in conversation without naming
+    // it here, so "the one being looked at" includes the head of the list the
+    // user is deleting from.
+    final bool wasOpen =
+        conversationId == _openConversation ||
+        (_openConversation == null &&
+            _conversations.isNotEmpty &&
+            conversationId == _conversations.first.id);
+    await widget.composition.deleteConversation(conversationId);
+    final List<ConversationSummary> conversations = await widget.composition
+        .listConversations();
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _conversations = conversations;
+      if (wasOpen) {
+        _openConversation = null;
+        _startFresh = true;
+        _conversationKey = GlobalKey();
+      }
+    });
   }
 
   /// Reads the user's choices and puts the window into them.
@@ -458,7 +536,13 @@ final class _PresentationSwitchState extends State<_PresentationSwitch>
       },
       child: ConversationView(
         key: _conversationKey,
-        viewModelFactory: widget.composition.createConversationViewModel,
+        viewModelFactory: () => widget.composition.createConversationViewModel(
+          conversationId: _openConversation,
+          startFresh: _startFresh,
+        ),
+        onShowHistory: widget.composition.presentationHost == null
+            ? null
+            : () => unawaited(_showConversations()),
         presenceShaderLoader: widget.presenceShaderLoader,
         presenceController: _presence,
         presenceAnchorKey: _anchorKey,
@@ -529,6 +613,16 @@ final class _PresentationSwitchState extends State<_PresentationSwitch>
                       // Over the conversation rather than in a window of its
                       // own: the window is the stage and resizing it is what
                       // this app cannot afford to do.
+                      if (_showingConversations && expanded && !travelling)
+                        ConversationHistorySheet(
+                          conversations: _conversations,
+                          onOpen: _openStoredConversation,
+                          onNew: _startNewConversation,
+                          onDelete: (ConversationId conversationId) =>
+                              unawaited(_forgetConversation(conversationId)),
+                          onClose: () =>
+                              setState(() => _showingConversations = false),
+                        ),
                       if (_showingSettings && expanded && !travelling)
                         SettingsSheet(
                           settings: _settings,

@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:local_agent_macos/app/fake_runtime.dart';
 import 'package:local_agent_macos/features/conversation/conversation_repository.dart';
 import 'package:local_agent_macos/features/conversation/conversation_view_model.dart';
+import 'package:local_agent_macos/features/conversation/inference_service.dart';
 
 import '../../support/controlled_inference_service.dart';
 
@@ -36,14 +37,17 @@ void main() {
   ConversationViewModel viewModel(
     InMemoryConversationStorageService store, {
     ConversationId? conversationId,
+    bool startFresh = false,
+    InferenceService? inferenceService,
   }) {
     return ConversationViewModel(
       repository: ConversationRepository(
         storageService: store,
-        inferenceService: ControlledInferenceService(),
+        inferenceService: inferenceService ?? ControlledInferenceService(),
       ),
       idFactory: () => const ConversationId('freshly-minted'),
       conversationId: conversationId,
+      startFresh: startFresh,
     );
   }
 
@@ -83,6 +87,25 @@ void main() {
     await vm.restored;
 
     expect(vm.completedTurnsListenable.value, isEmpty);
+  });
+
+  test('a fresh view model leaves the stored conversations alone', () async {
+    // "New conversation" means exactly that: yesterday stays in the store,
+    // and the first message begins a newly minted conversation.
+    final ControlledInferenceService inference = ControlledInferenceService();
+    final ConversationViewModel vm = viewModel(
+      await storeWithHistory(),
+      startFresh: true,
+      inferenceService: inference,
+    );
+    addTearDown(vm.dispose);
+
+    await vm.restored;
+    await vm.submit('a clean slate');
+    final GenerationRequest request = await inference.requestReceived;
+
+    expect(vm.completedTurnsListenable.value.single.text, 'a clean slate');
+    expect(request.conversationId, const ConversationId('freshly-minted'));
   });
 
   test(

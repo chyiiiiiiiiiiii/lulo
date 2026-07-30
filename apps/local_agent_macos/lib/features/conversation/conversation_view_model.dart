@@ -16,19 +16,23 @@ final class ConversationViewModel extends ChangeNotifier {
   /// Given a [conversationId] it restores that conversation; given none it
   /// resumes the most recently spoken-in one, because a resident agent that
   /// forgot yesterday on every launch would make each restart an amnesia. A
-  /// store with nothing in it starts fresh.
+  /// store with nothing in it starts fresh, and [startFresh] asks for that
+  /// deliberately: the store is left alone and the first message begins a
+  /// newly minted conversation.
   ConversationViewModel({
     required ConversationRepository repository,
     required ConversationIdFactory idFactory,
     ConversationId? conversationId,
-  }) : this._(repository, idFactory, conversationId);
+    bool startFresh = false,
+  }) : this._(repository, idFactory, conversationId, startFresh);
 
   ConversationViewModel._(
     this._repository,
     this._idFactory,
     ConversationId? conversationId,
+    bool startFresh,
   ) {
-    _restored = _restore(conversationId);
+    _restored = startFresh ? Future<void>.value() : _restore(conversationId);
   }
 
   final ConversationRepository _repository;
