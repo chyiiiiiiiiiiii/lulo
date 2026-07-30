@@ -41,6 +41,19 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
   /// Read on the real-time audio thread, written here.
   private let mute = MuteBox()
 
+  /// Utterances in flight, streamed one sentence at a time.
+  ///
+  /// The mute and the SpeakingFinished event belong to the whole answer:
+  /// the first sentence mutes, and only the last one back unmutes —
+  /// otherwise sentence one's return reopens the microphone while
+  /// sentences two onward are still playing, and the agent hears itself.
+  private var outstandingUtterances = 0
+
+  /// Bumped by stopSpeaking; an utterance still in flight to the sidecar
+  /// captures it at entry, and a stale one must not fall back to the
+  /// system voice after the user has already barged over it.
+  private var speakEpoch = 0
+
   init(events: VoiceHostEvents) {
     self.events = events
     super.init()
@@ -88,12 +101,32 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
     // Invalidates any start still on its way through permission dialogs or
     // the asset download, as well as the running session. The starting flag
     // falls with it, or a retry during the invalidated start's long await
-    // would report success while opening nothing.
+    // would report success while opening nothing. Speech state resets too:
+    // a fallback utterance whose terminal callback never came must not
+    // leave the microphone muted for the rest of the session.
     sessionCounter += 1
     starting = false
+    speakEpoch += 1
+    outstandingUtterances = 0
+    mute.muted = false
     endSession()
     emit(.listeningStopped)
     completion(.success(()))
+  }
+
+  func finalizeUtterance(completion: @escaping (Result<Void, Error>) -> Void) {
+    // The transcriber's endpointing waits out a long silence; the app calls
+    // this when the partial has visibly stopped changing, and whatever is
+    // pending settles as a final right away.
+    guard let session else {
+      completion(.success(()))
+      return
+    }
+    let analyzer = session.analyzer
+    Task {
+      try? await analyzer.finalize(through: nil)
+      completion(.success(()))
+    }
   }
 
   func speak(
@@ -101,27 +134,45 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
     voice: String?,
     completion: @escaping (Result<Void, Error>) -> Void
   ) {
-    // Muted before the first sample leaves the speaker, not when the
-    // delegate reports it: the gap is exactly long enough for the agent to
-    // hear its own opening words.
-    mute.muted = true
+    utteranceBegan()
+    let epoch = speakEpoch
     Task { @MainActor in
-      self.emit(.speakingStarted)
       let spoke = await self.speakThroughSidecar(text: text, voice: voice)
-      if !spoke {
+      if !spoke && epoch == self.speakEpoch {
         // The resident voice is not running: fall back to the system
-        // synthesizer rather than going silent.
+        // synthesizer rather than going silent. The delegate's
+        // didFinish/didCancel ends this utterance. A stale epoch means the
+        // user barged over this sentence while it was in flight, and it
+        // must not be read after all.
         let utterance = AVSpeechUtterance(string: text)
         if let systemVoice = Self.bestVoice() {
           utterance.voice = systemVoice
         }
         self.synthesizer.speak(utterance)
       } else {
-        self.mute.muted = false
-        self.emit(.speakingFinished)
+        self.utteranceEnded()
       }
     }
     completion(.success(()))
+  }
+
+  private func utteranceBegan() {
+    outstandingUtterances += 1
+    if outstandingUtterances == 1 {
+      // Muted before the first sample leaves the speaker, not when a
+      // delegate reports it: the gap is exactly long enough for the agent
+      // to hear its own opening words.
+      mute.muted = true
+      emit(.speakingStarted)
+    }
+  }
+
+  private func utteranceEnded() {
+    outstandingUtterances = max(0, outstandingUtterances - 1)
+    if outstandingUtterances == 0 {
+      mute.muted = false
+      emit(.speakingFinished)
+    }
   }
 
   /// Speaks through the resident Qwen3-TTS sidecar; false when unreachable.
@@ -163,6 +214,7 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
   }
 
   func stopSpeaking(completion: @escaping (Result<Void, Error>) -> Void) {
+    speakEpoch += 1
     synthesizer.stopSpeaking(at: .immediate)
     if let url = URL(string: "http://127.0.0.1:46557/stop") {
       var request = URLRequest(url: url)
@@ -170,7 +222,8 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
       request.timeoutInterval = 3
       URLSession.shared.dataTask(with: request).resume()
     }
-    mute.muted = false
+    // The outstanding requests unwind through their own returns; the mute
+    // lifts when the count reaches zero.
     completion(.success(()))
   }
 
@@ -449,20 +502,14 @@ extension VoiceHostAdapter: AVSpeechSynthesizerDelegate {
     _ synthesizer: AVSpeechSynthesizer,
     didFinish utterance: AVSpeechUtterance
   ) {
-    Task { @MainActor in
-      self.mute.muted = false
-      self.emit(.speakingFinished)
-    }
+    Task { @MainActor in self.utteranceEnded() }
   }
 
   nonisolated func speechSynthesizer(
     _ synthesizer: AVSpeechSynthesizer,
     didCancel utterance: AVSpeechUtterance
   ) {
-    Task { @MainActor in
-      self.mute.muted = false
-      self.emit(.speakingFinished)
-    }
+    Task { @MainActor in self.utteranceEnded() }
   }
 }
 

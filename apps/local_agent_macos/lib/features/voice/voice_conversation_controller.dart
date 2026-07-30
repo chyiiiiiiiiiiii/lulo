@@ -4,6 +4,7 @@ import 'package:agent_core/agent_core.dart';
 import 'package:flutter/foundation.dart';
 
 import '../conversation/conversation_view_model.dart';
+import '../conversation/token_batcher.dart';
 import 'voice_service.dart';
 
 /// Runs the conversation by voice: hear, answer, speak, yield when spoken
@@ -18,9 +19,14 @@ final class VoiceConversationController extends ChangeNotifier {
   VoiceConversationController({
     required VoiceService voice,
     required ConversationViewModel conversation,
-  }) : this._(voice, conversation);
+    BatchScheduler utteranceScheduler = const TimerBatchScheduler(),
+  }) : this._(voice, conversation, utteranceScheduler);
 
-  VoiceConversationController._(this._voice, this._conversation) {
+  VoiceConversationController._(
+    this._voice,
+    this._conversation,
+    this._utteranceScheduler,
+  ) {
     _events = _voice.events.listen(_onVoiceEvent);
     _conversation.completedTurnsListenable.addListener(_onTurnsChanged);
     _conversation.canSubmitListenable.addListener(_onCanSubmitChanged);
@@ -30,7 +36,29 @@ final class VoiceConversationController extends ChangeNotifier {
 
   final VoiceService _voice;
   final ConversationViewModel _conversation;
+  final BatchScheduler _utteranceScheduler;
   StreamSubscription<VoiceEvent>? _events;
+
+  /// How long a partial may sit unchanged before the utterance is settled.
+  ///
+  /// The transcriber's own endpointing waits out seconds of silence; a
+  /// partial that has stopped changing for this long is the user having
+  /// finished their sentence.
+  static const Duration _utteranceSettleDelay = Duration(milliseconds: 1500);
+
+  CancelBatch? _pendingSettle;
+
+  /// Forced-finalize attempts for the current utterance, bounded so a
+  /// transcriber that never answers cannot be poked forever.
+  int _settleAttempts = 0;
+  static const int _maxSettleAttempts = 3;
+
+  /// True from asking the generation to stop until its turn winds down.
+  ///
+  /// The cancel flushes the token batcher, and a flushed tail that happens
+  /// to finish a sentence must not be dispatched to the voice — the
+  /// interruption exists to stop exactly that.
+  bool _stopRequestedForActive = false;
 
   bool _enabled = false;
 
@@ -38,6 +66,7 @@ final class VoiceConversationController extends ChangeNotifier {
   bool _enabling = false;
   bool _disposed = false;
   bool _speaking = false;
+  bool _listening = false;
 
   /// True from asking the synthesizer to speak until it reports finishing.
   ///
@@ -72,6 +101,12 @@ final class VoiceConversationController extends ChangeNotifier {
 
   /// Whether the agent is being spoken aloud right now.
   bool get speaking => _speaking;
+
+  /// Whether the microphone is truly open, as the host reported it.
+  ///
+  /// Deliberately not [enabled]: starting can sit in a minutes-long asset
+  /// download, and an indicator must not claim an open microphone then.
+  bool get listening => _listening;
 
   /// What is being heard, before the transcriber settles it.
   String get partialTranscript => _partialTranscript;
@@ -119,6 +154,9 @@ final class VoiceConversationController extends ChangeNotifier {
     _enabled = false;
     _partialTranscript = '';
     _pendingUtterance = null;
+    _pendingSettle?.cancel();
+    _pendingSettle = null;
+    _listening = false;
     _speaking = false;
     _speechRequested = false;
     notifyListeners();
@@ -136,8 +174,18 @@ final class VoiceConversationController extends ChangeNotifier {
         notifyListeners();
         if (text.trim().isNotEmpty) {
           _yieldToTheUser();
+          // The user is still talking; push the settle out again.
+          _settleAttempts = 0;
+          _pendingSettle?.cancel();
+          _pendingSettle = _utteranceScheduler.schedule(
+            _utteranceSettleDelay,
+            _settleUtterance,
+          );
         }
       case FinalTranscript(:final String text):
+        _pendingSettle?.cancel();
+        _pendingSettle = null;
+        _settleAttempts = 0;
         _partialTranscript = '';
         notifyListeners();
         if (text.trim().isEmpty) {
@@ -162,6 +210,9 @@ final class VoiceConversationController extends ChangeNotifier {
         // A dead pipeline must not leave the button lit as listening —
         // nor keep reading the answer aloud when the button has already
         // gone dark and disable can no longer reach it.
+        _pendingSettle?.cancel();
+        _pendingSettle = null;
+        _listening = false;
         if (_speaking || _speechRequested) {
           unawaited(_voice.stopSpeaking());
         }
@@ -172,7 +223,11 @@ final class VoiceConversationController extends ChangeNotifier {
         _speechRequested = false;
         _failure = message;
         notifyListeners();
-      case ListeningStarted() || ListeningStopped():
+      case ListeningStarted():
+        _listening = true;
+        notifyListeners();
+      case ListeningStopped():
+        _listening = false;
         notifyListeners();
     }
   }
@@ -181,9 +236,10 @@ final class VoiceConversationController extends ChangeNotifier {
     final Turn? active = _conversation.activeTurnListenable.value;
     if (active == null) {
       _dispatchedOfActive = 0;
+      _stopRequestedForActive = false;
       return;
     }
-    if (!_enabled) {
+    if (!_enabled || _stopRequestedForActive) {
       return;
     }
     final String text = active.text;
@@ -208,7 +264,37 @@ final class VoiceConversationController extends ChangeNotifier {
     }
   }
 
+  /// The partial has sat still long enough: the user has finished talking.
+  void _settleUtterance() {
+    _pendingSettle = null;
+    if (!_enabled || _partialTranscript.trim().isEmpty) {
+      return;
+    }
+    _settleAttempts += 1;
+    unawaited(_voice.finalizeUtterance());
+    if (_settleAttempts < _maxSettleAttempts) {
+      // Re-armed until the final actually arrives: a finalize the analyzer
+      // ignored must not leave the utterance hanging on screen forever.
+      _pendingSettle = _utteranceScheduler.schedule(
+        _utteranceSettleDelay,
+        _settleUtterance,
+      );
+    } else {
+      // Three asks is enough; a transcript that will never settle should
+      // not sit on screen pretending it might.
+      _settleAttempts = 0;
+      _partialTranscript = '';
+      notifyListeners();
+    }
+  }
+
   void _onCanSubmitChanged() {
+    if (_conversation.canSubmit) {
+      // The generation has fully ended. The null-to-null active turn of a
+      // prefill cancel never notifies, so the dispatch guard is lifted
+      // here, where the end is always visible.
+      _stopRequestedForActive = false;
+    }
     final String? pending = _pendingUtterance;
     if (pending == null || !_enabled || !_conversation.canSubmit) {
       return;
@@ -224,6 +310,7 @@ final class VoiceConversationController extends ChangeNotifier {
       unawaited(_voice.stopSpeaking());
     }
     if (!_conversation.canSubmit) {
+      _stopRequestedForActive = true;
       unawaited(_conversation.stop());
     }
   }
@@ -238,7 +325,10 @@ final class VoiceConversationController extends ChangeNotifier {
       final Turn turn = turns[_spokenThrough];
       if (turn.role == TurnRole.assistant &&
           turn.status == TurnStatus.completed) {
-        // Only what the streaming dispatch has not already said.
+        // Only what the streaming dispatch has not already said. This
+        // leans on the ViewModel notifying completedTurns BEFORE nulling
+        // the active turn: the counter below is read here first, and only
+        // then reset by _onActiveTurnChanged seeing null.
         final int alreadySpoken = _dispatchedOfActive <= turn.text.length
             ? _dispatchedOfActive
             : turn.text.length;
@@ -251,6 +341,8 @@ final class VoiceConversationController extends ChangeNotifier {
   @override
   void dispose() {
     _disposed = true;
+    _pendingSettle?.cancel();
+    _pendingSettle = null;
     // The view that owns this controller is torn down on every conversation
     // switch; the microphone must not outlive it.
     if (_enabled || _enabling) {

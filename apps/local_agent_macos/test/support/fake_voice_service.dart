@@ -38,6 +38,11 @@ final class FakeVoiceService implements VoiceService {
   }
 
   @override
+  Future<void> finalizeUtterance() async {
+    calls.add('finalizeUtterance');
+  }
+
+  @override
   Future<void> speak(String text) async {
     calls.add('speak');
     spoken.add(text);

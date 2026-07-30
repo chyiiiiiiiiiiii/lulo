@@ -269,6 +269,28 @@ void main() {
     await harness.dispose();
   });
 
+  test('stop before the first token leaves the composer alive', () async {
+    // Escape lands exactly in the prefill window. Cancelling by hand skips
+    // the onDone path that re-enables submission, and the composer gates on
+    // the listenable — a stale false is a dead send key forever.
+    final _Harness harness = _Harness();
+    final ConversationViewModel viewModel = harness.createViewModel();
+
+    await viewModel.submit('Hello');
+    await harness.inference.requestReceived;
+    await viewModel.stop();
+    await Future<void>.delayed(Duration.zero);
+
+    expect(
+      viewModel.canSubmitListenable.value,
+      isTrue,
+      reason: 'The composer stayed disabled with nothing left to enable it.',
+    );
+
+    viewModel.dispose();
+    await harness.dispose();
+  });
+
   test('stop before generation starts cancels the pending operation', () async {
     final _Harness harness = _Harness();
     final Completer<void> saveGate = Completer<void>();

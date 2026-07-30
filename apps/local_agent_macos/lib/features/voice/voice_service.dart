@@ -69,6 +69,9 @@ abstract interface class VoiceService {
   /// Releases the microphone.
   Future<void> stopListening();
 
+  /// Forces whatever is being heard to settle as a final transcript now.
+  Future<void> finalizeUtterance();
+
   /// Speaks [text] aloud. Events report when it starts and finishes.
   Future<void> speak(String text);
 

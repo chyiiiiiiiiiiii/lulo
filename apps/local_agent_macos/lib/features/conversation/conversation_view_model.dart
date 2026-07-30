@@ -289,8 +289,14 @@ final class ConversationViewModel extends ChangeNotifier {
     if (_disposed) {
       return;
     }
+    // Cancelling by hand skips the onDone that normally re-enables
+    // submission; without this the composer's listenable stays false with
+    // nothing left to flip it, and the send key is dead for good. Enabled
+    // only after the turn is finished, so the voice dispatch guard stays
+    // up across the finish's batcher flush on every path.
     _operationSubscription = null;
     _finishActiveTurn(TurnStatus.cancelled, createWhenNotStarted: true);
+    _canSubmit.value = true;
   }
 
   @override

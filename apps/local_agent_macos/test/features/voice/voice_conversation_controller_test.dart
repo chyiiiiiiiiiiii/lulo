@@ -6,6 +6,7 @@ import 'package:local_agent_macos/app/fake_runtime.dart';
 import 'package:local_agent_macos/features/conversation/conversation_repository.dart';
 import 'package:local_agent_macos/features/conversation/conversation_view_model.dart';
 import 'package:local_agent_macos/features/conversation/inference_service.dart';
+import 'package:local_agent_macos/features/conversation/token_batcher.dart';
 import 'package:local_agent_macos/features/voice/voice_conversation_controller.dart';
 import 'package:local_agent_macos/features/voice/voice_service.dart';
 
@@ -440,6 +441,228 @@ void main() {
     expect(voice.spoken, <String>['Sunny, all day.']);
   });
 
+  test('a voice that has stopped is settled without waiting', () async {
+    // The transcriber's own endpointing waits seconds of silence before a
+    // final; a partial that has stopped changing for a beat is the user
+    // having finished, and the utterance is settled by hand.
+    final _HandVoiceScheduler timers = _HandVoiceScheduler();
+    final VoiceConversationController timed = VoiceConversationController(
+      voice: voice,
+      conversation: vm,
+      utteranceScheduler: timers,
+    );
+    addTearDown(timed.dispose);
+    await timed.enable();
+
+    voice.hear(const PartialTranscript('明天天氣'));
+    await pump();
+    expect(timers.scheduled, hasLength(1));
+
+    // Still talking: the newer partial replaces the pending settle.
+    voice.hear(const PartialTranscript('明天天氣如何'));
+    await pump();
+    expect(timers.cancelled, 1);
+    expect(timers.scheduled, hasLength(2));
+
+    timers.fireLast();
+    expect(voice.calls, contains('finalizeUtterance'));
+  });
+
+  test('a final on its own cancels the pending settle', () async {
+    final _HandVoiceScheduler timers = _HandVoiceScheduler();
+    final VoiceConversationController timed = VoiceConversationController(
+      voice: voice,
+      conversation: vm,
+      utteranceScheduler: timers,
+    );
+    addTearDown(timed.dispose);
+    await timed.enable();
+
+    voice.hear(const PartialTranscript('hello'));
+    await pump();
+    voice.hear(const FinalTranscript('hello'));
+    await pump();
+
+    expect(timers.cancelled, 1);
+    timers.fireLast();
+    expect(voice.calls, isNot(contains('finalizeUtterance')));
+  });
+
+  test('listening is what the host reports, not what was asked', () async {
+    // startListening does not return until the first-run asset download
+    // finishes — minutes — and the indicator must not claim an open
+    // microphone for that whole wait.
+    final _NeverStartsVoice slow = _NeverStartsVoice();
+    final VoiceConversationController waiting = VoiceConversationController(
+      voice: slow,
+      conversation: vm,
+    );
+    addTearDown(waiting.dispose);
+
+    unawaited(waiting.enable());
+    await pump();
+    expect(waiting.listening, isFalse);
+
+    slow.events_.add(const ListeningStarted());
+    await pump();
+    expect(waiting.listening, isTrue);
+
+    slow.events_.add(const ListeningStopped());
+    await pump();
+    expect(waiting.listening, isFalse);
+  });
+
+  test('a settle that produced no final tries again', () async {
+    final _HandVoiceScheduler timers = _HandVoiceScheduler();
+    final VoiceConversationController timed = VoiceConversationController(
+      voice: voice,
+      conversation: vm,
+      utteranceScheduler: timers,
+    );
+    addTearDown(timed.dispose);
+    await timed.enable();
+
+    voice.hear(const PartialTranscript('明天天氣'));
+    await pump();
+    timers.fireLast();
+    expect(voice.calls, contains('finalizeUtterance'));
+
+    // No final ever arrives; the settle must be re-armed rather than the
+    // utterance hanging on screen forever.
+    expect(
+      timers.scheduled.length,
+      2,
+      reason: 'A finalize that yields nothing leaves no retry armed.',
+    );
+  });
+
+  test('a barge-in silences the sentence still in the batcher', () async {
+    // Cancelling flushes the token batcher; if the flushed tail completes a
+    // sentence, it must not be dispatched to the voice — the interruption
+    // exists to stop exactly that.
+    final _HeldCancelVoiceInference held = _HeldCancelVoiceInference();
+    final _HandVoiceScheduler heldBatch = _HandVoiceScheduler();
+    final ConversationViewModel heldVm = ConversationViewModel(
+      repository: ConversationRepository(
+        storageService: InMemoryConversationStorageService(),
+        inferenceService: held,
+      ),
+      idFactory: () => const ConversationId('freshly-minted'),
+      startFresh: true,
+      batchScheduler: heldBatch,
+    );
+    addTearDown(heldVm.dispose);
+    final FakeVoiceService heldVoice = FakeVoiceService();
+    final VoiceConversationController heldController =
+        VoiceConversationController(voice: heldVoice, conversation: heldVm);
+    addTearDown(heldController.dispose);
+    await heldController.enable();
+
+    heldVoice.hear(const FinalTranscript('Tell me a long story.'));
+    await pump();
+    final GenerationRequest request = await held.requestReceived.future;
+    final Generation generation = Generation(
+      id: const GenerationId('generation-1'),
+      request: request,
+    );
+    held.emit(GenerationStarted(generation));
+    await pump();
+
+    // A finished sentence sits in the token batcher, its frame not fired.
+    held.emit(GenerationDelta(generationId: generation.id, delta: '很久很久以前。'));
+    await pump();
+    expect(heldVoice.spoken, isEmpty);
+
+    // The user talks over it; the cancel hangs, then lands, and the
+    // terminal flushes the batcher.
+    heldVoice.hear(const PartialTranscript('等等'));
+    await pump();
+    held.releaseCancel();
+    for (int i = 0; i < 8; i++) {
+      await pump();
+    }
+
+    expect(
+      heldVoice.spoken,
+      isEmpty,
+      reason: 'The agent got one more sentence in after the interruption.',
+    );
+  });
+
+  test('the settle gives up after three tries and clears the screen', () async {
+    final _HandVoiceScheduler timers = _HandVoiceScheduler();
+    final VoiceConversationController timed = VoiceConversationController(
+      voice: voice,
+      conversation: vm,
+      utteranceScheduler: timers,
+    );
+    addTearDown(timed.dispose);
+    await timed.enable();
+
+    voice.hear(const PartialTranscript('明天天氣'));
+    await pump();
+    timers.fireLast();
+    timers.fireLast();
+    timers.fireLast();
+
+    expect(voice.calls.where((String c) => c == 'finalizeUtterance').length, 3);
+    expect(
+      timers.scheduled.length,
+      3,
+      reason: 'The settle re-armed past its bound.',
+    );
+    expect(
+      timed.partialTranscript,
+      isEmpty,
+      reason: 'A transcript that will never settle stayed on screen.',
+    );
+  });
+
+  test('streaming speech survives a barge-in during prefill', () async {
+    // A cancel before the first token nulls an already-null active turn;
+    // ValueNotifier suppresses null-to-null, and a dispatch flag stuck true
+    // would mute the whole next answer into one end-block.
+    await controller.enable();
+    voice.hear(const FinalTranscript('Tell me a long story.'));
+    await pump();
+    await inference.requestReceived;
+    // Barge in before GenerationStarted ever arrives.
+    voice.hear(const PartialTranscript('等等'));
+    for (int i = 0; i < 6; i++) {
+      await pump();
+    }
+
+    // The replacement question begins a fresh generation.
+    voice.hear(const FinalTranscript('那說個短的。'));
+    for (int i = 0; i < 6; i++) {
+      await pump();
+    }
+    final GenerationRequest second = inference.requests.last;
+    expect(second.prompt, '那說個短的。');
+    final Generation nextGeneration = Generation(
+      id: const GenerationId('generation-2'),
+      request: second,
+    );
+    inference.emit(GenerationStarted(nextGeneration));
+    await pump();
+    inference.emit(
+      const GenerationDelta(
+        generationId: GenerationId('generation-2'),
+        delta: '從前有座山。',
+      ),
+    );
+
+    for (int i = 0; i < 4; i++) {
+      await pump();
+    }
+
+    expect(
+      voice.spoken,
+      contains('從前有座山。'),
+      reason: 'The next answer was muted into an end-block by a stuck flag.',
+    );
+  });
+
   test('nothing heard while disabled goes anywhere', () async {
     voice.hear(const FinalTranscript('to someone else entirely'));
     await pump();
@@ -476,4 +699,57 @@ final class _HeldCancelVoiceInference implements InferenceService {
       _cancelGate.complete();
     }
   }
+}
+
+/// Hands scheduled utterance settles to the test.
+final class _HandVoiceScheduler implements BatchScheduler {
+  final List<void Function()> scheduled = <void Function()>[];
+  int cancelled = 0;
+
+  @override
+  CancelBatch schedule(Duration delay, void Function() callback) {
+    scheduled.add(callback);
+    return _HandCancel(this);
+  }
+
+  void fireLast() => scheduled.last();
+}
+
+final class _HandCancel implements CancelBatch {
+  _HandCancel(this._owner);
+
+  final _HandVoiceScheduler _owner;
+  bool _done = false;
+
+  @override
+  void cancel() {
+    if (!_done) {
+      _done = true;
+      _owner.cancelled += 1;
+    }
+  }
+}
+
+/// A voice whose startListening never returns, as on first-run downloads.
+final class _NeverStartsVoice implements VoiceService {
+  final StreamController<VoiceEvent> events_ =
+      StreamController<VoiceEvent>.broadcast();
+
+  @override
+  Stream<VoiceEvent> get events => events_.stream;
+
+  @override
+  Future<void> startListening() => Completer<void>().future;
+
+  @override
+  Future<void> stopListening() async {}
+
+  @override
+  Future<void> finalizeUtterance() async {}
+
+  @override
+  Future<void> speak(String text) async {}
+
+  @override
+  Future<void> stopSpeaking() async {}
 }

@@ -80,6 +80,40 @@ void main() {
     expect(find.text('what time is'), findsOneWidget);
   });
 
+  testWidgets('listening shows itself while nothing is being heard', (
+    WidgetTester tester,
+  ) async {
+    // "Nothing happening" and "listening for you" must not look the same.
+    final FakeVoiceService voice = FakeVoiceService();
+    addTearDown(voice.dispose);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ConversationView(
+          viewModelFactory: viewModel,
+          voiceService: voice,
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.byKey(const Key('conversation-listening')), findsNothing);
+
+    await tester.tap(find.byKey(const Key('conversation-voice-button')));
+    await tester.pump();
+    await tester.pump();
+
+    expect(
+      find.byKey(const Key('conversation-listening')),
+      findsOneWidget,
+      reason: 'An open microphone gave no sign of itself.',
+    );
+
+    voice.hear(const PartialTranscript('what time'));
+    await tester.pump();
+    expect(find.byKey(const Key('conversation-listening')), findsNothing);
+    expect(find.text('what time'), findsOneWidget);
+  });
+
   testWidgets('a dead pipeline says why over the composer', (
     WidgetTester tester,
   ) async {
