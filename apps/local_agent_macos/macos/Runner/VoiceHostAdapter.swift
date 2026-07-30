@@ -253,7 +253,12 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
     // Finalization drains what the transcriber still holds — the trailing
     // words of an utterance stopped mid-sentence — through the results
     // sequence, so its consumer must still be alive to deliver them. The
-    // cancel afterwards is the fallback for an analyzer that never returns.
+    // cancel afterwards ends the consumer once the drain has returned; it
+    // is ordering, not a hang guard — an analyzer that never returned
+    // would leave the task parked, and a timeout race can be added if that
+    // ever shows up in practice. On a plain disable the Dart side is
+    // already deaf by the time the tail arrives, which is intended: the
+    // user asked for silence.
     Task {
       try? await analyzer.finalizeAndFinishThroughEndOfInput()
       resultsTask.cancel()
