@@ -96,6 +96,21 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
     completion(.success(()))
   }
 
+  func finalizeUtterance(completion: @escaping (Result<Void, Error>) -> Void) {
+    // The transcriber's endpointing waits out a long silence; the app calls
+    // this when the partial has visibly stopped changing, and whatever is
+    // pending settles as a final right away.
+    guard let session else {
+      completion(.success(()))
+      return
+    }
+    let analyzer = session.analyzer
+    Task {
+      try? await analyzer.finalize(through: nil)
+      completion(.success(()))
+    }
+  }
+
   func speak(
     text: String,
     voice: String?,

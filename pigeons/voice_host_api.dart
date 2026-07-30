@@ -56,6 +56,13 @@ abstract class VoiceHostApi {
   @async
   void stopListening();
 
+  /// Forces whatever is being heard to settle as a final transcript now.
+  ///
+  /// The transcriber's own endpointing waits out a long silence; a user who
+  /// has visibly stopped talking should not.
+  @async
+  void finalizeUtterance();
+
   /// Speaks [text] aloud, with [voice] naming who speaks.
   @async
   void speak(String text, String? voice);

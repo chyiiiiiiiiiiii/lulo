@@ -23,6 +23,9 @@ final class _RecordingHost extends VoiceHostApi {
   Future<void> stopListening() => _call('stopListening');
 
   @override
+  Future<void> finalizeUtterance() => _call('finalizeUtterance');
+
+  @override
   Future<void> speak(String text, String? voice) =>
       _call('speak:$text:${voice ?? "-"}');
 

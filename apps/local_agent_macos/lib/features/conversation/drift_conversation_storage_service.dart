@@ -41,14 +41,17 @@ final class ConversationDatabase extends _$ConversationDatabase {
   /// Opens the database on [executor].
   ConversationDatabase(super.executor);
 
-  /// Opens the durable database at [file], off the UI isolate.
+  /// Opens the durable database at [file], on this isolate.
   ///
-  /// A background isolate because ADR-003's adopted control is drift's
-  /// generated queries on `NativeDatabase.createInBackground`: writes are
-  /// microseconds, but the UI thread should not be the one finding out when
-  /// they are not.
-  ConversationDatabase.atFile(File file)
-    : super(NativeDatabase.createInBackground(file));
+  /// ADR-003 adopted `createInBackground`, but the background isolate's own
+  /// native-asset resolution maps sqlite3.framework a second time into the
+  /// process, and a statement created through one mapping crashes when it
+  /// reaches the other — a branch to null inside sqlite3_bind_int64
+  /// (upstream: simolus3/sqlite3.dart#381, our report
+  /// Lulo-2026-07-30-231954.ips shows the double mapping). One isolate, one
+  /// mapping; writes are microseconds per the ADR's own benchmark, and the
+  /// background isolate returns when the upstream fix lands.
+  ConversationDatabase.atFile(File file) : super(NativeDatabase(file));
 
   @override
   int get schemaVersion => 1;

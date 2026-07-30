@@ -266,6 +266,28 @@ class VoiceHostApi {
     );
   }
 
+  /// Forces whatever is being heard to settle as a final transcript now.
+  ///
+  /// The transcriber's own endpointing waits out a long silence; a user who
+  /// has visibly stopped talking should not.
+  Future<void> finalizeUtterance() async {
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.local_agent_macos.VoiceHostApi.finalizeUtterance$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channel = BasicMessageChannel<Object?>(
+      pigeonVar_channelName,
+      pigeonChannelCodec,
+      binaryMessenger: pigeonVar_binaryMessenger,
+    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(null);
+    final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
+
+    _extractReplyValueOrThrow(
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: true,
+    );
+  }
+
   /// Speaks [text] aloud, with [voice] naming who speaks.
   Future<void> speak(String text, String? voice) async {
     final pigeonVar_channelName =

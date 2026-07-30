@@ -272,6 +272,11 @@ protocol VoiceHostApi {
   func startListening(completion: @escaping (Result<Void, Error>) -> Void)
   /// Releases the microphone.
   func stopListening(completion: @escaping (Result<Void, Error>) -> Void)
+  /// Forces whatever is being heard to settle as a final transcript now.
+  ///
+  /// The transcriber's own endpointing waits out a long silence; a user who
+  /// has visibly stopped talking should not.
+  func finalizeUtterance(completion: @escaping (Result<Void, Error>) -> Void)
   /// Speaks [text] aloud, with [voice] naming who speaks.
   func speak(text: String, voice: String?, completion: @escaping (Result<Void, Error>) -> Void)
   /// Stops speaking mid-sentence.
@@ -315,6 +320,25 @@ class VoiceHostApiSetup {
       }
     } else {
       stopListeningChannel.setMessageHandler(nil)
+    }
+    /// Forces whatever is being heard to settle as a final transcript now.
+    ///
+    /// The transcriber's own endpointing waits out a long silence; a user who
+    /// has visibly stopped talking should not.
+    let finalizeUtteranceChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.local_agent_macos.VoiceHostApi.finalizeUtterance\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
+    if let api = api {
+      finalizeUtteranceChannel.setMessageHandler { _, reply in
+        api.finalizeUtterance { result in
+          switch result {
+          case .success:
+            reply(wrapResult(nil))
+          case .failure(let error):
+            reply(wrapError(error))
+          }
+        }
+      }
+    } else {
+      finalizeUtteranceChannel.setMessageHandler(nil)
     }
     /// Speaks [text] aloud, with [voice] naming who speaks.
     let speakChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.local_agent_macos.VoiceHostApi.speak\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)

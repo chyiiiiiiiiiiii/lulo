@@ -6,6 +6,7 @@ import 'package:local_agent_macos/app/fake_runtime.dart';
 import 'package:local_agent_macos/features/conversation/conversation_repository.dart';
 import 'package:local_agent_macos/features/conversation/conversation_view_model.dart';
 import 'package:local_agent_macos/features/conversation/inference_service.dart';
+import 'package:local_agent_macos/features/conversation/token_batcher.dart';
 import 'package:local_agent_macos/features/voice/voice_conversation_controller.dart';
 import 'package:local_agent_macos/features/voice/voice_service.dart';
 
@@ -440,6 +441,53 @@ void main() {
     expect(voice.spoken, <String>['Sunny, all day.']);
   });
 
+  test('a voice that has stopped is settled without waiting', () async {
+    // The transcriber's own endpointing waits seconds of silence before a
+    // final; a partial that has stopped changing for a beat is the user
+    // having finished, and the utterance is settled by hand.
+    final _HandVoiceScheduler timers = _HandVoiceScheduler();
+    final VoiceConversationController timed = VoiceConversationController(
+      voice: voice,
+      conversation: vm,
+      utteranceScheduler: timers,
+    );
+    addTearDown(timed.dispose);
+    await timed.enable();
+
+    voice.hear(const PartialTranscript('明天天氣'));
+    await pump();
+    expect(timers.scheduled, hasLength(1));
+
+    // Still talking: the newer partial replaces the pending settle.
+    voice.hear(const PartialTranscript('明天天氣如何'));
+    await pump();
+    expect(timers.cancelled, 1);
+    expect(timers.scheduled, hasLength(2));
+
+    timers.fireLast();
+    expect(voice.calls, contains('finalizeUtterance'));
+  });
+
+  test('a final on its own cancels the pending settle', () async {
+    final _HandVoiceScheduler timers = _HandVoiceScheduler();
+    final VoiceConversationController timed = VoiceConversationController(
+      voice: voice,
+      conversation: vm,
+      utteranceScheduler: timers,
+    );
+    addTearDown(timed.dispose);
+    await timed.enable();
+
+    voice.hear(const PartialTranscript('hello'));
+    await pump();
+    voice.hear(const FinalTranscript('hello'));
+    await pump();
+
+    expect(timers.cancelled, 1);
+    timers.fireLast();
+    expect(voice.calls, isNot(contains('finalizeUtterance')));
+  });
+
   test('nothing heard while disabled goes anywhere', () async {
     voice.hear(const FinalTranscript('to someone else entirely'));
     await pump();
@@ -474,6 +522,35 @@ final class _HeldCancelVoiceInference implements InferenceService {
   void releaseCancel() {
     if (!_cancelGate.isCompleted) {
       _cancelGate.complete();
+    }
+  }
+}
+
+/// Hands scheduled utterance settles to the test.
+final class _HandVoiceScheduler implements BatchScheduler {
+  final List<void Function()> scheduled = <void Function()>[];
+  int cancelled = 0;
+
+  @override
+  CancelBatch schedule(Duration delay, void Function() callback) {
+    scheduled.add(callback);
+    return _HandCancel(this);
+  }
+
+  void fireLast() => scheduled.last();
+}
+
+final class _HandCancel implements CancelBatch {
+  _HandCancel(this._owner);
+
+  final _HandVoiceScheduler _owner;
+  bool _done = false;
+
+  @override
+  void cancel() {
+    if (!_done) {
+      _done = true;
+      _owner.cancelled += 1;
     }
   }
 }

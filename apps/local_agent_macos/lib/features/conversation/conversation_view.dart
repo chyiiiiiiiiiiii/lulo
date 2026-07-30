@@ -337,8 +337,33 @@ final class _HeardSoFar extends StatelessWidget {
           );
         }
         final String heard = voice.partialTranscript;
-        if (!voice.enabled || heard.isEmpty) {
+        if (!voice.enabled) {
           return const SizedBox.shrink();
+        }
+        if (heard.isEmpty) {
+          // "Nothing happening" and "listening for you" must not look the
+          // same: an open microphone says so.
+          return Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 4),
+            child: Row(
+              key: const Key('conversation-listening'),
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
+                Icon(
+                  Icons.graphic_eq_rounded,
+                  size: 16,
+                  color: Theme.of(context).colorScheme.primary,
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  'Listening…',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ],
+            ),
+          );
         }
         return Padding(
           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 4),
