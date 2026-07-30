@@ -5,6 +5,8 @@ import 'package:flutter/material.dart';
 import '../presence/agent_presence_controller.dart';
 import '../presence/agent_presence_header.dart';
 import '../presence/agent_presence_orb.dart';
+import '../voice/voice_conversation_controller.dart';
+import '../voice/voice_service.dart';
 import 'conversation_view_model.dart';
 import 'widgets/conversation_composer.dart';
 import 'widgets/conversation_content_column.dart';
@@ -58,6 +60,7 @@ final class ConversationView extends StatefulWidget {
   const ConversationView({
     required this.viewModelFactory,
     this.onShowHistory,
+    this.voiceService,
     this.buildObserver,
     this.presenceShaderLoader = loadAgentPresenceShader,
     this.onPresenceController,
@@ -88,6 +91,12 @@ final class ConversationView extends StatefulWidget {
   /// to show.
   final VoidCallback? onShowHistory;
 
+  /// The ears and mouth behind the microphone button.
+  ///
+  /// Null hides the button: surfaces with no voice behind them cannot
+  /// listen.
+  final VoiceService? voiceService;
+
   /// Optional render instrumentation used by tests.
   final ConversationBuildObserver? buildObserver;
 
@@ -107,17 +116,38 @@ final class ConversationView extends StatefulWidget {
 
 final class _ConversationViewState extends State<ConversationView> {
   late final ConversationViewModel _viewModel;
+  VoiceConversationController? _voice;
 
   @override
   void initState() {
     super.initState();
     _viewModel = widget.viewModelFactory();
+    final VoiceService? voiceService = widget.voiceService;
+    if (voiceService != null) {
+      _voice = VoiceConversationController(
+        voice: voiceService,
+        conversation: _viewModel,
+      );
+    }
   }
 
   @override
   void dispose() {
+    _voice?.dispose();
     _viewModel.dispose();
     super.dispose();
+  }
+
+  Future<void> _toggleVoice() async {
+    final VoiceConversationController? voice = _voice;
+    if (voice == null) {
+      return;
+    }
+    if (voice.enabled) {
+      await voice.disable();
+    } else {
+      await voice.enable();
+    }
   }
 
   @override
@@ -129,6 +159,8 @@ final class _ConversationViewState extends State<ConversationView> {
         child: Column(
           children: <Widget>[
             _ConversationChrome(
+              voice: _voice,
+              onToggleVoice: _toggleVoice,
               onShowHistory: widget.onShowHistory,
               completedTurns: _viewModel.completedTurnsListenable,
               activeTurn: _viewModel.activeTurnListenable,
@@ -158,6 +190,7 @@ final class _ConversationViewState extends State<ConversationView> {
                     widget.buildObserver?.activeStreamingTurnBuilds += 1,
               ),
             ),
+            if (_voice != null) _HeardSoFar(voice: _voice!),
             ConversationComposer(
               canSubmit: _viewModel.canSubmitListenable,
               onSubmit: _viewModel.submit,
@@ -173,6 +206,8 @@ final class _ConversationViewState extends State<ConversationView> {
 
 final class _ConversationChrome extends StatelessWidget {
   const _ConversationChrome({
+    required this.voice,
+    required this.onToggleVoice,
     required this.onShowHistory,
     required this.completedTurns,
     required this.activeTurn,
@@ -185,6 +220,8 @@ final class _ConversationChrome extends StatelessWidget {
     required this.presenceShaderLoader,
   });
 
+  final VoiceConversationController? voice;
+  final VoidCallback onToggleVoice;
   final VoidCallback? onShowHistory;
   final ValueListenable<List<Turn>> completedTurns;
   final ValueListenable<Turn?> activeTurn;
@@ -227,6 +264,21 @@ final class _ConversationChrome extends StatelessWidget {
             shaderLoader: presenceShaderLoader,
           ),
           const Spacer(),
+          if (voice != null)
+            AnimatedBuilder(
+              animation: voice!,
+              builder: (BuildContext context, Widget? _) => IconButton(
+                key: const Key('conversation-voice-button'),
+                tooltip: voice!.enabled ? 'Stop listening' : 'Talk to Lulo',
+                icon: Icon(
+                  voice!.enabled ? Icons.mic_rounded : Icons.mic_none_rounded,
+                  color: voice!.enabled
+                      ? Theme.of(context).colorScheme.primary
+                      : null,
+                ),
+                onPressed: onToggleVoice,
+              ),
+            ),
           if (onShowHistory != null)
             IconButton(
               key: const Key('conversation-history-button'),
@@ -256,4 +308,50 @@ final class _ConversationChrome extends StatelessWidget {
       ),
     ),
   );
+}
+
+/// The utterance in progress, floating over the composer while it is heard.
+final class _HeardSoFar extends StatelessWidget {
+  const _HeardSoFar({required this.voice});
+
+  final VoiceConversationController voice;
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: voice,
+      builder: (BuildContext context, Widget? _) {
+        final String? failure = voice.failure;
+        if (failure != null) {
+          // The button going dark with no explanation reads as a broken
+          // button, not a broken microphone.
+          return Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 4),
+            child: Text(
+              'Voice stopped: $failure',
+              key: const Key('conversation-voice-failure'),
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                color: Theme.of(context).colorScheme.error,
+              ),
+            ),
+          );
+        }
+        final String heard = voice.partialTranscript;
+        if (!voice.enabled || heard.isEmpty) {
+          return const SizedBox.shrink();
+        }
+        return Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 4),
+          child: Text(
+            heard,
+            key: const Key('conversation-heard-so-far'),
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+              fontStyle: FontStyle.italic,
+            ),
+          ),
+        );
+      },
+    );
+  }
 }

@@ -11,6 +11,7 @@ import '../features/model/model_catalog.dart';
 import '../features/model/model_download_manager.dart';
 import '../features/model/model_file_service.dart';
 import '../features/settings/app_settings.dart';
+import '../features/voice/voice_service.dart';
 import '../platform/desktop_host_service.dart';
 
 /// Owns app-scoped dependencies and creates feature-scoped ViewModels.
@@ -25,6 +26,7 @@ final class AppComposition {
     Future<void> Function(String modelPath)? changeModel,
     ModelDownloadManager? modelDownloads,
     this.catalog = modelCatalog,
+    this.voiceService,
   }) : _changeModel = changeModel ?? _keepThePreview,
        settingsStore = settingsStore ?? InMemorySettingsStore(),
        modelDownloads = modelDownloads ?? _downloadsNowhere(),
@@ -48,6 +50,10 @@ final class AppComposition {
 
   /// The models on offer, the recommended one first.
   final List<ModelCatalogEntry> catalog;
+
+  /// The ears and mouth, or null where the surface cannot listen — widget
+  /// tests, the preview, and the native test host.
+  final VoiceService? voiceService;
 
   /// The default manager, for compositions that never really download:
   /// nothing is created on disk until something is actually fetched.

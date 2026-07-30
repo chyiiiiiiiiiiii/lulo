@@ -9,6 +9,7 @@ import '../features/model/model_catalog.dart';
 import '../features/model/model_download_manager.dart';
 import '../features/model/model_file_service.dart';
 import '../features/settings/app_settings.dart';
+import '../features/voice/voice_service.dart';
 import '../platform/desktop_host_service.dart';
 import '../platform/pigeon_desktop_host_service.dart';
 import 'app_composition.dart';
@@ -108,6 +109,7 @@ AppComposition createAppComposition({
   OwnedConversationStorage? conversationStorage,
   ModelDownloadManager? modelDownloads,
   List<ModelCatalogEntry> catalog = modelCatalog,
+  VoiceService? voiceService,
 }) {
   final SettingsStore store = settingsStore ?? createSettingsStore();
   if (inferenceRuntime != 'fake' && inferenceRuntime != 'litert') {
@@ -156,6 +158,7 @@ AppComposition createAppComposition({
     presentationHost: desktopHostService,
     modelDownloads: modelDownloads ?? createModelDownloadManager(),
     catalog: catalog,
+    voiceService: voiceService,
     // The model is chosen in settings, and the only part of the graph that has
     // to change when it does is what sits behind this one service.
     changeModel: (String modelPath) => inferenceService.replaceWith(

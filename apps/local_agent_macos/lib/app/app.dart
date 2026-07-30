@@ -619,6 +619,7 @@ final class _PresentationSwitchState extends State<_PresentationSwitch>
         onShowHistory: widget.composition.presentationHost == null
             ? null
             : () => unawaited(_showConversations()),
+        voiceService: widget.composition.voiceService,
         presenceShaderLoader: widget.presenceShaderLoader,
         presenceController: _presence,
         presenceAnchorKey: _anchorKey,

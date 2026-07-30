@@ -34,6 +34,8 @@
 		33CC11132044BFA00003C045 /* MainFlutterWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 33CC11122044BFA00003C045 /* MainFlutterWindow.swift */; };
 		A20000000000000000000001 /* DesktopPanelController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000006 /* DesktopPanelController.swift */; };
 		CA0000000000000000000001 /* ChosenModelAccess.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA0000000000000000000002 /* ChosenModelAccess.swift */; };
+		A1CE000000000000000VH003 /* GeneratedVoiceHostApi.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1CE000000000000000VH004 /* GeneratedVoiceHostApi.swift */; };
+		A1CE000000000000000VH001 /* VoiceHostAdapter.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1CE000000000000000VH002 /* VoiceHostAdapter.swift */; };
 		A20000000000000000000002 /* GlobalHotKeyController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000007 /* GlobalHotKeyController.swift */; };
 		A20000000000000000000003 /* MenuBarController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000008 /* MenuBarController.swift */; };
 		A20000000000000000000004 /* GeneratedDesktopHostApi.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000009 /* GeneratedDesktopHostApi.swift */; };
@@ -92,6 +94,8 @@
 		33CC11122044BFA00003C045 /* MainFlutterWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainFlutterWindow.swift; sourceTree = "<group>"; };
 		A20000000000000000000006 /* DesktopPanelController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DesktopPanelController.swift; sourceTree = "<group>"; };
 		CA0000000000000000000002 /* ChosenModelAccess.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChosenModelAccess.swift; sourceTree = "<group>"; };
+		A1CE000000000000000VH004 /* GeneratedVoiceHostApi.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeneratedVoiceHostApi.swift; sourceTree = "<group>"; };
+		A1CE000000000000000VH002 /* VoiceHostAdapter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceHostAdapter.swift; sourceTree = "<group>"; };
 		A20000000000000000000007 /* GlobalHotKeyController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GlobalHotKeyController.swift; sourceTree = "<group>"; };
 		A20000000000000000000008 /* MenuBarController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarController.swift; sourceTree = "<group>"; };
 		A20000000000000000000009 /* GeneratedDesktopHostApi.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeneratedDesktopHostApi.swift; sourceTree = "<group>"; };
@@ -221,6 +225,8 @@
 				33CC11122044BFA00003C045 /* MainFlutterWindow.swift */,
 				A20000000000000000000006 /* DesktopPanelController.swift */,
 				CA0000000000000000000002 /* ChosenModelAccess.swift */,
+				A1CE000000000000000VH004 /* GeneratedVoiceHostApi.swift */,
+				A1CE000000000000000VH002 /* VoiceHostAdapter.swift */,
 				A20000000000000000000007 /* GlobalHotKeyController.swift */,
 				A20000000000000000000008 /* MenuBarController.swift */,
 				A20000000000000000000009 /* GeneratedDesktopHostApi.swift */,
@@ -470,6 +476,8 @@
 				335BBD1B22A9A15E00E9071D /* GeneratedPluginRegistrant.swift in Sources */,
 				A20000000000000000000001 /* DesktopPanelController.swift in Sources */,
 				CA0000000000000000000001 /* ChosenModelAccess.swift in Sources */,
+				A1CE000000000000000VH003 /* GeneratedVoiceHostApi.swift in Sources */,
+				A1CE000000000000000VH001 /* VoiceHostAdapter.swift in Sources */,
 				A20000000000000000000002 /* GlobalHotKeyController.swift in Sources */,
 				A20000000000000000000003 /* MenuBarController.swift in Sources */,
 				A20000000000000000000004 /* GeneratedDesktopHostApi.swift in Sources */,
