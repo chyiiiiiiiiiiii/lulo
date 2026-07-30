@@ -90,6 +90,14 @@ final class VoiceConversationController extends ChangeNotifier {
   /// Where a spoken chunk may end: a sentence has visibly finished.
   static final RegExp _sentenceEnd = RegExp(r'[。！？!?.…；;\n]');
 
+  /// Where the answer's very first chunk may end early: a clause has
+  /// finished, even though its sentence has not.
+  static const String _clauseEnds = ',,、:：';
+
+  /// The first clause must have this much substance before it is worth an
+  /// extra synthesis seam; "好的," alone reads as a stutter.
+  static const int _firstClauseTarget = 6;
+
   /// Anything CJK: the answer's language is decided by its beginning.
   static final RegExp _cjk = RegExp(
     r'[\u4e00-\u9fff\u3040-\u30ff\uac00-\ud7af]',
@@ -268,9 +276,17 @@ final class VoiceConversationController extends ChangeNotifier {
       return;
     }
     final String undispatched = text.substring(_dispatchedOfActive);
-    final int lastEnd = undispatched.lastIndexOf(_sentenceEnd);
+    int lastEnd = undispatched.lastIndexOf(_sentenceEnd);
     if (lastEnd < 0) {
-      return;
+      // No sentence yet — but the answer's first chunk may go out on a
+      // finished clause, so the voice starts before the full stop arrives.
+      if (!_firstChunkOfAnswer) {
+        return;
+      }
+      lastEnd = _lastClauseEnd(undispatched);
+      if (lastEnd + 1 < _firstClauseTarget) {
+        return;
+      }
     }
     // The first sentence goes out alone so the voice starts early; after
     // that, sentences accumulate into steadier chunks.
@@ -282,6 +298,23 @@ final class VoiceConversationController extends ChangeNotifier {
     _firstChunkOfAnswer = false;
     _speakAloud(chunk, decidedBy: text);
   }
+
+  /// The last clause boundary in [text] that is safe to speak through, or
+  /// -1 when there is none.
+  ///
+  /// A boundary needs a following character that is not a digit: "1,234"
+  /// must not be read as "one" and then the rest, and a comma at the very
+  /// end of the buffer might be exactly that — the next delta settles it.
+  static int _lastClauseEnd(String text) {
+    for (int i = text.length - 2; i >= 0; i--) {
+      if (_clauseEnds.contains(text[i]) && !_isDigit(text.codeUnitAt(i + 1))) {
+        return i;
+      }
+    }
+    return -1;
+  }
+
+  static bool _isDigit(int codeUnit) => codeUnit >= 0x30 && codeUnit <= 0x39;
 
   void _speakAloud(String text, {String? decidedBy}) {
     final String spoken = speakableText(text);

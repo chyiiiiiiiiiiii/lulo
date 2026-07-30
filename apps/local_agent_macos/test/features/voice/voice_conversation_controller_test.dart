@@ -441,6 +441,111 @@ void main() {
     expect(voice.spoken, <String>['Sunny, all day.']);
   });
 
+  test('the first chunk may hand off at a comma', () async {
+    // The first sentence of an answer can run long; a finished clause is
+    // enough to get the voice started, and the full stop can catch up.
+    await controller.enable();
+    voice.hear(const FinalTranscript('介紹台北。'));
+    await pump();
+    final Generation generation = await generationStarted();
+
+    inference.emit(
+      GenerationDelta(generationId: generation.id, delta: '台北是台灣的首都,也是'),
+    );
+    await pump();
+    expect(voice.spoken, <String>[
+      '台北是台灣的首都,',
+    ], reason: 'A finished clause is enough to start the voice.');
+
+    inference.emit(
+      GenerationDelta(generationId: generation.id, delta: '最大的城市。'),
+    );
+    inference.emit(GenerationCompleted(generation.id));
+    await pump();
+    await pump();
+    expect(voice.spoken, <String>['台北是台灣的首都,', '也是最大的城市。']);
+  });
+
+  test('a clause too short to sound like speech waits for more', () async {
+    // "好的," alone reads as a stutter; the clause hand-off only fires once
+    // there is something substantive to say.
+    await controller.enable();
+    voice.hear(const FinalTranscript('可以嗎?'));
+    await pump();
+    final Generation generation = await generationStarted();
+
+    inference.emit(GenerationDelta(generationId: generation.id, delta: '好的,我'));
+    await pump();
+    expect(voice.spoken, isEmpty);
+
+    inference.emit(GenerationDelta(generationId: generation.id, delta: '會幫你。'));
+    await pump();
+    expect(voice.spoken, <String>['好的,我會幫你。']);
+    inference.emit(GenerationCompleted(generation.id));
+    await pump();
+  });
+
+  test('a comma inside a number is not a clause boundary', () async {
+    // "1,234" must not be read as "one" and then "two hundred thirty-four".
+    await controller.enable();
+    voice.hear(const FinalTranscript('How many came?'));
+    await pump();
+    final Generation generation = await generationStarted();
+
+    inference.emit(
+      GenerationDelta(
+        generationId: generation.id,
+        delta: 'There were 1,234 people at the event',
+      ),
+    );
+    await pump();
+    expect(voice.spoken, isEmpty);
+
+    inference.emit(
+      GenerationDelta(generationId: generation.id, delta: ' yesterday.'),
+    );
+    inference.emit(GenerationCompleted(generation.id));
+    await pump();
+    await pump();
+    expect(voice.spoken, <String>[
+      'There were 1,234 people at the event yesterday.',
+    ]);
+  });
+
+  test('after the first chunk, commas no longer split the speech', () async {
+    // Only the opening clause is worth the extra synthesis seam; later
+    // chunks keep accumulating to whole sentences so the voice stays even.
+    await controller.enable();
+    voice.hear(const FinalTranscript('介紹台北。'));
+    await pump();
+    final Generation generation = await generationStarted();
+
+    inference.emit(
+      GenerationDelta(generationId: generation.id, delta: '台北是台灣的首都。'),
+    );
+    await pump();
+    expect(voice.spoken, <String>['台北是台灣的首都。']);
+
+    inference.emit(
+      GenerationDelta(
+        generationId: generation.id,
+        delta: '你可以逛夜市,參觀故宮,搭捷運,爬象山,喝珍珠奶茶,吃小籠包,體驗這座城市的多元文化',
+      ),
+    );
+    await pump();
+    expect(
+      voice.spoken,
+      hasLength(1),
+      reason: 'Later chunks wait for a sentence, however many commas pass.',
+    );
+
+    inference.emit(GenerationDelta(generationId: generation.id, delta: '。'));
+    inference.emit(GenerationCompleted(generation.id));
+    await pump();
+    await pump();
+    expect(voice.spoken, hasLength(2));
+  });
+
   test('a voice that has stopped is settled without waiting', () async {
     // The transcriber's own endpointing waits seconds of silence before a
     // final; a partial that has stopped changing for a beat is the user
