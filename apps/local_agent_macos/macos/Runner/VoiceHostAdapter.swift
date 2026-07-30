@@ -564,8 +564,12 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
     // The same speech-state reset as stopListening: a device change mid-
     // answer must not leave the mute box latched shut for the session
     // that comes after, nor speakingReported swallowing its first
-    // SpeakingStarted.
+    // SpeakingStarted. The starting flag falls too — a failure landing
+    // inside startListening's await would otherwise leave it latched, and
+    // the next tap on the microphone button would "succeed" opening
+    // nothing.
     sessionCounter += 1
+    starting = false
     speakEpoch += 1
     unmuteGeneration += 1
     outstandingUtterances = 0
@@ -715,6 +719,11 @@ final class VoiceActivityBox: @unchecked Sendable {
 
   /// A voice must rise this far above the floor, and above an absolute
   /// quiet-room minimum, before it counts.
+  ///
+  /// The ratio is a cliff at 20·log10(3) ≈ 9.5dB: speech whose quietest
+  /// 85ms in every recent second sits within 9.5dB of its syllables — in
+  /// practice, speech over a loud steady background — goes undetected,
+  /// and the endpointer declines in favor of the slower Dart settle.
   private static let floorRatio: Float = 3
   private static let minimumVoice: Float = 0.004
 

@@ -168,6 +168,37 @@ void main() {
     );
   });
 
+  test('a correction spoken wholly inside the cooldown still lands', () async {
+    // Every volatile of "不對" fits in the 500ms window, so none of them
+    // yields — but its final must still interrupt the answer instead of
+    // letting it play out and then answering "不對" as a fresh question.
+    DateTime now = DateTime(2026, 7, 31, 2);
+    final VoiceConversationController timed = VoiceConversationController(
+      voice: voice,
+      conversation: vm,
+      now: () => now,
+    );
+    addTearDown(timed.dispose);
+    await timed.enable();
+    voice.hear(const FinalTranscript('介紹台北。'));
+    await pump();
+    final Generation generation = await generationStarted();
+
+    now = now.add(const Duration(milliseconds: 300));
+    voice.hear(const PartialTranscript('不對'));
+    await pump();
+    expect(inference.cancellations, isEmpty);
+
+    now = now.add(const Duration(milliseconds: 100));
+    voice.hear(const FinalTranscript('不對'));
+    await pump();
+    expect(
+      inference.cancellations,
+      contains(generation.id),
+      reason: 'The correction must interrupt at its final at the latest.',
+    );
+  });
+
   test('the user talking over a streaming answer cancels it', () async {
     await controller.enable();
     voice.hear(const FinalTranscript('Tell me a long story.'));

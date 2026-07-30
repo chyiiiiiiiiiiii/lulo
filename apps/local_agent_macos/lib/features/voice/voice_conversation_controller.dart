@@ -49,6 +49,10 @@ final class VoiceConversationController extends ChangeNotifier {
   /// A partial inside [_postFinalCooldown] of the final is that breath,
   /// not an interruption — it must not cancel the answer just asked for.
   DateTime? _lastFinalAt;
+
+  /// Kept under the shared test clock's 600ms step: widening this past
+  /// that step flips the pre-existing barge-in tests into exercising the
+  /// cooldown branch instead (loudly — they fail, not silently pass).
   static const Duration _postFinalCooldown = Duration(milliseconds: 500);
 
   /// How long a partial may sit unchanged before the utterance is settled.
@@ -241,6 +245,10 @@ final class VoiceConversationController extends ChangeNotifier {
         if (_conversation.canSubmit) {
           unawaited(_conversation.submit(text));
         } else {
+          // A correction spoken wholly inside the post-final cooldown
+          // never fired the yield from its partials; its final is the
+          // last chance to interrupt the answer it replaces.
+          _yieldToTheUser();
           // The previous answer is still winding down from the
           // interruption; the replacement question must not be dropped on
           // the floor.
