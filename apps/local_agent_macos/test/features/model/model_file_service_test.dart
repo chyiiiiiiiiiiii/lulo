@@ -112,6 +112,34 @@ void main() {
     expect(modelsDirectory.listSync(), isEmpty);
   });
 
+  test('a download that disagrees with the catalog is refused', () async {
+    // The upstream repo can be re-uploaded at a different size. Accepting it
+    // would load a model the catalog no longer describes, and isInstalled
+    // would call it not-installed forever — an endless Download button over
+    // a model that is already answering.
+    Future<ModelBytes> fetch(Uri url) async => ModelBytes(
+      totalBytes: 4,
+      stream: Stream<List<int>>.value(<int>[1, 2, 3, 4]),
+    );
+
+    await expectLater(
+      service(fetch)
+          .download(
+            const ModelCatalogEntry(
+              id: 'test-model',
+              name: 'A test model',
+              description: 'Small enough to hold in one hand.',
+              fileName: 'test-model.litertlm',
+              url: 'https://example.invalid/test-model.litertlm',
+              sizeBytes: 10,
+            ),
+          )
+          .toList(),
+      throwsA(isA<StateError>()),
+    );
+    expect(modelsDirectory.listSync(), isEmpty);
+  });
+
   test('what is installed can be asked for by entry', () async {
     Future<ModelBytes> fetch(Uri url) async => ModelBytes(
       totalBytes: 10,

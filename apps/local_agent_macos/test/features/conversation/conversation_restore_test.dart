@@ -127,6 +127,7 @@ void main() {
 
       await vm.submit('a new question');
       await vm.restored;
+      final GenerationRequest sent = await inference.requestReceived;
 
       expect(
         vm.completedTurnsListenable.value.map((Turn t) => t.text),
@@ -137,7 +138,7 @@ void main() {
         ],
       );
       // And it continues the resumed conversation rather than minting a new one.
-      expect(inference.requests.single.conversationId, yesterday);
+      expect(sent.conversationId, yesterday);
     },
   );
 }

@@ -66,8 +66,14 @@ Future<void> main() async {
     // the app quietly broke the test target and a click that went straight
     // through the resting orb was reported as covered. Run through the
     // workspace rather than the project, because the pods the app links are
-    // only wired up there, and into the build directory Flutter already uses
-    // rather than a second multi-gigabyte copy under DerivedData.
+    // only wired up there.
+    //
+    // Deliberately NOT into the build directory Flutter itself uses: two
+    // build systems over one Products directory each mark the other's
+    // outputs stale and delete them, while flutter assemble's fingerprint
+    // stamps still say its native-assets are up to date. The first native
+    // asset in the tree (drift's sqlite3) turned that quiet war into a
+    // half-written sqlite3.framework and a codesign failure here.
     _VerificationCommand(
       name: 'macOS window tests',
       executable: 'xcodebuild',
@@ -82,7 +88,7 @@ Future<void> main() async {
         '-destination',
         'platform=macOS',
         '-derivedDataPath',
-        '../build/macos',
+        '../build/macos_window_tests',
       ],
       workingDirectory: _join(
         workspaceRoot.path,

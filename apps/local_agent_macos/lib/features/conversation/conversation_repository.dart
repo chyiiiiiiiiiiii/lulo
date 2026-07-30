@@ -22,6 +22,12 @@ final class ConversationRepository {
   final InferenceService _inferenceService;
   _GenerationOperation? _activeOperation;
 
+  /// Every operation not yet fully torn down, including ones cancelling.
+  final Set<_GenerationOperation> _liveOperations = <_GenerationOperation>{};
+
+  /// Completes when the operation before the next one has fully finished.
+  Future<void> _previousOperationDone = Future<void>.value();
+
   /// Loads the stored history of [conversationId].
   Future<List<Turn>> loadTurns(ConversationId conversationId) =>
       _storageService.loadTurns(conversationId);
@@ -31,8 +37,19 @@ final class ConversationRepository {
       _storageService.listConversations();
 
   /// Forgets [conversationId] and everything said in it.
-  Future<void> deleteConversation(ConversationId conversationId) =>
-      _storageService.deleteConversation(conversationId);
+  ///
+  /// An operation still speaking in it is told to forget too: its
+  /// cancellation would otherwise write a terminal turn back into the store,
+  /// and in this schema rows *are* the conversation, so the forgotten
+  /// conversation would stand back up as a ghost with a blank title.
+  Future<void> deleteConversation(ConversationId conversationId) {
+    for (final _GenerationOperation operation in _liveOperations) {
+      if (operation.conversationId == conversationId) {
+        operation.forget();
+      }
+    }
+    return _storageService.deleteConversation(conversationId);
+  }
 
   /// Persists [userTurn], then exposes ordered events for [request].
   Stream<GenerationEvent> startGeneration({
@@ -50,16 +67,17 @@ final class ConversationRepository {
       );
     }
 
-    if (_activeOperation != null) {
-      return Stream<GenerationEvent>.error(
-        StateError('A generation is already active.'),
-      );
-    }
+    // One generation at a time, but "at a time" is measured against the
+    // previous operation's *whole* teardown: a cancelled answer still has a
+    // native cancel round trip to finish, and the next message queues behind
+    // it rather than being refused for arriving during it.
+    final Future<void> previousDone = _previousOperationDone;
 
     late final _GenerationOperation operation;
     final StreamController<GenerationEvent> controller =
         StreamController<GenerationEvent>(
-          onListen: () => unawaited(operation.start()),
+          onListen: () =>
+              unawaited(previousDone.then((void _) => operation.start())),
           onCancel: () => operation.onListenerCancelled(),
         );
     operation = _GenerationOperation(
@@ -71,6 +89,8 @@ final class ConversationRepository {
       () => _release(operation),
     );
     _activeOperation = operation;
+    _liveOperations.add(operation);
+    _previousOperationDone = operation.done;
     return controller.stream;
   }
 
@@ -85,6 +105,7 @@ final class ConversationRepository {
   }
 
   void _release(_GenerationOperation operation) {
+    _liveOperations.remove(operation);
     if (identical(_activeOperation, operation)) {
       _activeOperation = null;
     }
@@ -114,8 +135,22 @@ final class _GenerationOperation {
   bool _started = false;
   bool _terminal = false;
   bool _finished = false;
+  bool _forgotten = false;
+  final Completer<void> _done = Completer<void>();
 
   GenerationId? get generationId => _generation?.id;
+
+  /// The conversation this operation is speaking in.
+  ConversationId get conversationId => _request.conversationId;
+
+  /// Completes once this operation has fully finished, teardown included.
+  Future<void> get done => _done.future;
+
+  /// The conversation was deleted out from under this operation: say nothing
+  /// more to the store on its behalf.
+  void forget() {
+    _forgotten = true;
+  }
 
   Future<void> start() async {
     if (_started) {
@@ -124,6 +159,11 @@ final class _GenerationOperation {
     _started = true;
 
     try {
+      if (_forgotten) {
+        _terminal = true;
+        await _finish();
+        return;
+      }
       await _storageService.saveUserTurn(_request.conversationId, _userTurn);
       if (_terminal) {
         return;
@@ -259,7 +299,10 @@ final class _GenerationOperation {
   Future<void> _persistTerminal({
     required Generation generation,
     required TurnStatus status,
-  }) {
+  }) async {
+    if (_forgotten) {
+      return;
+    }
     return _storageService.saveTerminalAssistantTurn(
       Turn(role: TurnRole.assistant, text: _assistantText, status: status),
       generation,
@@ -326,9 +369,15 @@ final class _GenerationOperation {
     }
     _finished = true;
     _onFinished();
-    await _subscription?.cancel();
-    if (!_controller.isClosed) {
-      await _controller.close();
+    try {
+      await _subscription?.cancel();
+      if (!_controller.isClosed) {
+        await _controller.close();
+      }
+    } finally {
+      if (!_done.isCompleted) {
+        _done.complete();
+      }
     }
   }
 }

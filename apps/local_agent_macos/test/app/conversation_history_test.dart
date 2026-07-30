@@ -122,6 +122,51 @@ void main() {
     );
   });
 
+  testWidgets('a draft survives deleting a conversation that is not open', (
+    WidgetTester tester,
+  ) async {
+    await pumpApp(tester, await storeWithHistory());
+
+    // Forget the open conversation: the view deliberately starts fresh.
+    await openHistory(tester);
+    await tester.tap(find.byKey(Key('conversation-delete-${yesterday.value}')));
+    await tester.pump();
+    await tester.pump();
+    await tester.tap(
+      find.byKey(const Key('conversation-history-close-button')),
+    );
+    await tester.pump();
+
+    // The user starts writing in the fresh conversation...
+    await tester.enterText(
+      find.byKey(const Key('conversation-composer-field')),
+      'a draft worth keeping',
+    );
+    await tester.pump();
+
+    // ...then tidies away another stored conversation. That one is not what
+    // the view holds, so the draft must not be torn down with it.
+    await openHistory(tester);
+    await tester.tap(find.byKey(Key('conversation-delete-${older.value}')));
+    await tester.pump();
+    await tester.pump();
+    await tester.tap(
+      find.byKey(const Key('conversation-history-close-button')),
+    );
+    await tester.pump();
+
+    expect(
+      tester
+          .widget<TextField>(
+            find.byKey(const Key('conversation-composer-field')),
+          )
+          .controller
+          ?.text,
+      'a draft worth keeping',
+      reason: 'Deleting an unrelated conversation discarded the draft.',
+    );
+  });
+
   testWidgets('forgetting the conversation being looked at starts fresh', (
     WidgetTester tester,
   ) async {

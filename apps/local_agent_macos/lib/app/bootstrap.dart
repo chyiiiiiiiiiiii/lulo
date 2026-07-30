@@ -5,6 +5,7 @@ import '../features/conversation/conversation_storage_service.dart';
 import '../features/conversation/drift_conversation_storage_service.dart';
 import '../features/conversation/pigeon_inference_service.dart';
 import '../features/conversation/swappable_inference_service.dart';
+import '../features/model/model_catalog.dart';
 import '../features/model/model_download_manager.dart';
 import '../features/model/model_file_service.dart';
 import '../features/settings/app_settings.dart';
@@ -106,6 +107,7 @@ AppComposition createAppComposition({
   SettingsStore? settingsStore,
   OwnedConversationStorage? conversationStorage,
   ModelDownloadManager? modelDownloads,
+  List<ModelCatalogEntry> catalog = modelCatalog,
 }) {
   final SettingsStore store = settingsStore ?? createSettingsStore();
   if (inferenceRuntime != 'fake' && inferenceRuntime != 'litert') {
@@ -153,6 +155,7 @@ AppComposition createAppComposition({
     settingsStore: store,
     presentationHost: desktopHostService,
     modelDownloads: modelDownloads ?? createModelDownloadManager(),
+    catalog: catalog,
     // The model is chosen in settings, and the only part of the graph that has
     // to change when it does is what sits behind this one service.
     changeModel: (String modelPath) => inferenceService.replaceWith(

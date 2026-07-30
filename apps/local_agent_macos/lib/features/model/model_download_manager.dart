@@ -33,6 +33,8 @@ final class ModelDownloadManager extends ChangeNotifier {
   final Map<String, Future<File>> _running = <String, Future<File>>{};
   final Map<String, ModelDownloadProgress> _progress =
       <String, ModelDownloadProgress>{};
+  final Map<String, int> _toldPercent = <String, int>{};
+  bool _disposed = false;
 
   /// Where [entry] stands right now.
   ModelInstallState stateOf(ModelCatalogEntry entry) {
@@ -63,7 +65,7 @@ final class ModelDownloadManager extends ChangeNotifier {
     }
     final Future<File> arriving = _download(entry);
     _running[entry.id] = arriving;
-    notifyListeners();
+    _notify();
     return arriving;
   }
 
@@ -73,13 +75,33 @@ final class ModelDownloadManager extends ChangeNotifier {
         entry,
       )) {
         _progress[entry.id] = progress;
-        notifyListeners();
+        // Whole percents, not network chunks: a multi-gigabyte download
+        // arrives in tens of thousands of pieces, and every notification
+        // rebuilds whoever is watching on the UI isolate.
+        final int percent = (progress.fraction * 100).floor();
+        if (_toldPercent[entry.id] != percent) {
+          _toldPercent[entry.id] = percent;
+          _notify();
+        }
       }
       return _files.fileFor(entry);
     } finally {
       _running.remove(entry.id);
       _progress.remove(entry.id);
+      _toldPercent.remove(entry.id);
+      _notify();
+    }
+  }
+
+  void _notify() {
+    if (!_disposed) {
       notifyListeners();
     }
+  }
+
+  @override
+  void dispose() {
+    _disposed = true;
+    super.dispose();
   }
 }

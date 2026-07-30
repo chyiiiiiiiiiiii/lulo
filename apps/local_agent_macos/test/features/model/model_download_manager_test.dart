@@ -78,6 +78,64 @@ void main() {
     expect(manager.stateOf(entry), ModelInstallState.notInstalled);
   });
 
+  test('progress is told in steps, not per network chunk', () async {
+    // A 3.6 GB download arrives in ~55k chunks. Notifying for each one
+    // rebuilds the settings sheet hundreds of times a second on the UI
+    // isolate, in a repo whose guardrail is p99 build ≤ 12 ms.
+    const ModelCatalogEntry chunky = ModelCatalogEntry(
+      id: 'chunky-model',
+      name: 'A chunky model',
+      description: 'Arrives in many pieces.',
+      fileName: 'chunky-model.litertlm',
+      url: 'https://example.invalid/chunky-model.litertlm',
+      sizeBytes: 400,
+    );
+    final ModelDownloadManager manager = ModelDownloadManager(
+      files: ModelFileService(
+        modelsDirectory: modelsDirectory,
+        fetch: (Uri url) async => ModelBytes(
+          totalBytes: 400,
+          stream: Stream<List<int>>.fromIterable(
+            List<List<int>>.generate(400, (int _) => <int>[0]),
+          ),
+        ),
+      ),
+    );
+    addTearDown(manager.dispose);
+    int told = 0;
+    manager.addListener(() => told += 1);
+
+    await manager.download(chunky);
+
+    expect(
+      told,
+      lessThanOrEqualTo(110),
+      reason: 'One notification per network chunk floods the UI isolate.',
+    );
+  });
+
+  test('a manager disposed mid-download says nothing more', () async {
+    final StreamController<List<int>> bytes = StreamController<List<int>>();
+    final ModelDownloadManager manager = ModelDownloadManager(
+      files: ModelFileService(
+        modelsDirectory: modelsDirectory,
+        fetch: (Uri url) async =>
+            ModelBytes(totalBytes: 4, stream: bytes.stream),
+      ),
+    );
+
+    final Future<File> arriving = manager.download(entry);
+    bytes.add(<int>[1, 2]);
+    await Future<void>.delayed(Duration.zero);
+
+    manager.dispose();
+    // The bytes keep landing after teardown; a notifyListeners now would
+    // throw on a disposed ChangeNotifier.
+    bytes.add(<int>[3, 4]);
+    await bytes.close();
+    await arriving;
+  });
+
   test('what is already on disk is simply installed', () async {
     File(
       '${modelsDirectory.path}/${entry.fileName}',

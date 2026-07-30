@@ -93,9 +93,26 @@ final class ModelFileService {
           'The download ended after $received of ${bytes.totalBytes} bytes.',
         );
       }
+      if (received != entry.sizeBytes) {
+        // The sender was consistent with itself but not with the catalog:
+        // the upstream file changed, or it is not the model at all. Loading
+        // it would run a model the catalog no longer describes, and
+        // isInstalled would call it not-installed forever.
+        throw StateError(
+          'The download is $received bytes where the catalog pins '
+          '${entry.sizeBytes}.',
+        );
+      }
       working.renameSync(fileFor(entry).path);
     } on Object {
-      await sink.close();
+      // The close of a failed write can itself throw the buffered error;
+      // swallowed here so the cleanup still runs and the first error is the
+      // one the caller sees.
+      try {
+        await sink.close();
+      } on Object {
+        // Already failing; the original error is the story.
+      }
       if (working.existsSync()) {
         working.deleteSync();
       }
@@ -117,21 +134,26 @@ final class ModelFileService {
         uri: url,
       );
     }
-    return ModelBytes(
-      totalBytes: response.contentLength,
-      stream: response.transform(
-        StreamTransformer<List<int>, List<int>>.fromHandlers(
-          handleDone: (EventSink<List<int>> sink) {
-            client.close();
-            sink.close();
-          },
-          handleError:
-              (Object error, StackTrace stackTrace, EventSink<List<int>> sink) {
-                client.close(force: true);
-                sink.addError(error, stackTrace);
-              },
-        ),
-      ),
+    // Piped through a controller rather than transformed in place: a
+    // consumer that cancels mid-download fires neither done nor error, and
+    // the client and its socket would outlive the download they carried.
+    final StreamController<List<int>> bytes = StreamController<List<int>>();
+    late final StreamSubscription<List<int>> forwarding;
+    forwarding = response.listen(
+      bytes.add,
+      onError: (Object error, StackTrace stackTrace) {
+        client.close(force: true);
+        bytes.addError(error, stackTrace);
+      },
+      onDone: () {
+        client.close();
+        unawaited(bytes.close());
+      },
     );
+    bytes.onCancel = () async {
+      await forwarding.cancel();
+      client.close(force: true);
+    };
+    return ModelBytes(totalBytes: response.contentLength, stream: bytes.stream);
   }
 }

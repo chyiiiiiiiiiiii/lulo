@@ -181,12 +181,21 @@ final class _PresentationSwitchState extends State<_PresentationSwitch>
     _requests = widget.composition.presentationHost?.presentationRequests
         .listen(_flyTo);
     unawaited(_loadStage());
-    unawaited(_loadSettings());
+    final Future<void> settingsLoaded = _loadSettings();
+    unawaited(settingsLoaded);
     _settingsRequests = widget.composition.presentationHost?.settingsRequests
         .listen((void _) {
-          if (mounted) {
-            setState(() => _showingSettings = true);
-          }
+          // Not before the stored settings have arrived: the sheet applies
+          // each flip over the settings it can see, and a sheet over the
+          // defaults would save defaults-plus-one-flip, silently erasing
+          // every stored choice.
+          unawaited(
+            settingsLoaded.then((void _) {
+              if (mounted) {
+                setState(() => _showingSettings = true);
+              }
+            }),
+          );
         });
     // The window's frame belongs to the user — resized, zoomed, or taken full
     // screen — and the forms are laid out against it, so the layout follows.
@@ -237,7 +246,7 @@ final class _PresentationSwitchState extends State<_PresentationSwitch>
     final File? model = widget.composition.modelDownloads.installedFileOf(
       entry,
     );
-    if (model != null) {
+    if (model != null && mounted) {
       unawaited(_changeSettings(_settings.copyWith(modelPath: model.path)));
     }
   }
@@ -283,6 +292,9 @@ final class _PresentationSwitchState extends State<_PresentationSwitch>
     final bool wasOpen =
         conversationId == _openConversation ||
         (_openConversation == null &&
+            // A deliberately fresh conversation is unstored: no row in the
+            // list can be it, so no deletion should tear it down.
+            !_startFresh &&
             _conversations.isNotEmpty &&
             conversationId == _conversations.first.id);
     await widget.composition.deleteConversation(conversationId);
@@ -346,6 +358,11 @@ final class _PresentationSwitchState extends State<_PresentationSwitch>
     setState(() => _settings = settings);
     await _applySettings(settings);
     await widget.composition.settingsStore.save(settings);
+    if (!mounted) {
+      // Torn down while saving: the composition is being disposed with the
+      // widget, and asking it to load a model now would only throw.
+      return;
+    }
     if (settings.modelPath != wasThinkingWith) {
       // Only when it actually changed: loading a model costs seconds and
       // several gigabytes, and every other switch on this sheet would

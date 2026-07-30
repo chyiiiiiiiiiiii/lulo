@@ -630,6 +630,138 @@ void main() {
       await inference.dispose();
     },
   );
+
+  test(
+    'a forgotten conversation is not written back by its own cancellation',
+    () async {
+      // Deleting removes the rows; a conversation *is* whatever rows share
+      // its id, so the cancellation's terminal write would re-create it as a
+      // ghost with a blank title.
+      final RecordingConversationStorageService storage =
+          RecordingConversationStorageService();
+      final ControlledInferenceService inference = ControlledInferenceService();
+      final ConversationRepository repository = ConversationRepository(
+        storageService: storage,
+        inferenceService: inference,
+      );
+      final StreamSubscription<GenerationEvent> subscription = repository
+          .startGeneration(userTurn: userTurn, request: request)
+          .listen((GenerationEvent _) {});
+      await inference.requestReceived;
+      inference.emit(GenerationStarted(generation));
+      await Future<void>.delayed(Duration.zero);
+
+      await repository.deleteConversation(conversationId);
+      await subscription.cancel();
+
+      expect(
+        storage.assistantTurns,
+        isEmpty,
+        reason:
+            'The cancellation of a forgotten conversation wrote it back '
+            'into the store.',
+      );
+      await inference.dispose();
+    },
+  );
+
+  test(
+    'a message sent while the last answer is still cancelling waits its turn',
+    () async {
+      // Switching conversations disposes the old ViewModel, whose
+      // cancellation has a native round trip to make. The next message must
+      // wait for that teardown, not be refused for arriving during it.
+      final RecordingConversationStorageService storage =
+          RecordingConversationStorageService();
+      final _HeldCancelInferenceService inference =
+          _HeldCancelInferenceService();
+      final ConversationRepository repository = ConversationRepository(
+        storageService: storage,
+        inferenceService: inference,
+      );
+      final StreamSubscription<GenerationEvent> first = repository
+          .startGeneration(userTurn: userTurn, request: request)
+          .listen((GenerationEvent _) {});
+      await inference.requestReceived.future;
+      inference.emit(GenerationStarted(generation));
+      await Future<void>.delayed(Duration.zero);
+
+      // The old conversation starts cancelling and its native cancel hangs
+      // in flight...
+      final Future<void> cancelling = first.cancel();
+      // ...while the user is already talking in the new conversation.
+      const GenerationRequest nextRequest = GenerationRequest(
+        conversationId: ConversationId('the-new-conversation'),
+        prompt: 'A fresh question.',
+      );
+      final List<Object> visibleErrors = <Object>[];
+      final StreamSubscription<GenerationEvent> second = repository
+          .startGeneration(
+            userTurn: const Turn(
+              role: TurnRole.user,
+              text: 'A fresh question.',
+              status: TurnStatus.completed,
+            ),
+            request: nextRequest,
+          )
+          .listen(
+            (GenerationEvent _) {},
+            onError: (Object error, StackTrace _) => visibleErrors.add(error),
+          );
+      await Future<void>.delayed(Duration.zero);
+      expect(
+        visibleErrors,
+        isEmpty,
+        reason: 'The next message was refused instead of queued.',
+      );
+
+      inference.releaseCancel();
+      await cancelling;
+      await inference.secondRequestReceived.future;
+
+      expect(inference.requests, hasLength(2));
+      expect(
+        inference.requests.last.conversationId,
+        nextRequest.conversationId,
+      );
+      expect(visibleErrors, isEmpty);
+      await second.cancel();
+    },
+  );
+}
+
+/// Records requests and holds native cancellation open until released.
+final class _HeldCancelInferenceService implements InferenceService {
+  final StreamController<GenerationEvent> _events =
+      StreamController<GenerationEvent>.broadcast();
+  final List<GenerationRequest> requests = <GenerationRequest>[];
+  final Completer<GenerationRequest> requestReceived =
+      Completer<GenerationRequest>();
+  final Completer<GenerationRequest> secondRequestReceived =
+      Completer<GenerationRequest>();
+  final Completer<void> _cancelGate = Completer<void>();
+
+  @override
+  Stream<GenerationEvent> generate(GenerationRequest request) {
+    requests.add(request);
+    if (!requestReceived.isCompleted) {
+      requestReceived.complete(request);
+    } else if (!secondRequestReceived.isCompleted) {
+      secondRequestReceived.complete(request);
+    }
+    return _events.stream;
+  }
+
+  @override
+  Future<void> cancel(GenerationId generationId) => _cancelGate.future;
+
+  void emit(GenerationEvent event) => _events.add(event);
+
+  void releaseCancel() {
+    if (!_cancelGate.isCompleted) {
+      _cancelGate.complete();
+    }
+  }
 }
 
 bool _isTerminalGenerationEvent(GenerationEvent event) {

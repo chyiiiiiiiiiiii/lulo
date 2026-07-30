@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import 'app/app.dart';
 import 'app/bootstrap.dart';
+import 'features/model/model_catalog.dart';
 import 'features/settings/app_settings.dart';
 
 Future<void> main() async {
@@ -32,6 +33,11 @@ Future<void> main() async {
         conversationStorage: hostingTests
             ? null
             : createDurableConversationStorage(),
+        // An empty catalog in the test host: launch adoption would otherwise
+        // find the user's installed model, load gigabytes into the test
+        // runner's connection window, and write the adoption into the user's
+        // own settings.
+        catalog: hostingTests ? const <ModelCatalogEntry>[] : modelCatalog,
       ),
     ),
   );
