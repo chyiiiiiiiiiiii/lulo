@@ -49,6 +49,11 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
   /// sentences two onward are still playing, and the agent hears itself.
   private var outstandingUtterances = 0
 
+  /// Bumped by stopSpeaking; an utterance still in flight to the sidecar
+  /// captures it at entry, and a stale one must not fall back to the
+  /// system voice after the user has already barged over it.
+  private var speakEpoch = 0
+
   init(events: VoiceHostEvents) {
     self.events = events
     super.init()
@@ -96,9 +101,14 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
     // Invalidates any start still on its way through permission dialogs or
     // the asset download, as well as the running session. The starting flag
     // falls with it, or a retry during the invalidated start's long await
-    // would report success while opening nothing.
+    // would report success while opening nothing. Speech state resets too:
+    // a fallback utterance whose terminal callback never came must not
+    // leave the microphone muted for the rest of the session.
     sessionCounter += 1
     starting = false
+    speakEpoch += 1
+    outstandingUtterances = 0
+    mute.muted = false
     endSession()
     emit(.listeningStopped)
     completion(.success(()))
@@ -125,12 +135,15 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
     completion: @escaping (Result<Void, Error>) -> Void
   ) {
     utteranceBegan()
+    let epoch = speakEpoch
     Task { @MainActor in
       let spoke = await self.speakThroughSidecar(text: text, voice: voice)
-      if !spoke {
+      if !spoke && epoch == self.speakEpoch {
         // The resident voice is not running: fall back to the system
         // synthesizer rather than going silent. The delegate's
-        // didFinish/didCancel ends this utterance.
+        // didFinish/didCancel ends this utterance. A stale epoch means the
+        // user barged over this sentence while it was in flight, and it
+        // must not be read after all.
         let utterance = AVSpeechUtterance(string: text)
         if let systemVoice = Self.bestVoice() {
           utterance.voice = systemVoice
@@ -201,6 +214,7 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
   }
 
   func stopSpeaking(completion: @escaping (Result<Void, Error>) -> Void) {
+    speakEpoch += 1
     synthesizer.stopSpeaking(at: .immediate)
     if let url = URL(string: "http://127.0.0.1:46557/stop") {
       var request = URLRequest(url: url)

@@ -48,6 +48,18 @@ final class VoiceConversationController extends ChangeNotifier {
 
   CancelBatch? _pendingSettle;
 
+  /// Forced-finalize attempts for the current utterance, bounded so a
+  /// transcriber that never answers cannot be poked forever.
+  int _settleAttempts = 0;
+  static const int _maxSettleAttempts = 3;
+
+  /// True from asking the generation to stop until its turn winds down.
+  ///
+  /// The cancel flushes the token batcher, and a flushed tail that happens
+  /// to finish a sentence must not be dispatched to the voice — the
+  /// interruption exists to stop exactly that.
+  bool _stopRequestedForActive = false;
+
   bool _enabled = false;
 
   /// True while [enable] is waiting for the stored history to land.
@@ -163,6 +175,7 @@ final class VoiceConversationController extends ChangeNotifier {
         if (text.trim().isNotEmpty) {
           _yieldToTheUser();
           // The user is still talking; push the settle out again.
+          _settleAttempts = 0;
           _pendingSettle?.cancel();
           _pendingSettle = _utteranceScheduler.schedule(
             _utteranceSettleDelay,
@@ -172,6 +185,7 @@ final class VoiceConversationController extends ChangeNotifier {
       case FinalTranscript(:final String text):
         _pendingSettle?.cancel();
         _pendingSettle = null;
+        _settleAttempts = 0;
         _partialTranscript = '';
         notifyListeners();
         if (text.trim().isEmpty) {
@@ -222,9 +236,10 @@ final class VoiceConversationController extends ChangeNotifier {
     final Turn? active = _conversation.activeTurnListenable.value;
     if (active == null) {
       _dispatchedOfActive = 0;
+      _stopRequestedForActive = false;
       return;
     }
-    if (!_enabled) {
+    if (!_enabled || _stopRequestedForActive) {
       return;
     }
     final String text = active.text;
@@ -252,14 +267,24 @@ final class VoiceConversationController extends ChangeNotifier {
   /// The partial has sat still long enough: the user has finished talking.
   void _settleUtterance() {
     _pendingSettle = null;
-    if (_enabled && _partialTranscript.trim().isNotEmpty) {
-      unawaited(_voice.finalizeUtterance());
+    if (!_enabled || _partialTranscript.trim().isEmpty) {
+      return;
+    }
+    _settleAttempts += 1;
+    unawaited(_voice.finalizeUtterance());
+    if (_settleAttempts < _maxSettleAttempts) {
       // Re-armed until the final actually arrives: a finalize the analyzer
       // ignored must not leave the utterance hanging on screen forever.
       _pendingSettle = _utteranceScheduler.schedule(
         _utteranceSettleDelay,
         _settleUtterance,
       );
+    } else {
+      // Three asks is enough; a transcript that will never settle should
+      // not sit on screen pretending it might.
+      _settleAttempts = 0;
+      _partialTranscript = '';
+      notifyListeners();
     }
   }
 
@@ -279,6 +304,7 @@ final class VoiceConversationController extends ChangeNotifier {
       unawaited(_voice.stopSpeaking());
     }
     if (!_conversation.canSubmit) {
+      _stopRequestedForActive = true;
       unawaited(_conversation.stop());
     }
   }

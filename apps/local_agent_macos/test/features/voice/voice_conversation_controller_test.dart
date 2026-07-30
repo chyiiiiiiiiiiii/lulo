@@ -536,6 +536,88 @@ void main() {
     );
   });
 
+  test('a barge-in silences the sentence still in the batcher', () async {
+    // Cancelling flushes the token batcher; if the flushed tail completes a
+    // sentence, it must not be dispatched to the voice — the interruption
+    // exists to stop exactly that.
+    final _HeldCancelVoiceInference held = _HeldCancelVoiceInference();
+    final _HandVoiceScheduler heldBatch = _HandVoiceScheduler();
+    final ConversationViewModel heldVm = ConversationViewModel(
+      repository: ConversationRepository(
+        storageService: InMemoryConversationStorageService(),
+        inferenceService: held,
+      ),
+      idFactory: () => const ConversationId('freshly-minted'),
+      startFresh: true,
+      batchScheduler: heldBatch,
+    );
+    addTearDown(heldVm.dispose);
+    final FakeVoiceService heldVoice = FakeVoiceService();
+    final VoiceConversationController heldController =
+        VoiceConversationController(voice: heldVoice, conversation: heldVm);
+    addTearDown(heldController.dispose);
+    await heldController.enable();
+
+    heldVoice.hear(const FinalTranscript('Tell me a long story.'));
+    await pump();
+    final GenerationRequest request = await held.requestReceived.future;
+    final Generation generation = Generation(
+      id: const GenerationId('generation-1'),
+      request: request,
+    );
+    held.emit(GenerationStarted(generation));
+    await pump();
+
+    // A finished sentence sits in the token batcher, its frame not fired.
+    held.emit(GenerationDelta(generationId: generation.id, delta: '很久很久以前。'));
+    await pump();
+    expect(heldVoice.spoken, isEmpty);
+
+    // The user talks over it; the cancel hangs, then lands, and the
+    // terminal flushes the batcher.
+    heldVoice.hear(const PartialTranscript('等等'));
+    await pump();
+    held.releaseCancel();
+    for (int i = 0; i < 8; i++) {
+      await pump();
+    }
+
+    expect(
+      heldVoice.spoken,
+      isEmpty,
+      reason: 'The agent got one more sentence in after the interruption.',
+    );
+  });
+
+  test('the settle gives up after three tries and clears the screen', () async {
+    final _HandVoiceScheduler timers = _HandVoiceScheduler();
+    final VoiceConversationController timed = VoiceConversationController(
+      voice: voice,
+      conversation: vm,
+      utteranceScheduler: timers,
+    );
+    addTearDown(timed.dispose);
+    await timed.enable();
+
+    voice.hear(const PartialTranscript('明天天氣'));
+    await pump();
+    timers.fireLast();
+    timers.fireLast();
+    timers.fireLast();
+
+    expect(voice.calls.where((String c) => c == 'finalizeUtterance').length, 3);
+    expect(
+      timers.scheduled.length,
+      3,
+      reason: 'The settle re-armed past its bound.',
+    );
+    expect(
+      timed.partialTranscript,
+      isEmpty,
+      reason: 'A transcript that will never settle stayed on screen.',
+    );
+  });
+
   test('nothing heard while disabled goes anywhere', () async {
     voice.hear(const FinalTranscript('to someone else entirely'));
     await pump();
