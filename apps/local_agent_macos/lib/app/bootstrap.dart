@@ -5,6 +5,8 @@ import '../features/conversation/conversation_storage_service.dart';
 import '../features/conversation/drift_conversation_storage_service.dart';
 import '../features/conversation/pigeon_inference_service.dart';
 import '../features/conversation/swappable_inference_service.dart';
+import '../features/model/model_download_manager.dart';
+import '../features/model/model_file_service.dart';
 import '../features/settings/app_settings.dart';
 import '../platform/desktop_host_service.dart';
 import '../platform/pigeon_desktop_host_service.dart';
@@ -79,6 +81,21 @@ OwnedConversationStorage createDurableConversationStorage() {
   return OwnedConversationStorage(service: service, release: service.dispose);
 }
 
+/// Opens the curated-model download manager over the app's own models home.
+///
+/// Beside the conversations, under Application Support; a home that cannot be
+/// resolved falls back to the system's temporary directory, the same trade
+/// the other stores make.
+ModelDownloadManager createModelDownloadManager() {
+  final String? home = Platform.environment['HOME'];
+  final String base = (home == null || home.isEmpty)
+      ? Directory.systemTemp.path
+      : '$home/Library/Application Support/Lulo';
+  return ModelDownloadManager(
+    files: ModelFileService(modelsDirectory: Directory('$base/models')),
+  );
+}
+
 /// Builds the application dependency graph from compile-time configuration.
 AppComposition createAppComposition({
   String inferenceRuntime = const String.fromEnvironment(
@@ -88,6 +105,7 @@ AppComposition createAppComposition({
   String localModelPath = const String.fromEnvironment('LOCAL_MODEL_PATH'),
   SettingsStore? settingsStore,
   OwnedConversationStorage? conversationStorage,
+  ModelDownloadManager? modelDownloads,
 }) {
   final SettingsStore store = settingsStore ?? createSettingsStore();
   if (inferenceRuntime != 'fake' && inferenceRuntime != 'litert') {
@@ -134,6 +152,7 @@ AppComposition createAppComposition({
     inferenceService: inferenceService,
     settingsStore: store,
     presentationHost: desktopHostService,
+    modelDownloads: modelDownloads ?? createModelDownloadManager(),
     // The model is chosen in settings, and the only part of the graph that has
     // to change when it does is what sits behind this one service.
     changeModel: (String modelPath) => inferenceService.replaceWith(

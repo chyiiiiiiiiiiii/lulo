@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../conversation/widgets/conversation_content_column.dart';
+import '../model/model_catalog.dart';
+import '../model/model_download_manager.dart';
 import 'app_settings.dart';
 
 /// The app's own settings, shown over the conversation.
@@ -16,8 +18,24 @@ final class SettingsSheet extends StatelessWidget {
     required this.onChanged,
     required this.onClose,
     required this.onChooseModel,
+    required this.modelDownloads,
+    required this.onDownloadModel,
+    required this.onUseModel,
+    this.catalog = modelCatalog,
     super.key,
   });
+
+  /// Download state for the curated models, owned by the app.
+  final ModelDownloadManager modelDownloads;
+
+  /// Called with the model the user asked to fetch.
+  final ValueChanged<ModelCatalogEntry> onDownloadModel;
+
+  /// Called with the installed model the user chose to think with.
+  final ValueChanged<ModelCatalogEntry> onUseModel;
+
+  /// The models on offer, the recommended one first.
+  final List<ModelCatalogEntry> catalog;
 
   /// Asks the user for a model file. Returns the path, or empty if they keep
   /// what they had.
@@ -139,6 +157,24 @@ final class SettingsSheet extends StatelessWidget {
                       _Section(
                         title: 'The model it thinks with',
                         children: <Widget>[
+                          AnimatedBuilder(
+                            animation: modelDownloads,
+                            builder: (BuildContext context, Widget? _) =>
+                                Column(
+                                  children: <Widget>[
+                                    for (final ModelCatalogEntry entry
+                                        in catalog)
+                                      _ModelRow(
+                                        entry: entry,
+                                        downloads: modelDownloads,
+                                        activePath: settings.modelPath,
+                                        onDownload: () =>
+                                            onDownloadModel(entry),
+                                        onUse: () => onUseModel(entry),
+                                      ),
+                                  ],
+                                ),
+                          ),
                           ListTile(
                             key: const Key('setting-model-path'),
                             title: Text(
@@ -212,6 +248,66 @@ final class _Section extends StatelessWidget {
         ),
         ...children,
       ],
+    );
+  }
+}
+
+/// One curated model: what it is, where it stands, and the one next step.
+final class _ModelRow extends StatelessWidget {
+  const _ModelRow({
+    required this.entry,
+    required this.downloads,
+    required this.activePath,
+    required this.onDownload,
+    required this.onUse,
+  });
+
+  final ModelCatalogEntry entry;
+  final ModelDownloadManager downloads;
+  final String activePath;
+  final VoidCallback onDownload;
+  final VoidCallback onUse;
+
+  String get _sizeLabel =>
+      '${(entry.sizeBytes / (1024 * 1024 * 1024)).toStringAsFixed(1)} GB';
+
+  @override
+  Widget build(BuildContext context) {
+    final ModelInstallState state = downloads.stateOf(entry);
+    if (state == ModelInstallState.downloading) {
+      return ListTile(
+        title: Text(entry.name),
+        subtitle: LinearProgressIndicator(
+          key: Key('model-progress-${entry.id}'),
+          value: downloads.progressOf(entry)?.fraction,
+        ),
+      );
+    }
+    final bool active =
+        state == ModelInstallState.installed &&
+        activePath == downloads.installedFileOf(entry)?.path;
+    return ListTile(
+      title: Text(
+        entry.recommended ? '${entry.name} — recommended' : entry.name,
+      ),
+      subtitle: Text('${entry.description} $_sizeLabel.'),
+      trailing: active
+          ? Icon(
+              Icons.check_rounded,
+              key: Key('model-active-${entry.id}'),
+              color: Theme.of(context).colorScheme.primary,
+            )
+          : state == ModelInstallState.installed
+          ? FilledButton.tonal(
+              key: Key('model-use-${entry.id}'),
+              onPressed: onUse,
+              child: const Text('Use'),
+            )
+          : FilledButton.tonal(
+              key: Key('model-download-${entry.id}'),
+              onPressed: onDownload,
+              child: const Text('Download'),
+            ),
     );
   }
 }

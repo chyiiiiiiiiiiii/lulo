@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:agent_core/agent_core.dart';
 import 'package:flutter/material.dart';
@@ -7,6 +8,7 @@ import 'package:flutter/physics.dart';
 import '../features/conversation/conversation_storage_service.dart';
 import '../features/conversation/conversation_view.dart';
 import '../features/conversation/widgets/conversation_history_sheet.dart';
+import '../features/model/model_catalog.dart';
 import '../features/presence/agent_presence_controller.dart';
 import '../features/presence/agent_presence_orb.dart';
 import '../features/presence/desktop_orb_surface.dart';
@@ -212,6 +214,34 @@ final class _PresentationSwitchState extends State<_PresentationSwitch>
     _leaving.value = mode == DesktopPresentation.orb ? 1 : 0;
   }
 
+  /// Fetches [entry], then thinks with it as soon as it is whole.
+  ///
+  /// Asked for by hand, so its completion is the activation the user meant.
+  Future<void> _downloadModel(ModelCatalogEntry entry) async {
+    final File model;
+    try {
+      model = await widget.composition.modelDownloads.download(entry);
+    } on Object {
+      // The manager already stands the row back up as not-installed; the
+      // sheet is where the user learns the download did not finish.
+      return;
+    }
+    if (!mounted) {
+      return;
+    }
+    await _changeSettings(_settings.copyWith(modelPath: model.path));
+  }
+
+  /// Thinks with the already-installed [entry].
+  void _useModel(ModelCatalogEntry entry) {
+    final File? model = widget.composition.modelDownloads.installedFileOf(
+      entry,
+    );
+    if (model != null) {
+      unawaited(_changeSettings(_settings.copyWith(modelPath: model.path)));
+    }
+  }
+
   /// Reads the store and puts its conversations in front of the user.
   Future<void> _showConversations() async {
     final List<ConversationSummary> conversations = await widget.composition
@@ -273,7 +303,23 @@ final class _PresentationSwitchState extends State<_PresentationSwitch>
 
   /// Reads the user's choices and puts the window into them.
   Future<void> _loadSettings() async {
-    final AppSettings settings = await widget.composition.settingsStore.load();
+    AppSettings settings = await widget.composition.settingsStore.load();
+    if (settings.modelPath.trim().isEmpty) {
+      // Nothing chosen yet, but the recommended model is already here: think
+      // with it rather than greeting the user with the canned preview. A
+      // deliberate choice, once made, is never overridden.
+      final ModelCatalogEntry? recommended = widget.composition.catalog
+          .where((ModelCatalogEntry entry) => entry.recommended)
+          .firstOrNull;
+      final File? installed = recommended == null
+          ? null
+          : widget.composition.modelDownloads.installedFileOf(recommended);
+      if (installed != null) {
+        settings = settings.copyWith(modelPath: installed.path);
+        await widget.composition.settingsStore.save(settings);
+        await widget.composition.useModel(installed.path);
+      }
+    }
     if (!mounted) {
       return;
     }
@@ -632,6 +678,11 @@ final class _PresentationSwitchState extends State<_PresentationSwitch>
                               await host.chooseModelFile(),
                           onClose: () =>
                               setState(() => _showingSettings = false),
+                          modelDownloads: widget.composition.modelDownloads,
+                          catalog: widget.composition.catalog,
+                          onDownloadModel: (ModelCatalogEntry entry) =>
+                              unawaited(_downloadModel(entry)),
+                          onUseModel: _useModel,
                         ),
                     ],
                   ),

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:agent_core/agent_core.dart';
 
@@ -6,6 +7,9 @@ import '../features/conversation/conversation_repository.dart';
 import '../features/conversation/conversation_storage_service.dart';
 import '../features/conversation/conversation_view_model.dart';
 import '../features/conversation/inference_service.dart';
+import '../features/model/model_catalog.dart';
+import '../features/model/model_download_manager.dart';
+import '../features/model/model_file_service.dart';
 import '../features/settings/app_settings.dart';
 import '../platform/desktop_host_service.dart';
 
@@ -19,8 +23,11 @@ final class AppComposition {
     SettingsStore? settingsStore,
     this.presentationHost,
     Future<void> Function(String modelPath)? changeModel,
+    ModelDownloadManager? modelDownloads,
+    this.catalog = modelCatalog,
   }) : _changeModel = changeModel ?? _keepThePreview,
        settingsStore = settingsStore ?? InMemorySettingsStore(),
+       modelDownloads = modelDownloads ?? _downloadsNowhere(),
        _conversationRepository = ConversationRepository(
          storageService: storageService,
          inferenceService: inferenceService,
@@ -35,6 +42,20 @@ final class AppComposition {
 
   /// Where the user's choices about the desktop presence are kept.
   final SettingsStore settingsStore;
+
+  /// Download state for the curated models, alive for as long as the app.
+  final ModelDownloadManager modelDownloads;
+
+  /// The models on offer, the recommended one first.
+  final List<ModelCatalogEntry> catalog;
+
+  /// The default manager, for compositions that never really download:
+  /// nothing is created on disk until something is actually fetched.
+  static ModelDownloadManager _downloadsNowhere() => ModelDownloadManager(
+    files: ModelFileService(
+      modelsDirectory: Directory('${Directory.systemTemp.path}/lulo-models'),
+    ),
+  );
 
   final FutureOr<void> Function() _disposeServices;
   final Future<void> Function(String modelPath) _changeModel;
@@ -96,6 +117,7 @@ final class AppComposition {
       return;
     }
     _disposed = true;
+    modelDownloads.dispose();
     await _disposeServices();
   }
 }

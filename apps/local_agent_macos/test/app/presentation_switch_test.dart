@@ -438,6 +438,10 @@ void main() {
     // A model is chosen in settings rather than fixed when the app is built,
     // so choosing one has to be written down or it is gone on the next run.
     host.chosenModelFile = '/models/gemma-4-E4B-it.litertlm';
+    // The curated models sit above this tile, which can push it below the
+    // fold of the test stage.
+    await tester.ensureVisible(find.byKey(const Key('setting-choose-model')));
+    await tester.pump();
     await tester.tap(find.byKey(const Key('setting-choose-model')));
     await tester.pump();
     await tester.pump();
@@ -454,6 +458,13 @@ void main() {
 
     // Every other switch on the sheet must not pay for a model load, which
     // costs seconds and gigabytes.
+    await tester.ensureVisible(
+      find.byKey(
+        const Key('setting-follow-across-spaces'),
+        skipOffstage: false,
+      ),
+    );
+    await tester.pump();
     await tester.tap(find.byKey(const Key('setting-follow-across-spaces')));
     await tester.pump();
     await tester.pump();

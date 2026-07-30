@@ -1,16 +1,32 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:local_agent_macos/features/model/model_catalog.dart';
+import 'package:local_agent_macos/features/model/model_download_manager.dart';
+import 'package:local_agent_macos/features/model/model_file_service.dart';
 import 'package:local_agent_macos/features/settings/app_settings.dart';
 import 'package:local_agent_macos/features/settings/settings_sheet.dart';
 
 void main() {
+  final ModelDownloadManager downloads = ModelDownloadManager(
+    files: ModelFileService(
+      modelsDirectory: Directory('${Directory.systemTemp.path}/lulo-unused'),
+      fetch: (Uri url) async => throw StateError('not in this test'),
+    ),
+  );
+  tearDownAll(downloads.dispose);
+
   Widget sheet({required VoidCallback onClose}) => MaterialApp(
     home: SettingsSheet(
       settings: const AppSettings(),
       onChanged: (AppSettings _) {},
       onChooseModel: () async => '',
       onClose: onClose,
+      modelDownloads: downloads,
+      onDownloadModel: (ModelCatalogEntry _) {},
+      onUseModel: (ModelCatalogEntry _) {},
     ),
   );
 
