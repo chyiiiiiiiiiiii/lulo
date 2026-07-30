@@ -12,11 +12,13 @@ import 'package:local_agent_macos/features/conversation/widgets/conversation_con
 import 'package:local_agent_macos/features/presence/desktop_orb_surface.dart';
 import 'package:local_agent_macos/platform/desktop_host_service.dart';
 
+import '../support/fake_presentation_host.dart';
+
 void main() {
   testWidgets('collapsing to the orb keeps the answer being generated', (
     WidgetTester tester,
   ) async {
-    final _FakePresentationHost host = _FakePresentationHost();
+    final FakePresentationHost host = FakePresentationHost();
     final _HoldingInferenceService inference = _HoldingInferenceService();
     final AppComposition composition = AppComposition(
       () {},
@@ -30,7 +32,7 @@ void main() {
     await tester.pumpWidget(
       LocalAgentApp(
         composition: composition,
-        presenceShaderLoader: _failShaderLoad,
+        presenceShaderLoader: failShaderLoad,
       ),
     );
     await tester.pump();
@@ -81,7 +83,7 @@ void main() {
   testWidgets('the collapsed orb shows the agent speaking, not resting', (
     WidgetTester tester,
   ) async {
-    final _FakePresentationHost host = _FakePresentationHost();
+    final FakePresentationHost host = FakePresentationHost();
     final _HoldingInferenceService inference = _HoldingInferenceService();
     final AppComposition composition = AppComposition(
       () {},
@@ -95,7 +97,7 @@ void main() {
     await tester.pumpWidget(
       LocalAgentApp(
         composition: composition,
-        presenceShaderLoader: _failShaderLoad,
+        presenceShaderLoader: failShaderLoad,
       ),
     );
     await tester.pump();
@@ -130,7 +132,7 @@ void main() {
   testWidgets('an app that starts as an orb still follows the agent', (
     WidgetTester tester,
   ) async {
-    final _FakePresentationHost host = _FakePresentationHost();
+    final FakePresentationHost host = FakePresentationHost();
     final _HoldingInferenceService inference = _HoldingInferenceService();
     final AppComposition composition = AppComposition(
       () {},
@@ -147,7 +149,7 @@ void main() {
     await tester.pumpWidget(
       LocalAgentApp(
         composition: composition,
-        presenceShaderLoader: _failShaderLoad,
+        presenceShaderLoader: failShaderLoad,
       ),
     );
     await tester.pump();
@@ -183,7 +185,7 @@ void main() {
   testWidgets('a form change is drawn before the window settles into it', (
     WidgetTester tester,
   ) async {
-    final _FakePresentationHost host = _FakePresentationHost();
+    final FakePresentationHost host = FakePresentationHost();
     addTearDown(() => unawaited(host.dispose()));
     final AppComposition composition = AppComposition(
       () {},
@@ -197,7 +199,7 @@ void main() {
     await tester.pumpWidget(
       LocalAgentApp(
         composition: composition,
-        presenceShaderLoader: _failShaderLoad,
+        presenceShaderLoader: failShaderLoad,
       ),
     );
     await tester.pump();
@@ -235,7 +237,7 @@ void main() {
   testWidgets('the conversation follows the window the user resizes', (
     WidgetTester tester,
   ) async {
-    final _FakePresentationHost host = _FakePresentationHost();
+    final FakePresentationHost host = FakePresentationHost();
     addTearDown(() => unawaited(host.dispose()));
     final AppComposition composition = AppComposition(
       () {},
@@ -249,7 +251,7 @@ void main() {
     await tester.pumpWidget(
       LocalAgentApp(
         composition: composition,
-        presenceShaderLoader: _failShaderLoad,
+        presenceShaderLoader: failShaderLoad,
       ),
     );
     await tester.pump();
@@ -277,7 +279,7 @@ void main() {
   testWidgets('the title and the composer share one leading edge', (
     WidgetTester tester,
   ) async {
-    final _FakePresentationHost host = _FakePresentationHost();
+    final FakePresentationHost host = FakePresentationHost();
     addTearDown(() => unawaited(host.dispose()));
     final AppComposition composition = AppComposition(
       () {},
@@ -291,7 +293,7 @@ void main() {
     await tester.pumpWidget(
       LocalAgentApp(
         composition: composition,
-        presenceShaderLoader: _failShaderLoad,
+        presenceShaderLoader: failShaderLoad,
       ),
     );
     await tester.pump();
@@ -333,7 +335,7 @@ void main() {
   testWidgets('the conversation keeps its corners rounded as it leaves', (
     WidgetTester tester,
   ) async {
-    final _FakePresentationHost host = _FakePresentationHost();
+    final FakePresentationHost host = FakePresentationHost();
     addTearDown(() => unawaited(host.dispose()));
     final AppComposition composition = AppComposition(
       () {},
@@ -347,7 +349,7 @@ void main() {
     await tester.pumpWidget(
       LocalAgentApp(
         composition: composition,
-        presenceShaderLoader: _failShaderLoad,
+        presenceShaderLoader: failShaderLoad,
       ),
     );
     await tester.pump();
@@ -388,7 +390,7 @@ void main() {
   testWidgets('a choice made in settings reaches the window itself', (
     WidgetTester tester,
   ) async {
-    final _FakePresentationHost host = _FakePresentationHost();
+    final FakePresentationHost host = FakePresentationHost();
     addTearDown(() => unawaited(host.dispose()));
     final List<String> loaded = <String>[];
     final AppComposition composition = AppComposition(
@@ -404,7 +406,7 @@ void main() {
     await tester.pumpWidget(
       LocalAgentApp(
         composition: composition,
-        presenceShaderLoader: _failShaderLoad,
+        presenceShaderLoader: failShaderLoad,
       ),
     );
     await tester.pump();
@@ -465,7 +467,7 @@ void main() {
   testWidgets('changing form never rebuilds the presence orb', (
     WidgetTester tester,
   ) async {
-    final _FakePresentationHost host = _FakePresentationHost();
+    final FakePresentationHost host = FakePresentationHost();
     final AppComposition composition = AppComposition(
       () {},
       storageService: InMemoryConversationStorageService(),
@@ -514,110 +516,6 @@ void main() {
   });
 }
 
-final class _FakePresentationHost implements DesktopPresentationHost {
-  @override
-  final ValueNotifier<DesktopPresentation> presentation =
-      ValueNotifier<DesktopPresentation>(DesktopPresentation.orb);
-
-  @override
-  Future<void> setPresentation(DesktopPresentation mode) async {
-    presentation.value = mode;
-  }
-
-  final List<Offset> moves = <Offset>[];
-
-  @override
-  Future<void> moveWindowBy(Offset delta) async {
-    moves.add(delta);
-  }
-
-  final StreamController<DesktopPresentation> _requests =
-      StreamController<DesktopPresentation>.broadcast();
-
-  @override
-  Stream<DesktopPresentation> get presentationRequests => _requests.stream;
-
-  /// Stands in for the hotkey or the menu bar asking for a change of form.
-  void requestPresentation(DesktopPresentation target) {
-    _requests.add(target);
-  }
-
-  final StreamController<DesktopTransitionGeometry> _geometryChanges =
-      StreamController<DesktopTransitionGeometry>.broadcast();
-
-  @override
-  Stream<DesktopTransitionGeometry> get geometryChanges =>
-      _geometryChanges.stream;
-
-  /// Stands in for the user resizing the window.
-  void changeGeometry(DesktopTransitionGeometry stage) {
-    geometry = stage;
-    _geometryChanges.add(stage);
-  }
-
-  /// Releases the request stream.
-  Future<void> dispose() async {
-    await _requests.close();
-    await _settings.close();
-    await _geometryChanges.close();
-  }
-
-  /// A canvas holding a centred conversation and an orb in the lower corner.
-  DesktopTransitionGeometry geometry = const DesktopTransitionGeometry(
-    size: Size(1268, 828),
-    conversation: Rect.fromLTWH(0, 0, 720, 560),
-    orb: Rect.fromLTWH(1100, 660, 148, 148),
-  );
-
-  /// Targets passed to [beginPresentationTransition], in order.
-  final List<DesktopPresentation> begunTransitions = <DesktopPresentation>[];
-
-  /// Modes passed to [endPresentationTransition], in order.
-  final List<DesktopPresentation> endedTransitions = <DesktopPresentation>[];
-
-  final StreamController<void> _settings = StreamController<void>.broadcast();
-
-  @override
-  Stream<void> get settingsRequests => _settings.stream;
-
-  /// Stands in for the menu bar asking for settings.
-  void requestSettings() => _settings.add(null);
-
-  /// Choices the app has pushed to the host, in order.
-  final List<(bool, bool)> windowBehaviours = <(bool, bool)>[];
-
-  /// What the chooser answers with in tests.
-  String chosenModelFile = '';
-
-  @override
-  Future<String> chooseModelFile() async => chosenModelFile;
-
-  @override
-  Future<void> setWindowBehaviour({
-    required bool keepOrbOnTop,
-    required bool followAcrossSpaces,
-  }) async {
-    windowBehaviours.add((keepOrbOnTop, followAcrossSpaces));
-  }
-
-  @override
-  Future<DesktopTransitionGeometry> presentationGeometry() async => geometry;
-
-  @override
-  Future<DesktopTransitionGeometry> beginPresentationTransition(
-    DesktopPresentation target,
-  ) async {
-    begunTransitions.add(target);
-    return geometry;
-  }
-
-  @override
-  Future<void> endPresentationTransition(DesktopPresentation mode) async {
-    endedTransitions.add(mode);
-    presentation.value = mode;
-  }
-}
-
 /// Streams a started event and then holds, so a generation stays in flight.
 final class _HoldingInferenceService implements InferenceService {
   int activeRequests = 0;
@@ -649,8 +547,4 @@ final class _HoldingInferenceService implements InferenceService {
   Future<void> cancel(GenerationId generationId) async {
     cancelledGenerations.add(generationId);
   }
-}
-
-Future<Never> _failShaderLoad() async {
-  throw UnsupportedError('Runtime shader rendering is outside this test.');
 }
