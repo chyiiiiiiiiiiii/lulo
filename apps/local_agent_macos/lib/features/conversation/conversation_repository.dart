@@ -112,7 +112,7 @@ final class _GenerationOperation {
     _started = true;
 
     try {
-      await _storageService.saveUserTurn(_userTurn);
+      await _storageService.saveUserTurn(_request.conversationId, _userTurn);
       if (_terminal) {
         return;
       }

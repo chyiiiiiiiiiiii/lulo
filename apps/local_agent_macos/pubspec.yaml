@@ -9,10 +9,18 @@ environment:
 
 dependencies:
   agent_core: ^0.1.0
+  # The storage adapter adopted from ADR-003's maintainability control:
+  # drift generated queries on a background-isolate native database.
+  # drift_dev is pinned below 2.34.5, whose analyzer conflicts with the
+  # toolchain (recorded in the ADR).
+  drift: 2.34.2
   flutter:
     sdk: flutter
+  sqlite3: 3.5.0
 
 dev_dependencies:
+  build_runner: ^2.15.0
+  drift_dev: 2.34.0
   flutter_test:
     sdk: flutter
   integration_test:

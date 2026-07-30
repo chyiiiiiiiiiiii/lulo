@@ -26,7 +26,7 @@ final class RecordingConversationStorageService
   }
 
   @override
-  Future<void> saveUserTurn(Turn turn) async {
+  Future<void> saveUserTurn(ConversationId conversationId, Turn turn) async {
     final Completer<void>? gate = userSaveGate;
     if (gate != null) {
       await gate.future;
@@ -35,6 +35,13 @@ final class RecordingConversationStorageService
     userTurns.add(turn);
     lifecycle.add('user-saved');
   }
+
+  @override
+  Future<List<ConversationSummary>> listConversations() async =>
+      const <ConversationSummary>[];
+
+  @override
+  Future<void> deleteConversation(ConversationId conversationId) async {}
 
   @override
   Future<void> saveTerminalAssistantTurn(

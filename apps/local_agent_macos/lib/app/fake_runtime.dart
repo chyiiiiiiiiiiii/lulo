@@ -5,11 +5,16 @@ import 'package:agent_core/agent_core.dart';
 import '../features/conversation/conversation_storage_service.dart';
 import '../features/conversation/inference_service.dart';
 
-/// Session-scoped storage used until the benchmark-selected SQLite adapter lands.
+/// Session-scoped storage, for tests and the preview.
+///
+/// Runs the same contract suite as the durable store, so the two cannot
+/// drift apart in behaviour.
 final class InMemoryConversationStorageService
     implements ConversationStorageService {
   final Map<ConversationId, List<Turn>> _turns = <ConversationId, List<Turn>>{};
-  Turn? _pendingUserTurn;
+  final Map<ConversationId, int> _lastTouch = <ConversationId, int>{};
+  final Map<ConversationId, DateTime> _updatedAt = <ConversationId, DateTime>{};
+  int _touches = 0;
 
   @override
   Future<List<Turn>> loadTurns(ConversationId conversationId) async {
@@ -17,8 +22,8 @@ final class InMemoryConversationStorageService
   }
 
   @override
-  Future<void> saveUserTurn(Turn turn) async {
-    _pendingUserTurn = turn;
+  Future<void> saveUserTurn(ConversationId conversationId, Turn turn) async {
+    _save(conversationId, turn);
   }
 
   @override
@@ -26,22 +31,50 @@ final class InMemoryConversationStorageService
     Turn turn,
     Generation generation,
   ) async {
-    final List<Turn> conversationTurns = _turns.putIfAbsent(
-      generation.request.conversationId,
-      () => <Turn>[],
+    _save(generation.request.conversationId, turn);
+  }
+
+  @override
+  Future<List<ConversationSummary>> listConversations() async {
+    final List<ConversationId> ids = _turns.keys.toList()
+      ..sort(
+        (ConversationId a, ConversationId b) =>
+            _lastTouch[b]!.compareTo(_lastTouch[a]!),
+      );
+    return List<ConversationSummary>.unmodifiable(
+      ids.map(
+        (ConversationId id) => ConversationSummary(
+          id: id,
+          title:
+              _turns[id]!
+                  .where((Turn turn) => turn.role == TurnRole.user)
+                  .map((Turn turn) => turn.text)
+                  .firstOrNull ??
+              '',
+          updatedAt: _updatedAt[id]!,
+        ),
+      ),
     );
-    final Turn? userTurn = _pendingUserTurn;
-    if (userTurn != null) {
-      conversationTurns.add(userTurn);
-      _pendingUserTurn = null;
-    }
-    conversationTurns.add(turn);
+  }
+
+  @override
+  Future<void> deleteConversation(ConversationId conversationId) async {
+    _turns.remove(conversationId);
+    _lastTouch.remove(conversationId);
+    _updatedAt.remove(conversationId);
+  }
+
+  void _save(ConversationId conversationId, Turn turn) {
+    _turns.putIfAbsent(conversationId, () => <Turn>[]).add(turn);
+    _lastTouch[conversationId] = _touches++;
+    _updatedAt[conversationId] = DateTime.now();
   }
 
   /// Releases session-only data when the application composition is disposed.
   void dispose() {
     _turns.clear();
-    _pendingUserTurn = null;
+    _lastTouch.clear();
+    _updatedAt.clear();
   }
 }
 
