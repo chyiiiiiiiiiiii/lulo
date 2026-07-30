@@ -30,6 +30,8 @@
   24pt) holds the title bar, the turns and the composer; their leading edges
   must always agree. The title bar sits below the traffic-light line with
   28pt clearance.
-- Windowed integration tests (`flutter test integration_test -d macos`) need an
-  **attended user session**: unattended, macOS refuses the app screen presence
-  and the run hangs before the first frame.
+- Windowed test suites (integration tests and RunnerTests) hang before the
+  first frame whenever the **current Space is another app's full-screen
+  Space**: a `.fullScreenPrimary` window may not appear there, so the engine
+  never gets a frame. Switch to a normal desktop Space before running the
+  gate. Diagnose with `defaults read com.apple.spaces` (Current Space type 4).
