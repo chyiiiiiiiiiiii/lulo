@@ -4,6 +4,7 @@ import 'package:agent_core/agent_core.dart';
 import 'package:flutter/foundation.dart';
 
 import 'conversation_repository.dart';
+import 'conversation_storage_service.dart';
 
 /// Creates a stable conversation identifier for a new conversation.
 typedef ConversationIdFactory = ConversationId Function();
@@ -11,12 +12,24 @@ typedef ConversationIdFactory = ConversationId Function();
 /// Presentation state and user intents for one conversation view.
 final class ConversationViewModel extends ChangeNotifier {
   /// Creates a feature-scoped ViewModel with explicit dependencies.
+  ///
+  /// Given a [conversationId] it restores that conversation; given none it
+  /// resumes the most recently spoken-in one, because a resident agent that
+  /// forgot yesterday on every launch would make each restart an amnesia. A
+  /// store with nothing in it starts fresh.
   ConversationViewModel({
     required ConversationRepository repository,
     required ConversationIdFactory idFactory,
-  }) : this._(repository, idFactory);
+    ConversationId? conversationId,
+  }) : this._(repository, idFactory, conversationId);
 
-  ConversationViewModel._(this._repository, this._idFactory);
+  ConversationViewModel._(
+    this._repository,
+    this._idFactory,
+    ConversationId? conversationId,
+  ) {
+    _restored = _restore(conversationId);
+  }
 
   final ConversationRepository _repository;
   final ConversationIdFactory _idFactory;
@@ -29,6 +42,7 @@ final class ConversationViewModel extends ChangeNotifier {
   bool _stopRequested = false;
   Future<void>? _stopOperation;
   bool _disposed = false;
+  late final Future<void> _restored;
   final ValueNotifier<List<Turn>> _completedTurns = ValueNotifier<List<Turn>>(
     const <Turn>[],
   );
@@ -37,6 +51,43 @@ final class ConversationViewModel extends ChangeNotifier {
 
   /// Immutable state consumed by the conversation view.
   ConversationProjection get projection => _projection;
+
+  /// Completes once stored history has been placed into the view.
+  ///
+  /// Never throws: a store that cannot be read starts a fresh conversation
+  /// rather than stopping this one.
+  Future<void> get restored => _restored;
+
+  Future<void> _restore(ConversationId? requested) async {
+    try {
+      ConversationId? id = requested;
+      id ??= (await _repository.listConversations())
+          .map((ConversationSummary summary) => summary.id)
+          .firstOrNull;
+      if (id == null || _disposed) {
+        return;
+      }
+      final List<Turn> history = await _repository.loadTurns(id);
+      if (_disposed) {
+        return;
+      }
+      _conversationId = id;
+      if (history.isEmpty) {
+        return;
+      }
+      // Before whatever has been said since: submit waits for this restore,
+      // so nothing can be there yet — but the shape stays correct even if
+      // that ordering ever loosens.
+      _projection = ConversationProjection(
+        completedTurns: <Turn>[...history, ..._projection.completedTurns],
+        activeTurn: _projection.activeTurn,
+      );
+      _completedTurns.value = _projection.completedTurns;
+      notifyListeners();
+    } on Object {
+      // Reading yesterday must never stop today.
+    }
+  }
 
   /// Whether a new user message may be submitted.
   bool get canSubmit => _operationSubscription == null;
@@ -54,6 +105,12 @@ final class ConversationViewModel extends ChangeNotifier {
   Future<void> submit(String text) async {
     final String prompt = text.trim();
     if (prompt.isEmpty || !canSubmit) {
+      return;
+    }
+    // History lands first, and the message joins the restored conversation
+    // instead of racing it into a freshly minted one.
+    await _restored;
+    if (_disposed || !canSubmit) {
       return;
     }
     _stopRequested = false;

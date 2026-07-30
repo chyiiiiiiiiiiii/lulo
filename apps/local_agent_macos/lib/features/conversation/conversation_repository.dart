@@ -22,6 +22,18 @@ final class ConversationRepository {
   final InferenceService _inferenceService;
   _GenerationOperation? _activeOperation;
 
+  /// Loads the stored history of [conversationId].
+  Future<List<Turn>> loadTurns(ConversationId conversationId) =>
+      _storageService.loadTurns(conversationId);
+
+  /// Every stored conversation, most recently spoken-in first.
+  Future<List<ConversationSummary>> listConversations() =>
+      _storageService.listConversations();
+
+  /// Forgets [conversationId] and everything said in it.
+  Future<void> deleteConversation(ConversationId conversationId) =>
+      _storageService.deleteConversation(conversationId);
+
   /// Persists [userTurn], then exposes ordered events for [request].
   Stream<GenerationEvent> startGeneration({
     required Turn userTurn,

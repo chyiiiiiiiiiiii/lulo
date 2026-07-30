@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'dart:io';
 
+import '../features/conversation/conversation_storage_service.dart';
+import '../features/conversation/drift_conversation_storage_service.dart';
 import '../features/conversation/pigeon_inference_service.dart';
 import '../features/conversation/swappable_inference_service.dart';
 import '../features/settings/app_settings.dart';
@@ -29,6 +31,54 @@ BootstrapConfig createBootstrapConfig() {
   return const BootstrapConfig(localOnly: true, targetFrameRate: 120);
 }
 
+/// A conversation store together with the way it is released.
+///
+/// The durable store has a database to close; the in-memory one has only its
+/// maps to drop. Pairing each with its own release keeps the composition from
+/// knowing which it holds — the same shape as [OwnedInferenceService].
+final class OwnedConversationStorage {
+  /// Creates a store paired with the way to release it.
+  const OwnedConversationStorage({
+    required this.service,
+    required this.release,
+  });
+
+  /// The store itself.
+  final ConversationStorageService service;
+
+  /// Releases everything the store owns.
+  final Future<void> Function() release;
+}
+
+/// Opens the durable conversation store, beside the settings.
+///
+/// SQLite through drift on a background isolate — the adapter ADR-003 names
+/// as its maintainability control. A home that cannot be resolved falls back
+/// to memory, so conversations are forgotten rather than the app refusing to
+/// start — the same trade the settings make.
+OwnedConversationStorage createDurableConversationStorage() {
+  final String? home = Platform.environment['HOME'];
+  if (home == null || home.isEmpty) {
+    final InMemoryConversationStorageService fallback =
+        InMemoryConversationStorageService();
+    return OwnedConversationStorage(
+      service: fallback,
+      release: () async => fallback.dispose(),
+    );
+  }
+  final Directory directory = Directory(
+    '$home/Library/Application Support/Lulo',
+  );
+  directory.createSync(recursive: true);
+  final DriftConversationStorageService service =
+      DriftConversationStorageService(
+        database: ConversationDatabase.atFile(
+          File('${directory.path}/conversations.db'),
+        ),
+      );
+  return OwnedConversationStorage(service: service, release: service.dispose);
+}
+
 /// Builds the application dependency graph from compile-time configuration.
 AppComposition createAppComposition({
   String inferenceRuntime = const String.fromEnvironment(
@@ -37,6 +87,7 @@ AppComposition createAppComposition({
   ),
   String localModelPath = const String.fromEnvironment('LOCAL_MODEL_PATH'),
   SettingsStore? settingsStore,
+  OwnedConversationStorage? conversationStorage,
 }) {
   final SettingsStore store = settingsStore ?? createSettingsStore();
   if (inferenceRuntime != 'fake' && inferenceRuntime != 'litert') {
@@ -46,8 +97,16 @@ AppComposition createAppComposition({
     );
   }
 
-  final InMemoryConversationStorageService storageService =
+  // In memory unless the caller hands over something durable: tests and the
+  // preview must not write into the user's real history.
+  final InMemoryConversationStorageService fallbackStorage =
       InMemoryConversationStorageService();
+  final OwnedConversationStorage storage =
+      conversationStorage ??
+      OwnedConversationStorage(
+        service: fallbackStorage,
+        release: () async => fallbackStorage.dispose(),
+      );
   final PigeonDesktopHostService desktopHostService =
       PigeonDesktopHostService();
   final SwappableInferenceService inferenceService;
@@ -60,7 +119,7 @@ AppComposition createAppComposition({
       ),
     );
   } on Object {
-    storageService.dispose();
+    unawaited(storage.release());
     unawaited(desktopHostService.dispose());
     rethrow;
   }
@@ -68,10 +127,10 @@ AppComposition createAppComposition({
   return AppComposition(
     () async {
       await inferenceService.dispose();
-      storageService.dispose();
+      await storage.release();
       await desktopHostService.dispose();
     },
-    storageService: storageService,
+    storageService: storage.service,
     inferenceService: inferenceService,
     settingsStore: store,
     presentationHost: desktopHostService,

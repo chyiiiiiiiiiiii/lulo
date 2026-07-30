@@ -58,16 +58,34 @@ final class AppComposition {
   static Future<void> _keepThePreview(String modelPath) async {}
 
   /// Creates one ViewModel owned by one conversation View.
-  ConversationViewModel createConversationViewModel() {
+  ///
+  /// Given a [conversationId] it opens that conversation; given none it
+  /// resumes the most recently spoken-in one, or starts fresh when nothing is
+  /// stored. New identities carry the launch instant, so two runs of the app
+  /// can never mint the same conversation.
+  ConversationViewModel createConversationViewModel({
+    ConversationId? conversationId,
+  }) {
     if (_disposed) {
       throw StateError('The application composition is disposed.');
     }
     return ConversationViewModel(
       repository: _conversationRepository,
-      idFactory: () =>
-          ConversationId('session-conversation-${_nextConversation++}'),
+      idFactory: () => ConversationId(
+        'conversation-${DateTime.now().millisecondsSinceEpoch}-'
+        '${_nextConversation++}',
+      ),
+      conversationId: conversationId,
     );
   }
+
+  /// Every stored conversation, most recently spoken-in first.
+  Future<List<ConversationSummary>> listConversations() =>
+      _conversationRepository.listConversations();
+
+  /// Forgets [conversationId] and everything said in it.
+  Future<void> deleteConversation(ConversationId conversationId) =>
+      _conversationRepository.deleteConversation(conversationId);
 
   /// Releases app-scoped services.
   Future<void> dispose() async {

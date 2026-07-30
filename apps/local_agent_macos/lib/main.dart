@@ -27,6 +27,11 @@ Future<void> main() async {
         settingsStore: store,
         inferenceRuntime: hasModel && !hostingTests ? 'litert' : 'fake',
         localModelPath: settings.modelPath,
+        // Same container as the real app: the test host stays on the
+        // in-memory default so it never reads or writes the user's history.
+        conversationStorage: hostingTests
+            ? null
+            : createDurableConversationStorage(),
       ),
     ),
   );
