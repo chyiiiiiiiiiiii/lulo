@@ -101,8 +101,28 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
     // delegate reports it: the gap is exactly long enough for the agent to
     // hear its own opening words.
     mute.muted = true
-    synthesizer.speak(AVSpeechUtterance(string: text))
+    let utterance = AVSpeechUtterance(string: text)
+    if let voice = Self.bestVoice() {
+      utterance.voice = voice
+    }
+    synthesizer.speak(utterance)
     completion(.success(()))
+  }
+
+  /// The highest-quality installed voice for the user's language.
+  ///
+  /// Premium and enhanced voices are the ones that do not sound like a
+  /// machine; they exist once the user has downloaded them in System
+  /// Settings, and the default compact voice is the fallback.
+  private static func bestVoice() -> AVSpeechSynthesisVoice? {
+    let wanted = Locale.preferredLanguages.first ?? "en"
+    let prefix = String(wanted.prefix(2))
+    let candidates = AVSpeechSynthesisVoice.speechVoices().filter {
+      $0.language.hasPrefix(prefix)
+    }
+    return candidates.first { $0.quality == .premium }
+      ?? candidates.first { $0.quality == .enhanced }
+      ?? candidates.first
   }
 
   func stopSpeaking(completion: @escaping (Result<Void, Error>) -> Void) {
@@ -118,13 +138,13 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
       throw VoiceHostError.microphoneDenied
     }
     try guardCurrent(id)
-    guard
-      let locale = await SpeechTranscriber.supportedLocale(
-        equivalentTo: Locale.current
-      )
-    else {
+    // The user's language, not the app bundle's: an unlocalized bundle
+    // reports English as Locale.current, and a zh-TW speaker would be
+    // transcribed into romanized noise.
+    guard let locale = await Self.preferredTranscriberLocale() else {
       throw VoiceHostError.localeUnsupported
     }
+    NSLog("Lulo voice: transcribing as %@", locale.identifier)
     try guardCurrent(id)
     let transcriber = SpeechTranscriber(
       locale: locale,
@@ -152,16 +172,23 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
 
     let engine = AVAudioEngine()
     let input = engine.inputNode
-    // Echo cancellation, so what little leaks past the half-duplex mute —
-    // and one day full-duplex barge-in — does not feed the transcriber the
-    // speaker's own output. Best effort: some devices refuse.
-    try? input.setVoiceProcessingEnabled(true)
+    // Deliberately NOT voice-processing: enabling it turns the input node
+    // into a nine-channel unit whose first channel is not the microphone,
+    // and the transcriber hears silence. Half-duplex muting already keeps
+    // the agent from hearing itself.
     let microphoneFormat = input.outputFormat(forBus: 0)
+    // The microphone is an array — three channels built in, more on
+    // aggregates — and which channel carries the voice is the device's
+    // business. Each buffer is mixed down by taking its loudest channel,
+    // then converted to what the analyzer wants.
     guard
-      let converter = AVAudioConverter(
-        from: microphoneFormat,
-        to: analyzerFormat
-      )
+      let monoFormat = AVAudioFormat(
+        commonFormat: .pcmFormatFloat32,
+        sampleRate: microphoneFormat.sampleRate,
+        channels: 1,
+        interleaved: false
+      ),
+      let converter = AVAudioConverter(from: monoFormat, to: analyzerFormat)
     else {
       throw VoiceHostError.audioFormatUnavailable
     }
@@ -177,8 +204,9 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
         return
       }
       guard
+        let mono = VoiceHostAdapter.loudestChannel(of: buffer, as: monoFormat),
         let converted = VoiceHostAdapter.convert(
-          buffer,
+          mono,
           with: converter,
           to: analyzerFormat
         ),
@@ -272,6 +300,18 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
     emit(.voiceFailed, text: message)
   }
 
+  /// The first of the user's preferred languages the transcriber speaks.
+  private static func preferredTranscriberLocale() async -> Locale? {
+    for language in Locale.preferredLanguages {
+      if let match = await SpeechTranscriber.supportedLocale(
+        equivalentTo: Locale(identifier: language)
+      ) {
+        return match
+      }
+    }
+    return await SpeechTranscriber.supportedLocale(equivalentTo: .current)
+  }
+
   private static func microphonePermitted() async -> Bool {
     switch AVCaptureDevice.authorizationStatus(for: .audio) {
     case .authorized:
@@ -281,6 +321,44 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
     default:
       return false
     }
+  }
+
+  /// The channel with the most energy in [buffer], as a mono copy.
+  ///
+  /// Microphone arrays and aggregate devices put the voice on a channel of
+  /// their own choosing; picking by loudness finds it without asking.
+  private static nonisolated func loudestChannel(
+    of buffer: AVAudioPCMBuffer,
+    as monoFormat: AVAudioFormat
+  ) -> AVAudioPCMBuffer? {
+    guard
+      let channels = buffer.floatChannelData,
+      buffer.frameLength > 0,
+      let mono = AVAudioPCMBuffer(
+        pcmFormat: monoFormat,
+        frameCapacity: buffer.frameLength
+      ),
+      let monoData = mono.floatChannelData
+    else {
+      return nil
+    }
+    let frames = Int(buffer.frameLength)
+    var loudest = 0
+    var loudestEnergy: Float = -1
+    for channel in 0..<Int(buffer.format.channelCount) {
+      var energy: Float = 0
+      let data = channels[channel]
+      for frame in 0..<frames {
+        energy += data[frame] * data[frame]
+      }
+      if energy > loudestEnergy {
+        loudestEnergy = energy
+        loudest = channel
+      }
+    }
+    monoData[0].update(from: channels[loudest], count: frames)
+    mono.frameLength = buffer.frameLength
+    return mono
   }
 
   private static nonisolated func convert(

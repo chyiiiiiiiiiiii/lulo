@@ -378,6 +378,29 @@ void main() {
     );
   });
 
+  test('what is spoken is the words, not the decoration', () async {
+    // The synthesizer reads exactly what it is given: emoji become
+    // "smiling face with smiling eyes", markdown becomes noise, and code
+    // is unreadable aloud. Speech gets the sentences alone.
+    await controller.enable();
+    voice.hear(const FinalTranscript('hello'));
+    await pump();
+    await answerCompletely(
+      'Hello! **How** can I `help` you today? 😊\n\n'
+      '```dart\nprint("hi");\n```\nSee [docs](https://example.com).',
+    );
+
+    expect(voice.spoken, hasLength(1));
+    final String spoken = voice.spoken.single;
+    expect(spoken, contains('Hello! How can I help you today?'));
+    expect(spoken, contains('See docs.'));
+    expect(spoken, isNot(contains('😊')));
+    expect(spoken, isNot(contains('**')));
+    expect(spoken, isNot(contains('`')));
+    expect(spoken, isNot(contains('print(')));
+    expect(spoken, isNot(contains('https://')));
+  });
+
   test('nothing heard while disabled goes anywhere', () async {
     voice.hear(const FinalTranscript('to someone else entirely'));
     await pump();

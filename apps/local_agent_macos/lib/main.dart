@@ -43,6 +43,10 @@ Future<void> main() async {
         // would hang the runner on a permission dialog — and none below
         // macOS 26, where the native side has no transcriber to register: a
         // button would throw on every tap.
+        // No ears in the test host — opening the microphone from a test run
+        // would hang the runner on a permission dialog — and none below
+        // macOS 26, where the native side has no transcriber to register: a
+        // button would throw on every tap.
         voiceService: hostingTests || !_speechAnalyzerAvailable()
             ? null
             : PigeonVoiceService(),

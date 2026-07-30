@@ -195,10 +195,12 @@ final class VoiceConversationController extends ChangeNotifier {
     for (; _spokenThrough < turns.length; _spokenThrough++) {
       final Turn turn = turns[_spokenThrough];
       if (turn.role == TurnRole.assistant &&
-          turn.status == TurnStatus.completed &&
-          turn.text.trim().isNotEmpty) {
-        _speechRequested = true;
-        unawaited(_voice.speak(turn.text));
+          turn.status == TurnStatus.completed) {
+        final String spoken = speakableText(turn.text);
+        if (spoken.isNotEmpty) {
+          _speechRequested = true;
+          unawaited(_voice.speak(spoken));
+        }
       }
     }
   }
@@ -219,4 +221,33 @@ final class VoiceConversationController extends ChangeNotifier {
     _conversation.canSubmitListenable.removeListener(_onCanSubmitChanged);
     super.dispose();
   }
+}
+
+/// [text] with everything a voice cannot say stripped away.
+///
+/// The synthesizer reads exactly what it is given: emoji become their
+/// spelled-out names, markdown becomes noise, and code is unreadable aloud.
+/// Speech gets the sentences alone; the full text stays on screen.
+String speakableText(String text) {
+  String speakable = text;
+  // Whole code blocks go first, fences and all.
+  speakable = speakable.replaceAll(RegExp(r'```[\s\S]*?```'), ' ');
+  // A link is read by its label; the address is for clicking.
+  speakable = speakable.replaceAllMapped(
+    RegExp(r'\[([^\]]*)\]\([^)]*\)'),
+    (Match m) => m[1] ?? '',
+  );
+  speakable = speakable.replaceAll(RegExp(r'https?://\S+'), ' ');
+  // Inline markup keeps its words and loses its marks.
+  speakable = speakable.replaceAll(RegExp(r'[`*_~#>]'), '');
+  // Emoji and pictographs, including variation selectors.
+  speakable = speakable.replaceAll(
+    RegExp(
+      r'[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\u{2190}-\u{21FF}'
+      r'\u{2B00}-\u{2BFF}\u{FE00}-\u{FE0F}\u{200D}]',
+      unicode: true,
+    ),
+    '',
+  );
+  return speakable.replaceAll(RegExp(r'\s+'), ' ').trim();
 }
