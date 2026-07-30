@@ -289,6 +289,12 @@ final class VoiceConversationController extends ChangeNotifier {
   }
 
   void _onCanSubmitChanged() {
+    if (_conversation.canSubmit) {
+      // The generation has fully ended. The null-to-null active turn of a
+      // prefill cancel never notifies, so the dispatch guard is lifted
+      // here, where the end is always visible.
+      _stopRequestedForActive = false;
+    }
     final String? pending = _pendingUtterance;
     if (pending == null || !_enabled || !_conversation.canSubmit) {
       return;

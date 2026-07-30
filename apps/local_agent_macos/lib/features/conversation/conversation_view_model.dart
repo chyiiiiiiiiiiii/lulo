@@ -289,7 +289,11 @@ final class ConversationViewModel extends ChangeNotifier {
     if (_disposed) {
       return;
     }
+    // Cancelling by hand skips the onDone that normally re-enables
+    // submission; without this the composer's listenable stays false with
+    // nothing left to flip it, and the send key is dead for good.
     _operationSubscription = null;
+    _canSubmit.value = true;
     _finishActiveTurn(TurnStatus.cancelled, createWhenNotStarted: true);
   }
 

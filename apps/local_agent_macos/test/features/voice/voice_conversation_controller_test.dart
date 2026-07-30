@@ -618,6 +618,51 @@ void main() {
     );
   });
 
+  test('streaming speech survives a barge-in during prefill', () async {
+    // A cancel before the first token nulls an already-null active turn;
+    // ValueNotifier suppresses null-to-null, and a dispatch flag stuck true
+    // would mute the whole next answer into one end-block.
+    await controller.enable();
+    voice.hear(const FinalTranscript('Tell me a long story.'));
+    await pump();
+    await inference.requestReceived;
+    // Barge in before GenerationStarted ever arrives.
+    voice.hear(const PartialTranscript('等等'));
+    for (int i = 0; i < 6; i++) {
+      await pump();
+    }
+
+    // The replacement question begins a fresh generation.
+    voice.hear(const FinalTranscript('那說個短的。'));
+    for (int i = 0; i < 6; i++) {
+      await pump();
+    }
+    final GenerationRequest second = inference.requests.last;
+    expect(second.prompt, '那說個短的。');
+    final Generation nextGeneration = Generation(
+      id: const GenerationId('generation-2'),
+      request: second,
+    );
+    inference.emit(GenerationStarted(nextGeneration));
+    await pump();
+    inference.emit(
+      const GenerationDelta(
+        generationId: GenerationId('generation-2'),
+        delta: '從前有座山。',
+      ),
+    );
+
+    for (int i = 0; i < 4; i++) {
+      await pump();
+    }
+
+    expect(
+      voice.spoken,
+      contains('從前有座山。'),
+      reason: 'The next answer was muted into an end-block by a stuck flag.',
+    );
+  });
+
   test('nothing heard while disabled goes anywhere', () async {
     voice.hear(const FinalTranscript('to someone else entirely'));
     await pump();
