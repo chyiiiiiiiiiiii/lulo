@@ -32,7 +32,19 @@ void main() {
       startFresh: true,
       batchScheduler: MicrotaskBatchScheduler(),
     );
-    controller = VoiceConversationController(voice: voice, conversation: vm);
+    // The shared controller's clock steps 600ms per reading, so events
+    // that land in the same microtask still sit past the post-final
+    // cooldown, the way real interruptions do. The cooldown itself is
+    // tested with a pinned clock of its own.
+    DateTime testClock = DateTime(2026);
+    controller = VoiceConversationController(
+      voice: voice,
+      conversation: vm,
+      now: () {
+        testClock = testClock.add(const Duration(milliseconds: 600));
+        return testClock;
+      },
+    );
   });
 
   tearDown(() async {
@@ -117,6 +129,73 @@ void main() {
       voice.calls,
       contains('stopSpeaking'),
       reason: 'A friend stops talking when you start.',
+    );
+  });
+
+  test('a breath right after the final does not cancel the answer', () async {
+    // The fast endpointer submits 0.8s after the last sound, which puts
+    // live microphone time right where the user's trailing breath lands.
+    // A partial inside the post-final cooldown must not cancel the answer
+    // the user just asked for; one after it is a real interruption.
+    DateTime now = DateTime(2026, 7, 31, 1);
+    final VoiceConversationController timed = VoiceConversationController(
+      voice: voice,
+      conversation: vm,
+      now: () => now,
+    );
+    addTearDown(timed.dispose);
+    await timed.enable();
+    voice.hear(const FinalTranscript('介紹台北。'));
+    await pump();
+    final Generation generation = await generationStarted();
+
+    now = now.add(const Duration(milliseconds: 200));
+    voice.hear(const PartialTranscript('嗯'));
+    await pump();
+    expect(
+      inference.cancellations,
+      isEmpty,
+      reason: 'A breath inside the cooldown is not an interruption.',
+    );
+
+    now = now.add(const Duration(milliseconds: 400));
+    voice.hear(const PartialTranscript('等等'));
+    await pump();
+    expect(
+      inference.cancellations,
+      contains(generation.id),
+      reason: 'Past the cooldown, talking over the answer still cancels.',
+    );
+  });
+
+  test('a correction spoken wholly inside the cooldown still lands', () async {
+    // Every volatile of "不對" fits in the 500ms window, so none of them
+    // yields — but its final must still interrupt the answer instead of
+    // letting it play out and then answering "不對" as a fresh question.
+    DateTime now = DateTime(2026, 7, 31, 2);
+    final VoiceConversationController timed = VoiceConversationController(
+      voice: voice,
+      conversation: vm,
+      now: () => now,
+    );
+    addTearDown(timed.dispose);
+    await timed.enable();
+    voice.hear(const FinalTranscript('介紹台北。'));
+    await pump();
+    final Generation generation = await generationStarted();
+
+    now = now.add(const Duration(milliseconds: 300));
+    voice.hear(const PartialTranscript('不對'));
+    await pump();
+    expect(inference.cancellations, isEmpty);
+
+    now = now.add(const Duration(milliseconds: 100));
+    voice.hear(const FinalTranscript('不對'));
+    await pump();
+    expect(
+      inference.cancellations,
+      contains(generation.id),
+      reason: 'The correction must interrupt at its final at the latest.',
     );
   });
 
@@ -439,6 +518,139 @@ void main() {
     await answerCompletely('Sunny, all day.');
 
     expect(voice.spoken, <String>['Sunny, all day.']);
+  });
+
+  test('the first chunk may hand off at a comma', () async {
+    // The first sentence of an answer can run long; a finished clause is
+    // enough to get the voice started, and the full stop can catch up.
+    await controller.enable();
+    voice.hear(const FinalTranscript('介紹台北。'));
+    await pump();
+    final Generation generation = await generationStarted();
+
+    inference.emit(
+      GenerationDelta(generationId: generation.id, delta: '台北是台灣的首都,也是'),
+    );
+    await pump();
+    expect(voice.spoken, <String>[
+      '台北是台灣的首都,',
+    ], reason: 'A finished clause is enough to start the voice.');
+
+    inference.emit(
+      GenerationDelta(generationId: generation.id, delta: '最大的城市。'),
+    );
+    inference.emit(GenerationCompleted(generation.id));
+    await pump();
+    await pump();
+    expect(voice.spoken, <String>['台北是台灣的首都,', '也是最大的城市。']);
+  });
+
+  test('a clause too short to sound like speech waits for more', () async {
+    // "好的," alone reads as a stutter; the clause hand-off only fires once
+    // there is something substantive to say.
+    await controller.enable();
+    voice.hear(const FinalTranscript('可以嗎?'));
+    await pump();
+    final Generation generation = await generationStarted();
+
+    inference.emit(GenerationDelta(generationId: generation.id, delta: '好的,我'));
+    await pump();
+    expect(voice.spoken, isEmpty);
+
+    inference.emit(GenerationDelta(generationId: generation.id, delta: '會幫你。'));
+    await pump();
+    expect(voice.spoken, <String>['好的,我會幫你。']);
+    inference.emit(GenerationCompleted(generation.id));
+    await pump();
+  });
+
+  test('a comma inside a number is not a clause boundary', () async {
+    // "1,234" must not be read as "one" and then "two hundred thirty-four".
+    await controller.enable();
+    voice.hear(const FinalTranscript('How many came?'));
+    await pump();
+    final Generation generation = await generationStarted();
+
+    inference.emit(
+      GenerationDelta(
+        generationId: generation.id,
+        delta: 'There were 1,234 people at the event',
+      ),
+    );
+    await pump();
+    expect(voice.spoken, isEmpty);
+
+    inference.emit(
+      GenerationDelta(generationId: generation.id, delta: ' yesterday.'),
+    );
+    inference.emit(GenerationCompleted(generation.id));
+    await pump();
+    await pump();
+    expect(voice.spoken, <String>[
+      'There were 1,234 people at the event yesterday.',
+    ]);
+  });
+
+  test('a decimal point is not a sentence end', () async {
+    // "Pi is about 3.14" must not be read as "Pi is about 3." with the
+    // "14" arriving in the next breath.
+    await controller.enable();
+    voice.hear(const FinalTranscript('What is pi?'));
+    await pump();
+    final Generation generation = await generationStarted();
+
+    inference.emit(
+      GenerationDelta(
+        generationId: generation.id,
+        delta: 'Pi is about 3.14159 rounded down',
+      ),
+    );
+    await pump();
+    expect(voice.spoken, isEmpty);
+
+    inference.emit(
+      GenerationDelta(generationId: generation.id, delta: ' a little.'),
+    );
+    inference.emit(GenerationCompleted(generation.id));
+    await pump();
+    await pump();
+    expect(voice.spoken, <String>[
+      'Pi is about 3.14159 rounded down a little.',
+    ]);
+  });
+
+  test('after the first chunk, commas no longer split the speech', () async {
+    // Only the opening clause is worth the extra synthesis seam; later
+    // chunks keep accumulating to whole sentences so the voice stays even.
+    await controller.enable();
+    voice.hear(const FinalTranscript('介紹台北。'));
+    await pump();
+    final Generation generation = await generationStarted();
+
+    inference.emit(
+      GenerationDelta(generationId: generation.id, delta: '台北是台灣的首都。'),
+    );
+    await pump();
+    expect(voice.spoken, <String>['台北是台灣的首都。']);
+
+    inference.emit(
+      GenerationDelta(
+        generationId: generation.id,
+        delta: '你可以逛夜市,參觀故宮,搭捷運,爬象山,喝珍珠奶茶,吃小籠包,體驗這座城市的多元文化',
+      ),
+    );
+    await pump();
+    expect(
+      voice.spoken,
+      hasLength(1),
+      reason: 'Later chunks wait for a sentence, however many commas pass.',
+    );
+
+    inference.emit(GenerationDelta(generationId: generation.id, delta: '。'));
+    inference.emit(GenerationCompleted(generation.id));
+    await pump();
+    await pump();
+    expect(voice.spoken, hasLength(2));
   });
 
   test('a voice that has stopped is settled without waiting', () async {
