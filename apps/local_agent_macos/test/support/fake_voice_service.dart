@@ -42,10 +42,14 @@ final class FakeVoiceService implements VoiceService {
     calls.add('finalizeUtterance');
   }
 
+  /// The language pinned to each spoken utterance, in order.
+  final List<String?> spokenLanguages = <String?>[];
+
   @override
-  Future<void> speak(String text) async {
+  Future<void> speak(String text, {String? language}) async {
     calls.add('speak');
     spoken.add(text);
+    spokenLanguages.add(language);
     if (!holdSpeakingStarted) {
       hear(const SpeakingStarted());
     }

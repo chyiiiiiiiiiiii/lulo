@@ -663,6 +663,53 @@ void main() {
     );
   });
 
+  test('one answer speaks one language and in steadier pieces', () async {
+    // Per-sentence language detection let a lone English word flip the
+    // accent mid-answer, and single short sentences drifted in timbre.
+    // The first sentence still goes out alone for latency; afterwards
+    // sentences accumulate into steadier chunks, and every chunk of one
+    // answer carries the language decided by its beginning.
+    await controller.enable();
+    voice.hear(const FinalTranscript('介紹一下 Flutter。'));
+    await pump();
+    final Generation generation = await generationStarted();
+
+    inference.emit(GenerationDelta(generationId: generation.id, delta: '好的。'));
+    await pump();
+    await pump();
+    expect(voice.spoken, <String>['好的。']);
+    expect(voice.spokenLanguages, <String?>['zh']);
+
+    // Two short sentences follow; neither alone reaches the chunk size, so
+    // they travel together — and "Flutter." alone must not flip to English.
+    inference.emit(
+      GenerationDelta(generationId: generation.id, delta: 'Flutter。'),
+    );
+    await pump();
+    await pump();
+    expect(voice.spoken, hasLength(1), reason: 'A short tail went out alone.');
+
+    inference.emit(
+      GenerationDelta(
+        generationId: generation.id,
+        delta: '是一套跨平台的開發框架,用一份程式碼同時建構多個平台的應用。',
+      ),
+    );
+    await pump();
+    await pump();
+    inference.emit(GenerationCompleted(generation.id));
+    await pump();
+    await pump();
+
+    expect(voice.spoken, hasLength(2));
+    expect(voice.spoken[1], 'Flutter。是一套跨平台的開發框架,用一份程式碼同時建構多個平台的應用。');
+    expect(
+      voice.spokenLanguages.toSet(),
+      <String?>{'zh'},
+      reason: 'One answer flipped language mid-thought.',
+    );
+  });
+
   test('nothing heard while disabled goes anywhere', () async {
     voice.hear(const FinalTranscript('to someone else entirely'));
     await pump();
@@ -748,7 +795,7 @@ final class _NeverStartsVoice implements VoiceService {
   Future<void> finalizeUtterance() async {}
 
   @override
-  Future<void> speak(String text) async {}
+  Future<void> speak(String text, {String? language}) async {}
 
   @override
   Future<void> stopSpeaking() async {}

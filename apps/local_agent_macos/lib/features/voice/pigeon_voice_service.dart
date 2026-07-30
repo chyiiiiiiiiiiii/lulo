@@ -39,8 +39,8 @@ final class PigeonVoiceService implements VoiceService, VoiceHostEvents {
   Future<void> finalizeUtterance() => _guard(() => _host.finalizeUtterance());
 
   @override
-  Future<void> speak(String text) =>
-      _guard(() => _host.speak(text, _voiceOf?.call()));
+  Future<void> speak(String text, {String? language}) =>
+      _guard(() => _host.speak(text, _voiceOf?.call(), language));
 
   @override
   Future<void> stopSpeaking() => _guard(() => _host.stopSpeaking());
