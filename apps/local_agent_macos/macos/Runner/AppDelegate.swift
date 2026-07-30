@@ -101,6 +101,9 @@ class AppDelegate: FlutterAppDelegate {
   private var hotKeyController: GlobalHotKeyController?
   private var desktopHostApi: LocalRuntimeDesktopHostApi?
   private var binaryMessenger: FlutterBinaryMessenger?
+  // Held as Any: the adapter's type only exists on macOS 26, and the voice
+  // feature simply is not offered below it.
+  private var voiceHostApi: Any?
 
   override func applicationDidFinishLaunching(_ notification: Notification) {
     NSApp.setActivationPolicy(.accessory)
@@ -195,6 +198,19 @@ class AppDelegate: FlutterAppDelegate {
       binaryMessenger: binaryMessenger,
       api: desktopHostApi
     )
+    // The ears and the mouth: SpeechAnalyzer transcription in, synthesized
+    // speech out, everything reported back as events. Below macOS 26 the
+    // transcriber does not exist and voice is simply not offered.
+    if #available(macOS 26.0, *) {
+      let voiceHostApi = VoiceHostAdapter(
+        events: VoiceHostEvents(binaryMessenger: binaryMessenger)
+      )
+      VoiceHostApiSetup.setUp(
+        binaryMessenger: binaryMessenger,
+        api: voiceHostApi
+      )
+      self.voiceHostApi = voiceHostApi
+    }
     self.menuBarController = menuBarController
     self.hotKeyController = hotKeyController
     self.desktopHostApi = desktopHostApi
@@ -232,6 +248,7 @@ class AppDelegate: FlutterAppDelegate {
     desktopHostApi?.dispose()
     if let binaryMessenger {
       DesktopHostApiSetup.setUp(binaryMessenger: binaryMessenger, api: nil)
+      VoiceHostApiSetup.setUp(binaryMessenger: binaryMessenger, api: nil)
     }
     hotKeyController?.unregister()
     super.applicationWillTerminate(notification)

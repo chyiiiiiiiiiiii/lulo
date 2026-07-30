@@ -6,6 +6,7 @@ import 'app/app.dart';
 import 'app/bootstrap.dart';
 import 'features/model/model_catalog.dart';
 import 'features/settings/app_settings.dart';
+import 'features/voice/pigeon_voice_service.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -38,6 +39,9 @@ Future<void> main() async {
         // runner's connection window, and write the adoption into the user's
         // own settings.
         catalog: hostingTests ? const <ModelCatalogEntry>[] : modelCatalog,
+        // No ears in the test host: opening the microphone from a test run
+        // would hang the runner on a permission dialog.
+        voiceService: hostingTests ? null : PigeonVoiceService(),
       ),
     ),
   );
