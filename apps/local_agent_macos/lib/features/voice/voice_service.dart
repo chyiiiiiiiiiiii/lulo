@@ -73,7 +73,10 @@ abstract interface class VoiceService {
   Future<void> finalizeUtterance();
 
   /// Speaks [text] aloud. Events report when it starts and finishes.
-  Future<void> speak(String text);
+  ///
+  /// [language] pins the synthesis language for a whole answer, so one
+  /// English word inside a Chinese reply cannot flip the accent.
+  Future<void> speak(String text, {String? language});
 
   /// Stops speaking mid-sentence, if speaking at all.
   Future<void> stopSpeaking();

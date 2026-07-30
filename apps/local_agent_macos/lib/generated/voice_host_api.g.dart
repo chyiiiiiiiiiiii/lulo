@@ -288,8 +288,10 @@ class VoiceHostApi {
     );
   }
 
-  /// Speaks [text] aloud, with [voice] naming who speaks.
-  Future<void> speak(String text, String? voice) async {
+  /// Speaks [text] aloud, with [voice] naming who speaks and [language]
+  /// pinning the synthesis language for the whole answer, so one English
+  /// word inside a Chinese reply cannot flip the accent mid-thought.
+  Future<void> speak(String text, String? voice, String? language) async {
     final pigeonVar_channelName =
         'dev.flutter.pigeon.local_agent_macos.VoiceHostApi.speak$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
@@ -298,7 +300,7 @@ class VoiceHostApi {
       binaryMessenger: pigeonVar_binaryMessenger,
     );
     final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(
-      <Object?>[text, voice],
+      <Object?>[text, voice, language],
     );
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 

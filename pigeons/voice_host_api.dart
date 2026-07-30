@@ -63,9 +63,11 @@ abstract class VoiceHostApi {
   @async
   void finalizeUtterance();
 
-  /// Speaks [text] aloud, with [voice] naming who speaks.
+  /// Speaks [text] aloud, with [voice] naming who speaks and [language]
+  /// pinning the synthesis language for the whole answer, so one English
+  /// word inside a Chinese reply cannot flip the accent mid-thought.
   @async
-  void speak(String text, String? voice);
+  void speak(String text, String? voice, String? language);
 
   /// Stops speaking mid-sentence.
   @async

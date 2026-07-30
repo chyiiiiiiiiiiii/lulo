@@ -90,6 +90,25 @@ final class VoiceConversationController extends ChangeNotifier {
   /// Where a spoken chunk may end: a sentence has visibly finished.
   static final RegExp _sentenceEnd = RegExp(r'[。！？!?.…；;\n]');
 
+  /// Anything CJK: the answer's language is decided by its beginning.
+  static final RegExp _cjk = RegExp(
+    r'[\u4e00-\u9fff\u3040-\u30ff\uac00-\ud7af]',
+  );
+
+  /// After the first fast sentence, chunks accumulate to at least this
+  /// many characters: single short sentences drift in timbre, and every
+  /// separate synthesis pays its own prosody reset.
+  static const int _chunkTarget = 40;
+
+  /// The language pinned to the answer being spoken, decided once at its
+  /// first chunk — one English word inside a Chinese reply must not flip
+  /// the accent mid-thought.
+  String? _activeLang;
+
+  /// Whether the next dispatch is the answer's first, which goes out alone
+  /// so the voice starts as early as possible.
+  bool _firstChunkOfAnswer = true;
+
   /// How many completed turns have already been considered for speaking.
   ///
   /// Seeded with what is already there, so enabling voice over yesterday's
@@ -237,6 +256,8 @@ final class VoiceConversationController extends ChangeNotifier {
     if (active == null) {
       _dispatchedOfActive = 0;
       _stopRequestedForActive = false;
+      _activeLang = null;
+      _firstChunkOfAnswer = true;
       return;
     }
     if (!_enabled || _stopRequestedForActive) {
@@ -251,17 +272,25 @@ final class VoiceConversationController extends ChangeNotifier {
     if (lastEnd < 0) {
       return;
     }
+    // The first sentence goes out alone so the voice starts early; after
+    // that, sentences accumulate into steadier chunks.
+    if (!_firstChunkOfAnswer && lastEnd + 1 < _chunkTarget) {
+      return;
+    }
     final String chunk = undispatched.substring(0, lastEnd + 1);
     _dispatchedOfActive += chunk.length;
-    _speakAloud(chunk);
+    _firstChunkOfAnswer = false;
+    _speakAloud(chunk, decidedBy: text);
   }
 
-  void _speakAloud(String text) {
+  void _speakAloud(String text, {String? decidedBy}) {
     final String spoken = speakableText(text);
-    if (spoken.isNotEmpty) {
-      _speechRequested = true;
-      unawaited(_voice.speak(spoken));
+    if (spoken.isEmpty) {
+      return;
     }
+    _activeLang ??= _cjk.hasMatch(decidedBy ?? text) ? 'zh' : 'en';
+    _speechRequested = true;
+    unawaited(_voice.speak(spoken, language: _activeLang));
   }
 
   /// The partial has sat still long enough: the user has finished talking.
@@ -327,13 +356,13 @@ final class VoiceConversationController extends ChangeNotifier {
           turn.status == TurnStatus.completed) {
         // Only what the streaming dispatch has not already said. This
         // leans on the ViewModel notifying completedTurns BEFORE nulling
-        // the active turn: the counter below is read here first, and only
-        // then reset by _onActiveTurnChanged seeing null.
+        // the active turn: the counter and language below are read here
+        // first, and only then reset by _onActiveTurnChanged seeing null.
         final int alreadySpoken = _dispatchedOfActive <= turn.text.length
             ? _dispatchedOfActive
             : turn.text.length;
         _dispatchedOfActive = 0;
-        _speakAloud(turn.text.substring(alreadySpoken));
+        _speakAloud(turn.text.substring(alreadySpoken), decidedBy: turn.text);
       }
     }
   }

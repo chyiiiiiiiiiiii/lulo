@@ -132,12 +132,17 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
   func speak(
     text: String,
     voice: String?,
+    language: String?,
     completion: @escaping (Result<Void, Error>) -> Void
   ) {
     utteranceBegan()
     let epoch = speakEpoch
     Task { @MainActor in
-      let spoke = await self.speakThroughSidecar(text: text, voice: voice)
+      let spoke = await self.speakThroughSidecar(
+        text: text,
+        voice: voice,
+        language: language
+      )
       if !spoke && epoch == self.speakEpoch {
         // The resident voice is not running: fall back to the system
         // synthesizer rather than going silent. The delegate's
@@ -179,16 +184,22 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
   ///
   /// The sidecar blocks until playback finishes or is stopped, which is
   /// exactly the SpeakingFinished signal.
-  private func speakThroughSidecar(text: String, voice: String?) async -> Bool {
+  private func speakThroughSidecar(
+    text: String,
+    voice: String?,
+    language: String?
+  ) async -> Bool {
     guard let url = URL(string: "http://127.0.0.1:46557/speak") else {
       return false
     }
     var request = URLRequest(url: url)
     request.httpMethod = "POST"
     request.timeoutInterval = 120
-    request.httpBody = try? JSONSerialization.data(
-      withJSONObject: ["text": text, "voice": voice ?? "ryan"]
-    )
+    var payload: [String: String] = ["text": text, "voice": voice ?? "ryan"]
+    if let language {
+      payload["lang"] = language
+    }
+    request.httpBody = try? JSONSerialization.data(withJSONObject: payload)
     do {
       let (_, response) = try await URLSession.shared.data(for: request)
       return (response as? HTTPURLResponse)?.statusCode == 200
