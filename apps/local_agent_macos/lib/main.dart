@@ -23,6 +23,11 @@ Future<void> main() async {
   final bool hostingTests = Platform.environment.keys.any(
     (String key) => key.startsWith('XCTest'),
   );
+  // Who speaks: kept in a notifier so a voice changed in settings applies
+  // to the very next answer without rebuilding the service.
+  final ValueNotifier<String> ttsVoice = ValueNotifier<String>(
+    settings.ttsVoice,
+  );
   runApp(
     LocalAgentApp(
       composition: createAppComposition(
@@ -49,7 +54,8 @@ Future<void> main() async {
         // button would throw on every tap.
         voiceService: hostingTests || !_speechAnalyzerAvailable()
             ? null
-            : PigeonVoiceService(),
+            : PigeonVoiceService(voiceOf: () => ttsVoice.value),
+        ttsVoice: ttsVoice,
       ),
     ),
   );

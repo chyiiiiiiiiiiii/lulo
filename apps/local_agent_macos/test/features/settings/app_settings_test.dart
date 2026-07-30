@@ -5,6 +5,14 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:local_agent_macos/features/settings/app_settings.dart';
 
 void main() {
+  test('the chosen voice survives the round trip', () {
+    const AppSettings settings = AppSettings(ttsVoice: 'vivian');
+    final AppSettings reloaded = AppSettings.fromJson(settings.toJson());
+    expect(reloaded.ttsVoice, 'vivian');
+    expect(const AppSettings().ttsVoice, 'ryan');
+    expect(settings.copyWith(ttsVoice: 'dylan').ttsVoice, 'dylan');
+  });
+
   test('an untouched install rests on the desktop, above other work', () {
     const AppSettings settings = AppSettings();
 

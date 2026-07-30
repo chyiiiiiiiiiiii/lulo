@@ -266,8 +266,8 @@ class VoiceHostApi {
     );
   }
 
-  /// Speaks [text] aloud.
-  Future<void> speak(String text) async {
+  /// Speaks [text] aloud, with [voice] naming who speaks.
+  Future<void> speak(String text, String? voice) async {
     final pigeonVar_channelName =
         'dev.flutter.pigeon.local_agent_macos.VoiceHostApi.speak$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
@@ -276,7 +276,7 @@ class VoiceHostApi {
       binaryMessenger: pigeonVar_binaryMessenger,
     );
     final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(
-      <Object?>[text],
+      <Object?>[text, voice],
     );
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 

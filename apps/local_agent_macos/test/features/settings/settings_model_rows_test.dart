@@ -58,6 +58,42 @@ void main() {
     ),
   );
 
+  testWidgets('the voice it speaks with can be chosen', (
+    WidgetTester tester,
+  ) async {
+    final ModelDownloadManager downloads = manager();
+    addTearDown(downloads.dispose);
+    final List<AppSettings> changed = <AppSettings>[];
+    await tester.pumpWidget(
+      MaterialApp(
+        home: SettingsSheet(
+          settings: const AppSettings(),
+          onChanged: changed.add,
+          onChooseModel: () async => '',
+          onClose: () {},
+          modelDownloads: downloads,
+          catalog: const <ModelCatalogEntry>[small],
+          onDownloadModel: (ModelCatalogEntry _) {},
+          onUseModel: (ModelCatalogEntry _) {},
+        ),
+      ),
+    );
+    await tester.pump();
+
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('setting-tts-voice')),
+      200,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('setting-tts-voice-dropdown')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('vivian').last);
+    await tester.pumpAndSettle();
+
+    expect(changed.last.ttsVoice, 'vivian');
+  });
+
   testWidgets('a model not yet here offers itself for download', (
     WidgetTester tester,
   ) async {

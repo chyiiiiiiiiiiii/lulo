@@ -1,5 +1,8 @@
 import 'dart:async';
+
 import 'dart:io';
+
+import 'package:flutter/foundation.dart';
 
 import '../features/conversation/conversation_storage_service.dart';
 import '../features/conversation/drift_conversation_storage_service.dart';
@@ -110,6 +113,7 @@ AppComposition createAppComposition({
   ModelDownloadManager? modelDownloads,
   List<ModelCatalogEntry> catalog = modelCatalog,
   VoiceService? voiceService,
+  ValueNotifier<String>? ttsVoice,
 }) {
   final SettingsStore store = settingsStore ?? createSettingsStore();
   if (inferenceRuntime != 'fake' && inferenceRuntime != 'litert') {

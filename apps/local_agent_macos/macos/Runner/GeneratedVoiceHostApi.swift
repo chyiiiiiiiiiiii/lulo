@@ -272,8 +272,8 @@ protocol VoiceHostApi {
   func startListening(completion: @escaping (Result<Void, Error>) -> Void)
   /// Releases the microphone.
   func stopListening(completion: @escaping (Result<Void, Error>) -> Void)
-  /// Speaks [text] aloud.
-  func speak(text: String, completion: @escaping (Result<Void, Error>) -> Void)
+  /// Speaks [text] aloud, with [voice] naming who speaks.
+  func speak(text: String, voice: String?, completion: @escaping (Result<Void, Error>) -> Void)
   /// Stops speaking mid-sentence.
   func stopSpeaking(completion: @escaping (Result<Void, Error>) -> Void)
 }
@@ -316,13 +316,14 @@ class VoiceHostApiSetup {
     } else {
       stopListeningChannel.setMessageHandler(nil)
     }
-    /// Speaks [text] aloud.
+    /// Speaks [text] aloud, with [voice] naming who speaks.
     let speakChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.local_agent_macos.VoiceHostApi.speak\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
     if let api = api {
       speakChannel.setMessageHandler { message, reply in
         let args = message as! [Any?]
         let textArg = args[0] as! String
-        api.speak(text: textArg) { result in
+        let voiceArg: String? = nilOrValue(args[1])
+        api.speak(text: textArg, voice: voiceArg) { result in
           switch result {
           case .success:
             reply(wrapResult(nil))

@@ -56,9 +56,9 @@ abstract class VoiceHostApi {
   @async
   void stopListening();
 
-  /// Speaks [text] aloud.
+  /// Speaks [text] aloud, with [voice] naming who speaks.
   @async
-  void speak(String text);
+  void speak(String text, String? voice);
 
   /// Stops speaking mid-sentence.
   @async
