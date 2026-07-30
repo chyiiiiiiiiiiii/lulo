@@ -401,6 +401,45 @@ void main() {
     expect(spoken, isNot(contains('https://')));
   });
 
+  test('speech begins with the first finished sentence', () async {
+    // Waiting for the whole answer stacks three delays end to end. A
+    // sentence is speakable the moment its full stop arrives.
+    await controller.enable();
+    voice.hear(const FinalTranscript('Tell me about Taipei.'));
+    await pump();
+    final Generation generation = await generationStarted();
+
+    inference.emit(GenerationDelta(generationId: generation.id, delta: '台北是'));
+    await pump();
+    expect(voice.spoken, isEmpty, reason: 'Half a sentence is not speech.');
+
+    inference.emit(
+      GenerationDelta(generationId: generation.id, delta: '台灣的首都。它有豐富'),
+    );
+    await pump();
+    await pump();
+    expect(voice.spoken, <String>[
+      '台北是台灣的首都。',
+    ], reason: 'The first finished sentence must be spoken at once.');
+
+    inference.emit(
+      GenerationDelta(generationId: generation.id, delta: '的夜市文化。'),
+    );
+    inference.emit(GenerationCompleted(generation.id));
+    await pump();
+    await pump();
+    expect(voice.spoken, <String>['台北是台灣的首都。', '它有豐富的夜市文化。']);
+  });
+
+  test('a completed answer with no boundaries is still spoken once', () async {
+    await controller.enable();
+    voice.hear(const FinalTranscript('hi'));
+    await pump();
+    await answerCompletely('Sunny, all day.');
+
+    expect(voice.spoken, <String>['Sunny, all day.']);
+  });
+
   test('nothing heard while disabled goes anywhere', () async {
     voice.hear(const FinalTranscript('to someone else entirely'));
     await pump();
