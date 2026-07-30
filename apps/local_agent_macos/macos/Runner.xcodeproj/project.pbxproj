@@ -22,11 +22,23 @@
 
 /* Begin PBXBuildFile section */
 		331C80D8294CF71000263BE5 /* RunnerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 331C80D7294CF71000263BE5 /* RunnerTests.swift */; };
+		A10000000000000000000001 /* DesktopPanelControllerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000003 /* DesktopPanelControllerTests.swift */; };
+		A10000000000000000000002 /* GlobalHotKeyControllerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000004 /* GlobalHotKeyControllerTests.swift */; };
+		CA0000000000000000000003 /* ChosenModelAccessTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA0000000000000000000004 /* ChosenModelAccessTests.swift */; };
+		A10000000000000000000006 /* AppDelegateWindowResolutionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000005 /* AppDelegateWindowResolutionTests.swift */; };
 		335BBD1B22A9A15E00E9071D /* GeneratedPluginRegistrant.swift in Sources */ = {isa = PBXBuildFile; fileRef = 335BBD1A22A9A15E00E9071D /* GeneratedPluginRegistrant.swift */; };
 		33CC10F12044A3C60003C045 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 33CC10F02044A3C60003C045 /* AppDelegate.swift */; };
 		33CC10F32044A3C60003C045 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 33CC10F22044A3C60003C045 /* Assets.xcassets */; };
 		33CC10F62044A3C60003C045 /* MainMenu.xib in Resources */ = {isa = PBXBuildFile; fileRef = 33CC10F42044A3C60003C045 /* MainMenu.xib */; };
+		A40000000000000000000005 /* ThirdPartyNotices.txt in Resources */ = {isa = PBXBuildFile; fileRef = A40000000000000000000004 /* ThirdPartyNotices.txt */; };
 		33CC11132044BFA00003C045 /* MainFlutterWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 33CC11122044BFA00003C045 /* MainFlutterWindow.swift */; };
+		A20000000000000000000001 /* DesktopPanelController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000006 /* DesktopPanelController.swift */; };
+		CA0000000000000000000001 /* ChosenModelAccess.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA0000000000000000000002 /* ChosenModelAccess.swift */; };
+		A20000000000000000000002 /* GlobalHotKeyController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000007 /* GlobalHotKeyController.swift */; };
+		A20000000000000000000003 /* MenuBarController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000008 /* MenuBarController.swift */; };
+		A20000000000000000000004 /* GeneratedDesktopHostApi.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000009 /* GeneratedDesktopHostApi.swift */; };
+		A30000000000000000000001 /* LocalRuntimeHostAdapter.swift in Sources */ = {isa = PBXBuildFile; fileRef = A30000000000000000000003 /* LocalRuntimeHostAdapter.swift */; };
+		A40000000000000000000001 /* InferenceService in Frameworks */ = {isa = PBXBuildFile; productRef = A40000000000000000000003 /* InferenceService */; };
 		FD92A5DA52FD9344E085145A /* Pods_Runner.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = CAEFFED4590B1D0DF0DAD294 /* Pods_Runner.framework */; };
 		FF89447D1B5F91740FC3CB0B /* Pods_RunnerTests.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 23ABEA4BB2B8A2B3B7817F6E /* Pods_RunnerTests.framework */; };
 /* End PBXBuildFile section */
@@ -65,14 +77,25 @@
 		23ABEA4BB2B8A2B3B7817F6E /* Pods_RunnerTests.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_RunnerTests.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		331C80D5294CF71000263BE5 /* RunnerTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = RunnerTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		331C80D7294CF71000263BE5 /* RunnerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RunnerTests.swift; sourceTree = "<group>"; };
+		A10000000000000000000003 /* DesktopPanelControllerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DesktopPanelControllerTests.swift; sourceTree = "<group>"; };
+		A10000000000000000000004 /* GlobalHotKeyControllerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GlobalHotKeyControllerTests.swift; sourceTree = "<group>"; };
+		CA0000000000000000000004 /* ChosenModelAccessTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChosenModelAccessTests.swift; sourceTree = "<group>"; };
+		A10000000000000000000005 /* AppDelegateWindowResolutionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegateWindowResolutionTests.swift; sourceTree = "<group>"; };
 		333000ED22D3DE5D00554162 /* Warnings.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Warnings.xcconfig; sourceTree = "<group>"; };
 		335BBD1A22A9A15E00E9071D /* GeneratedPluginRegistrant.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = GeneratedPluginRegistrant.swift; sourceTree = "<group>"; };
 		33CC10ED2044A3C60003C045 /* local_agent_macos.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = local_agent_macos.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		33CC10F02044A3C60003C045 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		33CC10F22044A3C60003C045 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; name = Assets.xcassets; path = Runner/Assets.xcassets; sourceTree = "<group>"; };
 		33CC10F52044A3C60003C045 /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.xib; name = Base; path = Base.lproj/MainMenu.xib; sourceTree = "<group>"; };
+		A40000000000000000000004 /* ThirdPartyNotices.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = ThirdPartyNotices.txt; sourceTree = "<group>"; };
 		33CC10F72044A3C60003C045 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; name = Info.plist; path = Runner/Info.plist; sourceTree = "<group>"; };
 		33CC11122044BFA00003C045 /* MainFlutterWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainFlutterWindow.swift; sourceTree = "<group>"; };
+		A20000000000000000000006 /* DesktopPanelController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DesktopPanelController.swift; sourceTree = "<group>"; };
+		CA0000000000000000000002 /* ChosenModelAccess.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChosenModelAccess.swift; sourceTree = "<group>"; };
+		A20000000000000000000007 /* GlobalHotKeyController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GlobalHotKeyController.swift; sourceTree = "<group>"; };
+		A20000000000000000000008 /* MenuBarController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarController.swift; sourceTree = "<group>"; };
+		A20000000000000000000009 /* GeneratedDesktopHostApi.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeneratedDesktopHostApi.swift; sourceTree = "<group>"; };
+		A30000000000000000000003 /* LocalRuntimeHostAdapter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalRuntimeHostAdapter.swift; sourceTree = "<group>"; };
 		33CEB47222A05771004F2AC0 /* Flutter-Debug.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = "Flutter-Debug.xcconfig"; sourceTree = "<group>"; };
 		33CEB47422A05771004F2AC0 /* Flutter-Release.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = "Flutter-Release.xcconfig"; sourceTree = "<group>"; };
 		33CEB47722A0578A004F2AC0 /* Flutter-Generated.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; name = "Flutter-Generated.xcconfig"; path = "ephemeral/Flutter-Generated.xcconfig"; sourceTree = "<group>"; };
@@ -103,6 +126,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				A40000000000000000000001 /* InferenceService in Frameworks */,
 				FD92A5DA52FD9344E085145A /* Pods_Runner.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -128,6 +152,10 @@
 			isa = PBXGroup;
 			children = (
 				331C80D7294CF71000263BE5 /* RunnerTests.swift */,
+				A10000000000000000000003 /* DesktopPanelControllerTests.swift */,
+				A10000000000000000000004 /* GlobalHotKeyControllerTests.swift */,
+				CA0000000000000000000004 /* ChosenModelAccessTests.swift */,
+				A10000000000000000000005 /* AppDelegateWindowResolutionTests.swift */,
 			);
 			path = RunnerTests;
 			sourceTree = "<group>";
@@ -191,6 +219,13 @@
 			children = (
 				33CC10F02044A3C60003C045 /* AppDelegate.swift */,
 				33CC11122044BFA00003C045 /* MainFlutterWindow.swift */,
+				A20000000000000000000006 /* DesktopPanelController.swift */,
+				CA0000000000000000000002 /* ChosenModelAccess.swift */,
+				A20000000000000000000007 /* GlobalHotKeyController.swift */,
+				A20000000000000000000008 /* MenuBarController.swift */,
+				A20000000000000000000009 /* GeneratedDesktopHostApi.swift */,
+				A30000000000000000000003 /* LocalRuntimeHostAdapter.swift */,
+				A40000000000000000000004 /* ThirdPartyNotices.txt */,
 				33E51913231747F40026EE4D /* DebugProfile.entitlements */,
 				33E51914231749380026EE4D /* Release.entitlements */,
 				33CC11242044D66E0003C045 /* Resources */,
@@ -247,6 +282,9 @@
 				33CC11202044C79F0003C045 /* PBXTargetDependency */,
 			);
 			name = Runner;
+			packageProductDependencies = (
+				A40000000000000000000003 /* InferenceService */,
+			);
 			productName = Runner;
 			productReference = 33CC10ED2044A3C60003C045 /* local_agent_macos.app */;
 			productType = "com.apple.product-type.application";
@@ -291,6 +329,9 @@
 				Base,
 			);
 			mainGroup = 33CC10E42044A3C60003C045;
+			packageReferences = (
+				A40000000000000000000002 /* XCLocalSwiftPackageReference "../../../native/inference_service" */,
+			);
 			productRefGroup = 33CC10EE2044A3C60003C045 /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
@@ -316,6 +357,7 @@
 			files = (
 				33CC10F32044A3C60003C045 /* Assets.xcassets in Resources */,
 				33CC10F62044A3C60003C045 /* MainMenu.xib in Resources */,
+				A40000000000000000000005 /* ThirdPartyNotices.txt in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -412,6 +454,10 @@
 			buildActionMask = 2147483647;
 			files = (
 				331C80D8294CF71000263BE5 /* RunnerTests.swift in Sources */,
+				A10000000000000000000001 /* DesktopPanelControllerTests.swift in Sources */,
+				A10000000000000000000002 /* GlobalHotKeyControllerTests.swift in Sources */,
+				CA0000000000000000000003 /* ChosenModelAccessTests.swift in Sources */,
+				A10000000000000000000006 /* AppDelegateWindowResolutionTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -422,6 +468,12 @@
 				33CC11132044BFA00003C045 /* MainFlutterWindow.swift in Sources */,
 				33CC10F12044A3C60003C045 /* AppDelegate.swift in Sources */,
 				335BBD1B22A9A15E00E9071D /* GeneratedPluginRegistrant.swift in Sources */,
+				A20000000000000000000001 /* DesktopPanelController.swift in Sources */,
+				CA0000000000000000000001 /* ChosenModelAccess.swift in Sources */,
+				A20000000000000000000002 /* GlobalHotKeyController.swift in Sources */,
+				A20000000000000000000003 /* MenuBarController.swift in Sources */,
+				A20000000000000000000004 /* GeneratedDesktopHostApi.swift in Sources */,
+				A30000000000000000000001 /* LocalRuntimeHostAdapter.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -464,7 +516,7 @@
 				PRODUCT_BUNDLE_IDENTIFIER = com.flutterlocalagent.localAgentMacos.RunnerTests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_VERSION = 5.0;
-				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/local_agent_macos.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/local_agent_macos";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Lulo.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Lulo";
 			};
 			name = Debug;
 		};
@@ -479,7 +531,7 @@
 				PRODUCT_BUNDLE_IDENTIFIER = com.flutterlocalagent.localAgentMacos.RunnerTests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_VERSION = 5.0;
-				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/local_agent_macos.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/local_agent_macos";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Lulo.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Lulo";
 			};
 			name = Release;
 		};
@@ -494,7 +546,7 @@
 				PRODUCT_BUNDLE_IDENTIFIER = com.flutterlocalagent.localAgentMacos.RunnerTests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_VERSION = 5.0;
-				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/local_agent_macos.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/local_agent_macos";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Lulo.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Lulo";
 			};
 			name = Profile;
 		};
@@ -539,7 +591,7 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
-				MACOSX_DEPLOYMENT_TARGET = 10.15;
+				MACOSX_DEPLOYMENT_TARGET = 12.0;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				SDKROOT = macosx;
 				SWIFT_COMPILATION_MODE = wholemodule;
@@ -621,7 +673,7 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
-				MACOSX_DEPLOYMENT_TARGET = 10.15;
+				MACOSX_DEPLOYMENT_TARGET = 12.0;
 				MTL_ENABLE_DEBUG_INFO = YES;
 				ONLY_ACTIVE_ARCH = YES;
 				SDKROOT = macosx;
@@ -671,7 +723,7 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
-				MACOSX_DEPLOYMENT_TARGET = 10.15;
+				MACOSX_DEPLOYMENT_TARGET = 12.0;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				SDKROOT = macosx;
 				SWIFT_COMPILATION_MODE = wholemodule;
@@ -778,6 +830,20 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		A40000000000000000000002 /* XCLocalSwiftPackageReference "../../../native/inference_service" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = ../../../native/inference_service;
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		A40000000000000000000003 /* InferenceService */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = InferenceService;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 33CC10E52044A3C60003C045 /* Project object */;
 }

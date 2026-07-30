@@ -1,19 +1,44 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 
-void main() {
-  runApp(const LocalAgentApp());
-}
+import 'app/app.dart';
+import 'app/bootstrap.dart';
+import 'features/model/model_catalog.dart';
+import 'features/settings/app_settings.dart';
 
-/// The intentional empty shell used to establish the macOS build baseline.
-class LocalAgentApp extends StatelessWidget {
-  /// Creates the application shell.
-  const LocalAgentApp({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return const MaterialApp(
-      title: 'Flutter Local Agent',
-      home: Scaffold(body: Center(child: Text('Flutter Local Agent'))),
-    );
-  }
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  // The model is chosen in settings rather than fixed when the app is built,
+  // so it has to be read before anything is wired to it.
+  final SettingsStore store = createSettingsStore();
+  final AppSettings settings = await store.load();
+  final bool hasModel = settings.modelPath.trim().isNotEmpty;
+  // The native test suite runs inside this app, and the app shares its
+  // settings with the one the user really uses — same bundle, same container.
+  // Left alone it would start loading a multi-gigabyte model the moment the
+  // test host launched, which starved the test runner's connection window
+  // often enough to fail runs. The tests are about the window, not the model.
+  final bool hostingTests = Platform.environment.keys.any(
+    (String key) => key.startsWith('XCTest'),
+  );
+  runApp(
+    LocalAgentApp(
+      composition: createAppComposition(
+        settingsStore: store,
+        inferenceRuntime: hasModel && !hostingTests ? 'litert' : 'fake',
+        localModelPath: settings.modelPath,
+        // Same container as the real app: the test host stays on the
+        // in-memory default so it never reads or writes the user's history.
+        conversationStorage: hostingTests
+            ? null
+            : createDurableConversationStorage(),
+        // An empty catalog in the test host: launch adoption would otherwise
+        // find the user's installed model, load gigabytes into the test
+        // runner's connection window, and write the adoption into the user's
+        // own settings.
+        catalog: hostingTests ? const <ModelCatalogEntry>[] : modelCatalog,
+      ),
+    ),
+  );
 }

@@ -30,9 +30,29 @@ Future<void> main() async {
       workingDirectory: _join(workspaceRoot.path, 'packages/agent_core'),
     ),
     _VerificationCommand(
+      name: 'presence frame metrics tests',
+      executable: 'flutter',
+      arguments: const <String>[
+        'test',
+        'test/features/presence/agent_presence_frame_metrics_test.dart',
+      ],
+      workingDirectory: _join(workspaceRoot.path, 'apps/local_agent_macos'),
+    ),
+    _VerificationCommand(
       name: 'Flutter tests',
       executable: 'flutter',
       arguments: const <String>['test'],
+      workingDirectory: _join(workspaceRoot.path, 'apps/local_agent_macos'),
+    ),
+    _VerificationCommand(
+      name: 'macOS fake-runtime integration test',
+      executable: 'flutter',
+      arguments: const <String>[
+        'test',
+        'integration_test/conversation_vertical_slice_test.dart',
+        '-d',
+        'macos',
+      ],
       workingDirectory: _join(workspaceRoot.path, 'apps/local_agent_macos'),
     ),
     _VerificationCommand(
@@ -40,6 +60,40 @@ Future<void> main() async {
       executable: 'flutter',
       arguments: const <String>['build', 'macos', '--profile'],
       workingDirectory: _join(workspaceRoot.path, 'apps/local_agent_macos'),
+    ),
+    // The window is where this app's hardest bugs live, and its tests were
+    // being written but never run: nothing here invoked them, so a rename of
+    // the app quietly broke the test target and a click that went straight
+    // through the resting orb was reported as covered. Run through the
+    // workspace rather than the project, because the pods the app links are
+    // only wired up there.
+    //
+    // Deliberately NOT into the build directory Flutter itself uses: two
+    // build systems over one Products directory each mark the other's
+    // outputs stale and delete them, while flutter assemble's fingerprint
+    // stamps still say its native-assets are up to date. The first native
+    // asset in the tree (drift's sqlite3) turned that quiet war into a
+    // half-written sqlite3.framework and a codesign failure here.
+    _VerificationCommand(
+      name: 'macOS window tests',
+      executable: 'xcodebuild',
+      arguments: const <String>[
+        'test',
+        '-workspace',
+        'Runner.xcworkspace',
+        '-scheme',
+        'Runner',
+        '-configuration',
+        'Debug',
+        '-destination',
+        'platform=macOS',
+        '-derivedDataPath',
+        '../build/macos_window_tests',
+      ],
+      workingDirectory: _join(
+        workspaceRoot.path,
+        'apps/local_agent_macos/macos',
+      ),
     ),
   ];
   final File swiftPackage = File(
@@ -56,9 +110,10 @@ Future<void> main() async {
     );
   }
 
-  final List<_VerificationResult> results = await Future.wait(
-    commands.map(_runCommand),
-  );
+  final List<_VerificationResult> results = <_VerificationResult>[];
+  for (final _VerificationCommand command in commands) {
+    results.add(await _runCommand(command));
+  }
   final List<_VerificationResult> failures = results
       .where((_VerificationResult result) => result.exitCode != 0)
       .toList();

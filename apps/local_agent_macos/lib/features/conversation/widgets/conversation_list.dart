@@ -1,0 +1,335 @@
+import 'dart:async';
+
+import 'package:agent_core/agent_core.dart';
+import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
+
+import 'active_streaming_turn.dart';
+import 'completed_turn.dart';
+import 'conversation_content_column.dart';
+
+/// Scrollable terminal history plus an independently listening active turn.
+final class ConversationList extends StatefulWidget {
+  /// Creates conversation history.
+  const ConversationList({
+    required this.completedTurns,
+    required this.activeTurn,
+    this.onBuild,
+    this.onCompletedTurnsBuild,
+    this.onActiveTurnBuild,
+    super.key,
+  });
+
+  /// Immutable terminal turns shown in history.
+  final ValueListenable<List<Turn>> completedTurns;
+
+  /// The independently rendered active streaming turn.
+  final ValueListenable<Turn?> activeTurn;
+
+  /// Optional list render instrumentation used by tests.
+  final VoidCallback? onBuild;
+
+  /// Optional completed-history render instrumentation used by tests.
+  final VoidCallback? onCompletedTurnsBuild;
+
+  /// Optional active-turn render instrumentation used by tests.
+  final VoidCallback? onActiveTurnBuild;
+
+  @override
+  State<ConversationList> createState() => _ConversationListState();
+}
+
+final class _ConversationListState extends State<ConversationList> {
+  /// Breathing room above the first turn and below the last.
+  static const double _verticalPadding = 12;
+
+  final ScrollController _scrollController = ScrollController();
+
+  /// How far from the end still counts as being at the newest answer.
+  ///
+  /// Streaming moves the end while the user is reading it, and demanding an
+  /// exact landing would drop the follow on any frame that arrives mid-scroll.
+  static const double _bottomTolerance = 24;
+
+  /// Whether the newest answer is what the user is looking at.
+  bool _atBottom = true;
+
+  /// Whether the newest answer is being followed as it grows.
+  ///
+  /// Kept apart from [_atBottom], which only decides whether to offer the way
+  /// back. Being near the bottom is not the same as wanting to be taken there:
+  /// a scroll that has only just begun is still within a hair of the end, and
+  /// treating that as consent is what made reading back impossible.
+  bool _following = true;
+
+  /// Whether the user currently has hold of the list.
+  bool _held = false;
+
+  /// How many completed turns have been accounted for.
+  int _seenTurns = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    widget.completedTurns.addListener(_followNewContent);
+    widget.activeTurn.addListener(_followNewContent);
+    _scrollController.addListener(_watchPosition);
+  }
+
+  /// Decides whether the way back to the newest answer is worth offering.
+  void _watchPosition() {
+    final bool atBottom = _isAtBottom();
+    if (atBottom == _atBottom) {
+      return;
+    }
+    setState(() => _atBottom = atBottom);
+  }
+
+  bool _isAtBottom() {
+    if (!_scrollController.hasClients) {
+      return true;
+    }
+    final ScrollPosition position = _scrollController.position;
+    return position.pixels >= position.maxScrollExtent - _bottomTolerance;
+  }
+
+  /// Follows the scroll the user is performing, rather than their position.
+  ///
+  /// Scrolling back towards what has already been said is a deliberate act and
+  /// stops the follow the moment it starts, not once it has travelled far
+  /// enough to count. Letting go at the newest answer takes it up again, which
+  /// is how every chat window a Mac user already knows behaves.
+  bool _watchScroll(ScrollNotification notification) {
+    // Rendered turns bring scrollables of their own; only this one is the
+    // conversation.
+    if (notification.depth != 0) {
+      return false;
+    }
+    if (notification is ScrollStartNotification) {
+      _held = notification.dragDetails != null;
+    } else if (notification is UserScrollNotification) {
+      if (notification.direction == ScrollDirection.forward) {
+        _setFollowing(false);
+      }
+    } else if (notification is ScrollEndNotification) {
+      _held = false;
+      _setFollowing(_isAtBottom());
+    }
+    return false;
+  }
+
+  void _setFollowing(bool following) {
+    if (_following == following) {
+      return;
+    }
+    _following = following;
+  }
+
+  /// Returns to the newest answer, which also resumes following it.
+  Future<void> _returnToBottom() async {
+    if (!_scrollController.hasClients) {
+      return;
+    }
+    await _scrollController.animateTo(
+      _scrollController.position.maxScrollExtent,
+      duration: const Duration(milliseconds: 220),
+      curve: Curves.easeOutCubic,
+    );
+  }
+
+  @override
+  void didUpdateWidget(ConversationList oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.completedTurns != widget.completedTurns) {
+      oldWidget.completedTurns.removeListener(_followNewContent);
+      widget.completedTurns.addListener(_followNewContent);
+    }
+    if (oldWidget.activeTurn != widget.activeTurn) {
+      oldWidget.activeTurn.removeListener(_followNewContent);
+      widget.activeTurn.addListener(_followNewContent);
+    }
+  }
+
+  @override
+  void dispose() {
+    widget.completedTurns.removeListener(_followNewContent);
+    widget.activeTurn.removeListener(_followNewContent);
+    _scrollController.removeListener(_watchPosition);
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  /// Keeps the newest content in view as the answer grows.
+  ///
+  /// Deferred to after the frame because the content that just arrived has no
+  /// height until it has been laid out, so the distance to scroll does not
+  /// exist yet while this is being notified.
+  void _followNewContent() {
+    _resumeIfTheUserJustSpoke();
+    // Never while the list is being held: a jump ends the scroll the user is
+    // performing, and answers arrive often enough that every attempt to read
+    // back would be ended in turn.
+    if (!_following || _held) {
+      return;
+    }
+    WidgetsBinding.instance.addPostFrameCallback((Duration _) {
+      if (!mounted || !_following || _held || !_scrollController.hasClients) {
+        return;
+      }
+      _scrollController.jumpTo(_scrollController.position.maxScrollExtent);
+    });
+  }
+
+  /// Sending something is asking to see it, so it takes the follow up again.
+  void _resumeIfTheUserJustSpoke() {
+    final List<Turn> turns = widget.completedTurns.value;
+    if (turns.length <= _seenTurns) {
+      _seenTurns = turns.length;
+      return;
+    }
+    final bool spoke = turns
+        .skip(_seenTurns)
+        .any((Turn turn) => turn.role == TurnRole.user);
+    _seenTurns = turns.length;
+    if (spoke) {
+      _setFollowing(true);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    widget.onBuild?.call();
+    return LayoutBuilder(
+      builder: (BuildContext context, BoxConstraints constraints) {
+        return Stack(
+          children: <Widget>[
+            NotificationListener<ScrollNotification>(
+              onNotification: _watchScroll,
+              child: _scrollSurface(constraints),
+            ),
+            // Only offered when it is needed: while the newest answer is on
+            // screen there is nothing to go back to.
+            if (!_atBottom)
+              Positioned(
+                left: 0,
+                right: 0,
+                bottom: 16,
+                child: Center(
+                  child: _ScrollToBottomButton(onPressed: _returnToBottom),
+                ),
+              ),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _scrollSurface(BoxConstraints constraints) {
+    return SingleChildScrollView(
+      key: const Key('conversation-scroll-surface'),
+      controller: _scrollController,
+      padding: const EdgeInsets.symmetric(
+        horizontal: conversationContentMargin,
+        vertical: _verticalPadding,
+      ),
+      // The turns live in the same centred column as the header and the
+      // composer, so a message's edge lines up with both at any window size.
+      child: ConversationContentColumn(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: <Widget>[
+            ValueListenableBuilder<List<Turn>>(
+              valueListenable: widget.completedTurns,
+              builder: (BuildContext context, List<Turn> turns, Widget? child) {
+                widget.onCompletedTurnsBuild?.call();
+                if (turns.isEmpty) {
+                  return SizedBox(
+                    height: (constraints.maxHeight - 40).clamp(
+                      0,
+                      double.infinity,
+                    ),
+                    child: const _EmptyConversation(),
+                  );
+                }
+                return Column(
+                  children: <Widget>[
+                    for (final Turn turn in turns) CompletedTurn(turn: turn),
+                  ],
+                );
+              },
+            ),
+            ActiveStreamingTurn(
+              activeTurn: widget.activeTurn,
+              onBuild: widget.onActiveTurnBuild,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// The way back to the newest answer, offered only while it is off screen.
+final class _ScrollToBottomButton extends StatelessWidget {
+  const _ScrollToBottomButton({required this.onPressed});
+
+  final Future<void> Function() onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final ColorScheme colors = Theme.of(context).colorScheme;
+    return Semantics(
+      button: true,
+      label: 'Jump to the newest message',
+      child: Material(
+        key: const Key('conversation-scroll-to-bottom'),
+        color: colors.surfaceContainerHighest,
+        shape: const CircleBorder(),
+        elevation: 3,
+        child: InkWell(
+          customBorder: const CircleBorder(),
+          onTap: () => unawaited(onPressed()),
+          child: SizedBox.square(
+            dimension: 34,
+            child: Icon(
+              Icons.keyboard_arrow_down_rounded,
+              size: 22,
+              color: colors.onSurfaceVariant,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+final class _EmptyConversation extends StatelessWidget {
+  const _EmptyConversation();
+
+  @override
+  Widget build(BuildContext context) => Center(
+    child: Column(
+      mainAxisSize: MainAxisSize.min,
+      children: <Widget>[
+        Icon(
+          Icons.auto_awesome_rounded,
+          size: 34,
+          color: Theme.of(context).colorScheme.primary,
+        ),
+        const SizedBox(height: 14),
+        Text(
+          'Start a conversation',
+          style: Theme.of(context).textTheme.titleLarge,
+        ),
+        const SizedBox(height: 6),
+        Text(
+          'Private, fast, and ready on this Mac.',
+          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
+          ),
+        ),
+      ],
+    ),
+  );
+}
