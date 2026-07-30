@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -102,6 +104,11 @@ final class _ConversationComposerState extends State<ConversationComposer> {
                 const SingleActivator(LogicalKeyboardKey.enter): _submit,
                 const SingleActivator(LogicalKeyboardKey.enter, shift: true):
                     _insertNewline,
+                // Only while an answer is streaming: with nothing to stop,
+                // Escape belongs to the sheets above the conversation.
+                if (!canSubmit)
+                  const SingleActivator(LogicalKeyboardKey.escape): () =>
+                      unawaited(_stop()),
               },
               child: TextField(
                 key: const Key('conversation-composer-field'),
