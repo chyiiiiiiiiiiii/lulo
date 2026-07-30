@@ -23,6 +23,7 @@
 /* Begin PBXBuildFile section */
 		331C80D8294CF71000263BE5 /* RunnerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 331C80D7294CF71000263BE5 /* RunnerTests.swift */; };
 		A10000000000000000000001 /* DesktopPanelControllerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000003 /* DesktopPanelControllerTests.swift */; };
+		A1VA000000000000000VA001 /* VoiceActivityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1VA000000000000000VA002 /* VoiceActivityTests.swift */; };
 		A10000000000000000000002 /* GlobalHotKeyControllerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000004 /* GlobalHotKeyControllerTests.swift */; };
 		CA0000000000000000000003 /* ChosenModelAccessTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA0000000000000000000004 /* ChosenModelAccessTests.swift */; };
 		A10000000000000000000006 /* AppDelegateWindowResolutionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000005 /* AppDelegateWindowResolutionTests.swift */; };
@@ -80,6 +81,7 @@
 		331C80D5294CF71000263BE5 /* RunnerTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = RunnerTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		331C80D7294CF71000263BE5 /* RunnerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RunnerTests.swift; sourceTree = "<group>"; };
 		A10000000000000000000003 /* DesktopPanelControllerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DesktopPanelControllerTests.swift; sourceTree = "<group>"; };
+		A1VA000000000000000VA002 /* VoiceActivityTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceActivityTests.swift; sourceTree = "<group>"; };
 		A10000000000000000000004 /* GlobalHotKeyControllerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GlobalHotKeyControllerTests.swift; sourceTree = "<group>"; };
 		CA0000000000000000000004 /* ChosenModelAccessTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChosenModelAccessTests.swift; sourceTree = "<group>"; };
 		A10000000000000000000005 /* AppDelegateWindowResolutionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegateWindowResolutionTests.swift; sourceTree = "<group>"; };
@@ -157,6 +159,7 @@
 			children = (
 				331C80D7294CF71000263BE5 /* RunnerTests.swift */,
 				A10000000000000000000003 /* DesktopPanelControllerTests.swift */,
+		A1VA000000000000000VA002 /* VoiceActivityTests.swift */,
 				A10000000000000000000004 /* GlobalHotKeyControllerTests.swift */,
 				CA0000000000000000000004 /* ChosenModelAccessTests.swift */,
 				A10000000000000000000005 /* AppDelegateWindowResolutionTests.swift */,
@@ -461,6 +464,7 @@
 			files = (
 				331C80D8294CF71000263BE5 /* RunnerTests.swift in Sources */,
 				A10000000000000000000001 /* DesktopPanelControllerTests.swift in Sources */,
+		A1VA000000000000000VA001 /* VoiceActivityTests.swift in Sources */,
 				A10000000000000000000002 /* GlobalHotKeyControllerTests.swift in Sources */,
 				CA0000000000000000000003 /* ChosenModelAccessTests.swift in Sources */,
 				A10000000000000000000006 /* AppDelegateWindowResolutionTests.swift in Sources */,

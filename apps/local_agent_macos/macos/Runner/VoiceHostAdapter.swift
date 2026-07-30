@@ -27,8 +27,22 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
     let builder: AsyncStream<AnalyzerInput>.Continuation
     let analyzer: SpeechAnalyzer
     let resultsTask: Task<Void, Never>
+    let endpointTask: Task<Void, Never>
     let configObserver: NSObjectProtocol
   }
+
+  /// A volatile transcript is on screen and unsettled.
+  private var utteranceInProgress = false
+
+  /// The endpointer has already asked for this utterance; asked once.
+  private var endpointFinalizeRequested = false
+
+  /// How much silence after speech means the user has finished talking.
+  ///
+  /// The transcriber's own endpointing waits out several seconds, and the
+  /// Dart fallback another 1.5; this is what makes the answer feel like a
+  /// reply instead of a delayed message.
+  private static let endpointSilence: TimeInterval = 0.8
 
   private var session: ListeningSession?
 
@@ -107,7 +121,9 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
     sessionCounter += 1
     starting = false
     speakEpoch += 1
+    unmuteGeneration += 1
     outstandingUtterances = 0
+    speakingReported = false
     mute.muted = false
     endSession()
     emit(.listeningStopped)
@@ -161,22 +177,52 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
     completion(.success(()))
   }
 
+  /// Cancels a pending delayed unmute when a newer speech state supersedes
+  /// it.
+  private var unmuteGeneration = 0
+
+  /// Whether SpeakingStarted has been reported without its Finished yet.
+  ///
+  /// The unmute hangover can bridge two utterances: the second begins
+  /// while the first's Finished is still pending, and the pair must not
+  /// double-report.
+  private var speakingReported = false
+
   private func utteranceBegan() {
     outstandingUtterances += 1
+    unmuteGeneration += 1
     if outstandingUtterances == 1 {
       // Muted before the first sample leaves the speaker, not when a
       // delegate reports it: the gap is exactly long enough for the agent
       // to hear its own opening words.
       mute.muted = true
-      emit(.speakingStarted)
+      if !speakingReported {
+        speakingReported = true
+        emit(.speakingStarted)
+      }
     }
   }
 
   private func utteranceEnded() {
     outstandingUtterances = max(0, outstandingUtterances - 1)
     if outstandingUtterances == 0 {
-      mute.muted = false
-      emit(.speakingFinished)
+      // The speaker's tail is still in the air when the sidecar returns;
+      // unmuting on its heels lets the agent transcribe its own last
+      // word. The microphone stays shut a beat longer.
+      unmuteGeneration += 1
+      let generation = unmuteGeneration
+      Task { @MainActor in
+        try? await Task.sleep(for: .milliseconds(300))
+        guard
+          generation == self.unmuteGeneration,
+          self.outstandingUtterances == 0
+        else {
+          return
+        }
+        self.mute.muted = false
+        self.speakingReported = false
+        self.emit(.speakingFinished)
+      }
     }
   }
 
@@ -256,7 +302,11 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
     let transcriber = SpeechTranscriber(
       locale: locale,
       transcriptionOptions: [],
-      reportingOptions: [.volatileResults],
+      // fastResults trades a little accuracy for volatile results that
+      // arrive while the words are still being said; the finals settle the
+      // spelling afterwards. Without it the first partial could trail the
+      // speech by many seconds, and the endpointer starved.
+      reportingOptions: [.volatileResults, .fastResults],
       attributeOptions: []
     )
     // The transcription model is a system asset; the first run downloads
@@ -302,16 +352,20 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
 
     let (inputSequence, builder) = AsyncStream<AnalyzerInput>.makeStream()
     // The tap runs on the real-time audio thread. It captures only values
-    // it owns — the continuation, the converter, and the mute box — never
+    // it owns — the continuation, the converter, and the boxes — never
     // the adapter, whose state belongs to the main actor.
     let muteBox = mute
+    let vad = VoiceActivityBox()
     input.installTap(onBus: 0, bufferSize: 4096, format: microphoneFormat) {
       buffer, _ in
       if muteBox.muted {
         return
       }
       guard
-        let mono = VoiceHostAdapter.loudestChannel(of: buffer, as: monoFormat),
+        let (mono, rms) = VoiceHostAdapter.loudestChannel(
+          of: buffer,
+          as: monoFormat
+        ),
         let converted = VoiceHostAdapter.convert(
           mono,
           with: converter,
@@ -321,6 +375,7 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
       else {
         return
       }
+      vad.observe(rms: rms, at: ProcessInfo.processInfo.systemUptime)
       builder.yield(AnalyzerInput(buffer: converted))
     }
     engine.prepare()
@@ -333,6 +388,16 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
           let text = String(result.text.characters)
           guard !text.isEmpty else { continue }
           await MainActor.run {
+            // Bookkeeping belongs to the current session only: a stale
+            // session's trailing results still reach the other side, but
+            // must not steer the new session's endpointer.
+            if let self, id == self.sessionCounter {
+              self.utteranceInProgress = !result.isFinal
+              if result.isFinal {
+                self.endpointFinalizeRequested = false
+                NSLog("Lulo voice: final (%d chars)", text.count)
+              }
+            }
             self?.emit(
               result.isFinal ? .finalTranscript : .partialTranscript,
               text: text
@@ -344,6 +409,23 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
       } catch {
         await MainActor.run {
           self?.pipelineFailed(String(describing: error))
+        }
+      }
+    }
+    // The transcriber's own endpointing waits out seconds of silence
+    // before settling an utterance. This loop settles it as soon as the
+    // room has actually gone quiet after speech, which is what makes the
+    // agent answer when the user stops talking rather than a beat later.
+    let endpointTask = Task { @MainActor [weak self] in
+      var ticks = 0
+      while !Task.isCancelled {
+        try? await Task.sleep(for: .milliseconds(150))
+        self?.checkEndpoint(id: id, vad: vad, analyzer: analyzer)
+        ticks += 1
+        if ticks % 20 == 0 {
+          // Calibration heartbeat: what the room sounds like, every ~3s.
+          let (floor, peak) = vad.snapshot()
+          NSLog("Lulo voice: vad floor %.4f peak %.4f", floor, peak)
         }
       }
     }
@@ -366,9 +448,35 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
       builder: builder,
       analyzer: analyzer,
       resultsTask: resultsTask,
+      endpointTask: endpointTask,
       configObserver: configObserver
     )
     emit(.listeningStarted)
+  }
+
+  /// Settles the utterance in progress once the room has gone quiet.
+  private func checkEndpoint(
+    id: Int,
+    vad: VoiceActivityBox,
+    analyzer: SpeechAnalyzer
+  ) {
+    guard
+      id == sessionCounter,
+      utteranceInProgress,
+      !endpointFinalizeRequested,
+      !mute.muted
+    else {
+      return
+    }
+    let silence = vad.silence(asOf: ProcessInfo.processInfo.systemUptime)
+    guard silence.isFinite, silence > Self.endpointSilence else {
+      return
+    }
+    endpointFinalizeRequested = true
+    NSLog("Lulo voice: endpointing after %.2fs of silence", silence)
+    Task {
+      try? await analyzer.finalize(through: nil)
+    }
   }
 
   private func guardCurrent(_ id: Int) throws {
@@ -380,6 +488,9 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
   private func endSession() {
     guard let session else { return }
     NotificationCenter.default.removeObserver(session.configObserver)
+    session.endpointTask.cancel()
+    utteranceInProgress = false
+    endpointFinalizeRequested = false
     session.builder.finish()
     session.engine.inputNode.removeTap(onBus: 0)
     session.engine.stop()
@@ -430,14 +541,15 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
     }
   }
 
-  /// The channel with the most energy in [buffer], as a mono copy.
+  /// The channel with the most energy in [buffer], as a mono copy, with
+  /// that channel's RMS for the endpointer.
   ///
   /// Microphone arrays and aggregate devices put the voice on a channel of
   /// their own choosing; picking by loudness finds it without asking.
   private static nonisolated func loudestChannel(
     of buffer: AVAudioPCMBuffer,
     as monoFormat: AVAudioFormat
-  ) -> AVAudioPCMBuffer? {
+  ) -> (AVAudioPCMBuffer, Float)? {
     guard
       let channels = buffer.floatChannelData,
       buffer.frameLength > 0,
@@ -465,7 +577,7 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
     }
     monoData[0].update(from: channels[loudest], count: frames)
     mono.frameLength = buffer.frameLength
-    return mono
+    return (mono, (loudestEnergy / Float(frames)).squareRoot())
   }
 
   private static nonisolated func convert(
@@ -522,6 +634,60 @@ extension VoiceHostAdapter: AVSpeechSynthesizerDelegate {
   ) {
     Task { @MainActor in self.utteranceEnded() }
   }
+}
+
+/// When the room last sounded like somebody talking, over an adaptive
+/// noise floor.
+///
+/// The audio tap reports every buffer's RMS; the floor follows the room —
+/// falling quickly into quiet, climbing slowly through steady hum — so a
+/// fan is absorbed while a voice above it still registers. Read and
+/// written across the audio thread and the main actor.
+final class VoiceActivityBox: @unchecked Sendable {
+  private let lock = NSLock()
+  private var lastVoice: TimeInterval = -.infinity
+  private var floor: Float = 0.002
+
+  /// A voice must rise this far above the floor, and above an absolute
+  /// quiet-room minimum, before it counts.
+  private static let floorRatio: Float = 3
+  private static let minimumVoice: Float = 0.004
+
+  /// Records one buffer's loudness at [now], in seconds on any steady
+  /// clock.
+  func observe(rms: Float, at now: TimeInterval) {
+    lock.lock()
+    defer { lock.unlock() }
+    if rms < floor {
+      floor = 0.9 * floor + 0.1 * rms
+    } else {
+      floor = 0.995 * floor + 0.005 * rms
+    }
+    if rms > max(Self.minimumVoice, floor * Self.floorRatio) {
+      lastVoice = now
+    }
+    if rms > peak {
+      peak = rms
+    }
+  }
+
+  /// Seconds since a voice was last heard; infinite before the first one.
+  func silence(asOf now: TimeInterval) -> TimeInterval {
+    lock.lock()
+    defer { lock.unlock() }
+    return now - lastVoice
+  }
+
+  /// The floor and loudest RMS since the last snapshot, for calibration.
+  func snapshot() -> (floor: Float, peak: Float) {
+    lock.lock()
+    defer { lock.unlock() }
+    let seen = peak
+    peak = 0
+    return (floor, seen)
+  }
+
+  private var peak: Float = 0
 }
 
 /// A boolean the audio thread may read while the main actor writes.
