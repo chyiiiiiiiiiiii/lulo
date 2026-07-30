@@ -23,6 +23,7 @@ final class VoiceConversationController extends ChangeNotifier {
   VoiceConversationController._(this._voice, this._conversation) {
     _events = _voice.events.listen(_onVoiceEvent);
     _conversation.completedTurnsListenable.addListener(_onTurnsChanged);
+    _conversation.canSubmitListenable.addListener(_onCanSubmitChanged);
     _spokenThrough = _conversation.completedTurnsListenable.value.length;
   }
 
@@ -31,8 +32,22 @@ final class VoiceConversationController extends ChangeNotifier {
   StreamSubscription<VoiceEvent>? _events;
 
   bool _enabled = false;
+
+  /// True while [enable] is waiting for the stored history to land.
+  bool _enabling = false;
   bool _speaking = false;
+
+  /// True from asking the synthesizer to speak until it reports finishing.
+  ///
+  /// [SpeakingStarted] takes a whole round trip to come back; the user can
+  /// start talking inside that window, and the answer must still give way.
+  bool _speechRequested = false;
   String _partialTranscript = '';
+  String? _failure;
+
+  /// An utterance finished while the previous answer was still winding
+  /// down; submitted the moment the conversation can take it.
+  String? _pendingUtterance;
 
   /// How many completed turns have already been considered for speaking.
   ///
@@ -41,7 +56,7 @@ final class VoiceConversationController extends ChangeNotifier {
   int _spokenThrough = 0;
 
   /// Whether the conversation is currently being run by voice.
-  bool get enabled => _enabled;
+  bool get enabled => _enabled || _enabling;
 
   /// Whether the agent is being spoken aloud right now.
   bool get speaking => _speaking;
@@ -49,24 +64,49 @@ final class VoiceConversationController extends ChangeNotifier {
   /// What is being heard, before the transcriber settles it.
   String get partialTranscript => _partialTranscript;
 
+  /// Why the pipeline went quiet, or null while it is healthy.
+  String? get failure => _failure;
+
   /// Opens the ears and starts running the conversation by voice.
   Future<void> enable() async {
-    if (_enabled) {
+    if (_enabled || _enabling) {
       return;
     }
-    _enabled = true;
+    _enabling = true;
+    _failure = null;
+    notifyListeners();
+    // Not enabled before the stored history has landed: the restore fires
+    // the turns listener, and with the speak-from-here mark still at zero
+    // it would recite yesterday aloud, turn by turn.
+    await _conversation.restored;
+    if (!_enabling) {
+      // Disabled while the history was still loading.
+      return;
+    }
     _spokenThrough = _conversation.completedTurnsListenable.value.length;
+    _enabling = false;
+    _enabled = true;
     notifyListeners();
     await _voice.startListening();
   }
 
   /// Releases the ears and the voice.
   Future<void> disable() async {
+    if (_enabling) {
+      // Never finished enabling: nothing has been started that needs
+      // stopping.
+      _enabling = false;
+      notifyListeners();
+      return;
+    }
     if (!_enabled) {
       return;
     }
     _enabled = false;
     _partialTranscript = '';
+    _pendingUtterance = null;
+    _speaking = false;
+    _speechRequested = false;
     notifyListeners();
     await _voice.stopSpeaking();
     await _voice.stopListening();
@@ -86,24 +126,50 @@ final class VoiceConversationController extends ChangeNotifier {
       case FinalTranscript(:final String text):
         _partialTranscript = '';
         notifyListeners();
-        if (text.trim().isNotEmpty) {
+        if (text.trim().isEmpty) {
+          return;
+        }
+        if (_conversation.canSubmit) {
           unawaited(_conversation.submit(text));
+        } else {
+          // The previous answer is still winding down from the
+          // interruption; the replacement question must not be dropped on
+          // the floor.
+          _pendingUtterance = text;
         }
       case SpeakingStarted():
         _speaking = true;
         notifyListeners();
       case SpeakingFinished():
         _speaking = false;
+        _speechRequested = false;
         notifyListeners();
-      case ListeningStarted() || ListeningStopped() || VoiceFailed():
+      case VoiceFailed(:final String message):
+        // A dead pipeline must not leave the button lit as listening.
+        _enabled = false;
+        _partialTranscript = '';
+        _speaking = false;
+        _speechRequested = false;
+        _failure = message;
+        notifyListeners();
+      case ListeningStarted() || ListeningStopped():
         notifyListeners();
     }
+  }
+
+  void _onCanSubmitChanged() {
+    final String? pending = _pendingUtterance;
+    if (pending == null || !_enabled || !_conversation.canSubmit) {
+      return;
+    }
+    _pendingUtterance = null;
+    unawaited(_conversation.submit(pending));
   }
 
   /// The user started talking: whatever the agent was saying or still
   /// generating gives way.
   void _yieldToTheUser() {
-    if (_speaking) {
+    if (_speaking || _speechRequested) {
       unawaited(_voice.stopSpeaking());
     }
     if (!_conversation.canSubmit) {
@@ -122,6 +188,7 @@ final class VoiceConversationController extends ChangeNotifier {
       if (turn.role == TurnRole.assistant &&
           turn.status == TurnStatus.completed &&
           turn.text.trim().isNotEmpty) {
+        _speechRequested = true;
         unawaited(_voice.speak(turn.text));
       }
     }
@@ -129,9 +196,16 @@ final class VoiceConversationController extends ChangeNotifier {
 
   @override
   void dispose() {
+    // The view that owns this controller is torn down on every conversation
+    // switch; the microphone must not outlive it.
+    if (_enabled) {
+      unawaited(_voice.stopSpeaking());
+      unawaited(_voice.stopListening());
+    }
     unawaited(_events?.cancel());
     _events = null;
     _conversation.completedTurnsListenable.removeListener(_onTurnsChanged);
+    _conversation.canSubmitListenable.removeListener(_onCanSubmitChanged);
     super.dispose();
   }
 }

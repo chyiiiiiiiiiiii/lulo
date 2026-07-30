@@ -39,10 +39,22 @@ Future<void> main() async {
         // runner's connection window, and write the adoption into the user's
         // own settings.
         catalog: hostingTests ? const <ModelCatalogEntry>[] : modelCatalog,
-        // No ears in the test host: opening the microphone from a test run
-        // would hang the runner on a permission dialog.
-        voiceService: hostingTests ? null : PigeonVoiceService(),
+        // No ears in the test host — opening the microphone from a test run
+        // would hang the runner on a permission dialog — and none below
+        // macOS 26, where the native side has no transcriber to register: a
+        // button would throw on every tap.
+        voiceService: hostingTests || !_speechAnalyzerAvailable()
+            ? null
+            : PigeonVoiceService(),
       ),
     ),
   );
+}
+
+/// Whether this macOS carries SpeechAnalyzer (macOS 26 and newer).
+bool _speechAnalyzerAvailable() {
+  final RegExp major = RegExp(r'Version (\d+)');
+  final Match? version = major.firstMatch(Platform.operatingSystemVersion);
+  final int? parsed = version == null ? null : int.tryParse(version[1]!);
+  return parsed != null && parsed >= 26;
 }

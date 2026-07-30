@@ -3,6 +3,10 @@ import 'dart:async';
 import 'package:local_agent_macos/features/voice/voice_service.dart';
 
 /// A voice pipeline the tests hold in their hand.
+///
+/// Events are delivered asynchronously, the way the real pigeon channel
+/// delivers them: a fake that answers synchronously hides every race the
+/// round trip creates.
 final class FakeVoiceService implements VoiceService {
   final StreamController<VoiceEvent> _events =
       StreamController<VoiceEvent>.broadcast();
@@ -13,36 +17,52 @@ final class FakeVoiceService implements VoiceService {
   /// Everything asked to be spoken, in order.
   final List<String> spoken = <String>[];
 
+  /// When set, [speak] does not announce [SpeakingStarted] by itself; the
+  /// test does, via [announceSpeaking] — the window where the user can talk
+  /// over an answer whose start has not come back yet.
+  bool holdSpeakingStarted = false;
+
   @override
   Stream<VoiceEvent> get events => _events.stream;
 
   @override
   Future<void> startListening() async {
     calls.add('startListening');
-    _events.add(const ListeningStarted());
+    hear(const ListeningStarted());
   }
 
   @override
   Future<void> stopListening() async {
     calls.add('stopListening');
-    _events.add(const ListeningStopped());
+    hear(const ListeningStopped());
   }
 
   @override
   Future<void> speak(String text) async {
     calls.add('speak');
     spoken.add(text);
-    _events.add(const SpeakingStarted());
+    if (!holdSpeakingStarted) {
+      hear(const SpeakingStarted());
+    }
   }
+
+  /// Delivers the held [SpeakingStarted], as the delegate callback would.
+  void announceSpeaking() => hear(const SpeakingStarted());
 
   @override
   Future<void> stopSpeaking() async {
     calls.add('stopSpeaking');
-    _events.add(const SpeakingFinished());
+    hear(const SpeakingFinished());
   }
 
-  /// Stands in for the transcriber hearing the user.
-  void hear(VoiceEvent event) => _events.add(event);
+  /// Stands in for the pipeline reporting [event], one round trip later.
+  void hear(VoiceEvent event) {
+    scheduleMicrotask(() {
+      if (!_events.isClosed) {
+        _events.add(event);
+      }
+    });
+  }
 
   /// Releases the event stream.
   Future<void> dispose() => _events.close();

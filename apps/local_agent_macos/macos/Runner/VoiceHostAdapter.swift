@@ -10,14 +10,36 @@ import Speech
 /// Everything is reported back over the pigeon event channel; failures are
 /// events too, because the conversation loop must survive a microphone that
 /// went away.
+///
+/// Half-duplex by design: while the synthesizer speaks, the microphone feed
+/// into the analyzer is muted, so the agent can never hear itself through
+/// the speakers and answer its own answer. Barge-in by voice during speech
+/// returns once echo cancellation has been tuned on real hardware.
 @available(macOS 26.0, *)
+@MainActor
 final class VoiceHostAdapter: NSObject, VoiceHostApi {
   private let events: VoiceHostEvents
   private let synthesizer = AVSpeechSynthesizer()
 
-  private var audioEngine: AVAudioEngine?
-  private var listeningTask: Task<Void, Never>?
-  private var inputBuilder: AsyncStream<AnalyzerInput>.Continuation?
+  /// Everything one listening run owns, torn down as one.
+  private struct ListeningSession {
+    let engine: AVAudioEngine
+    let builder: AsyncStream<AnalyzerInput>.Continuation
+    let analyzer: SpeechAnalyzer
+    let resultsTask: Task<Void, Never>
+    let configObserver: NSObjectProtocol
+  }
+
+  private var session: ListeningSession?
+
+  /// Bumped on every start and stop; an in-flight start that no longer
+  /// matches gives up quietly. The asset download inside `begin` can take
+  /// minutes on first run, and every await inside it is a window.
+  private var sessionCounter = 0
+  private var starting = false
+
+  /// Read on the real-time audio thread, written here.
+  private let mute = MuteBox()
 
   init(events: VoiceHostEvents) {
     self.events = events
@@ -28,16 +50,24 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
   // MARK: - VoiceHostApi
 
   func startListening(completion: @escaping (Result<Void, Error>) -> Void) {
-    guard listeningTask == nil else {
+    guard session == nil, !starting else {
       completion(.success(()))
       return
     }
+    starting = true
+    sessionCounter += 1
+    let id = sessionCounter
     Task { @MainActor in
       do {
-        try await self.beginListening()
+        try await self.begin(id: id)
+        self.starting = false
+        completion(.success(()))
+      } catch is CancellationError {
+        // Stopped while still starting: nothing runs, nothing to report.
+        self.starting = false
         completion(.success(()))
       } catch {
-        self.stopAudio()
+        self.starting = false
         completion(.failure(PigeonError(
           code: "listening-failed",
           message: String(describing: error),
@@ -48,31 +78,36 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
   }
 
   func stopListening(completion: @escaping (Result<Void, Error>) -> Void) {
-    stopAudio()
-    listeningTask?.cancel()
-    listeningTask = nil
+    // Invalidates any start still on its way through permission dialogs or
+    // the asset download, as well as the running session.
+    sessionCounter += 1
+    endSession()
     emit(.listeningStopped)
     completion(.success(()))
   }
 
   func speak(text: String, completion: @escaping (Result<Void, Error>) -> Void) {
-    let utterance = AVSpeechUtterance(string: text)
-    synthesizer.speak(utterance)
+    // Muted before the first sample leaves the speaker, not when the
+    // delegate reports it: the gap is exactly long enough for the agent to
+    // hear its own opening words.
+    mute.muted = true
+    synthesizer.speak(AVSpeechUtterance(string: text))
     completion(.success(()))
   }
 
   func stopSpeaking(completion: @escaping (Result<Void, Error>) -> Void) {
     synthesizer.stopSpeaking(at: .immediate)
+    mute.muted = false
     completion(.success(()))
   }
 
   // MARK: - Listening pipeline
 
-  @MainActor
-  private func beginListening() async throws {
+  private func begin(id: Int) async throws {
     guard await Self.microphonePermitted() else {
       throw VoiceHostError.microphoneDenied
     }
+    try guardCurrent(id)
     guard
       let locale = await SpeechTranscriber.supportedLocale(
         equivalentTo: Locale.current
@@ -80,18 +115,21 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
     else {
       throw VoiceHostError.localeUnsupported
     }
+    try guardCurrent(id)
     let transcriber = SpeechTranscriber(
       locale: locale,
       transcriptionOptions: [],
       reportingOptions: [.volatileResults],
       attributeOptions: []
     )
-    // The transcription model is a system asset; the first run downloads it.
+    // The transcription model is a system asset; the first run downloads
+    // it, which can take minutes.
     if let installation = try await AssetInventory.assetInstallationRequest(
       supporting: [transcriber]
     ) {
       try await installation.downloadAndInstall()
     }
+    try guardCurrent(id)
     let analyzer = SpeechAnalyzer(modules: [transcriber])
     guard
       let analyzerFormat = await SpeechAnalyzer.bestAvailableAudioFormat(
@@ -100,13 +138,14 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
     else {
       throw VoiceHostError.audioFormatUnavailable
     }
-
-    let (inputSequence, builder) = AsyncStream<AnalyzerInput>.makeStream()
-    inputBuilder = builder
+    try guardCurrent(id)
 
     let engine = AVAudioEngine()
-    audioEngine = engine
     let input = engine.inputNode
+    // Echo cancellation, so what little leaks past the half-duplex mute —
+    // and one day full-duplex barge-in — does not feed the transcriber the
+    // speaker's own output. Best effort: some devices refuse.
+    try? input.setVoiceProcessingEnabled(true)
     let microphoneFormat = input.outputFormat(forBus: 0)
     guard
       let converter = AVAudioConverter(
@@ -116,43 +155,103 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
     else {
       throw VoiceHostError.audioFormatUnavailable
     }
+
+    let (inputSequence, builder) = AsyncStream<AnalyzerInput>.makeStream()
+    // The tap runs on the real-time audio thread. It captures only values
+    // it owns — the continuation, the converter, and the mute box — never
+    // the adapter, whose state belongs to the main actor.
+    let muteBox = mute
     input.installTap(onBus: 0, bufferSize: 4096, format: microphoneFormat) {
-      [weak self] buffer, _ in
-      guard let self, let converted = Self.convert(buffer, with: converter, to: analyzerFormat)
+      buffer, _ in
+      if muteBox.muted {
+        return
+      }
+      guard
+        let converted = VoiceHostAdapter.convert(
+          buffer,
+          with: converter,
+          to: analyzerFormat
+        ),
+        converted.frameLength > 0
       else {
         return
       }
-      self.inputBuilder?.yield(AnalyzerInput(buffer: converted))
+      builder.yield(AnalyzerInput(buffer: converted))
     }
     engine.prepare()
     try engine.start()
 
-    listeningTask = Task { [weak self] in
+    let resultsTask = Task { [weak self] in
       do {
         try await analyzer.start(inputSequence: inputSequence)
         for try await result in transcriber.results {
           let text = String(result.text.characters)
           guard !text.isEmpty else { continue }
-          self?.emit(result.isFinal ? .finalTranscript : .partialTranscript, text: text)
+          await MainActor.run {
+            self?.emit(
+              result.isFinal ? .finalTranscript : .partialTranscript,
+              text: text
+            )
+          }
         }
       } catch is CancellationError {
         // Stopped on purpose; nothing to report.
       } catch {
-        self?.emit(.voiceFailed, text: String(describing: error))
-        await MainActor.run { self?.stopAudio() }
+        await MainActor.run {
+          self?.pipelineFailed(String(describing: error))
+        }
       }
     }
+    // The device can change out from under a running engine — AirPods
+    // arriving, a USB microphone leaving — and the tap simply goes silent.
+    // Reported as a failure so the other side never shows a live button
+    // over a dead pipeline.
+    let configObserver = NotificationCenter.default.addObserver(
+      forName: .AVAudioEngineConfigurationChange,
+      object: engine,
+      queue: .main
+    ) { [weak self] _ in
+      Task { @MainActor in
+        self?.pipelineFailed("the audio device changed")
+      }
+    }
+
+    session = ListeningSession(
+      engine: engine,
+      builder: builder,
+      analyzer: analyzer,
+      resultsTask: resultsTask,
+      configObserver: configObserver
+    )
     emit(.listeningStarted)
   }
 
-  private func stopAudio() {
-    inputBuilder?.finish()
-    inputBuilder = nil
-    if let engine = audioEngine {
-      engine.inputNode.removeTap(onBus: 0)
-      engine.stop()
+  private func guardCurrent(_ id: Int) throws {
+    if id != sessionCounter {
+      throw CancellationError()
     }
-    audioEngine = nil
+  }
+
+  private func endSession() {
+    guard let session else { return }
+    NotificationCenter.default.removeObserver(session.configObserver)
+    session.builder.finish()
+    session.engine.inputNode.removeTap(onBus: 0)
+    session.engine.stop()
+    session.resultsTask.cancel()
+    let analyzer = session.analyzer
+    // Finalization drains what the transcriber still holds and releases
+    // its resources deterministically rather than whenever ARC gets there.
+    Task {
+      try? await analyzer.finalizeAndFinishThroughEndOfInput()
+    }
+    self.session = nil
+  }
+
+  private func pipelineFailed(_ message: String) {
+    sessionCounter += 1
+    endSession()
+    emit(.voiceFailed, text: message)
   }
 
   private static func microphonePermitted() async -> Bool {
@@ -166,7 +265,7 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
     }
   }
 
-  private static func convert(
+  private static nonisolated func convert(
     _ buffer: AVAudioPCMBuffer,
     with converter: AVAudioConverter,
     to format: AVAudioFormat
@@ -196,12 +295,10 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
   }
 
   private func emit(_ type: HostVoiceEventType, text: String? = nil) {
-    DispatchQueue.main.async { [events] in
-      events.onVoiceEvent(
-        event: HostVoiceEvent(type: type, text: text),
-        completion: { _ in }
-      )
-    }
+    events.onVoiceEvent(
+      event: HostVoiceEvent(type: type, text: text),
+      completion: { _ in }
+    )
   }
 }
 
@@ -209,25 +306,50 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
 
 @available(macOS 26.0, *)
 extension VoiceHostAdapter: AVSpeechSynthesizerDelegate {
-  func speechSynthesizer(
+  nonisolated func speechSynthesizer(
     _ synthesizer: AVSpeechSynthesizer,
     didStart utterance: AVSpeechUtterance
   ) {
-    emit(.speakingStarted)
+    Task { @MainActor in self.emit(.speakingStarted) }
   }
 
-  func speechSynthesizer(
+  nonisolated func speechSynthesizer(
     _ synthesizer: AVSpeechSynthesizer,
     didFinish utterance: AVSpeechUtterance
   ) {
-    emit(.speakingFinished)
+    Task { @MainActor in
+      self.mute.muted = false
+      self.emit(.speakingFinished)
+    }
   }
 
-  func speechSynthesizer(
+  nonisolated func speechSynthesizer(
     _ synthesizer: AVSpeechSynthesizer,
     didCancel utterance: AVSpeechUtterance
   ) {
-    emit(.speakingFinished)
+    Task { @MainActor in
+      self.mute.muted = false
+      self.emit(.speakingFinished)
+    }
+  }
+}
+
+/// A boolean the audio thread may read while the main actor writes.
+final class MuteBox: @unchecked Sendable {
+  private let lock = NSLock()
+  private var value = false
+
+  var muted: Bool {
+    get {
+      lock.lock()
+      defer { lock.unlock() }
+      return value
+    }
+    set {
+      lock.lock()
+      defer { lock.unlock() }
+      value = newValue
+    }
   }
 }
 
