@@ -46,9 +46,9 @@ final class TokenBatcher {
     required void Function(String combined) onBatch,
     BatchScheduler scheduler = const TimerBatchScheduler(),
     Duration interval = const Duration(microseconds: 8333),
-  }) : _onBatch = onBatch,
-       _scheduler = scheduler,
-       _interval = interval;
+  }) : this._(onBatch, scheduler, interval);
+
+  TokenBatcher._(this._onBatch, this._scheduler, this._interval);
 
   final void Function(String combined) _onBatch;
   final BatchScheduler _scheduler;
