@@ -66,12 +66,11 @@ final class ConversationDatabase extends _$ConversationDatabase {
 /// The durable [ConversationStorageService], on SQLite through drift.
 final class DriftConversationStorageService
     implements ConversationStorageService {
-  /// Creates the service over an already-open [database].
+  /// Creates the service over an already-open database.
   DriftConversationStorageService({
-    required ConversationDatabase database,
+    required this._database,
     DateTime Function()? clock,
-  }) : _database = database,
-       _clock = clock ?? DateTime.now;
+  }) : _clock = clock ?? DateTime.now;
 
   final ConversationDatabase _database;
   final DateTime Function() _clock;
