@@ -8,6 +8,7 @@ final class ModelCatalogEntry {
     required this.fileName,
     required this.url,
     required this.sizeBytes,
+    this.sha256,
     this.recommended = false,
   });
 
@@ -32,6 +33,11 @@ final class ModelCatalogEntry {
   /// from a truncated one.
   final int sizeBytes;
 
+  /// The SHA-256 of the whole file, lower-case hex, from the official model
+  /// card. Null skips verification — permitted for test fixtures only; the
+  /// catalog test refuses a real entry without one.
+  final String? sha256;
+
   /// Whether this is the model the app reaches for by default.
   final bool recommended;
 }
@@ -53,6 +59,7 @@ const List<ModelCatalogEntry> modelCatalog = <ModelCatalogEntry>[
         'https://huggingface.co/litert-community/gemma-4-E4B-it-litert-lm/'
         'resolve/main/gemma-4-E4B-it.litertlm',
     sizeBytes: 3659530240,
+    sha256: '0b2a8980ce155fd97673d8e820b4d29d9c7d99b8fa6806f425d969b145bd52e0',
     recommended: true,
   ),
   ModelCatalogEntry(
@@ -66,5 +73,6 @@ const List<ModelCatalogEntry> modelCatalog = <ModelCatalogEntry>[
         'https://huggingface.co/litert-community/gemma-4-E2B-it-litert-lm/'
         'resolve/main/gemma-4-E2B-it.litertlm',
     sizeBytes: 2588147712,
+    sha256: '181938105e0eefd105961417e8da75903eacda102c4fce9ce90f50b97139a63c',
   ),
 ];

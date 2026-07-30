@@ -1,5 +1,9 @@
 import 'dart:async';
+import 'dart:convert' show ByteConversionSink;
 import 'dart:io';
+
+import 'package:convert/convert.dart';
+import 'package:crypto/crypto.dart';
 
 import 'model_catalog.dart';
 
@@ -19,6 +23,12 @@ final class ModelBytes {
 ///
 /// The seam the tests stand behind; the default implementation speaks HTTPS.
 typedef ModelByteFetcher = Future<ModelBytes> Function(Uri url);
+
+/// Fetches the bytes behind [url] from byte [start] onward.
+///
+/// For picking a dropped download back up; the returned stream carries only
+/// the remaining bytes.
+typedef ModelRangeFetcher = Future<ModelBytes> Function(Uri url, int start);
 
 /// How far along a download is.
 final class ModelDownloadProgress {
@@ -41,15 +51,24 @@ final class ModelDownloadProgress {
 /// Puts catalog models on disk and answers what is already there.
 final class ModelFileService {
   /// Creates the service over [modelsDirectory], fetching with [fetch].
+  ///
+  /// [fetchFrom] resumes a dropped download from its working file; leaving it
+  /// out starts every download from the beginning.
   ModelFileService({
     required Directory modelsDirectory,
     ModelByteFetcher? fetch,
-  }) : this._(modelsDirectory, fetch ?? _fetchOverHttps);
+    ModelRangeFetcher? fetchFrom,
+  }) : this._(
+         modelsDirectory,
+         fetch ?? _fetchOverHttps,
+         fetchFrom ?? (fetch == null ? _fetchOverHttpsFrom : null),
+       );
 
-  ModelFileService._(this._modelsDirectory, this._fetch);
+  ModelFileService._(this._modelsDirectory, this._fetch, this._fetchFrom);
 
   final Directory _modelsDirectory;
   final ModelByteFetcher _fetch;
+  final ModelRangeFetcher? _fetchFrom;
 
   /// Where [entry] lives once installed.
   File fileFor(ModelCatalogEntry entry) =>
@@ -74,23 +93,49 @@ final class ModelFileService {
   Stream<ModelDownloadProgress> download(ModelCatalogEntry entry) async* {
     _modelsDirectory.createSync(recursive: true);
     final File working = File('${fileFor(entry).path}.part');
-    final IOSink sink = working.openWrite();
-    int received = 0;
+    // What a dropped attempt already brought home is picked back up rather
+    // than fetched again — gigabytes on a flaky network are worth keeping.
+    // Anything longer than the whole model is a corrupt past, not progress.
+    int already = working.existsSync() ? working.lengthSync() : 0;
+    final ModelRangeFetcher? fetchFrom = _fetchFrom;
+    if (already > entry.sizeBytes || fetchFrom == null || already == 0) {
+      already = 0;
+    }
+    final IOSink sink = working.openWrite(
+      mode: already > 0 ? FileMode.append : FileMode.write,
+    );
+    int received = already;
+    // Hashed as it streams, so verification costs no second pass over
+    // gigabytes once the last byte lands. A resumed attempt hashes the kept
+    // bytes first, so the pin still covers the whole file.
+    final AccumulatorSink<Digest> digestSink = AccumulatorSink<Digest>();
+    final ByteConversionSink hashing = sha256.startChunkedConversion(
+      digestSink,
+    );
     try {
-      final ModelBytes bytes = await _fetch(Uri.parse(entry.url));
+      if (already > 0) {
+        await for (final List<int> kept in working.openRead(0, already)) {
+          hashing.add(kept);
+        }
+      }
+      final ModelBytes bytes = (already > 0 && fetchFrom != null)
+          ? await fetchFrom(Uri.parse(entry.url), already)
+          : await _fetch(Uri.parse(entry.url));
+      final int expectedTotal = already + bytes.totalBytes;
       await for (final List<int> chunk in bytes.stream) {
         sink.add(chunk);
+        hashing.add(chunk);
         received += chunk.length;
         yield ModelDownloadProgress(
           receivedBytes: received,
-          totalBytes: bytes.totalBytes,
+          totalBytes: expectedTotal,
         );
       }
       await sink.flush();
       await sink.close();
-      if (received != bytes.totalBytes) {
+      if (received != expectedTotal) {
         throw StateError(
-          'The download ended after $received of ${bytes.totalBytes} bytes.',
+          'The download ended after $received of $expectedTotal bytes.',
         );
       }
       if (received != entry.sizeBytes) {
@@ -103,8 +148,16 @@ final class ModelFileService {
           '${entry.sizeBytes}.',
         );
       }
+      hashing.close();
+      final String arrived = digestSink.events.single.toString();
+      final String? pinned = entry.sha256;
+      if (pinned != null && arrived != pinned) {
+        throw StateError(
+          'The download hashes to $arrived where the catalog pins $pinned.',
+        );
+      }
       working.renameSync(fileFor(entry).path);
-    } on Object {
+    } on Object catch (error) {
       // The close of a failed write can itself throw the buffered error;
       // swallowed here so the cleanup still runs and the first error is the
       // one the caller sees.
@@ -113,24 +166,38 @@ final class ModelFileService {
       } on Object {
         // Already failing; the original error is the story.
       }
-      if (working.existsSync()) {
+      // A connection that fell over leaves its progress for next time; a
+      // file the catalog disowns is deleted, or every retry would refuse
+      // the same corrupt bytes forever.
+      if (error is StateError && working.existsSync()) {
         working.deleteSync();
       }
       rethrow;
     }
   }
 
+  /// The default resume fetcher: HTTPS with a Range header.
+  static Future<ModelBytes> _fetchOverHttpsFrom(Uri url, int start) =>
+      _fetchHttps(url, start: start);
+
   /// The default fetcher: HTTPS with the sender's own length declaration.
-  static Future<ModelBytes> _fetchOverHttps(Uri url) async {
+  static Future<ModelBytes> _fetchOverHttps(Uri url) => _fetchHttps(url);
+
+  static Future<ModelBytes> _fetchHttps(Uri url, {int start = 0}) async {
     final HttpClient client = HttpClient();
     final HttpClientRequest request = await client.getUrl(url);
     request.followRedirects = true;
     request.maxRedirects = 10;
+    if (start > 0) {
+      request.headers.set(HttpHeaders.rangeHeader, 'bytes=$start-');
+    }
     final HttpClientResponse response = await request.close();
-    if (response.statusCode != HttpStatus.ok) {
+    final int wanted = start > 0 ? HttpStatus.partialContent : HttpStatus.ok;
+    if (response.statusCode != wanted) {
       client.close(force: true);
       throw HttpException(
-        'The model host answered ${response.statusCode}.',
+        'The model host answered ${response.statusCode} where $wanted was '
+        'asked for.',
         uri: url,
       );
     }

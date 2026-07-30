@@ -78,6 +78,35 @@ void main() {
     expect(manager.stateOf(entry), ModelInstallState.notInstalled);
   });
 
+  test('a failed download says why, until it is asked for again', () async {
+    // The row would otherwise quietly show Download again, and the user
+    // would have no idea their press did anything at all.
+    int fetches = 0;
+    final ModelDownloadManager manager = ModelDownloadManager(
+      files: ModelFileService(
+        modelsDirectory: modelsDirectory,
+        fetch: (Uri url) async {
+          fetches += 1;
+          if (fetches == 1) {
+            throw const SocketException('no network today');
+          }
+          return ModelBytes(
+            totalBytes: 4,
+            stream: Stream<List<int>>.value(<int>[1, 2, 3, 4]),
+          );
+        },
+      ),
+    );
+    addTearDown(manager.dispose);
+
+    await expectLater(manager.download(entry), throwsA(isA<SocketException>()));
+    expect(manager.failureOf(entry), isNotNull);
+
+    await manager.download(entry);
+    expect(manager.failureOf(entry), isNull);
+    expect(manager.stateOf(entry), ModelInstallState.installed);
+  });
+
   test('progress is told in steps, not per network chunk', () async {
     // A 3.6 GB download arrives in ~55k chunks. Notifying for each one
     // rebuilds the settings sheet hundreds of times a second on the UI

@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:crypto/crypto.dart';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:local_agent_macos/features/model/model_catalog.dart';
 import 'package:local_agent_macos/features/model/model_file_service.dart';
@@ -40,6 +42,18 @@ void main() {
     );
   });
 
+  test('every catalog entry pins its checksum', () {
+    // Fixtures may skip the pin; the models the app really offers may not.
+    for (final ModelCatalogEntry entry in modelCatalog) {
+      expect(
+        entry.sha256,
+        isNotNull,
+        reason: '${entry.id} offers a download it cannot verify.',
+      );
+      expect(entry.sha256, hasLength(64));
+    }
+  });
+
   test(
     'a download arrives whole, with its progress told along the way',
     () async {
@@ -76,7 +90,8 @@ void main() {
     },
   );
 
-  test('a download that dies mid-stream leaves nothing behind', () async {
+  test('a death mid-stream leaves the working file for next time', () async {
+    // 3.4 GB on a flaky network: what has already arrived is worth keeping.
     Future<ModelBytes> fetch(Uri url) async => ModelBytes(
       totalBytes: 10,
       stream: () async* {
@@ -90,10 +105,55 @@ void main() {
       throwsA(isA<SocketException>()),
     );
 
+    final File working = File('${modelsDirectory.path}/${entry.fileName}.part');
+    expect(working.existsSync(), isTrue);
+    expect(working.lengthSync(), 4);
     expect(
-      modelsDirectory.listSync(),
-      isEmpty,
-      reason: 'A failed download must not leave part-files or a broken model.',
+      File('${modelsDirectory.path}/${entry.fileName}').existsSync(),
+      isFalse,
+      reason: 'A broken download must never look like a model.',
+    );
+  });
+
+  test('a download picks up where the last one fell over', () async {
+    final List<int> whole = List<int>.generate(10, (int i) => i);
+    final ModelCatalogEntry pinned = ModelCatalogEntry(
+      id: 'test-model',
+      name: 'A test model',
+      description: 'Small enough to hold in one hand.',
+      fileName: 'test-model.litertlm',
+      url: 'https://example.invalid/test-model.litertlm',
+      sizeBytes: 10,
+      sha256: sha256.convert(whole).toString(),
+    );
+    File(
+      '${modelsDirectory.path}/${pinned.fileName}.part',
+    ).writeAsBytesSync(whole.sublist(0, 4));
+    final List<int> resumedFrom = <int>[];
+    final ModelFileService files = ModelFileService(
+      modelsDirectory: modelsDirectory,
+      fetch: (Uri url) async =>
+          throw StateError('a resume must not start over'),
+      fetchFrom: (Uri url, int start) async {
+        resumedFrom.add(start);
+        return ModelBytes(
+          totalBytes: 10 - start,
+          stream: Stream<List<int>>.value(whole.sublist(start)),
+        );
+      },
+    );
+
+    final List<ModelDownloadProgress> progress = await files
+        .download(pinned)
+        .toList();
+
+    expect(resumedFrom, <int>[4]);
+    expect(progress.last.receivedBytes, 10);
+    expect(progress.last.totalBytes, 10);
+    expect(files.isInstalled(pinned), isTrue);
+    expect(
+      File('${modelsDirectory.path}/${pinned.fileName}').readAsBytesSync(),
+      whole,
     );
   });
 
@@ -132,6 +192,38 @@ void main() {
               fileName: 'test-model.litertlm',
               url: 'https://example.invalid/test-model.litertlm',
               sizeBytes: 10,
+            ),
+          )
+          .toList(),
+      throwsA(isA<StateError>()),
+    );
+    expect(modelsDirectory.listSync(), isEmpty);
+  });
+
+  test('a download whose bytes are not the catalog'
+      's is refused', () async {
+    // Right length, wrong content: a tampered or corrupted file must not
+    // become a model, no matter how politely it arrived.
+    Future<ModelBytes> fetch(Uri url) async => ModelBytes(
+      totalBytes: 10,
+      stream: Stream<List<int>>.value(
+        List<int>.generate(10, (int i) => 99 - i),
+      ),
+    );
+
+    await expectLater(
+      service(fetch)
+          .download(
+            ModelCatalogEntry(
+              id: 'test-model',
+              name: 'A test model',
+              description: 'Small enough to hold in one hand.',
+              fileName: 'test-model.litertlm',
+              url: 'https://example.invalid/test-model.litertlm',
+              sizeBytes: 10,
+              sha256: sha256
+                  .convert(List<int>.generate(10, (int i) => i))
+                  .toString(),
             ),
           )
           .toList(),

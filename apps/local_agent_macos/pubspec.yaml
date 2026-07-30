@@ -13,6 +13,8 @@ dependencies:
   # drift generated queries on a background-isolate native database.
   # drift_dev is pinned below 2.34.5, whose analyzer conflicts with the
   # toolchain (recorded in the ADR).
+  convert: ^3.1.2
+  crypto: ^3.0.6
   drift: 2.34.2
   flutter:
     sdk: flutter

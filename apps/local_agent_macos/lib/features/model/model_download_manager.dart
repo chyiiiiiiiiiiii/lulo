@@ -34,6 +34,7 @@ final class ModelDownloadManager extends ChangeNotifier {
   final Map<String, ModelDownloadProgress> _progress =
       <String, ModelDownloadProgress>{};
   final Map<String, int> _toldPercent = <String, int>{};
+  final Map<String, String> _failures = <String, String>{};
   bool _disposed = false;
 
   /// Where [entry] stands right now.
@@ -54,6 +55,12 @@ final class ModelDownloadManager extends ChangeNotifier {
   File? installedFileOf(ModelCatalogEntry entry) =>
       _files.isInstalled(entry) ? _files.fileFor(entry) : null;
 
+  /// Why [entry]'s last download failed, or null when it did not.
+  ///
+  /// Cleared the moment it is asked for again: the failure belongs to the
+  /// attempt, not the model.
+  String? failureOf(ModelCatalogEntry entry) => _failures[entry.id];
+
   /// Downloads [entry], or joins the download already running for it.
   ///
   /// Completes with the installed file. A failure clears the download so it
@@ -63,6 +70,7 @@ final class ModelDownloadManager extends ChangeNotifier {
     if (running != null) {
       return running;
     }
+    _failures.remove(entry.id);
     final Future<File> arriving = _download(entry);
     _running[entry.id] = arriving;
     _notify();
@@ -85,6 +93,9 @@ final class ModelDownloadManager extends ChangeNotifier {
         }
       }
       return _files.fileFor(entry);
+    } on Object catch (error) {
+      _failures[entry.id] = error.toString();
+      rethrow;
     } finally {
       _running.remove(entry.id);
       _progress.remove(entry.id);
