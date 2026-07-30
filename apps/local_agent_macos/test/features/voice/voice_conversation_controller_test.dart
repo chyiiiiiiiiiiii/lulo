@@ -1,8 +1,11 @@
+import 'dart:async';
+
 import 'package:agent_core/agent_core.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:local_agent_macos/app/fake_runtime.dart';
 import 'package:local_agent_macos/features/conversation/conversation_repository.dart';
 import 'package:local_agent_macos/features/conversation/conversation_view_model.dart';
+import 'package:local_agent_macos/features/conversation/inference_service.dart';
 import 'package:local_agent_macos/features/voice/voice_conversation_controller.dart';
 import 'package:local_agent_macos/features/voice/voice_service.dart';
 
@@ -282,10 +285,133 @@ void main() {
     await earlyVoice.dispose();
   });
 
+  test('being disposed while still enabling never opens the ears', () async {
+    // Enable waits for the stored history; the view can be torn down while
+    // it waits. The resume must notice it is running on a corpse — in
+    // release builds notifyListeners on a disposed notifier is silent, and
+    // the microphone would open with nobody listening.
+    final FakeVoiceService ownVoice = FakeVoiceService();
+    final VoiceConversationController owned = VoiceConversationController(
+      voice: ownVoice,
+      conversation: vm,
+    );
+
+    final Future<void> enabling = owned.enable();
+    owned.dispose();
+    await enabling;
+    await pump();
+
+    expect(
+      ownVoice.calls,
+      isNot(contains('startListening')),
+      reason: 'A disposed controller opened the microphone.',
+    );
+    await ownVoice.dispose();
+  });
+
+  test('a failure also silences whatever was being spoken', () async {
+    voice.holdSpeakingStarted = true;
+    await controller.enable();
+    voice.hear(const FinalTranscript('Tell me a long story.'));
+    await pump();
+    await answerCompletely('Once upon a time, at great length.');
+    expect(voice.spoken, hasLength(1));
+
+    // The audio device changes while the answer is being read: the pipeline
+    // dies, and the reading must die with it — the user cannot stop it any
+    // other way once the button has gone dark.
+    voice.hear(const VoiceFailed('the audio device changed'));
+    await pump();
+
+    expect(voice.calls, contains('stopSpeaking'));
+    expect(controller.enabled, isFalse);
+  });
+
+  test('a failure forgets the utterance that was waiting its turn', () async {
+    // The cancel is held open so the replacement question genuinely queues,
+    // then the pipeline dies before the queue can drain.
+    final _HeldCancelVoiceInference held = _HeldCancelVoiceInference();
+    final ConversationViewModel heldVm = ConversationViewModel(
+      repository: ConversationRepository(
+        storageService: InMemoryConversationStorageService(),
+        inferenceService: held,
+      ),
+      idFactory: () => const ConversationId('freshly-minted'),
+      startFresh: true,
+      batchScheduler: MicrotaskBatchScheduler(),
+    );
+    addTearDown(heldVm.dispose);
+    final FakeVoiceService heldVoice = FakeVoiceService();
+    final VoiceConversationController heldController =
+        VoiceConversationController(voice: heldVoice, conversation: heldVm);
+    addTearDown(heldController.dispose);
+    await heldController.enable();
+
+    heldVoice.hear(const FinalTranscript('Tell me a long story.'));
+    await pump();
+    final GenerationRequest request = await held.requestReceived.future;
+    held.emit(
+      GenerationStarted(
+        Generation(id: const GenerationId('generation-1'), request: request),
+      ),
+    );
+    await pump();
+    heldVoice.hear(const PartialTranscript('actually'));
+    heldVoice.hear(const FinalTranscript('actually, forget it'));
+    for (int i = 0; i < 4; i++) {
+      await pump();
+    }
+
+    heldVoice.hear(const VoiceFailed('the microphone went away'));
+    await pump();
+    held.releaseCancel();
+    for (int i = 0; i < 8; i++) {
+      await pump();
+    }
+
+    expect(
+      held.requests.map((GenerationRequest r) => r.prompt),
+      isNot(contains('actually, forget it')),
+      reason:
+          'A dead pipeline fired a stale utterance once the cancel '
+          'wound down.',
+    );
+  });
+
   test('nothing heard while disabled goes anywhere', () async {
     voice.hear(const FinalTranscript('to someone else entirely'));
     await pump();
 
     expect(inference.requests, isEmpty);
   });
+}
+
+/// Records requests and holds native cancellation open until released.
+final class _HeldCancelVoiceInference implements InferenceService {
+  final StreamController<GenerationEvent> _events =
+      StreamController<GenerationEvent>.broadcast();
+  final List<GenerationRequest> requests = <GenerationRequest>[];
+  final Completer<GenerationRequest> requestReceived =
+      Completer<GenerationRequest>();
+  final Completer<void> _cancelGate = Completer<void>();
+
+  @override
+  Stream<GenerationEvent> generate(GenerationRequest request) {
+    requests.add(request);
+    if (!requestReceived.isCompleted) {
+      requestReceived.complete(request);
+    }
+    return _events.stream;
+  }
+
+  @override
+  Future<void> cancel(GenerationId generationId) => _cancelGate.future;
+
+  void emit(GenerationEvent event) => _events.add(event);
+
+  void releaseCancel() {
+    if (!_cancelGate.isCompleted) {
+      _cancelGate.complete();
+    }
+  }
 }

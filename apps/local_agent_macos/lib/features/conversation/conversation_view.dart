@@ -321,6 +321,21 @@ final class _HeardSoFar extends StatelessWidget {
     return AnimatedBuilder(
       animation: voice,
       builder: (BuildContext context, Widget? _) {
+        final String? failure = voice.failure;
+        if (failure != null) {
+          // The button going dark with no explanation reads as a broken
+          // button, not a broken microphone.
+          return Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 4),
+            child: Text(
+              'Voice stopped: $failure',
+              key: const Key('conversation-voice-failure'),
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                color: Theme.of(context).colorScheme.error,
+              ),
+            ),
+          );
+        }
         final String heard = voice.partialTranscript;
         if (!voice.enabled || heard.isEmpty) {
           return const SizedBox.shrink();

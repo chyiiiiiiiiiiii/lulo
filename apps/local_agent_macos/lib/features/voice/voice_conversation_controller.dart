@@ -35,6 +35,7 @@ final class VoiceConversationController extends ChangeNotifier {
 
   /// True while [enable] is waiting for the stored history to land.
   bool _enabling = false;
+  bool _disposed = false;
   bool _speaking = false;
 
   /// True from asking the synthesizer to speak until it reports finishing.
@@ -79,8 +80,10 @@ final class VoiceConversationController extends ChangeNotifier {
     // the turns listener, and with the speak-from-here mark still at zero
     // it would recite yesterday aloud, turn by turn.
     await _conversation.restored;
-    if (!_enabling) {
-      // Disabled while the history was still loading.
+    if (_disposed || !_enabling) {
+      // Disabled — or torn down entirely — while the history was still
+      // loading. In release builds notifyListeners on a disposed notifier
+      // is silent, and the microphone would open with nobody listening.
       return;
     }
     _spokenThrough = _conversation.completedTurnsListenable.value.length;
@@ -145,9 +148,15 @@ final class VoiceConversationController extends ChangeNotifier {
         _speechRequested = false;
         notifyListeners();
       case VoiceFailed(:final String message):
-        // A dead pipeline must not leave the button lit as listening.
+        // A dead pipeline must not leave the button lit as listening —
+        // nor keep reading the answer aloud when the button has already
+        // gone dark and disable can no longer reach it.
+        if (_speaking || _speechRequested) {
+          unawaited(_voice.stopSpeaking());
+        }
         _enabled = false;
         _partialTranscript = '';
+        _pendingUtterance = null;
         _speaking = false;
         _speechRequested = false;
         _failure = message;
@@ -196,9 +205,11 @@ final class VoiceConversationController extends ChangeNotifier {
 
   @override
   void dispose() {
+    _disposed = true;
     // The view that owns this controller is torn down on every conversation
     // switch; the microphone must not outlive it.
-    if (_enabled) {
+    if (_enabled || _enabling) {
+      _enabling = false;
       unawaited(_voice.stopSpeaking());
       unawaited(_voice.stopListening());
     }

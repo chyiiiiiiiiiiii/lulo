@@ -79,4 +79,32 @@ void main() {
 
     expect(find.text('what time is'), findsOneWidget);
   });
+
+  testWidgets('a dead pipeline says why over the composer', (
+    WidgetTester tester,
+  ) async {
+    final FakeVoiceService voice = FakeVoiceService();
+    addTearDown(voice.dispose);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ConversationView(
+          viewModelFactory: viewModel,
+          voiceService: voice,
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('conversation-voice-button')));
+    await tester.pump();
+
+    voice.hear(const VoiceFailed('the microphone went away'));
+    await tester.pump();
+
+    expect(
+      find.byKey(const Key('conversation-voice-failure')),
+      findsOneWidget,
+      reason: 'The button went dark with no explanation.',
+    );
+    expect(find.textContaining('the microphone went away'), findsOneWidget);
+  });
 }

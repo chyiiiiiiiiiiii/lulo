@@ -60,14 +60,21 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
     Task { @MainActor in
       do {
         try await self.begin(id: id)
-        self.starting = false
+        if id == self.sessionCounter {
+          self.starting = false
+        }
         completion(.success(()))
       } catch is CancellationError {
         // Stopped while still starting: nothing runs, nothing to report.
-        self.starting = false
+        // The flag belongs to whoever started most recently.
+        if id == self.sessionCounter {
+          self.starting = false
+        }
         completion(.success(()))
       } catch {
-        self.starting = false
+        if id == self.sessionCounter {
+          self.starting = false
+        }
         completion(.failure(PigeonError(
           code: "listening-failed",
           message: String(describing: error),
@@ -79,8 +86,11 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
 
   func stopListening(completion: @escaping (Result<Void, Error>) -> Void) {
     // Invalidates any start still on its way through permission dialogs or
-    // the asset download, as well as the running session.
+    // the asset download, as well as the running session. The starting flag
+    // falls with it, or a retry during the invalidated start's long await
+    // would report success while opening nothing.
     sessionCounter += 1
+    starting = false
     endSession()
     emit(.listeningStopped)
     completion(.success(()))
@@ -238,12 +248,15 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
     session.builder.finish()
     session.engine.inputNode.removeTap(onBus: 0)
     session.engine.stop()
-    session.resultsTask.cancel()
     let analyzer = session.analyzer
-    // Finalization drains what the transcriber still holds and releases
-    // its resources deterministically rather than whenever ARC gets there.
+    let resultsTask = session.resultsTask
+    // Finalization drains what the transcriber still holds — the trailing
+    // words of an utterance stopped mid-sentence — through the results
+    // sequence, so its consumer must still be alive to deliver them. The
+    // cancel afterwards is the fallback for an analyzer that never returns.
     Task {
       try? await analyzer.finalizeAndFinishThroughEndOfInput()
+      resultsTask.cancel()
     }
     self.session = nil
   }
