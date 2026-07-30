@@ -433,6 +433,19 @@ final class _PresentationSwitchState extends State<_PresentationSwitch>
       return;
     }
     final bool collapsing = target == DesktopPresentation.orb;
+    // The travelling presence is ornament. A user who asked the system for
+    // less motion gets the change of form itself, at once.
+    final bool reduceMotion =
+        mounted && (MediaQuery.maybeDisableAnimationsOf(context) ?? false);
+    if (reduceMotion) {
+      _leaving.value = collapsing ? 1 : 0;
+      await host.beginPresentationTransition(target);
+      if (!mounted) {
+        return;
+      }
+      await host.endPresentationTransition(target);
+      return;
+    }
     // Answered before anything is asked of the host, so the keystroke has a
     // visible effect while the window is still being prepared.
     if (collapsing) {

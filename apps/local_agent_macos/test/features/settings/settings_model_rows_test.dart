@@ -112,6 +112,29 @@ void main() {
     expect(find.byKey(const Key('model-progress-small-model')), findsNothing);
   });
 
+  testWidgets('a failed download owns up and offers a retry', (
+    WidgetTester tester,
+  ) async {
+    final ModelDownloadManager downloads = manager(
+      fetch: (Uri url) async => throw const SocketException('no network'),
+    );
+    addTearDown(downloads.dispose);
+    await tester.pumpWidget(sheet(modelDownloads: downloads));
+    await tester.pump();
+
+    await tester.runAsync(() async {
+      try {
+        await downloads.download(small);
+      } on Object {
+        // The failure itself is the scenario.
+      }
+    });
+    await tester.pump();
+
+    expect(find.byKey(const Key('model-failure-small-model')), findsOneWidget);
+    expect(find.text('Retry'), findsOneWidget);
+  });
+
   testWidgets('an installed model is one press from being thought with', (
     WidgetTester tester,
   ) async {

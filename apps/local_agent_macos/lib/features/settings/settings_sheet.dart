@@ -286,11 +286,18 @@ final class _ModelRow extends StatelessWidget {
     final bool active =
         state == ModelInstallState.installed &&
         activePath == downloads.installedFileOf(entry)?.path;
+    final String? failure = downloads.failureOf(entry);
     return ListTile(
       title: Text(
         entry.recommended ? '${entry.name} — recommended' : entry.name,
       ),
-      subtitle: Text('${entry.description} $_sizeLabel.'),
+      subtitle: failure == null
+          ? Text('${entry.description} $_sizeLabel.')
+          : Text(
+              'The download did not finish: $failure',
+              key: Key('model-failure-${entry.id}'),
+              style: TextStyle(color: Theme.of(context).colorScheme.error),
+            ),
       trailing: active
           ? Icon(
               Icons.check_rounded,
@@ -306,7 +313,7 @@ final class _ModelRow extends StatelessWidget {
           : FilledButton.tonal(
               key: Key('model-download-${entry.id}'),
               onPressed: onDownload,
-              child: const Text('Download'),
+              child: Text(failure == null ? 'Download' : 'Retry'),
             ),
     );
   }

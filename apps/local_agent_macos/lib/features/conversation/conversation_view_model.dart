@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 
 import 'conversation_repository.dart';
 import 'conversation_storage_service.dart';
+import 'token_batcher.dart';
 
 /// Creates a stable conversation identifier for a new conversation.
 typedef ConversationIdFactory = ConversationId Function();
@@ -24,14 +25,28 @@ final class ConversationViewModel extends ChangeNotifier {
     required ConversationIdFactory idFactory,
     ConversationId? conversationId,
     bool startFresh = false,
-  }) : this._(repository, idFactory, conversationId, startFresh);
+    BatchScheduler batchScheduler = const TimerBatchScheduler(),
+  }) : this._(
+         repository,
+         idFactory,
+         conversationId,
+         startFresh,
+         batchScheduler,
+       );
 
   ConversationViewModel._(
     this._repository,
     this._idFactory,
     ConversationId? conversationId,
     bool startFresh,
+    BatchScheduler batchScheduler,
   ) {
+    // Tokens arrive on the model's clock; the view repaints on the display's.
+    // The batcher aligns the two so one frame of deltas is one rebuild.
+    _tokenBatcher = TokenBatcher(
+      onBatch: _applyBatchedDelta,
+      scheduler: batchScheduler,
+    );
     _restored = startFresh ? Future<void>.value() : _restore(conversationId);
   }
 
@@ -47,6 +62,7 @@ final class ConversationViewModel extends ChangeNotifier {
   Future<void>? _stopOperation;
   bool _disposed = false;
   late final Future<void> _restored;
+  late final TokenBatcher _tokenBatcher;
   final ValueNotifier<List<Turn>> _completedTurns = ValueNotifier<List<Turn>>(
     const <Turn>[],
   );
@@ -165,15 +181,11 @@ final class ConversationViewModel extends ChangeNotifier {
         _activeTurn.value = _projection.activeTurn;
         notifyListeners();
       case GenerationDelta(:final GenerationId generationId, :final delta):
-        final Turn? activeTurn = _projection.activeTurn;
-        if (generationId != _activeGenerationId || activeTurn == null) {
+        if (generationId != _activeGenerationId ||
+            _projection.activeTurn == null) {
           return;
         }
-        _projection = ConversationProjection(
-          completedTurns: _projection.completedTurns,
-          activeTurn: activeTurn.append(delta),
-        );
-        _activeTurn.value = _projection.activeTurn;
+        _tokenBatcher.add(delta);
       case GenerationCompleted(:final GenerationId generationId):
         if (generationId != _activeGenerationId) {
           return;
@@ -192,6 +204,22 @@ final class ConversationViewModel extends ChangeNotifier {
     }
   }
 
+  /// Puts one frame's worth of tokens into the projection, as one update.
+  void _applyBatchedDelta(String combined) {
+    if (_disposed) {
+      return;
+    }
+    final Turn? activeTurn = _projection.activeTurn;
+    if (activeTurn == null) {
+      return;
+    }
+    _projection = ConversationProjection(
+      completedTurns: _projection.completedTurns,
+      activeTurn: activeTurn.append(combined),
+    );
+    _activeTurn.value = _projection.activeTurn;
+  }
+
   void _finishActiveTurn(
     TurnStatus status, {
     bool createWhenNotStarted = false,
@@ -199,6 +227,9 @@ final class ConversationViewModel extends ChangeNotifier {
     if (_disposed) {
       return;
     }
+    // Whatever the current frame still owes lands first, so the completed
+    // turn carries every token that was ever streamed.
+    _tokenBatcher.flush();
     final Turn? projectedTurn = _projection.activeTurn;
     if (projectedTurn == null && !createWhenNotStarted) {
       return;
@@ -265,6 +296,7 @@ final class ConversationViewModel extends ChangeNotifier {
   @override
   void dispose() {
     _disposed = true;
+    _tokenBatcher.dispose();
     unawaited(_operationSubscription?.cancel());
     _operationSubscription = null;
     _completedTurns.dispose();

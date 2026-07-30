@@ -6,6 +6,7 @@ import 'package:local_agent_macos/features/conversation/conversation_repository.
 import 'package:local_agent_macos/features/conversation/conversation_view_model.dart';
 
 import '../../support/controlled_inference_service.dart';
+import '../../support/microtask_batch_scheduler.dart';
 import '../../support/recording_conversation_storage_service.dart';
 
 void main() {
@@ -458,6 +459,7 @@ final class _Harness {
   ConversationViewModel createViewModel() => ConversationViewModel(
     repository: repository,
     idFactory: () => const ConversationId('conversation-1'),
+    batchScheduler: MicrotaskBatchScheduler(),
   );
 
   Future<void> dispose() => inference.dispose();
