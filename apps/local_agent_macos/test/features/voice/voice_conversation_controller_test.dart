@@ -32,7 +32,19 @@ void main() {
       startFresh: true,
       batchScheduler: MicrotaskBatchScheduler(),
     );
-    controller = VoiceConversationController(voice: voice, conversation: vm);
+    // The shared controller's clock steps 600ms per reading, so events
+    // that land in the same microtask still sit past the post-final
+    // cooldown, the way real interruptions do. The cooldown itself is
+    // tested with a pinned clock of its own.
+    DateTime testClock = DateTime(2026);
+    controller = VoiceConversationController(
+      voice: voice,
+      conversation: vm,
+      now: () {
+        testClock = testClock.add(const Duration(milliseconds: 600));
+        return testClock;
+      },
+    );
   });
 
   tearDown(() async {
@@ -117,6 +129,42 @@ void main() {
       voice.calls,
       contains('stopSpeaking'),
       reason: 'A friend stops talking when you start.',
+    );
+  });
+
+  test('a breath right after the final does not cancel the answer', () async {
+    // The fast endpointer submits 0.8s after the last sound, which puts
+    // live microphone time right where the user's trailing breath lands.
+    // A partial inside the post-final cooldown must not cancel the answer
+    // the user just asked for; one after it is a real interruption.
+    DateTime now = DateTime(2026, 7, 31, 1);
+    final VoiceConversationController timed = VoiceConversationController(
+      voice: voice,
+      conversation: vm,
+      now: () => now,
+    );
+    addTearDown(timed.dispose);
+    await timed.enable();
+    voice.hear(const FinalTranscript('介紹台北。'));
+    await pump();
+    final Generation generation = await generationStarted();
+
+    now = now.add(const Duration(milliseconds: 200));
+    voice.hear(const PartialTranscript('嗯'));
+    await pump();
+    expect(
+      inference.cancellations,
+      isEmpty,
+      reason: 'A breath inside the cooldown is not an interruption.',
+    );
+
+    now = now.add(const Duration(milliseconds: 400));
+    voice.hear(const PartialTranscript('等等'));
+    await pump();
+    expect(
+      inference.cancellations,
+      contains(generation.id),
+      reason: 'Past the cooldown, talking over the answer still cancels.',
     );
   });
 
@@ -509,6 +557,34 @@ void main() {
     await pump();
     expect(voice.spoken, <String>[
       'There were 1,234 people at the event yesterday.',
+    ]);
+  });
+
+  test('a decimal point is not a sentence end', () async {
+    // "Pi is about 3.14" must not be read as "Pi is about 3." with the
+    // "14" arriving in the next breath.
+    await controller.enable();
+    voice.hear(const FinalTranscript('What is pi?'));
+    await pump();
+    final Generation generation = await generationStarted();
+
+    inference.emit(
+      GenerationDelta(
+        generationId: generation.id,
+        delta: 'Pi is about 3.14159 rounded down',
+      ),
+    );
+    await pump();
+    expect(voice.spoken, isEmpty);
+
+    inference.emit(
+      GenerationDelta(generationId: generation.id, delta: ' a little.'),
+    );
+    inference.emit(GenerationCompleted(generation.id));
+    await pump();
+    await pump();
+    expect(voice.spoken, <String>[
+      'Pi is about 3.14159 rounded down a little.',
     ]);
   });
 

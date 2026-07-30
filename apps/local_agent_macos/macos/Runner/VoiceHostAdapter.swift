@@ -43,6 +43,13 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
   /// the user's sentence cut off at its first word.
   private var utteranceHeardAt: TimeInterval = .infinity
 
+  /// When the microphone last reopened after the agent spoke.
+  ///
+  /// Anything the VAD heard before this is the pre-answer past; the mute
+  /// was unmeasured dead time, and a silence spanning it is not a silence
+  /// anyone actually observed.
+  private var muteLiftedAt: TimeInterval = -.infinity
+
   /// The endpointer has already asked for this utterance; asked once.
   private var endpointFinalizeRequested = false
 
@@ -229,6 +236,13 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
           return
         }
         self.mute.muted = false
+        // Whatever utterance was pending went in before the answer; it
+        // was answered. The endpointer starts the new turn clean, and
+        // only trusts voice heard after this moment.
+        self.muteLiftedAt = ProcessInfo.processInfo.systemUptime
+        self.utteranceInProgress = false
+        self.utteranceHeardAt = .infinity
+        self.endpointFinalizeRequested = false
         self.speakingReported = false
         self.emit(.speakingFinished)
       }
@@ -395,21 +409,26 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
         try await analyzer.start(inputSequence: inputSequence)
         for try await result in transcriber.results {
           let text = String(result.text.characters)
-          guard !text.isEmpty else { continue }
           await MainActor.run {
             // Bookkeeping belongs to the current session only: a stale
             // session's trailing results still reach the other side, but
-            // must not steer the new session's endpointer.
+            // must not steer the new session's endpointer. It also runs
+            // for empty results: a finalize that produced nothing must
+            // still clear the endpointer's request flag, or the fast
+            // path stays latched off for the rest of the session.
             if let self, id == self.sessionCounter {
-              if !result.isFinal && !self.utteranceInProgress {
-                self.utteranceHeardAt = ProcessInfo.processInfo.systemUptime
-              }
-              self.utteranceInProgress = !result.isFinal
               if result.isFinal {
+                self.utteranceInProgress = false
                 self.endpointFinalizeRequested = false
                 NSLog("Lulo voice: final (%d chars)", text.count)
+              } else if !text.isEmpty {
+                if !self.utteranceInProgress {
+                  self.utteranceHeardAt = ProcessInfo.processInfo.systemUptime
+                }
+                self.utteranceInProgress = true
               }
             }
+            guard !text.isEmpty else { return }
             self?.emit(
               result.isFinal ? .finalTranscript : .partialTranscript,
               text: text
@@ -436,8 +455,17 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
         ticks += 1
         if ticks % 20 == 0 {
           // Calibration heartbeat: what the room sounds like, every ~3s.
+          // "(utterance pending)" persisting here is the endpointer
+          // declining to fire — the VAD never heard this utterance, and
+          // the Dart settle fallback is doing the work.
           let (floor, peak) = vad.snapshot()
-          NSLog("Lulo voice: vad floor %.4f peak %.4f", floor, peak)
+          let pending = self?.utteranceInProgress == true
+          NSLog(
+            "Lulo voice: vad floor %.4f peak %.4f%@",
+            floor,
+            peak,
+            pending ? " (utterance pending)" : ""
+          )
         }
       }
     }
@@ -486,8 +514,9 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
     }
     // Recognition trails the voice it heard, so the first volatile may
     // arrive after the room already went quiet — the margin covers that
-    // lag. Anything staler than the utterance is the pre-answer past.
-    guard vad.lastVoiceAt() >= utteranceHeardAt - 1.5 else {
+    // lag. Anything staler than the utterance, or heard before the
+    // microphone last reopened, is the pre-answer past.
+    guard vad.lastVoiceAt() >= max(utteranceHeardAt - 1.5, muteLiftedAt) else {
       return
     }
     endpointFinalizeRequested = true
@@ -532,7 +561,16 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
   }
 
   private func pipelineFailed(_ message: String) {
+    // The same speech-state reset as stopListening: a device change mid-
+    // answer must not leave the mute box latched shut for the session
+    // that comes after, nor speakingReported swallowing its first
+    // SpeakingStarted.
     sessionCounter += 1
+    speakEpoch += 1
+    unmuteGeneration += 1
+    outstandingUtterances = 0
+    speakingReported = false
+    mute.muted = false
     endSession()
     emit(.voiceFailed, text: message)
   }
@@ -658,14 +696,22 @@ extension VoiceHostAdapter: AVSpeechSynthesizerDelegate {
 /// When the room last sounded like somebody talking, over an adaptive
 /// noise floor.
 ///
-/// The audio tap reports every buffer's RMS; the floor follows the room —
-/// falling quickly into quiet, climbing slowly through steady hum — so a
-/// fan is absorbed while a voice above it still registers. Read and
-/// written across the audio thread and the main actor.
+/// The audio tap reports every buffer's RMS; the floor is the quietest
+/// second in the last ten (minimum statistics). Speech always has dips —
+/// breaths, inter-word gaps — that hold its floor low, however long the
+/// monologue; a fan never dips, so its own level becomes the floor within
+/// the window and it stops reading as a voice. Read and written across
+/// the audio thread and the main actor.
 final class VoiceActivityBox: @unchecked Sendable {
   private let lock = NSLock()
   private var lastVoice: TimeInterval = -.infinity
-  private var floor: Float = 0.002
+
+  /// Per-second minima, newest last; the floor is the smallest of these.
+  private var minima: [Float] = []
+  private var windowMin: Float = .greatestFiniteMagnitude
+  private var windowStart: TimeInterval = -.infinity
+
+  private static let windowSeconds = 10
 
   /// A voice must rise this far above the floor, and above an absolute
   /// quiet-room minimum, before it counts.
@@ -677,21 +723,27 @@ final class VoiceActivityBox: @unchecked Sendable {
   func observe(rms: Float, at now: TimeInterval) {
     lock.lock()
     defer { lock.unlock() }
-    if rms < floor {
-      floor = 0.9 * floor + 0.1 * rms
-    } else {
-      // Slowly: a long monologue must not raise the floor high enough to
-      // swallow its own voice. Speech is bursty — every inter-word dip
-      // pulls the floor back down fast — but steady hum climbs it all the
-      // way and is absorbed within a couple of minutes.
-      floor = 0.998 * floor + 0.002 * rms
+    if now - windowStart >= 1 {
+      if windowMin < .greatestFiniteMagnitude {
+        minima.append(windowMin)
+        if minima.count > Self.windowSeconds {
+          minima.removeFirst()
+        }
+      }
+      windowMin = .greatestFiniteMagnitude
+      windowStart = now
     }
-    if rms > max(Self.minimumVoice, floor * Self.floorRatio) {
+    windowMin = min(windowMin, rms)
+    if rms > max(Self.minimumVoice, currentFloor * Self.floorRatio) {
       lastVoice = now
     }
     if rms > peak {
       peak = rms
     }
+  }
+
+  private var currentFloor: Float {
+    min(minima.min() ?? windowMin, windowMin)
   }
 
   /// Seconds since a voice was last heard; infinite before the first one.
@@ -714,7 +766,8 @@ final class VoiceActivityBox: @unchecked Sendable {
     defer { lock.unlock() }
     let seen = peak
     peak = 0
-    return (floor, seen)
+    let floor = currentFloor
+    return (floor == .greatestFiniteMagnitude ? 0 : floor, seen)
   }
 
   private var peak: Float = 0

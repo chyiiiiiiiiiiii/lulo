@@ -35,9 +35,11 @@ final class VoiceActivityTests: XCTestCase {
   }
 
   func testALongMonologueIsNotSwallowedByItsOwnFloor() {
-    // Speech is bursty: loud syllables with quiet gaps between words. The
-    // gaps pull the floor back down, so even a minute of talking must not
-    // raise it high enough to stop counting the voice as a voice.
+    // A minute of continuous talking, as an 85ms RMS window actually sees
+    // it: syllables at fluctuating levels with inter-syllable dips only
+    // ~12dB down — dips that never fall below the detection threshold, so
+    // they cannot pull an ever-climbing floor back. A floor that adapts on
+    // voiced frames chases this signal and swallows it mid-sentence.
     let box = VoiceActivityBox()
     var t = 0.0
     for _ in 0..<20 {
@@ -45,10 +47,27 @@ final class VoiceActivityTests: XCTestCase {
       t += 0.085
     }
     for beat in 0..<700 {
-      box.observe(rms: beat % 4 == 3 ? 0.005 : 0.05, at: t)
+      box.observe(rms: beat % 10 == 9 ? 0.0125 : 0.05, at: t)
       t += 0.085
     }
     XCTAssertLessThan(box.silence(asOf: t), 0.5)
+  }
+
+  func testAFanStartingMidSessionIsAbsorbedWithinSeconds() {
+    // Loud but flat is a machine, not a mouth. A fan switching on above
+    // the voice threshold must not hold the endpointer hostage: its
+    // steadiness gives it away, and it is absorbed within seconds.
+    let box = VoiceActivityBox()
+    var t = 0.0
+    for _ in 0..<20 {
+      box.observe(rms: 0.001, at: t)
+      t += 0.085
+    }
+    for _ in 0..<300 {
+      box.observe(rms: 0.02, at: t)
+      t += 0.085
+    }
+    XCTAssertGreaterThan(box.silence(asOf: t), 10)
   }
 
   func testAVoiceAboveTheFanIsStillHeard() {

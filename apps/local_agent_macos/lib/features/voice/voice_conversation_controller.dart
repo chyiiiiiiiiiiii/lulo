@@ -20,12 +20,14 @@ final class VoiceConversationController extends ChangeNotifier {
     required VoiceService voice,
     required ConversationViewModel conversation,
     BatchScheduler utteranceScheduler = const TimerBatchScheduler(),
-  }) : this._(voice, conversation, utteranceScheduler);
+    DateTime Function() now = DateTime.now,
+  }) : this._(voice, conversation, utteranceScheduler, now);
 
   VoiceConversationController._(
     this._voice,
     this._conversation,
     this._utteranceScheduler,
+    this._now,
   ) {
     _events = _voice.events.listen(_onVoiceEvent);
     _conversation.completedTurnsListenable.addListener(_onTurnsChanged);
@@ -37,7 +39,17 @@ final class VoiceConversationController extends ChangeNotifier {
   final VoiceService _voice;
   final ConversationViewModel _conversation;
   final BatchScheduler _utteranceScheduler;
+  final DateTime Function() _now;
   StreamSubscription<VoiceEvent>? _events;
+
+  /// When the last utterance settled.
+  ///
+  /// The fast endpointer submits within a second of the user's last sound,
+  /// so the microphone is live exactly where their trailing breath lands.
+  /// A partial inside [_postFinalCooldown] of the final is that breath,
+  /// not an interruption — it must not cancel the answer just asked for.
+  DateTime? _lastFinalAt;
+  static const Duration _postFinalCooldown = Duration(milliseconds: 500);
 
   /// How long a partial may sit unchanged before the utterance is settled.
   ///
@@ -92,7 +104,10 @@ final class VoiceConversationController extends ChangeNotifier {
 
   /// Where the answer's very first chunk may end early: a clause has
   /// finished, even though its sentence has not.
-  static const String _clauseEnds = ',,、:：';
+  ///
+  /// Deliberately no colons: a colon is how every URL starts, and a chunk
+  /// cut at "https:" leaves a link half stripped and read aloud.
+  static const String _clauseEnds = ',,、';
 
   /// The first clause must have this much substance before it is worth an
   /// extra synthesis seam; "好的," alone reads as a stutter.
@@ -200,7 +215,11 @@ final class VoiceConversationController extends ChangeNotifier {
         _partialTranscript = text;
         notifyListeners();
         if (text.trim().isNotEmpty) {
-          _yieldToTheUser();
+          final DateTime? lastFinal = _lastFinalAt;
+          if (lastFinal == null ||
+              _now().difference(lastFinal) >= _postFinalCooldown) {
+            _yieldToTheUser();
+          }
           // The user is still talking; push the settle out again.
           _settleAttempts = 0;
           _pendingSettle?.cancel();
@@ -210,6 +229,7 @@ final class VoiceConversationController extends ChangeNotifier {
           );
         }
       case FinalTranscript(:final String text):
+        _lastFinalAt = _now();
         _pendingSettle?.cancel();
         _pendingSettle = null;
         _settleAttempts = 0;
@@ -276,7 +296,7 @@ final class VoiceConversationController extends ChangeNotifier {
       return;
     }
     final String undispatched = text.substring(_dispatchedOfActive);
-    int lastEnd = undispatched.lastIndexOf(_sentenceEnd);
+    int lastEnd = _lastSentenceEnd(undispatched);
     if (lastEnd < 0) {
       // No sentence yet — but the answer's first chunk may go out on a
       // finished clause, so the voice starts before the full stop arrives.
@@ -297,6 +317,33 @@ final class VoiceConversationController extends ChangeNotifier {
     _dispatchedOfActive += chunk.length;
     _firstChunkOfAnswer = false;
     _speakAloud(chunk, decidedBy: text);
+  }
+
+  /// The last sentence boundary in [text] that is safe to speak through,
+  /// or -1 when there is none.
+  ///
+  /// An ASCII full stop between digits is a decimal point: "3.14" must
+  /// not be read as "three." and then the rest. At the very end of the
+  /// buffer, a full stop after a digit might be exactly that — the next
+  /// delta settles it. CJK 。 never appears inside a number and needs no
+  /// guard.
+  static int _lastSentenceEnd(String text) {
+    for (int i = text.length - 1; i >= 0; i--) {
+      if (!_sentenceEnd.hasMatch(text[i])) {
+        continue;
+      }
+      if (text[i] == '.') {
+        if (i + 1 < text.length) {
+          if (_isDigit(text.codeUnitAt(i + 1))) {
+            continue;
+          }
+        } else if (i > 0 && _isDigit(text.codeUnitAt(i - 1))) {
+          continue;
+        }
+      }
+      return i;
+    }
+    return -1;
   }
 
   /// The last clause boundary in [text] that is safe to speak through, or
