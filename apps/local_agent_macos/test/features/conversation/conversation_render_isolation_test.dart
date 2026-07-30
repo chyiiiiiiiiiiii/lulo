@@ -8,6 +8,7 @@ import 'package:local_agent_macos/features/presence/agent_presence_controller.da
 import 'package:local_agent_macos/features/presence/agent_presence_state.dart';
 
 import '../../support/controlled_inference_service.dart';
+import '../../support/microtask_batch_scheduler.dart';
 import '../../support/recording_conversation_storage_service.dart';
 
 void main() {
@@ -21,6 +22,7 @@ void main() {
       inferenceService: inference,
     );
     final viewModel = ConversationViewModel(
+      batchScheduler: MicrotaskBatchScheduler(),
       repository: repository,
       idFactory: () => const ConversationId('conversation-1'),
     );
@@ -304,6 +306,7 @@ final class _ViewHarness {
     inferenceService: inference,
   );
   late final ConversationViewModel viewModel = ConversationViewModel(
+    batchScheduler: MicrotaskBatchScheduler(),
     repository: repository,
     idFactory: () => const ConversationId('conversation-1'),
   );
