@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import '../conversation/widgets/conversation_content_column.dart';
 import '../model/model_catalog.dart';
 import '../model/model_download_manager.dart';
+import '../voice/tts_voices.dart';
 import 'app_settings.dart';
 
 /// The app's own settings, shown over the conversation.
@@ -201,6 +202,38 @@ final class SettingsSheet extends StatelessWidget {
                               },
                               child: const Text('Choose…'),
                             ),
+                          ),
+                        ],
+                      ),
+                      _Section(
+                        title: 'The voice it speaks with',
+                        children: <Widget>[
+                          ListTile(
+                            key: const Key('setting-tts-voice'),
+                            title: const Text('Voice'),
+                            subtitle: const Text(
+                              'Spoken answers use the resident local '
+                              'synthesizer.',
+                            ),
+                            trailing: DropdownButton<String>(
+                              key: const Key('setting-tts-voice-dropdown'),
+                              value: ttsVoices.contains(settings.ttsVoice)
+                                  ? settings.ttsVoice
+                                  : ttsVoices.first,
+                              items: <DropdownMenuItem<String>>[
+                                for (final String voice in ttsVoices)
+                                  DropdownMenuItem<String>(
+                                    value: voice,
+                                    child: Text(voice),
+                                  ),
+                              ],
+                              onChanged: (String? voice) {
+                                if (voice != null) {
+                                  onChanged(settings.copyWith(ttsVoice: voice));
+                                }
+                              },
+                            ),
+                            onTap: null,
                           ),
                         ],
                       ),

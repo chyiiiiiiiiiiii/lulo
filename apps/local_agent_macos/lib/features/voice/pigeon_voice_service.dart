@@ -11,14 +11,18 @@ import 'voice_service.dart';
 /// that went away.
 final class PigeonVoiceService implements VoiceService, VoiceHostEvents {
   /// Creates the service over [hostApi], defaulting to the real channel.
-  PigeonVoiceService({VoiceHostApi? hostApi})
-    : this._(hostApi ?? VoiceHostApi());
+  ///
+  /// [voiceOf] names who speaks at the moment of each utterance, so a voice
+  /// changed in settings applies to the very next answer.
+  PigeonVoiceService({VoiceHostApi? hostApi, String Function()? voiceOf})
+    : this._(hostApi ?? VoiceHostApi(), voiceOf);
 
-  PigeonVoiceService._(this._host) {
+  PigeonVoiceService._(this._host, this._voiceOf) {
     VoiceHostEvents.setUp(this);
   }
 
   final VoiceHostApi _host;
+  final String Function()? _voiceOf;
   final StreamController<VoiceEvent> _events =
       StreamController<VoiceEvent>.broadcast();
 
@@ -32,7 +36,8 @@ final class PigeonVoiceService implements VoiceService, VoiceHostEvents {
   Future<void> stopListening() => _guard(() => _host.stopListening());
 
   @override
-  Future<void> speak(String text) => _guard(() => _host.speak(text));
+  Future<void> speak(String text) =>
+      _guard(() => _host.speak(text, _voiceOf?.call()));
 
   @override
   Future<void> stopSpeaking() => _guard(() => _host.stopSpeaking());

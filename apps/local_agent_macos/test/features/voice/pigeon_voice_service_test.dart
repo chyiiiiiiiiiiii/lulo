@@ -23,7 +23,8 @@ final class _RecordingHost extends VoiceHostApi {
   Future<void> stopListening() => _call('stopListening');
 
   @override
-  Future<void> speak(String text) => _call('speak:$text');
+  Future<void> speak(String text, String? voice) =>
+      _call('speak:$text:${voice ?? "-"}');
 
   @override
   Future<void> stopSpeaking() => _call('stopSpeaking');
@@ -44,7 +45,7 @@ void main() {
     await service.stopListening();
     expect(host.calls, <String>[
       'startListening',
-      'speak:Sunny, all day.',
+      'speak:Sunny, all day.:-',
       'stopSpeaking',
       'stopListening',
     ]);

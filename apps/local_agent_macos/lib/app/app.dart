@@ -346,6 +346,7 @@ final class _PresentationSwitchState extends State<_PresentationSwitch>
 
   /// Hands the choices to the window and writes them down.
   Future<void> _applySettings(AppSettings settings) async {
+    widget.composition.ttsVoice.value = settings.ttsVoice;
     await widget.composition.presentationHost?.setWindowBehaviour(
       keepOrbOnTop: settings.keepOrbOnTop,
       followAcrossSpaces: settings.followAcrossSpaces,

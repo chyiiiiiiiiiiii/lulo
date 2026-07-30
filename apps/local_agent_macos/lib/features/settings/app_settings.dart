@@ -15,6 +15,7 @@ final class AppSettings {
     this.followAcrossSpaces = true,
     this.openConversationOnLaunch = false,
     this.modelPath = '',
+    this.ttsVoice = 'ryan',
   });
 
   /// Reads settings written by [toJson], ignoring anything unrecognised.
@@ -36,6 +37,9 @@ final class AppSettings {
       modelPath: json['modelPath'] is String
           ? json['modelPath']! as String
           : defaults.modelPath,
+      ttsVoice: json['ttsVoice'] is String
+          ? json['ttsVoice']! as String
+          : defaults.ttsVoice,
     );
   }
 
@@ -54,12 +58,16 @@ final class AppSettings {
   /// does not mean compiling a new app.
   final String modelPath;
 
+  /// Who speaks the answers aloud, by the resident synthesizer's voice name.
+  final String ttsVoice;
+
   /// Returns a copy with the named choices replaced.
   AppSettings copyWith({
     bool? keepOrbOnTop,
     bool? followAcrossSpaces,
     bool? openConversationOnLaunch,
     String? modelPath,
+    String? ttsVoice,
   }) {
     return AppSettings(
       keepOrbOnTop: keepOrbOnTop ?? this.keepOrbOnTop,
@@ -67,6 +75,7 @@ final class AppSettings {
       openConversationOnLaunch:
           openConversationOnLaunch ?? this.openConversationOnLaunch,
       modelPath: modelPath ?? this.modelPath,
+      ttsVoice: ttsVoice ?? this.ttsVoice,
     );
   }
 
@@ -76,6 +85,7 @@ final class AppSettings {
     'followAcrossSpaces': followAcrossSpaces,
     'openConversationOnLaunch': openConversationOnLaunch,
     'modelPath': modelPath,
+    'ttsVoice': ttsVoice,
   };
 
   @override
@@ -84,7 +94,8 @@ final class AppSettings {
       other.keepOrbOnTop == keepOrbOnTop &&
       other.followAcrossSpaces == followAcrossSpaces &&
       other.openConversationOnLaunch == openConversationOnLaunch &&
-      other.modelPath == modelPath;
+      other.modelPath == modelPath &&
+      other.ttsVoice == ttsVoice;
 
   @override
   int get hashCode => Object.hash(
@@ -92,6 +103,7 @@ final class AppSettings {
     followAcrossSpaces,
     openConversationOnLaunch,
     modelPath,
+    ttsVoice,
   );
 
   @override

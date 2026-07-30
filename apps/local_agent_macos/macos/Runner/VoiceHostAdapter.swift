@@ -96,17 +96,54 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
     completion(.success(()))
   }
 
-  func speak(text: String, completion: @escaping (Result<Void, Error>) -> Void) {
+  func speak(
+    text: String,
+    voice: String?,
+    completion: @escaping (Result<Void, Error>) -> Void
+  ) {
     // Muted before the first sample leaves the speaker, not when the
     // delegate reports it: the gap is exactly long enough for the agent to
     // hear its own opening words.
     mute.muted = true
-    let utterance = AVSpeechUtterance(string: text)
-    if let voice = Self.bestVoice() {
-      utterance.voice = voice
+    Task { @MainActor in
+      self.emit(.speakingStarted)
+      let spoke = await self.speakThroughSidecar(text: text, voice: voice)
+      if !spoke {
+        // The resident voice is not running: fall back to the system
+        // synthesizer rather than going silent.
+        let utterance = AVSpeechUtterance(string: text)
+        if let systemVoice = Self.bestVoice() {
+          utterance.voice = systemVoice
+        }
+        self.synthesizer.speak(utterance)
+      } else {
+        self.mute.muted = false
+        self.emit(.speakingFinished)
+      }
     }
-    synthesizer.speak(utterance)
     completion(.success(()))
+  }
+
+  /// Speaks through the resident Qwen3-TTS sidecar; false when unreachable.
+  ///
+  /// The sidecar blocks until playback finishes or is stopped, which is
+  /// exactly the SpeakingFinished signal.
+  private func speakThroughSidecar(text: String, voice: String?) async -> Bool {
+    guard let url = URL(string: "http://127.0.0.1:46557/speak") else {
+      return false
+    }
+    var request = URLRequest(url: url)
+    request.httpMethod = "POST"
+    request.timeoutInterval = 120
+    request.httpBody = try? JSONSerialization.data(
+      withJSONObject: ["text": text, "voice": voice ?? "ryan"]
+    )
+    do {
+      let (_, response) = try await URLSession.shared.data(for: request)
+      return (response as? HTTPURLResponse)?.statusCode == 200
+    } catch {
+      return false
+    }
   }
 
   /// The highest-quality installed voice for the user's language.
@@ -127,6 +164,12 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
 
   func stopSpeaking(completion: @escaping (Result<Void, Error>) -> Void) {
     synthesizer.stopSpeaking(at: .immediate)
+    if let url = URL(string: "http://127.0.0.1:46557/stop") {
+      var request = URLRequest(url: url)
+      request.httpMethod = "POST"
+      request.timeoutInterval = 3
+      URLSession.shared.dataTask(with: request).resume()
+    }
     mute.muted = false
     completion(.success(()))
   }
@@ -402,13 +445,6 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
 
 @available(macOS 26.0, *)
 extension VoiceHostAdapter: AVSpeechSynthesizerDelegate {
-  nonisolated func speechSynthesizer(
-    _ synthesizer: AVSpeechSynthesizer,
-    didStart utterance: AVSpeechUtterance
-  ) {
-    Task { @MainActor in self.emit(.speakingStarted) }
-  }
-
   nonisolated func speechSynthesizer(
     _ synthesizer: AVSpeechSynthesizer,
     didFinish utterance: AVSpeechUtterance

@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:agent_core/agent_core.dart';
+import 'package:flutter/foundation.dart';
 
 import '../features/conversation/conversation_repository.dart';
 import '../features/conversation/conversation_storage_service.dart';
@@ -27,7 +28,9 @@ final class AppComposition {
     ModelDownloadManager? modelDownloads,
     this.catalog = modelCatalog,
     this.voiceService,
-  }) : _changeModel = changeModel ?? _keepThePreview,
+    ValueNotifier<String>? ttsVoice,
+  }) : ttsVoice = ttsVoice ?? ValueNotifier<String>('ryan'),
+       _changeModel = changeModel ?? _keepThePreview,
        settingsStore = settingsStore ?? InMemorySettingsStore(),
        modelDownloads = modelDownloads ?? _downloadsNowhere(),
        _conversationRepository = ConversationRepository(
@@ -54,6 +57,9 @@ final class AppComposition {
   /// The ears and mouth, or null where the surface cannot listen — widget
   /// tests, the preview, and the native test host.
   final VoiceService? voiceService;
+
+  /// Who speaks the answers aloud right now; settings keep it current.
+  final ValueNotifier<String> ttsVoice;
 
   /// The default manager, for compositions that never really download:
   /// nothing is created on disk until something is actually fetched.
