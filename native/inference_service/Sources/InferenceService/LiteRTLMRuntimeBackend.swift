@@ -330,6 +330,13 @@ public actor LiteRTLMRuntimeBackend: RuntimeBackend {
     _ generation: RuntimeGenerationRequest
   ) async throws -> RuntimeGenerationAcknowledgement {
     guard activeGeneration == nil else {
+      // Which guard refused, and what was still holding the slot. A rejection
+      // here reaches the user as a bare "Response failed" with no text and no
+      // reason, seconds after they interrupted something.
+      NSLog(
+        "Lulo runtime: start refused, generation %@ still active",
+        activeGeneration?.generationId ?? "?"
+      )
       throw RuntimeBoundaryError.generationBusy
     }
     // A cancelled generation is abandoned rather than stopped, so its decode
@@ -345,6 +352,10 @@ public actor LiteRTLMRuntimeBackend: RuntimeBackend {
         try? await Task.sleep(nanoseconds: 50_000_000)
       }
       guard drainingGeneration == nil else {
+        NSLog(
+          "Lulo runtime: start refused, abandoned decode still draining after %.0fs",
+          drainTimeoutSeconds
+        )
         throw RuntimeBoundaryError.runtimeUnavailable
       }
     }

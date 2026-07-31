@@ -431,10 +431,31 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
     // this process plays through its own output is subtracted from its own
     // microphone, so the microphone can stay open while the agent talks and
     // the user can interrupt by talking over it.
+    // The canceller lives in one Voice-Processing I/O unit that owns both
+    // ends of the audio. Enabling it on the input alone gives the microphone
+    // side and leaves playback on a plain output unit, so the unit has no
+    // far-end reference and there is nothing for it to subtract. That was
+    // this app's arrangement, and the microphone was never deaf — it simply
+    // heard the agent. Measured in use: nineteen partial transcripts arrived
+    // while speaking, spelling out "Flonter Google的這個技" in the agent's
+    // own words, at a peak of 0.1443 against a 0.0021 noise floor. The first
+    // of them cancelled the answer it came from.
     var duplex = false
     do {
       try input.setVoiceProcessingEnabled(true)
-      duplex = true
+      do {
+        try engine.outputNode.setVoiceProcessingEnabled(true)
+        duplex = true
+      } catch {
+        // Input-only voice processing is worse than none at all: the
+        // microphone stays open and nothing removes the agent from it. Undo
+        // it so the half-duplex path, which mutes instead, takes over.
+        try? input.setVoiceProcessingEnabled(false)
+        NSLog(
+          "Lulo voice: output voice processing refused (%@); half-duplex",
+          String(describing: error)
+        )
+      }
     } catch {
       NSLog(
         "Lulo voice: voice processing unavailable (%@); half-duplex",
@@ -442,6 +463,11 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
       )
     }
     fullDuplex = duplex
+    NSLog(
+      "Lulo voice: %@ (echo cancellation %@)",
+      duplex ? "full duplex" : "half duplex",
+      duplex ? "on both ends" : "off — microphone mutes while speaking"
+    )
     let microphoneFormat = input.outputFormat(forBus: 0)
     // The microphone is an array — three channels built in, more on
     // aggregates — and which channel carries the voice is the device's
@@ -508,7 +534,7 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
     engine.prepare()
     try engine.start()
 
-    let resultsTask = Task { [weak self] in
+    let resultsTask = Task { [weak self, vad] in
       do {
         try await analyzer.start(inputSequence: inputSequence)
         for try await result in transcriber.results {
@@ -525,6 +551,23 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
                 self.turn.settled()
                 NSLog("Lulo voice: final (%d chars)", text.count)
               } else if !text.isEmpty {
+                // Who is talking, and how loudly, at the moment a partial
+                // arrives. Full duplex made every partial a barge-in
+                // candidate: one non-empty partial cancels the whole answer,
+                // and a cancelled answer is never spoken, so a single
+                // misheard blip can silence the agent for the rest of the
+                // session. This line is what says whether the blip was the
+                // user, the room, or the agent's own voice getting past the
+                // canceller — the peak next to it is the evidence.
+                let (floor, peak) = vad.snapshot()
+                NSLog(
+                  "Lulo voice: partial (%d chars) peak %.4f floor %.4f%@%@",
+                  text.count,
+                  peak,
+                  floor,
+                  self.turn.outstanding > 0 ? " WHILE SPEAKING" : "",
+                  self.mute.muted ? " muted" : ""
+                )
                 self.turn.heardVolatile(
                   at: ProcessInfo.processInfo.systemUptime
                 )
