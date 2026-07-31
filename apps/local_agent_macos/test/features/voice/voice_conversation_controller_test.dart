@@ -755,6 +755,28 @@ void main() {
     );
   });
 
+  test('pressing stop silences what is already being spoken', () async {
+    // Stop cancels the generation, but the sentences already handed to the
+    // voice keep playing: the button stops the writing and not the talking,
+    // and the only way out is switching the microphone off.
+    await controller.enable();
+    voice.hear(const FinalTranscript('講一個長故事。'));
+    await pump();
+    final Generation generation = await generationStarted();
+    inference.emit(
+      GenerationDelta(generationId: generation.id, delta: '很久很久以前。'),
+    );
+    await pump();
+    expect(voice.spoken, isNotEmpty, reason: 'nothing was being spoken');
+
+    await vm.stop();
+    for (int i = 0; i < 8; i++) {
+      await pump();
+    }
+
+    expect(voice.calls, contains('stopSpeaking'));
+  });
+
   test('a barge-in silences the sentence still in the batcher', () async {
     // Cancelling flushes the token batcher; if the flushed tail completes a
     // sentence, it must not be dispatched to the voice — the interruption

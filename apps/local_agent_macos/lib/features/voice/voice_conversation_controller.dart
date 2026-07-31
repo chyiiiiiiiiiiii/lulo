@@ -441,6 +441,21 @@ final class VoiceConversationController extends ChangeNotifier {
     for (; _spokenThrough < turns.length; _spokenThrough++) {
       final Turn turn = turns[_spokenThrough];
       if (turn.role == TurnRole.assistant &&
+          (turn.status == TurnStatus.cancelled ||
+              turn.status == TurnStatus.failed)) {
+        // The answer was stopped, so stop saying it. Cancelling ends the
+        // writing; the sentences already handed to the voice are minutes of
+        // speech that outlive it, and until this the only way to shut them
+        // up was switching the microphone off — which also stops listening,
+        // which is not what stop means.
+        _dispatchedOfActive = 0;
+        if (_speaking || _speechRequested) {
+          _speechRequested = false;
+          unawaited(_voice.stopSpeaking());
+        }
+        continue;
+      }
+      if (turn.role == TurnRole.assistant &&
           turn.status == TurnStatus.completed) {
         // Only what the streaming dispatch has not already said. This
         // leans on the ViewModel notifying completedTurns BEFORE nulling

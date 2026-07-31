@@ -63,6 +63,9 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
   /// Read on the real-time audio thread, written here.
   private let mute = MuteBox()
 
+  /// [speakEpoch], readable from the render loop off the main actor.
+  private let speakEpochBox = EpochBox()
+
   /// Bumped by stopSpeaking; an utterance still in flight to the sidecar
   /// captures it at entry, and a stale one must not fall back to the
   /// system voice after the user has already barged over it.
@@ -120,6 +123,7 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
     sessionCounter += 1
     starting = false
     speakEpoch += 1
+    speakEpochBox.epoch = speakEpoch
     turn.listeningStopped()
     mute.muted = false
     endSession()
@@ -156,14 +160,20 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
         let player = self.session?.playerNode,
         let format = self.session?.renderFormat
       {
-        spoke = await self.renderAndPlay(
-          text: text,
-          voice: voice,
-          language: language,
-          epoch: epoch,
-          player: player,
-          format: format
-        )
+        // Off the main actor deliberately: this streams tens of thousands
+        // of bytes per second of audio, and doing that on the actor that
+        // also schedules the buffers made the speech stutter after the
+        // first sentence — the reader starving the player it feeds.
+        spoke = await Task.detached(priority: .userInitiated) {
+          await self.renderAndPlay(
+            text: text,
+            voice: voice,
+            language: language,
+            epoch: epoch,
+            player: player,
+            format: format
+          )
+        }.value
       } else {
         spoke = await self.speakThroughSidecar(
           text: text,
@@ -190,7 +200,7 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
   /// sentences of one answer play back to back with no seam. The epoch is
   /// checked as the bytes arrive: a barge-in stops the download, and the
   /// player was already silenced by stopSpeaking.
-  private func renderAndPlay(
+  nonisolated private func renderAndPlay(
     text: String,
     voice: String?,
     language: String?,
@@ -241,7 +251,7 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
         }
       }
       for try await byte in bytes {
-        if epoch != self.speakEpoch {
+        if epoch != self.speakEpochBox.epoch {
           // Barged over: stop pulling audio; the player is already quiet.
           bytes.task.cancel()
           return true
@@ -254,7 +264,7 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
         }
       }
       scheduleBuffered(atLeast: 4)
-      guard epoch == self.speakEpoch else {
+      guard epoch == self.speakEpochBox.epoch else {
         return true
       }
       // Heard to the end: a one-frame tail whose playback callback is the
@@ -348,6 +358,7 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
 
   func stopSpeaking(completion: @escaping (Result<Void, Error>) -> Void) {
     speakEpoch += 1
+    speakEpochBox.epoch = speakEpoch
     // Full duplex: silence the local player at once; the /stop below also
     // makes the sidecar abandon whatever it was still rendering.
     session?.playerNode?.stop()
@@ -674,6 +685,7 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
     sessionCounter += 1
     starting = false
     speakEpoch += 1
+    speakEpochBox.epoch = speakEpoch
     turn.listeningStopped()
     mute.muted = false
     endSession()
@@ -1088,6 +1100,29 @@ final class VoiceActivityBox: @unchecked Sendable {
 }
 
 /// A boolean the audio thread may read while the main actor writes.
+/// The speaking epoch, readable off the main actor.
+///
+/// The render loop runs away from the main actor so it cannot starve the
+/// audio it is feeding, which means it cannot read `speakEpoch` directly.
+/// stopSpeaking writes here too, and a barge-in is seen within one buffer.
+final class EpochBox: @unchecked Sendable {
+  private let lock = NSLock()
+  private var value = 0
+
+  var epoch: Int {
+    get {
+      lock.lock()
+      defer { lock.unlock() }
+      return value
+    }
+    set {
+      lock.lock()
+      defer { lock.unlock() }
+      value = newValue
+    }
+  }
+}
+
 final class MuteBox: @unchecked Sendable {
   private let lock = NSLock()
   private var value = false
