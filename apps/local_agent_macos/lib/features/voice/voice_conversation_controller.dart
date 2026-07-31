@@ -321,6 +321,10 @@ final class VoiceConversationController extends ChangeNotifier {
         _partialTranscript = '';
         notifyListeners();
         if (text.trim().isEmpty) {
+          // Whatever took the floor turned out to be nothing — a cough, a
+          // misheard syllable. That is known now, so the interrupted answer
+          // picks up immediately instead of waiting out the backstop.
+          _resumeInterruptedSpeech();
           return;
         }
         if (_conversation.canSubmit) {
@@ -479,6 +483,7 @@ final class VoiceConversationController extends ChangeNotifier {
 
   /// Re-says the sentence an interruption cut off, if nothing replaced it.
   void _resumeInterruptedSpeech() {
+    _pendingResume?.cancel();
     _pendingResume = null;
     final String? interrupted = _interruptedSpeech;
     _interruptedSpeech = null;

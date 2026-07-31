@@ -310,6 +310,43 @@ void main() {
     expect(voice.spoken.last, cutOff);
   });
 
+  test('a noise that settles into nothing resumes at once', () async {
+    // The two-second backstop is the wrong latency for the common case. A
+    // cough or a misheard syllable produces a final with no words in it, and
+    // at that instant it is already known that nothing replaced the answer —
+    // so it picks up immediately rather than leaving a two-second hole.
+    DateTime clock = DateTime(2026, 8);
+    final VoiceConversationController resuming = VoiceConversationController(
+      voice: voice,
+      conversation: vm,
+      // A scheduler that never fires: only the immediate path can pass this.
+      utteranceScheduler: const _NeverScheduler(),
+      now: () {
+        clock = clock.add(const Duration(milliseconds: 600));
+        return clock;
+      },
+    );
+    addTearDown(resuming.dispose);
+    await resuming.enable();
+    voice.hear(const FinalTranscript('Tell me a long story.'));
+    await pump();
+    await answerCompletely('Once upon a time, at very great length indeed.');
+    final int spokenBefore = voice.spoken.length;
+    final String cutOff = voice.spoken.last;
+
+    voice.hear(const PartialTranscript('等一下我'));
+    await pump();
+    expect(voice.calls, contains('stopSpeaking'));
+
+    // The utterance settles into nothing at all.
+    voice.hear(const FinalTranscript('   '));
+    await pump();
+    await pump();
+
+    expect(voice.spoken.length, greaterThan(spokenBefore));
+    expect(voice.spoken.last, cutOff);
+  });
+
   test('the user talking over a streaming answer cancels it', () async {
     await controller.enable();
     voice.hear(const FinalTranscript('Tell me a long story.'));
@@ -1151,4 +1188,20 @@ final class _NeverStartsVoice implements VoiceService {
 
   @override
   Future<void> stopSpeaking() async {}
+}
+
+/// A scheduler whose work never runs: proves a path did not rely on a timer.
+final class _NeverScheduler implements BatchScheduler {
+  const _NeverScheduler();
+
+  @override
+  CancelBatch schedule(Duration delay, void Function() callback) =>
+      const _NeverCancel();
+}
+
+final class _NeverCancel implements CancelBatch {
+  const _NeverCancel();
+
+  @override
+  void cancel() {}
 }
