@@ -128,8 +128,8 @@ final class ModelFileService {
       final ModelBytes? bytes = already == entry.sizeBytes
           ? null
           : (already > 0 && fetchFrom != null)
-                ? await fetchFrom(Uri.parse(entry.url), already)
-                : await _fetch(Uri.parse(entry.url));
+          ? await fetchFrom(Uri.parse(entry.url), already)
+          : await _fetch(Uri.parse(entry.url));
       final int expectedTotal = already + (bytes?.totalBytes ?? 0);
       if (bytes == null) {
         yield ModelDownloadProgress(
