@@ -12,12 +12,12 @@ import Speech
 /// events too, because the conversation loop must survive a microphone that
 /// went away.
 ///
-/// Full-duplex when the platform allows it: the sidecar renders PCM, the
-/// app plays it through its own voice-processed output, and the system's
-/// echo cancellation keeps the agent's voice out of its own microphone —
-/// so the user can interrupt by simply talking, like with a person. When
-/// voice processing cannot be enabled, the half-duplex fallback mutes the
-/// microphone while the sidecar plays the sentence itself.
+/// Half-duplex by design: while the sidecar speaks, the microphone feed
+/// into the analyzer is muted, so the agent can never hear itself through
+/// the speakers and answer its own answer. Barge-in by voice waits on an
+/// echo canceller that works on this hardware — see [begin] for what the
+/// system one does instead. Everything the full-duplex path would need is
+/// here and gated on `fullDuplex`, which is false until then.
 @available(macOS 26.0, *)
 @MainActor
 final class VoiceHostAdapter: NSObject, VoiceHostApi {
@@ -459,27 +459,19 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
 
     let engine = AVAudioEngine()
     let input = engine.inputNode
-    // Voice processing gives the engine's I/O the system echo canceller:
-    // what this process plays through its own output is subtracted from
-    // its microphone, so the mic can stay open while the agent talks and
-    // the user can interrupt by talking over it. Enabled before any
-    // format is read — it reshapes the input unit (nine channels on the
-    // built-in array, and which of them carries the voice is the unit's
-    // business; the loudest-channel mixdown finds it either way).
-    var duplex = false
-    do {
-      // On one node only: input and output share the same voice-processing
-      // I/O unit, and enabling both double-initializes it (kAUInitialize
-      // -10875 on engine start).
-      try input.setVoiceProcessingEnabled(true)
-      duplex = true
-    } catch {
-      NSLog(
-        "Lulo voice: voice processing unavailable (%@); half-duplex",
-        String(describing: error)
-      )
-    }
-    fullDuplex = duplex
+    // Deliberately NOT voice-processing. The system echo canceller is what
+    // full duplex would need — the agent's own voice subtracted from its
+    // microphone so the user can talk over it — but on this hardware
+    // setVoiceProcessingEnabled(true) turns the input into nine channels
+    // that carry no room: measured against a control, the loudest of the
+    // nine reads 1.4x the noise floor while a plain input node reads 14.6x
+    // for the same sound in the same room, and no tap format (nil, mono,
+    // the node's own) recovers it. It also refuses to start at all once a
+    // player node joins the graph (kAUInitialize -10875), because a mixer
+    // instantiated after voice processing lands on 44.1kHz against 48kHz
+    // hardware. Half-duplex muting keeps the agent from hearing itself
+    // until there is an echo canceller that works here.
+    fullDuplex = false
     let microphoneFormat = input.outputFormat(forBus: 0)
     // The microphone is an array — three channels built in, more on
     // aggregates — and which channel carries the voice is the device's
@@ -529,7 +521,7 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
     // processed output so the echo canceller knows what to subtract.
     var playerNode: AVAudioPlayerNode?
     var renderFormat: AVAudioFormat?
-    if duplex,
+    if fullDuplex,
       let pcmFormat = AVAudioFormat(
         commonFormat: .pcmFormatFloat32,
         sampleRate: 24_000,
