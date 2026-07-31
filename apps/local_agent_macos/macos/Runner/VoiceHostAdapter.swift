@@ -280,7 +280,7 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
   }
 
   private func utteranceBegan() {
-    let began = turn.began()
+    let began = turn.began(at: ProcessInfo.processInfo.systemUptime)
     if began.shouldMute, !fullDuplex {
       // Muted before the first sample leaves the speaker, not when a
       // delegate reports it: the gap is exactly long enough for the
@@ -294,7 +294,9 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
   }
 
   private func utteranceEnded() {
-    guard let generation = turn.ended() else { return }
+    guard
+      let generation = turn.ended(at: ProcessInfo.processInfo.systemUptime)
+    else { return }
     Task { @MainActor in
       // The speaker's tail is still in the air when the sidecar returns;
       // unmuting on its heels lets the agent transcribe its own last word.
@@ -580,10 +582,25 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
     vad: VoiceActivityBox,
     analyzer: SpeechAnalyzer
   ) {
-    guard id == sessionCounter, !mute.muted else {
+    guard id == sessionCounter else {
       return
     }
     let now = ProcessInfo.processInfo.systemUptime
+    if turn.muteOverdue(now: now) {
+      // The sidecar took a sentence and never gave it back. Waiting out
+      // /speak's own timeout means a full two minutes of a microphone that
+      // looks live and hears nothing; the ears come back now and the
+      // sentence is abandoned where it stands.
+      NSLog("Lulo voice: the sidecar went quiet; opening the microphone")
+      turn.abandonSpeech()
+      mute.muted = false
+      turn.microphoneReopened(at: now)
+      emit(.speakingFinished)
+      return
+    }
+    guard !mute.muted else {
+      return
+    }
     let silence = vad.silence(asOf: now)
     guard
       turn.shouldFinalize(
@@ -812,6 +829,26 @@ struct SpeechTurn {
   /// hangover can bridge two utterances, and the pair must not double-report.
   private(set) var speakingReported = false
 
+  /// When a sentence last began or finished, so a wedged one can be seen.
+  private(set) var lastProgressAt: TimeInterval = .infinity
+
+  /// The longest the microphone may stay shut with no sentence starting or
+  /// finishing before it is forced open.
+  ///
+  /// /speak is answered only once the sidecar has played the sentence
+  /// through, and waits 120 seconds for that. If the model wedges inside
+  /// the render, the request never returns, outstanding never reaches zero,
+  /// and the mute never lifts: every buffer is dropped before the VAD sees
+  /// it, checkEndpoint returns immediately, and the agent is completely
+  /// deaf — while the button still shows a live microphone, because
+  /// nothing in the audio path failed. Every other way the mute can stick
+  /// has an escape; this one had none but the user noticing.
+  ///
+  /// Generous on purpose: it measures a sentence making no progress, not an
+  /// answer taking its time. Ten seconds of speech for fifty characters is
+  /// ordinary, and a long answer is many sentences, each one refreshing it.
+  static let muteCeiling: TimeInterval = 45
+
   /// What the caller must do now that a sentence has begun.
   struct Began {
     /// This is the first sentence of an answer: shut the microphone.
@@ -868,7 +905,8 @@ struct SpeechTurn {
   }
 
   /// One sentence of an answer has been handed to the sidecar.
-  mutating func began() -> Began {
+  mutating func began(at now: TimeInterval) -> Began {
+    lastProgressAt = now
     outstanding += 1
     unmuteGeneration += 1
     let first = outstanding == 1
@@ -883,7 +921,8 @@ struct SpeechTurn {
   ///
   /// Returns the generation a delayed unmute must present to
   /// [liftMute(generation:)], or nil while sentences are still in flight.
-  mutating func ended() -> Int? {
+  mutating func ended(at now: TimeInterval) -> Int? {
+    lastProgressAt = now
     // Nothing of ours is in flight, so this sentence belongs to a session
     // that has already been stopped and reset — /speak waits up to two
     // minutes, long enough for the user to have turned the microphone off,
@@ -895,6 +934,20 @@ struct SpeechTurn {
     guard outstanding == 0 else { return nil }
     unmuteGeneration += 1
     return unmuteGeneration
+  }
+
+  /// Whether the microphone has been shut too long with nothing moving.
+  func muteOverdue(now: TimeInterval) -> Bool {
+    guard outstanding > 0 else { return false }
+    return now - lastProgressAt > Self.muteCeiling
+  }
+
+  /// Give up on whatever is still in flight and open the microphone.
+  mutating func abandonSpeech() {
+    outstanding = 0
+    unmuteGeneration += 1
+    speakingReported = false
+    lastProgressAt = .infinity
   }
 
   /// Whether a delayed unmute still speaks for the current state.

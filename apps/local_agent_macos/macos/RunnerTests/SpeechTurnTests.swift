@@ -13,11 +13,11 @@ final class SpeechTurnTests: XCTestCase {
 
   func testOnlyTheFirstSentenceOfAnAnswerClosesTheMicrophone() {
     var turn = SpeechTurn()
-    let first = turn.began()
+    let first = turn.began(at: 0)
     XCTAssertTrue(first.shouldMute)
     XCTAssertTrue(first.shouldReportStart)
 
-    let second = turn.began()
+    let second = turn.began(at: 0)
     XCTAssertFalse(second.shouldMute)
     XCTAssertFalse(second.shouldReportStart)
   }
@@ -26,22 +26,22 @@ final class SpeechTurnTests: XCTestCase {
     // Sentence one returning while two is still playing must not reopen
     // the microphone, or the agent hears itself finish.
     var turn = SpeechTurn()
-    _ = turn.began()
-    _ = turn.began()
+    _ = turn.began(at: 0)
+    _ = turn.began(at: 0)
 
-    XCTAssertNil(turn.ended())
-    XCTAssertNotNil(turn.ended())
+    XCTAssertNil(turn.ended(at: 0))
+    XCTAssertNotNil(turn.ended(at: 0))
   }
 
   func testASupersededUnmuteDoesNotFire() {
     // The 300ms hangover is still running when the next sentence begins;
     // the older unmute must not reopen the microphone underneath it.
     var turn = SpeechTurn()
-    _ = turn.began()
-    let pending = turn.ended()
+    _ = turn.began(at: 0)
+    let pending = turn.ended(at: 0)
     XCTAssertNotNil(pending)
 
-    _ = turn.began()
+    _ = turn.began(at: 0)
 
     XCTAssertFalse(turn.liftMute(generation: pending!))
   }
@@ -50,11 +50,11 @@ final class SpeechTurnTests: XCTestCase {
     // A second utterance beginning before the first's finish is reported
     // must not produce a second start.
     var turn = SpeechTurn()
-    _ = turn.began()
-    let pending = turn.ended()!
+    _ = turn.began(at: 0)
+    let pending = turn.ended(at: 0)!
     XCTAssertTrue(turn.liftMute(generation: pending))
 
-    XCTAssertTrue(turn.began().shouldReportStart)
+    XCTAssertTrue(turn.began(at: 0).shouldReportStart)
   }
 
   // MARK: - The endpointer only trusts what it measured
@@ -140,12 +140,12 @@ final class SpeechTurnTests: XCTestCase {
     // longer exists and must not reopen anything, report anything, or
     // reset the clocks under the sentence being said right now.
     var turn = SpeechTurn()
-    _ = turn.began()
+    _ = turn.began(at: 0)
     turn.listeningStopped()
 
     turn.heardVolatile(at: 100)
 
-    XCTAssertNil(turn.ended())
+    XCTAssertNil(turn.ended(at: 0))
     XCTAssertTrue(turn.utteranceInProgress)
     XCTAssertTrue(
       turn.shouldFinalize(
@@ -180,10 +180,38 @@ final class SpeechTurnTests: XCTestCase {
     )
   }
 
+  func testAWedgedSentenceDoesNotKeepTheMicrophoneShutForever() {
+    // The sidecar accepted the sentence and never answered — /speak waits
+    // two minutes for that, and for all of them the agent is deaf while
+    // the button still reads as listening.
+    var turn = SpeechTurn()
+    _ = turn.began(at: 0)
+
+    XCTAssertFalse(turn.muteOverdue(now: 10))
+    XCTAssertTrue(turn.muteOverdue(now: 100))
+
+    turn.abandonSpeech()
+    XCTAssertEqual(turn.outstanding, 0)
+    XCTAssertFalse(turn.muteOverdue(now: 200))
+  }
+
+  func testAnAnswerTakingItsTimeIsNotMistakenForAWedgedOne() {
+    // A long answer is many sentences; each one starting or finishing is
+    // progress, and progress is what the ceiling actually measures.
+    var turn = SpeechTurn()
+    _ = turn.began(at: 0)
+    _ = turn.ended(at: 30)
+    _ = turn.began(at: 30)
+    _ = turn.ended(at: 60)
+    _ = turn.began(at: 60)
+
+    XCTAssertFalse(turn.muteOverdue(now: 90))
+  }
+
   func testStoppingListeningOpensTheMicrophoneWhateverWasInFlight() {
     var turn = SpeechTurn()
-    _ = turn.began()
-    _ = turn.began()
+    _ = turn.began(at: 0)
+    _ = turn.began(at: 0)
 
     turn.listeningStopped()
 
