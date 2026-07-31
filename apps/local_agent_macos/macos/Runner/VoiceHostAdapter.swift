@@ -6,20 +6,22 @@ import Speech
 ///
 /// Listening runs the microphone through SpeechAnalyzer's on-device
 /// transcriber and reports volatile results as partial transcripts and
-/// finalized ones as utterances. Speaking goes through AVSpeechSynthesizer.
+/// finalized ones as utterances. Speaking goes through the Qwen3-TTS
+/// sidecar — one resident voice, no system-synthesizer stand-in.
 /// Everything is reported back over the pigeon event channel; failures are
 /// events too, because the conversation loop must survive a microphone that
 /// went away.
 ///
-/// Half-duplex by design: while the synthesizer speaks, the microphone feed
+/// Half-duplex by design: while the sidecar speaks, the microphone feed
 /// into the analyzer is muted, so the agent can never hear itself through
-/// the speakers and answer its own answer. Barge-in by voice during speech
-/// returns once echo cancellation has been tuned on real hardware.
+/// the speakers and answer its own answer. Barge-in by voice waits on an
+/// echo canceller that works on this hardware — see [begin] for what the
+/// system one does instead. Everything the full-duplex path would need is
+/// here and gated on `fullDuplex`, which is false until then.
 @available(macOS 26.0, *)
 @MainActor
 final class VoiceHostAdapter: NSObject, VoiceHostApi {
   private let events: VoiceHostEvents
-  private let synthesizer = AVSpeechSynthesizer()
 
   /// Everything one listening run owns, torn down as one.
   private struct ListeningSession {
@@ -29,29 +31,19 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
     let resultsTask: Task<Void, Never>
     let endpointTask: Task<Void, Never>
     let configObserver: NSObjectProtocol
+    /// The mouth, when this session owns playback (full duplex).
+    let playerNode: AVAudioPlayerNode?
+    /// What the sidecar's PCM arrives as: float32 mono at its sample rate.
+    let renderFormat: AVAudioFormat?
   }
 
-  /// A volatile transcript is on screen and unsettled.
-  private var utteranceInProgress = false
+  /// True while the session's echo-cancelled output lets the microphone
+  /// stay open during speech. Decided per session in [begin].
+  private var fullDuplex = false
 
-  /// When the current utterance's first volatile arrived.
-  ///
-  /// The VAD's clock freezes while the microphone is muted, so right after
-  /// an answer its "last voice" is minutes stale. The endpointer must only
-  /// trust a silence measured against voice heard for THIS utterance, or
-  /// the first volatile after an answer would be finalized on the spot —
-  /// the user's sentence cut off at its first word.
-  private var utteranceHeardAt: TimeInterval = .infinity
-
-  /// When the microphone last reopened after the agent spoke.
-  ///
-  /// Anything the VAD heard before this is the pre-answer past; the mute
-  /// was unmeasured dead time, and a silence spanning it is not a silence
-  /// anyone actually observed.
-  private var muteLiftedAt: TimeInterval = -.infinity
-
-  /// The endpointer has already asked for this utterance; asked once.
-  private var endpointFinalizeRequested = false
+  /// Whose turn it is and when its clocks were last true. Kept as one
+  /// value so it can be exercised without an audio device; see [SpeechTurn].
+  private var turn = SpeechTurn()
 
   /// How much silence after speech means the user has finished talking.
   ///
@@ -71,14 +63,6 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
   /// Read on the real-time audio thread, written here.
   private let mute = MuteBox()
 
-  /// Utterances in flight, streamed one sentence at a time.
-  ///
-  /// The mute and the SpeakingFinished event belong to the whole answer:
-  /// the first sentence mutes, and only the last one back unmutes —
-  /// otherwise sentence one's return reopens the microphone while
-  /// sentences two onward are still playing, and the agent hears itself.
-  private var outstandingUtterances = 0
-
   /// Bumped by stopSpeaking; an utterance still in flight to the sidecar
   /// captures it at entry, and a stale one must not fall back to the
   /// system voice after the user has already barged over it.
@@ -87,7 +71,6 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
   init(events: VoiceHostEvents) {
     self.events = events
     super.init()
-    synthesizer.delegate = self
   }
 
   // MARK: - VoiceHostApi
@@ -137,9 +120,7 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
     sessionCounter += 1
     starting = false
     speakEpoch += 1
-    unmuteGeneration += 1
-    outstandingUtterances = 0
-    speakingReported = false
+    turn.listeningStopped()
     mute.muted = false
     endSession()
     emit(.listeningStopped)
@@ -170,82 +151,170 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
     utteranceBegan()
     let epoch = speakEpoch
     Task { @MainActor in
-      let spoke = await self.speakThroughSidecar(
-        text: text,
-        voice: voice,
-        language: language
-      )
-      if !spoke && epoch == self.speakEpoch {
-        // The resident voice is not running: fall back to the system
-        // synthesizer rather than going silent. The delegate's
-        // didFinish/didCancel ends this utterance. A stale epoch means the
-        // user barged over this sentence while it was in flight, and it
-        // must not be read after all.
-        let utterance = AVSpeechUtterance(string: text)
-        if let systemVoice = Self.bestVoice() {
-          utterance.voice = systemVoice
-        }
-        self.synthesizer.speak(utterance)
+      let spoke: Bool
+      if self.fullDuplex,
+        let player = self.session?.playerNode,
+        let format = self.session?.renderFormat
+      {
+        spoke = await self.renderAndPlay(
+          text: text,
+          voice: voice,
+          language: language,
+          epoch: epoch,
+          player: player,
+          format: format
+        )
       } else {
-        self.utteranceEnded()
+        spoke = await self.speakThroughSidecar(
+          text: text,
+          voice: voice,
+          language: language
+        )
       }
+      if !spoke && epoch == self.speakEpoch {
+        // The resident voice failed for this sentence. Deliberately NO
+        // system-synthesizer fallback: a different voice cutting in
+        // mid-answer reads as the agent changing person, which is worse
+        // than a skipped sentence that is still on screen.
+        NSLog("Lulo voice: sidecar declined a sentence (%d chars)", text.count)
+      }
+      self.utteranceEnded()
     }
     completion(.success(()))
   }
 
-  /// Cancels a pending delayed unmute when a newer speech state supersedes
-  /// it.
-  private var unmuteGeneration = 0
-
-  /// Whether SpeakingStarted has been reported without its Finished yet.
+  /// Streams the sidecar's PCM into the session's player node, returning
+  /// once this sentence has been fully heard or barged over.
   ///
-  /// The unmute hangover can bridge two utterances: the second begins
-  /// while the first's Finished is still pending, and the pair must not
-  /// double-report.
-  private var speakingReported = false
+  /// Buffers append to whatever is already scheduled, so consecutive
+  /// sentences of one answer play back to back with no seam. The epoch is
+  /// checked as the bytes arrive: a barge-in stops the download, and the
+  /// player was already silenced by stopSpeaking.
+  private func renderAndPlay(
+    text: String,
+    voice: String?,
+    language: String?,
+    epoch: Int,
+    player: AVAudioPlayerNode,
+    format: AVAudioFormat
+  ) async -> Bool {
+    guard let url = URL(string: "http://127.0.0.1:46557/render") else {
+      return false
+    }
+    var request = URLRequest(url: url)
+    request.httpMethod = "POST"
+    request.timeoutInterval = 120
+    var payload: [String: String] = ["text": text, "voice": voice ?? "ryan"]
+    if let language {
+      payload["lang"] = language
+    }
+    request.httpBody = try? JSONSerialization.data(withJSONObject: payload)
+    do {
+      let (bytes, response) = try await URLSession.shared.bytes(for: request)
+      guard (response as? HTTPURLResponse)?.statusCode == 200 else {
+        return false
+      }
+      var pcm = [UInt8]()
+      pcm.reserveCapacity(38_400)
+      func scheduleBuffered(atLeast minimum: Int) {
+        let usable = (pcm.count / 4) * 4
+        guard usable >= minimum, usable > 0,
+          let buffer = AVAudioPCMBuffer(
+            pcmFormat: format,
+            frameCapacity: AVAudioFrameCount(usable / 4)
+          )
+        else {
+          return
+        }
+        let frames = usable / 4
+        pcm.withUnsafeBytes { raw in
+          buffer.floatChannelData![0].update(
+            from: raw.baseAddress!.assumingMemoryBound(to: Float.self),
+            count: frames
+          )
+        }
+        buffer.frameLength = AVAudioFrameCount(frames)
+        pcm.removeFirst(usable)
+        player.scheduleBuffer(buffer)
+        if !player.isPlaying {
+          player.play()
+        }
+      }
+      for try await byte in bytes {
+        if epoch != self.speakEpoch {
+          // Barged over: stop pulling audio; the player is already quiet.
+          bytes.task.cancel()
+          return true
+        }
+        pcm.append(byte)
+        if pcm.count >= 19_200 {
+          // 0.2s of audio at a time: enough to start almost immediately,
+          // steady enough not to starve the output.
+          scheduleBuffered(atLeast: 19_200)
+        }
+      }
+      scheduleBuffered(atLeast: 4)
+      guard epoch == self.speakEpoch else {
+        return true
+      }
+      // Heard to the end: a one-frame tail whose playback callback is the
+      // drain signal. stopSpeaking's player.stop() fires it early, which
+      // is exactly what a barge-in needs.
+      await withCheckedContinuation { (done: CheckedContinuation<Void, Never>) in
+        guard
+          let tail = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 1)
+        else {
+          done.resume()
+          return
+        }
+        tail.frameLength = 1
+        player.scheduleBuffer(tail, completionCallbackType: .dataPlayedBack) {
+          _ in
+          done.resume()
+        }
+      }
+      return true
+    } catch {
+      return false
+    }
+  }
 
   private func utteranceBegan() {
-    outstandingUtterances += 1
-    unmuteGeneration += 1
-    if outstandingUtterances == 1 {
+    let began = turn.began(at: ProcessInfo.processInfo.systemUptime)
+    if began.shouldMute, !fullDuplex {
       // Muted before the first sample leaves the speaker, not when a
-      // delegate reports it: the gap is exactly long enough for the agent
-      // to hear its own opening words.
+      // delegate reports it: the gap is exactly long enough for the
+      // agent to hear its own opening words. Full duplex keeps the
+      // microphone open instead — the echo canceller carries the load.
       mute.muted = true
-      if !speakingReported {
-        speakingReported = true
-        emit(.speakingStarted)
-      }
+    }
+    if began.shouldReportStart {
+      emit(.speakingStarted)
     }
   }
 
   private func utteranceEnded() {
-    outstandingUtterances = max(0, outstandingUtterances - 1)
-    if outstandingUtterances == 0 {
+    guard
+      let generation = turn.ended(at: ProcessInfo.processInfo.systemUptime)
+    else { return }
+    Task { @MainActor in
       // The speaker's tail is still in the air when the sidecar returns;
-      // unmuting on its heels lets the agent transcribe its own last
-      // word. The microphone stays shut a beat longer.
-      unmuteGeneration += 1
-      let generation = unmuteGeneration
-      Task { @MainActor in
-        try? await Task.sleep(for: .milliseconds(300))
-        guard
-          generation == self.unmuteGeneration,
-          self.outstandingUtterances == 0
-        else {
-          return
-        }
-        self.mute.muted = false
-        // Whatever utterance was pending went in before the answer; it
-        // was answered. The endpointer starts the new turn clean, and
-        // only trusts voice heard after this moment.
-        self.muteLiftedAt = ProcessInfo.processInfo.systemUptime
-        self.utteranceInProgress = false
-        self.utteranceHeardAt = .infinity
-        self.endpointFinalizeRequested = false
-        self.speakingReported = false
-        self.emit(.speakingFinished)
+      // unmuting on its heels lets the agent transcribe its own last word.
+      // The microphone stays shut a beat longer.
+      try? await Task.sleep(for: .milliseconds(300))
+      guard
+        self.turn.liftMute(generation: generation)
+      else {
+        return
       }
+      if !self.fullDuplex {
+        self.mute.muted = false
+        // Whatever utterance was pending went in before the answer; it was
+        // answered. Full duplex never muted, never froze the VAD's clock,
+        // and the user may be mid-interruption — its state must survive.
+        self.turn.microphoneReopened(at: ProcessInfo.processInfo.systemUptime)
+      }
+      self.emit(.speakingFinished)
     }
   }
 
@@ -277,25 +346,11 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
     }
   }
 
-  /// The highest-quality installed voice for the user's language.
-  ///
-  /// Premium and enhanced voices are the ones that do not sound like a
-  /// machine; they exist once the user has downloaded them in System
-  /// Settings, and the default compact voice is the fallback.
-  private static func bestVoice() -> AVSpeechSynthesisVoice? {
-    let wanted = Locale.preferredLanguages.first ?? "en"
-    let prefix = String(wanted.prefix(2))
-    let candidates = AVSpeechSynthesisVoice.speechVoices().filter {
-      $0.language.hasPrefix(prefix)
-    }
-    return candidates.first { $0.quality == .premium }
-      ?? candidates.first { $0.quality == .enhanced }
-      ?? candidates.first
-  }
-
   func stopSpeaking(completion: @escaping (Result<Void, Error>) -> Void) {
     speakEpoch += 1
-    synthesizer.stopSpeaking(at: .immediate)
+    // Full duplex: silence the local player at once; the /stop below also
+    // makes the sidecar abandon whatever it was still rendering.
+    session?.playerNode?.stop()
     if let url = URL(string: "http://127.0.0.1:46557/stop") {
       var request = URLRequest(url: url)
       request.httpMethod = "POST"
@@ -352,10 +407,19 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
 
     let engine = AVAudioEngine()
     let input = engine.inputNode
-    // Deliberately NOT voice-processing: enabling it turns the input node
-    // into a nine-channel unit whose first channel is not the microphone,
-    // and the transcriber hears silence. Half-duplex muting already keeps
-    // the agent from hearing itself.
+    // Deliberately NOT voice-processing. The system echo canceller is what
+    // full duplex would need — the agent's own voice subtracted from its
+    // microphone so the user can talk over it — but on this hardware
+    // setVoiceProcessingEnabled(true) turns the input into nine channels
+    // that carry no room: measured against a control, the loudest of the
+    // nine reads 1.4x the noise floor while a plain input node reads 14.6x
+    // for the same sound in the same room, and no tap format (nil, mono,
+    // the node's own) recovers it. It also refuses to start at all once a
+    // player node joins the graph (kAUInitialize -10875), because a mixer
+    // instantiated after voice processing lands on 44.1kHz against 48kHz
+    // hardware. Half-duplex muting keeps the agent from hearing itself
+    // until there is an echo canceller that works here.
+    fullDuplex = false
     let microphoneFormat = input.outputFormat(forBus: 0)
     // The microphone is an array — three channels built in, more on
     // aggregates — and which channel carries the voice is the device's
@@ -401,6 +465,24 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
       vad.observe(rms: rms, at: ProcessInfo.processInfo.systemUptime)
       builder.yield(AnalyzerInput(buffer: converted))
     }
+    // The mouth: sidecar PCM plays through this node, inside the voice-
+    // processed output so the echo canceller knows what to subtract.
+    var playerNode: AVAudioPlayerNode?
+    var renderFormat: AVAudioFormat?
+    if fullDuplex,
+      let pcmFormat = AVAudioFormat(
+        commonFormat: .pcmFormatFloat32,
+        sampleRate: 24_000,
+        channels: 1,
+        interleaved: false
+      )
+    {
+      let player = AVAudioPlayerNode()
+      engine.attach(player)
+      engine.connect(player, to: engine.mainMixerNode, format: pcmFormat)
+      playerNode = player
+      renderFormat = pcmFormat
+    }
     engine.prepare()
     try engine.start()
 
@@ -418,14 +500,12 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
             // path stays latched off for the rest of the session.
             if let self, id == self.sessionCounter {
               if result.isFinal {
-                self.utteranceInProgress = false
-                self.endpointFinalizeRequested = false
+                self.turn.settled()
                 NSLog("Lulo voice: final (%d chars)", text.count)
               } else if !text.isEmpty {
-                if !self.utteranceInProgress {
-                  self.utteranceHeardAt = ProcessInfo.processInfo.systemUptime
-                }
-                self.utteranceInProgress = true
+                self.turn.heardVolatile(
+                  at: ProcessInfo.processInfo.systemUptime
+                )
               }
             }
             guard !text.isEmpty else { return }
@@ -459,7 +539,7 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
           // declining to fire — the VAD never heard this utterance, and
           // the Dart settle fallback is doing the work.
           let (floor, peak) = vad.snapshot()
-          let pending = self?.utteranceInProgress == true
+          let pending = self?.turn.utteranceInProgress == true
           NSLog(
             "Lulo voice: vad floor %.4f peak %.4f%@",
             floor,
@@ -489,7 +569,9 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
       analyzer: analyzer,
       resultsTask: resultsTask,
       endpointTask: endpointTask,
-      configObserver: configObserver
+      configObserver: configObserver,
+      playerNode: playerNode,
+      renderFormat: renderFormat
     )
     emit(.listeningStarted)
   }
@@ -500,26 +582,37 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
     vad: VoiceActivityBox,
     analyzer: SpeechAnalyzer
   ) {
+    guard id == sessionCounter else {
+      return
+    }
+    let now = ProcessInfo.processInfo.systemUptime
+    if turn.muteOverdue(now: now) {
+      // The sidecar took a sentence and never gave it back. Waiting out
+      // /speak's own timeout means a full two minutes of a microphone that
+      // looks live and hears nothing; the ears come back now and the
+      // sentence is abandoned where it stands.
+      NSLog("Lulo voice: the sidecar went quiet; opening the microphone")
+      turn.abandonSpeech()
+      mute.muted = false
+      turn.microphoneReopened(at: now)
+      emit(.speakingFinished)
+      return
+    }
+    guard !mute.muted else {
+      return
+    }
+    let silence = vad.silence(asOf: now)
     guard
-      id == sessionCounter,
-      utteranceInProgress,
-      !endpointFinalizeRequested,
-      !mute.muted
+      turn.shouldFinalize(
+        silence: silence,
+        lastVoiceAt: vad.lastVoiceAt(),
+        endpointSilence: Self.endpointSilence,
+        now: now
+      )
     else {
       return
     }
-    let silence = vad.silence(asOf: ProcessInfo.processInfo.systemUptime)
-    guard silence.isFinite, silence > Self.endpointSilence else {
-      return
-    }
-    // Recognition trails the voice it heard, so the first volatile may
-    // arrive after the room already went quiet — the margin covers that
-    // lag. Anything staler than the utterance, or heard before the
-    // microphone last reopened, is the pre-answer past.
-    guard vad.lastVoiceAt() >= max(utteranceHeardAt - 1.5, muteLiftedAt) else {
-      return
-    }
-    endpointFinalizeRequested = true
+    turn.askedToFinalize(at: now)
     NSLog("Lulo voice: endpointing after %.2fs of silence", silence)
     Task {
       try? await analyzer.finalize(through: nil)
@@ -535,10 +628,9 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
   private func endSession() {
     guard let session else { return }
     NotificationCenter.default.removeObserver(session.configObserver)
+    session.playerNode?.stop()
     session.endpointTask.cancel()
-    utteranceInProgress = false
-    utteranceHeardAt = .infinity
-    endpointFinalizeRequested = false
+    turn.sessionEnded()
     session.builder.finish()
     session.engine.inputNode.removeTap(onBus: 0)
     session.engine.stop()
@@ -571,9 +663,7 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
     sessionCounter += 1
     starting = false
     speakEpoch += 1
-    unmuteGeneration += 1
-    outstandingUtterances = 0
-    speakingReported = false
+    turn.listeningStopped()
     mute.muted = false
     endSession()
     emit(.voiceFailed, text: message)
@@ -678,22 +768,226 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
   }
 }
 
-// MARK: - AVSpeechSynthesizerDelegate
+/// Whose turn it is, and when the clocks the endpointer trusts were last
+/// true.
+///
+/// This is the most intricate state in the voice pipeline and the one whose
+/// failures look least like themselves: getting it wrong presents as "the
+/// transcriber is bad", never as "the bookkeeping is wrong". It lives here,
+/// apart from the adapter, so it can be reached without an audio device and
+/// therefore tested — the adapter keeps the effects (the mute, the events,
+/// the sleeping), and this keeps the decisions.
+///
+/// Every clock is in seconds on any steady monotonic source; the caller
+/// supplies it, so a test can run a conversation in a microsecond.
+struct SpeechTurn {
+  /// A volatile transcript is on screen and unsettled.
+  private(set) var utteranceInProgress = false
 
-@available(macOS 26.0, *)
-extension VoiceHostAdapter: AVSpeechSynthesizerDelegate {
-  nonisolated func speechSynthesizer(
-    _ synthesizer: AVSpeechSynthesizer,
-    didFinish utterance: AVSpeechUtterance
-  ) {
-    Task { @MainActor in self.utteranceEnded() }
+  /// When the current utterance's first volatile arrived.
+  ///
+  /// The VAD's clock freezes while the microphone is muted, so right after
+  /// an answer its "last voice" is minutes stale. A silence is only
+  /// trustworthy measured against voice heard for THIS utterance.
+  private(set) var heardAt: TimeInterval = .infinity
+
+  /// When the microphone last reopened after the agent spoke. Anything the
+  /// VAD heard before this is the pre-answer past — the mute was unmeasured
+  /// dead time, and a silence spanning it is not one anybody observed.
+  private(set) var muteLiftedAt: TimeInterval = -.infinity
+
+  /// The endpointer has already asked for this utterance; asked once.
+  private(set) var finalizeRequested = false
+
+  /// When it asked, so an ask that is never answered can be repeated.
+  private(set) var finalizeAskedAt: TimeInterval = .infinity
+
+  /// How long an unanswered finalize is waited out before asking again.
+  ///
+  /// The analyzer accepting a finalize and then emitting nothing at all —
+  /// no final, not even an empty result — leaves nothing to clear the
+  /// latch, and the fast endpointer stays off for the rest of the session
+  /// while every turn quietly falls back to the Dart settle. The symptom
+  /// is "everything got about 1.5 seconds slower at some point", with no
+  /// event anywhere saying so. Asking again costs one redundant finalize
+  /// on a stream that has already settled, which is harmless; not asking
+  /// costs the rest of the session.
+  static let reaskUnansweredFinalize: TimeInterval = 3
+
+  /// Sentences in flight to the sidecar.
+  ///
+  /// The mute and the speaking events belong to the whole answer: the first
+  /// sentence mutes and only the last one back unmutes, or sentence one's
+  /// return reopens the microphone while two onward are still playing.
+  private(set) var outstanding = 0
+
+  /// Bumped whenever the speaking state moves; a pending unmute that no
+  /// longer matches has been superseded and must not fire.
+  private(set) var unmuteGeneration = 0
+
+  /// Whether a start has been reported without its finish yet. The unmute
+  /// hangover can bridge two utterances, and the pair must not double-report.
+  private(set) var speakingReported = false
+
+  /// When a sentence last began or finished, so a wedged one can be seen.
+  private(set) var lastProgressAt: TimeInterval = .infinity
+
+  /// The longest the microphone may stay shut with no sentence starting or
+  /// finishing before it is forced open.
+  ///
+  /// /speak is answered only once the sidecar has played the sentence
+  /// through, and waits 120 seconds for that. If the model wedges inside
+  /// the render, the request never returns, outstanding never reaches zero,
+  /// and the mute never lifts: every buffer is dropped before the VAD sees
+  /// it, checkEndpoint returns immediately, and the agent is completely
+  /// deaf — while the button still shows a live microphone, because
+  /// nothing in the audio path failed. Every other way the mute can stick
+  /// has an escape; this one had none but the user noticing.
+  ///
+  /// Generous on purpose: it measures a sentence making no progress, not an
+  /// answer taking its time. Ten seconds of speech for fifty characters is
+  /// ordinary, and a long answer is many sentences, each one refreshing it.
+  static let muteCeiling: TimeInterval = 45
+
+  /// What the caller must do now that a sentence has begun.
+  struct Began {
+    /// This is the first sentence of an answer: shut the microphone.
+    let shouldMute: Bool
+
+    /// Nothing has announced this answer yet.
+    let shouldReportStart: Bool
   }
 
-  nonisolated func speechSynthesizer(
-    _ synthesizer: AVSpeechSynthesizer,
-    didCancel utterance: AVSpeechUtterance
-  ) {
-    Task { @MainActor in self.utteranceEnded() }
+  /// A volatile transcript arrived with words in it.
+  mutating func heardVolatile(at now: TimeInterval) {
+    if !utteranceInProgress {
+      heardAt = now
+    }
+    utteranceInProgress = true
+  }
+
+  /// A result settled the utterance, final or empty.
+  ///
+  /// Runs for empty results too: a finalize that produced nothing must still
+  /// clear the request, or the fast path stays latched off for the session.
+  mutating func settled() {
+    utteranceInProgress = false
+    finalizeRequested = false
+    finalizeAskedAt = .infinity
+  }
+
+  /// The endpointer has asked the transcriber to finalize.
+  mutating func askedToFinalize(at now: TimeInterval) {
+    finalizeRequested = true
+    finalizeAskedAt = now
+  }
+
+  /// Whether the room has been quiet long enough, for long enough, and
+  /// against voice recent enough to belong to this utterance.
+  ///
+  /// Recognition trails the voice it heard, so the first volatile may arrive
+  /// after the room already went quiet; [margin] covers that lag.
+  func shouldFinalize(
+    silence: TimeInterval,
+    lastVoiceAt: TimeInterval,
+    endpointSilence: TimeInterval,
+    now: TimeInterval,
+    margin: TimeInterval = 1.5
+  ) -> Bool {
+    guard utteranceInProgress else { return false }
+    if finalizeRequested {
+      guard now - finalizeAskedAt >= Self.reaskUnansweredFinalize else {
+        return false
+      }
+    }
+    guard silence.isFinite, silence > endpointSilence else { return false }
+    return lastVoiceAt >= max(heardAt - margin, muteLiftedAt)
+  }
+
+  /// One sentence of an answer has been handed to the sidecar.
+  mutating func began(at now: TimeInterval) -> Began {
+    lastProgressAt = now
+    outstanding += 1
+    unmuteGeneration += 1
+    let first = outstanding == 1
+    let report = first && !speakingReported
+    if report {
+      speakingReported = true
+    }
+    return Began(shouldMute: first, shouldReportStart: report)
+  }
+
+  /// One sentence has been heard to its end, or barged over.
+  ///
+  /// Returns the generation a delayed unmute must present to
+  /// [liftMute(generation:)], or nil while sentences are still in flight.
+  mutating func ended(at now: TimeInterval) -> Int? {
+    lastProgressAt = now
+    // Nothing of ours is in flight, so this sentence belongs to a session
+    // that has already been stopped and reset — /speak waits up to two
+    // minutes, long enough for the user to have turned the microphone off,
+    // back on, and started a new sentence. Clamping to zero and continuing
+    // would hand it an unmute for a mute it never took, and reset the
+    // clocks under whatever is being said now.
+    guard outstanding > 0 else { return nil }
+    outstanding -= 1
+    guard outstanding == 0 else { return nil }
+    unmuteGeneration += 1
+    return unmuteGeneration
+  }
+
+  /// Whether the microphone has been shut too long with nothing moving.
+  func muteOverdue(now: TimeInterval) -> Bool {
+    guard outstanding > 0 else { return false }
+    return now - lastProgressAt > Self.muteCeiling
+  }
+
+  /// Give up on whatever is still in flight and open the microphone.
+  mutating func abandonSpeech() {
+    outstanding = 0
+    unmuteGeneration += 1
+    speakingReported = false
+    lastProgressAt = .infinity
+  }
+
+  /// Whether a delayed unmute still speaks for the current state.
+  ///
+  /// The speaker's tail is still in the air when the sidecar returns, so the
+  /// microphone stays shut a beat longer; anything that happened during that
+  /// beat supersedes this.
+  mutating func liftMute(generation: Int) -> Bool {
+    guard generation == unmuteGeneration, outstanding == 0 else {
+      return false
+    }
+    speakingReported = false
+    return true
+  }
+
+  /// The answer is over and the microphone is open again: the endpointer
+  /// starts the next turn clean and trusts nothing heard before now.
+  mutating func microphoneReopened(at now: TimeInterval) {
+    muteLiftedAt = now
+    utteranceInProgress = false
+    heardAt = .infinity
+    finalizeRequested = false
+    finalizeAskedAt = .infinity
+  }
+
+  /// A session ended: forget the utterance, keep nothing to steer the next.
+  mutating func sessionEnded() {
+    utteranceInProgress = false
+    heardAt = .infinity
+    finalizeRequested = false
+    finalizeAskedAt = .infinity
+  }
+
+  /// Listening stopped outright. Speech state resets too, or a sentence
+  /// whose terminal callback never came leaves the microphone shut.
+  mutating func listeningStopped() {
+    unmuteGeneration += 1
+    outstanding = 0
+    speakingReported = false
+    sessionEnded()
   }
 }
 

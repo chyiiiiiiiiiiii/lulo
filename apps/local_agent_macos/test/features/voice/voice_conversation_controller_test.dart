@@ -481,6 +481,13 @@ void main() {
     expect(spoken, isNot(contains('https://')));
   });
 
+  test('rules and list bullets are layout, not words', () {
+    expect(
+      speakableText('第一段。\n\n---\n\n### 💡 建議\n\n- 第一點\n- 第二點\n* 第三點'),
+      '第一段。 建議 第一點 第二點 第三點',
+    );
+  });
+
   test('speech begins with the first finished sentence', () async {
     // Waiting for the whole answer stacks three delays end to end. A
     // sentence is speakable the moment its full stop arrives.
@@ -529,11 +536,11 @@ void main() {
     final Generation generation = await generationStarted();
 
     inference.emit(
-      GenerationDelta(generationId: generation.id, delta: '台北是台灣的首都,也是'),
+      GenerationDelta(generationId: generation.id, delta: '台北是台灣的首都，也是'),
     );
     await pump();
     expect(voice.spoken, <String>[
-      '台北是台灣的首都,',
+      '台北是台灣的首都，',
     ], reason: 'A finished clause is enough to start the voice.');
 
     inference.emit(
@@ -542,7 +549,7 @@ void main() {
     inference.emit(GenerationCompleted(generation.id));
     await pump();
     await pump();
-    expect(voice.spoken, <String>['台北是台灣的首都,', '也是最大的城市。']);
+    expect(voice.spoken, <String>['台北是台灣的首都，', '也是最大的城市。']);
   });
 
   test('a clause too short to sound like speech waits for more', () async {
@@ -553,13 +560,13 @@ void main() {
     await pump();
     final Generation generation = await generationStarted();
 
-    inference.emit(GenerationDelta(generationId: generation.id, delta: '好的,我'));
+    inference.emit(GenerationDelta(generationId: generation.id, delta: '好的，我'));
     await pump();
     expect(voice.spoken, isEmpty);
 
     inference.emit(GenerationDelta(generationId: generation.id, delta: '會幫你。'));
     await pump();
-    expect(voice.spoken, <String>['好的,我會幫你。']);
+    expect(voice.spoken, <String>['好的，我會幫你。']);
     inference.emit(GenerationCompleted(generation.id));
     await pump();
   });
@@ -636,7 +643,7 @@ void main() {
     inference.emit(
       GenerationDelta(
         generationId: generation.id,
-        delta: '你可以逛夜市,參觀故宮,搭捷運,爬象山,喝珍珠奶茶,吃小籠包,體驗這座城市的多元文化',
+        delta: '你可以逛夜市，參觀故宮，搭捷運，爬象山，喝珍珠奶茶，吃小籠包，體驗這座城市的多元文化',
       ),
     );
     await pump();
@@ -904,7 +911,7 @@ void main() {
     inference.emit(
       GenerationDelta(
         generationId: generation.id,
-        delta: '是一套跨平台的開發框架,用一份程式碼同時建構多個平台的應用。',
+        delta: '是一套跨平台的開發框架，用一份程式碼同時建構多個平台的應用。',
       ),
     );
     await pump();
@@ -914,7 +921,7 @@ void main() {
     await pump();
 
     expect(voice.spoken, hasLength(2));
-    expect(voice.spoken[1], 'Flutter。是一套跨平台的開發框架,用一份程式碼同時建構多個平台的應用。');
+    expect(voice.spoken[1], 'Flutter。是一套跨平台的開發框架，用一份程式碼同時建構多個平台的應用。');
     expect(
       voice.spokenLanguages.toSet(),
       <String?>{'zh'},
