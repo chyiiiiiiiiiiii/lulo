@@ -111,7 +111,7 @@ final class VoiceConversationController extends ChangeNotifier {
   ///
   /// Deliberately no colons: a colon is how every URL starts, and a chunk
   /// cut at "https:" leaves a link half stripped and read aloud.
-  static const String _clauseEnds = ',,、';
+  static const String _clauseEnds = ',，、';
 
   /// The first clause must have this much substance before it is worth an
   /// extra synthesis seam; "好的," alone reads as a stutter.
