@@ -583,17 +583,19 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
     guard id == sessionCounter, !mute.muted else {
       return
     }
-    let silence = vad.silence(asOf: ProcessInfo.processInfo.systemUptime)
+    let now = ProcessInfo.processInfo.systemUptime
+    let silence = vad.silence(asOf: now)
     guard
       turn.shouldFinalize(
         silence: silence,
         lastVoiceAt: vad.lastVoiceAt(),
-        endpointSilence: Self.endpointSilence
+        endpointSilence: Self.endpointSilence,
+        now: now
       )
     else {
       return
     }
-    turn.askedToFinalize()
+    turn.askedToFinalize(at: now)
     NSLog("Lulo voice: endpointing after %.2fs of silence", silence)
     Task {
       try? await analyzer.finalize(through: nil)
@@ -780,6 +782,21 @@ struct SpeechTurn {
   /// The endpointer has already asked for this utterance; asked once.
   private(set) var finalizeRequested = false
 
+  /// When it asked, so an ask that is never answered can be repeated.
+  private(set) var finalizeAskedAt: TimeInterval = .infinity
+
+  /// How long an unanswered finalize is waited out before asking again.
+  ///
+  /// The analyzer accepting a finalize and then emitting nothing at all —
+  /// no final, not even an empty result — leaves nothing to clear the
+  /// latch, and the fast endpointer stays off for the rest of the session
+  /// while every turn quietly falls back to the Dart settle. The symptom
+  /// is "everything got about 1.5 seconds slower at some point", with no
+  /// event anywhere saying so. Asking again costs one redundant finalize
+  /// on a stream that has already settled, which is harmless; not asking
+  /// costs the rest of the session.
+  static let reaskUnansweredFinalize: TimeInterval = 3
+
   /// Sentences in flight to the sidecar.
   ///
   /// The mute and the speaking events belong to the whole answer: the first
@@ -819,11 +836,13 @@ struct SpeechTurn {
   mutating func settled() {
     utteranceInProgress = false
     finalizeRequested = false
+    finalizeAskedAt = .infinity
   }
 
   /// The endpointer has asked the transcriber to finalize.
-  mutating func askedToFinalize() {
+  mutating func askedToFinalize(at now: TimeInterval) {
     finalizeRequested = true
+    finalizeAskedAt = now
   }
 
   /// Whether the room has been quiet long enough, for long enough, and
@@ -835,9 +854,15 @@ struct SpeechTurn {
     silence: TimeInterval,
     lastVoiceAt: TimeInterval,
     endpointSilence: TimeInterval,
+    now: TimeInterval,
     margin: TimeInterval = 1.5
   ) -> Bool {
-    guard utteranceInProgress, !finalizeRequested else { return false }
+    guard utteranceInProgress else { return false }
+    if finalizeRequested {
+      guard now - finalizeAskedAt >= Self.reaskUnansweredFinalize else {
+        return false
+      }
+    }
     guard silence.isFinite, silence > endpointSilence else { return false }
     return lastVoiceAt >= max(heardAt - margin, muteLiftedAt)
   }
@@ -859,7 +884,14 @@ struct SpeechTurn {
   /// Returns the generation a delayed unmute must present to
   /// [liftMute(generation:)], or nil while sentences are still in flight.
   mutating func ended() -> Int? {
-    outstanding = max(0, outstanding - 1)
+    // Nothing of ours is in flight, so this sentence belongs to a session
+    // that has already been stopped and reset — /speak waits up to two
+    // minutes, long enough for the user to have turned the microphone off,
+    // back on, and started a new sentence. Clamping to zero and continuing
+    // would hand it an unmute for a mute it never took, and reset the
+    // clocks under whatever is being said now.
+    guard outstanding > 0 else { return nil }
+    outstanding -= 1
     guard outstanding == 0 else { return nil }
     unmuteGeneration += 1
     return unmuteGeneration
@@ -885,6 +917,7 @@ struct SpeechTurn {
     utteranceInProgress = false
     heardAt = .infinity
     finalizeRequested = false
+    finalizeAskedAt = .infinity
   }
 
   /// A session ended: forget the utterance, keep nothing to steer the next.
@@ -892,6 +925,7 @@ struct SpeechTurn {
     utteranceInProgress = false
     heardAt = .infinity
     finalizeRequested = false
+    finalizeAskedAt = .infinity
   }
 
   /// Listening stopped outright. Speech state resets too, or a sentence
