@@ -347,6 +347,91 @@ void main() {
     expect(voice.spoken.last, cutOff);
   });
 
+  test('a real question beats the resume it interrupted', () async {
+    // The resume must never talk over the answer to the question that
+    // caused it. If what the user said becomes a question, the interrupted
+    // sentence is dropped, not queued behind it.
+    DateTime clock = DateTime(2026, 8);
+    final VoiceConversationController resuming = VoiceConversationController(
+      voice: voice,
+      conversation: vm,
+      // The backstop never fires, so this isolates the settle path: the
+      // question itself must be what drops the interrupted sentence.
+      utteranceScheduler: const _NeverScheduler(),
+      now: () {
+        clock = clock.add(const Duration(milliseconds: 600));
+        return clock;
+      },
+    );
+    addTearDown(resuming.dispose);
+    await resuming.enable();
+    voice.hear(const FinalTranscript('Tell me a long story.'));
+    await pump();
+    await answerCompletely('Once upon a time, at very great length indeed.');
+    final int spokenBefore = voice.spoken.length;
+
+    voice.hear(const PartialTranscript('等一下我想問'));
+    await pump();
+    expect(voice.calls, contains('stopSpeaking'));
+
+    // It settles into an actual question.
+    voice.hear(const FinalTranscript('等一下我想問別的'));
+    await pump();
+    await pump();
+    await pump();
+
+    expect(
+      inference.requests.map((GenerationRequest r) => r.prompt),
+      contains('等一下我想問別的'),
+    );
+    expect(
+      voice.spoken.length,
+      spokenBefore,
+      reason: 'The abandoned sentence must not be read over the new answer.',
+    );
+  });
+
+  test('a resume that already started is silenced by the question', () async {
+    // The race the backstop makes possible: it puts the sentence back, and
+    // only then does the user's utterance settle into a question. The
+    // resumed sentence would otherwise be read over the answer to it.
+    DateTime clock = DateTime(2026, 8);
+    final VoiceConversationController resuming = VoiceConversationController(
+      voice: voice,
+      conversation: vm,
+      // Fires at once, so the resume always wins the race with the final.
+      utteranceScheduler: MicrotaskBatchScheduler(),
+      now: () {
+        clock = clock.add(const Duration(milliseconds: 600));
+        return clock;
+      },
+    );
+    addTearDown(resuming.dispose);
+    await resuming.enable();
+    voice.hear(const FinalTranscript('Tell me a long story.'));
+    await pump();
+    await answerCompletely('Once upon a time, at very great length indeed.');
+    final int spokenBefore = voice.spoken.length;
+
+    voice.hear(const PartialTranscript('等一下我想問'));
+    await pump();
+    expect(
+      voice.spoken.length,
+      greaterThan(spokenBefore),
+      reason: 'This test is only meaningful if the resume actually ran.',
+    );
+
+    voice.hear(const FinalTranscript('等一下我想問別的'));
+    await pump();
+    await pump();
+
+    expect(
+      voice.calls.lastIndexOf('stopSpeaking'),
+      greaterThan(voice.calls.lastIndexOf('speak')),
+      reason: 'The question must silence the sentence it replaced.',
+    );
+  });
+
   test('the user talking over a streaming answer cancels it', () async {
     await controller.enable();
     voice.hear(const FinalTranscript('Tell me a long story.'));

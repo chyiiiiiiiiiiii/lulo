@@ -113,6 +113,16 @@ final class VoiceConversationController extends ChangeNotifier {
 
   /// The sentence currently handed to the voice, kept so an interruption can
   /// put it back.
+  ///
+  /// Known limitation: this is the most recently *dispatched* utterance, not
+  /// the one the ear is currently on. While an answer streams, chunks go out
+  /// roughly in step with playback and the two agree closely enough. But a
+  /// completed answer is read back to the user as one utterance, so an
+  /// interruption late in a long one resumes from its beginning rather than
+  /// from where it was cut. Fixing that properly needs the playback position
+  /// from the native side, or a bounded chunking of the completed-answer
+  /// path with a queue-aware notion of "currently playing" — neither of
+  /// which is a change to make without being able to hear the result.
   String? _speechInFlight;
 
   /// The sentence an interruption cut off, awaiting [_resumeDelay].
@@ -329,7 +339,13 @@ final class VoiceConversationController extends ChangeNotifier {
         }
         if (_conversation.canSubmit) {
           // A question was asked; the sentence it talked over is history.
+          // If the backstop already put that sentence back before the
+          // question settled, it is now talking over the answer to the
+          // question — so it is silenced here as well as dropped.
           _cancelPendingResume();
+          if (_speaking || _speechRequested) {
+            unawaited(_voice.stopSpeaking());
+          }
           unawaited(_conversation.submit(text));
         } else {
           // A correction spoken wholly inside the post-final cooldown
