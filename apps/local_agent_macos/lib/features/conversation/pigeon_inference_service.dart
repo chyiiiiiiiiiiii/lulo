@@ -237,6 +237,10 @@ final class _PigeonGenerationOperation {
           sessionId: request.conversationId.value,
           prompt: request.prompt,
           context: const <String>[],
+          history: <DesktopConversationTurn>[
+            for (final Turn turn in request.history)
+              DesktopConversationTurn(role: turn.role, text: turn.text),
+          ],
           temperature: config.temperature,
           topP: config.topP,
           maxTokens: config.maxTokens,

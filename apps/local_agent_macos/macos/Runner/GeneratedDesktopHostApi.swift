@@ -205,6 +205,12 @@ enum HostFailureCode: Int {
   case protocolMismatch = 6
 }
 
+/// Who said one remembered turn.
+enum HostTurnRole: Int {
+  case user = 0
+  case assistant = 1
+}
+
 /// Generated class from Pigeon that represents data sent in messages.
 struct HostRequest: Hashable {
   var schemaVersion: Int64
@@ -369,12 +375,60 @@ struct HostModelLoadResult: Hashable {
   }
 }
 
+/// A turn the runtime did not hear, replayed so it can.
+///
+/// The conversation on screen is read back from SQLite; the model behind it
+/// is not, and a session that outlived a relaunch or a model swap starts
+/// empty. These seed it.
+///
+/// Generated class from Pigeon that represents data sent in messages.
+struct HostConversationTurn: Hashable {
+  var role: HostTurnRole
+  var text: String
+
+
+  // swift-format-ignore: AlwaysUseLowerCamelCase
+  static func fromList(_ pigeonVar_list: [Any?]) -> HostConversationTurn? {
+    let role = pigeonVar_list[0] as! HostTurnRole
+    let text = pigeonVar_list[1] as! String
+
+    return HostConversationTurn(
+      role: role,
+      text: text
+    )
+  }
+  func toList() -> [Any?] {
+    return [
+      role,
+      text,
+    ]
+  }
+  static func == (lhs: HostConversationTurn, rhs: HostConversationTurn) -> Bool {
+    if Swift.type(of: lhs) != Swift.type(of: rhs) {
+      return false
+    }
+    return deepEqualsGeneratedDesktopHostApi(lhs.role, rhs.role) && deepEqualsGeneratedDesktopHostApi(lhs.text, rhs.text)
+  }
+
+  func hash(into hasher: inout Hasher) {
+    hasher.combine("HostConversationTurn")
+    deepHashGeneratedDesktopHostApi(value: role, hasher: &hasher)
+    deepHashGeneratedDesktopHostApi(value: text, hasher: &hasher)
+  }
+}
+
 /// Generated class from Pigeon that represents data sent in messages.
 struct HostGenerationRequest: Hashable {
   var generationId: String
   var sessionId: String
   var prompt: String
   var context: [String]
+  /// What was already said, oldest first, excluding [prompt].
+  ///
+  /// Only consulted when the runtime has no live session for [sessionId]:
+  /// a conversation that is still alive is its own memory, and seeding it
+  /// again would say everything twice.
+  var history: [HostConversationTurn]
   var temperature: Double
   var topP: Double
   var maxTokens: Int64
@@ -387,16 +441,18 @@ struct HostGenerationRequest: Hashable {
     let sessionId = pigeonVar_list[1] as! String
     let prompt = pigeonVar_list[2] as! String
     let context = pigeonVar_list[3] as! [String]
-    let temperature = pigeonVar_list[4] as! Double
-    let topP = pigeonVar_list[5] as! Double
-    let maxTokens = pigeonVar_list[6] as! Int64
-    let seed = pigeonVar_list[7] as! Int64
+    let history = pigeonVar_list[4] as! [HostConversationTurn]
+    let temperature = pigeonVar_list[5] as! Double
+    let topP = pigeonVar_list[6] as! Double
+    let maxTokens = pigeonVar_list[7] as! Int64
+    let seed = pigeonVar_list[8] as! Int64
 
     return HostGenerationRequest(
       generationId: generationId,
       sessionId: sessionId,
       prompt: prompt,
       context: context,
+      history: history,
       temperature: temperature,
       topP: topP,
       maxTokens: maxTokens,
@@ -409,6 +465,7 @@ struct HostGenerationRequest: Hashable {
       sessionId,
       prompt,
       context,
+      history,
       temperature,
       topP,
       maxTokens,
@@ -419,7 +476,7 @@ struct HostGenerationRequest: Hashable {
     if Swift.type(of: lhs) != Swift.type(of: rhs) {
       return false
     }
-    return deepEqualsGeneratedDesktopHostApi(lhs.generationId, rhs.generationId) && deepEqualsGeneratedDesktopHostApi(lhs.sessionId, rhs.sessionId) && deepEqualsGeneratedDesktopHostApi(lhs.prompt, rhs.prompt) && deepEqualsGeneratedDesktopHostApi(lhs.context, rhs.context) && deepEqualsGeneratedDesktopHostApi(lhs.temperature, rhs.temperature) && deepEqualsGeneratedDesktopHostApi(lhs.topP, rhs.topP) && deepEqualsGeneratedDesktopHostApi(lhs.maxTokens, rhs.maxTokens) && deepEqualsGeneratedDesktopHostApi(lhs.seed, rhs.seed)
+    return deepEqualsGeneratedDesktopHostApi(lhs.generationId, rhs.generationId) && deepEqualsGeneratedDesktopHostApi(lhs.sessionId, rhs.sessionId) && deepEqualsGeneratedDesktopHostApi(lhs.prompt, rhs.prompt) && deepEqualsGeneratedDesktopHostApi(lhs.context, rhs.context) && deepEqualsGeneratedDesktopHostApi(lhs.history, rhs.history) && deepEqualsGeneratedDesktopHostApi(lhs.temperature, rhs.temperature) && deepEqualsGeneratedDesktopHostApi(lhs.topP, rhs.topP) && deepEqualsGeneratedDesktopHostApi(lhs.maxTokens, rhs.maxTokens) && deepEqualsGeneratedDesktopHostApi(lhs.seed, rhs.seed)
   }
 
   func hash(into hasher: inout Hasher) {
@@ -428,6 +485,7 @@ struct HostGenerationRequest: Hashable {
     deepHashGeneratedDesktopHostApi(value: sessionId, hasher: &hasher)
     deepHashGeneratedDesktopHostApi(value: prompt, hasher: &hasher)
     deepHashGeneratedDesktopHostApi(value: context, hasher: &hasher)
+    deepHashGeneratedDesktopHostApi(value: history, hasher: &hasher)
     deepHashGeneratedDesktopHostApi(value: temperature, hasher: &hasher)
     deepHashGeneratedDesktopHostApi(value: topP, hasher: &hasher)
     deepHashGeneratedDesktopHostApi(value: maxTokens, hasher: &hasher)
@@ -709,24 +767,32 @@ private class GeneratedDesktopHostApiPigeonCodecReader: FlutterStandardReader {
       }
       return nil
     case 132:
-      return HostRequest.fromList(self.readValue() as! [Any?])
+      let enumResultAsInt: Int? = nilOrValue(self.readValue() as! Int?)
+      if let enumResultAsInt = enumResultAsInt {
+        return HostTurnRole(rawValue: enumResultAsInt)
+      }
+      return nil
     case 133:
-      return HostHandshakeResult.fromList(self.readValue() as! [Any?])
+      return HostRequest.fromList(self.readValue() as! [Any?])
     case 134:
-      return HostModelRequest.fromList(self.readValue() as! [Any?])
+      return HostHandshakeResult.fromList(self.readValue() as! [Any?])
     case 135:
-      return HostModelLoadResult.fromList(self.readValue() as! [Any?])
+      return HostModelRequest.fromList(self.readValue() as! [Any?])
     case 136:
-      return HostGenerationRequest.fromList(self.readValue() as! [Any?])
+      return HostModelLoadResult.fromList(self.readValue() as! [Any?])
     case 137:
-      return HostGenerationAcknowledgement.fromList(self.readValue() as! [Any?])
+      return HostConversationTurn.fromList(self.readValue() as! [Any?])
     case 138:
-      return HostCancellationAcknowledgement.fromList(self.readValue() as! [Any?])
+      return HostGenerationRequest.fromList(self.readValue() as! [Any?])
     case 139:
-      return HostOperationCompletion.fromList(self.readValue() as! [Any?])
+      return HostGenerationAcknowledgement.fromList(self.readValue() as! [Any?])
     case 140:
-      return HostGenerationEvent.fromList(self.readValue() as! [Any?])
+      return HostCancellationAcknowledgement.fromList(self.readValue() as! [Any?])
     case 141:
+      return HostOperationCompletion.fromList(self.readValue() as! [Any?])
+    case 142:
+      return HostGenerationEvent.fromList(self.readValue() as! [Any?])
+    case 143:
       return HostTransitionGeometry.fromList(self.readValue() as! [Any?])
     default:
       return super.readValue(ofType: type)
@@ -745,35 +811,41 @@ private class GeneratedDesktopHostApiPigeonCodecWriter: FlutterStandardWriter {
     } else if let value = value as? HostFailureCode {
       super.writeByte(131)
       super.writeValue(value.rawValue)
-    } else if let value = value as? HostRequest {
+    } else if let value = value as? HostTurnRole {
       super.writeByte(132)
-      super.writeValue(value.toList())
-    } else if let value = value as? HostHandshakeResult {
+      super.writeValue(value.rawValue)
+    } else if let value = value as? HostRequest {
       super.writeByte(133)
       super.writeValue(value.toList())
-    } else if let value = value as? HostModelRequest {
+    } else if let value = value as? HostHandshakeResult {
       super.writeByte(134)
       super.writeValue(value.toList())
-    } else if let value = value as? HostModelLoadResult {
+    } else if let value = value as? HostModelRequest {
       super.writeByte(135)
       super.writeValue(value.toList())
-    } else if let value = value as? HostGenerationRequest {
+    } else if let value = value as? HostModelLoadResult {
       super.writeByte(136)
       super.writeValue(value.toList())
-    } else if let value = value as? HostGenerationAcknowledgement {
+    } else if let value = value as? HostConversationTurn {
       super.writeByte(137)
       super.writeValue(value.toList())
-    } else if let value = value as? HostCancellationAcknowledgement {
+    } else if let value = value as? HostGenerationRequest {
       super.writeByte(138)
       super.writeValue(value.toList())
-    } else if let value = value as? HostOperationCompletion {
+    } else if let value = value as? HostGenerationAcknowledgement {
       super.writeByte(139)
       super.writeValue(value.toList())
-    } else if let value = value as? HostGenerationEvent {
+    } else if let value = value as? HostCancellationAcknowledgement {
       super.writeByte(140)
       super.writeValue(value.toList())
-    } else if let value = value as? HostTransitionGeometry {
+    } else if let value = value as? HostOperationCompletion {
       super.writeByte(141)
+      super.writeValue(value.toList())
+    } else if let value = value as? HostGenerationEvent {
+      super.writeByte(142)
+      super.writeValue(value.toList())
+    } else if let value = value as? HostTransitionGeometry {
+      super.writeByte(143)
       super.writeValue(value.toList())
     } else {
       super.writeValue(value)

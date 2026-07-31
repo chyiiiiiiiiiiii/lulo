@@ -1,4 +1,5 @@
 import 'dart:ui' show Offset, Rect, Size;
+import 'package:agent_core/agent_core.dart';
 import 'package:flutter/foundation.dart';
 
 import '../generated/desktop_host_api.g.dart';
@@ -136,6 +137,31 @@ final class DesktopModelLoadResult {
   int get hashCode => Object.hash(modelId, loaded);
 }
 
+/// One remembered turn, on its way to a runtime that never heard it.
+final class DesktopConversationTurn {
+  /// Creates a turn authored by [role] carrying [text].
+  const DesktopConversationTurn({required this.role, required this.text});
+
+  /// Who said it.
+  final TurnRole role;
+
+  /// What was said.
+  final String text;
+
+  @override
+  bool operator ==(Object other) {
+    if (identical(this, other)) {
+      return true;
+    }
+    return other is DesktopConversationTurn &&
+        role == other.role &&
+        text == other.text;
+  }
+
+  @override
+  int get hashCode => Object.hash(role, text);
+}
+
 /// Typed generation payload crossing the native boundary.
 final class DesktopGenerationRequest {
   /// Creates an immutable generation request.
@@ -148,7 +174,15 @@ final class DesktopGenerationRequest {
     required this.topP,
     required this.maxTokens,
     required this.seed,
+    this.history = const <DesktopConversationTurn>[],
   });
+
+  /// What was already said, oldest first, excluding [prompt].
+  ///
+  /// The runtime consults this only when it has no live session for
+  /// [sessionId]. A conversation still held in memory is its own record;
+  /// seeding a live one would repeat everything it already knows.
+  final List<DesktopConversationTurn> history;
 
   /// Stable ID used to correlate acknowledgements and events.
   final String generationId;

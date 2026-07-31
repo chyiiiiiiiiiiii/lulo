@@ -115,6 +115,10 @@ final class LocalModelRuntimeTests: XCTestCase {
       sessionId: "session-7",
       prompt: "Hello",
       context: ["system fact", "prior turn"],
+      history: [
+        RuntimeConversationTurn(role: .user, text: "what was asked before"),
+        RuntimeConversationTurn(role: .assistant, text: "what was answered"),
+      ],
       temperature: 0.25,
       topP: 0.9,
       maxTokens: 16,
@@ -138,6 +142,11 @@ final class LocalModelRuntimeTests: XCTestCase {
         LiteRTLMDriverGenerationRequest(
           sessionId: "session-7",
           prompt: "Hello",
+          history: [
+            RuntimeConversationTurn(role: .user, text: "what was asked before"),
+            RuntimeConversationTurn(
+              role: .assistant, text: "what was answered"),
+          ],
           extraContext: ["context": ["system fact", "prior turn"]],
           sampler: LiteRTLMSamplerFingerprint(
             topK: 32,

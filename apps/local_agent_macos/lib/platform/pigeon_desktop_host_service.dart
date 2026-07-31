@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:collection';
 
+import 'package:agent_core/agent_core.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
@@ -83,6 +84,16 @@ final class PigeonDesktopHostService extends DesktopHostEventApi
           sessionId: generation.sessionId,
           prompt: generation.prompt,
           context: generation.context,
+          history: <HostConversationTurn>[
+            for (final DesktopConversationTurn turn in generation.history)
+              HostConversationTurn(
+                role: switch (turn.role) {
+                  TurnRole.user => HostTurnRole.user,
+                  TurnRole.assistant => HostTurnRole.assistant,
+                },
+                text: turn.text,
+              ),
+          ],
           temperature: generation.temperature,
           topP: generation.topP,
           maxTokens: generation.maxTokens,

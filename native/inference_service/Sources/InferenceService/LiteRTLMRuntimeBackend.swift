@@ -100,6 +100,7 @@ struct LiteRTLMSamplerFingerprint: Equatable, Sendable {
 struct LiteRTLMDriverGenerationRequest: Equatable, Sendable {
   let sessionId: String
   let prompt: String
+  let history: [RuntimeConversationTurn]
   let extraContext: [String: [String]]
   let sampler: LiteRTLMSamplerFingerprint
   let maxOutputTokens: Int
@@ -177,8 +178,17 @@ actor SystemLiteRTLMRuntimeDriver: LiteRTLMRuntimeDriving {
         temperature: Float(request.sampler.temperature),
         seed: request.sampler.seed
       )
+      // A conversation the runtime has never held starts empty even when
+      // the window above it is full of turns read back from storage. The
+      // history seeds it; a session already in `conversations` is its own
+      // memory and is left alone.
       conversation = try await engine.createConversation(
-        with: ConversationConfig(samplerConfig: sampler)
+        with: ConversationConfig(
+          initialMessages: request.history.map {
+            Message($0.text, role: $0.role == .user ? .user : .model)
+          },
+          samplerConfig: sampler
+        )
       )
       conversations[request.sessionId] = conversation
     }
@@ -665,6 +675,7 @@ public actor LiteRTLMRuntimeBackend: RuntimeBackend {
     return LiteRTLMDriverGenerationRequest(
       sessionId: generation.sessionId,
       prompt: generation.prompt,
+      history: generation.history,
       extraContext: ["context": generation.context],
       sampler: LiteRTLMSamplerFingerprint(
         topK: configuration.topK,

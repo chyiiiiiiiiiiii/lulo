@@ -151,6 +151,36 @@ void main() {
     await harness.dispose();
   });
 
+  test('a follow-up carries what was already said, and only that', () async {
+    final _Harness harness = _Harness();
+    final ConversationViewModel viewModel = harness.createViewModel();
+    await _startGeneration(harness, viewModel);
+    harness.inference.emit(
+      const GenerationCompleted(GenerationId('generation-1')),
+    );
+    await Future<void>.delayed(Duration.zero);
+
+    await viewModel.submit('Next');
+    await Future<void>.delayed(Duration.zero);
+
+    // The opening question had nothing behind it.
+    expect(harness.inference.requests.first.history, isEmpty);
+
+    // The follow-up carries the finished exchange, oldest first — and stops
+    // there. A history ending in 'Next' would ask the model the same
+    // question twice.
+    final List<Turn> history = harness.inference.requests.last.history;
+    expect(history, hasLength(2));
+    expect(history.first.role, TurnRole.user);
+    expect(history.first.text, 'Hello');
+    expect(history.last.role, TurnRole.assistant);
+    expect(history.last.text, 'Partial');
+    expect(history.map((Turn turn) => turn.text), isNot(contains('Next')));
+
+    viewModel.dispose();
+    await harness.dispose();
+  });
+
   test(
     'cancellation finalizes the partial turn and enables submission',
     () async {
