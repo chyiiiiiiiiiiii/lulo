@@ -19,6 +19,52 @@ flag: the `AVAudioPlayerNode`, the render format, `renderAndPlay`, and the
 sidecar's `/render` route streaming raw PCM instead of owning the speaker.
 It is kept, not deleted.
 
+## The two audio paths
+
+The difference between them is not the mute. It is **who holds the agent's own
+voice as a signal.** An echo canceller subtracts a reference — the far-end
+signal — from what the microphone hears, so it can only exist where both live
+in the same audio graph.
+
+**Today.** The sidecar owns the speaker. The agent's voice reaches the
+microphone only as sound in the room, and the app never holds a copy of it:
+
+```mermaid
+flowchart LR
+    adapter["VoiceHostAdapter.speak<br/>speakThroughSidecar"] -->|"POST /speak"| sidecar["lulo-tts server.py<br/>owns sounddevice"]
+    sidecar --> spk(["speaker"])
+    spk -. "acoustic path — the only<br/>copy of the far-end signal" .-> mic(["microphone"])
+    mic --> input["inputNode<br/>plain, never voice-processed"]
+    input --> tap["installTap → MuteBox"]
+    tap -->|"mute.muted — buffers dropped"| gone(["nothing<br/>VAD clock frozen"])
+    tap -->|"unmuted"| rest["loudestChannel → VoiceActivityBox<br/>→ converter → SpeechAnalyzer"]
+    style gone stroke-dasharray: 4 4
+```
+
+**`wip/full-duplex-aec`.** Playback moves inside the app, so the same
+`AVAudioEngine` that captures also renders — which is the arrangement
+`setVoiceProcessingEnabled(true)` needs to have any reference to work from:
+
+```mermaid
+flowchart LR
+    adapter["VoiceHostAdapter.renderAndPlay"] -->|"POST /render"| sidecar["lulo-tts server.py<br/>renders only"]
+    sidecar -->|"chunked float32 mono PCM<br/>hang-up = barge-in"| adapter
+    adapter -->|"0.2s buffers + tail buffer"| player["AVAudioPlayerNode"]
+    player --> mixer["mainMixerNode"]
+    mixer --> spk(["speaker"])
+    spk -. "the same acoustic path" .-> mic(["microphone"])
+    mic --> input["inputNode<br/>setVoiceProcessingEnabled(true)"]
+    mixer -. "far-end reference, inside the engine —<br/>what the canceller was to subtract" .-> input
+    input --> tap["installTap — never muted"]
+    tap --> rest["loudestChannel → VoiceActivityBox<br/>→ converter → SpeechAnalyzer"]
+```
+
+Read together: the second diagram is what makes an echo canceller *possible*
+on this hardware, and the first is what the app is left with once the
+canceller turns out not to work. Muting is a consequence, not a design — with
+no reference signal and no subtraction, the only way to keep the agent from
+transcribing itself is to stop listening.
+
 ## What was wanted
 
 A conversation where the user can talk over the agent mid-sentence and be

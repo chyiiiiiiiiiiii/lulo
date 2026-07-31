@@ -154,16 +154,16 @@ sequenceDiagram
     Note over Conv: TokenBatcher coalesces deltas to<br/>one per frame interval (8.333ms)
     Conv-->>Voice: activeTurn changed (in-process listenable)
 
-    Voice->>Voice: cut at the last safe sentence end;<br/>the first chunk may cut at a clause;<br/>speakableText() strips markdown, links, emoji
+    Voice->>Voice: cut at the last safe sentence end<br/>(the first chunk may cut at a clause)<br/>then speakableText() strips markdown, links, emoji
     Voice->>Host: speak(chunk, voice, lang) (pigeon)
     Host->>Host: mute the microphone feed — half duplex
     Host-->>Voice: SpeakingStarted
     Host->>TTS: POST /speak {text, voice, lang}
-    Note over TTS: Qwen3-TTS streams ~0.8s chunks;<br/>each plays as it renders
+    Note over TTS: Qwen3-TTS streams ~0.8s chunks —<br/>each plays as it renders
     TTS-->>User: sound
     TTS-->>Host: 200, once playback has drained
 
-    Note over Conv,Voice: further chunks overlap the above;<br/>the mute belongs to the whole answer,<br/>not to one sentence
+    Note over Conv,Voice: further chunks overlap the above —<br/>the mute belongs to the whole answer,<br/>not to one sentence
     Host->>Host: last utterance out → wait 300ms →<br/>unmute, reset the endpointer's clock
     Host-->>Voice: SpeakingFinished
 ```

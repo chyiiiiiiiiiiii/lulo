@@ -6,8 +6,10 @@ user has started talking, that they have stopped, and that they have started
 again over an answer they no longer want. Every one of those is a heuristic
 with a way to fail silently.
 
-> **Branch.** This describes `feat/phase-1a-basic-conversation` at `f4309e9`
-> (worktree `.worktrees/phase-1a`). **Not merged into `main`.** `main` at
+> **Branch.** This describes `feat/phase-1a-basic-conversation` at `819babf`
+> (worktree `.worktrees/phase-1a`), the tip as of writing; the half-duplex
+> decision it rests on is `f4309e9`, one commit earlier.
+> **Not merged into `main`.** `main` at
 > `0cb7cf6` has the same pipeline without the `fullDuplex` gate and its
 > reasoning; the differences are in `VoiceHostAdapter.swift` and
 > `voice_conversation_controller.dart`.
@@ -258,6 +260,31 @@ guard vad.lastVoiceAt() >= max(utteranceHeardAt - 1.5, muteLiftedAt) else { retu
 
 Read that as: *only trust a silence measured against voice heard for THIS
 utterance, in a stretch of time the microphone was actually open.*
+
+Every tick runs the whole cascade, and each rung refuses for its own reason:
+
+```mermaid
+flowchart TD
+    tick["endpointTask ticks — Task.sleep(150ms), main actor"] --> g1["id == sessionCounter"]
+    g1 -->|"a session that has been replaced"| out(["return, silently"])
+    g1 --> g2["utteranceInProgress"]
+    g2 -->|"nothing volatile on screen yet"| out
+    g2 --> g3["!endpointFinalizeRequested"]
+    g3 -->|"already asked — once per utterance"| out
+    g3 --> g4["!mute.muted"]
+    g4 -->|"the agent is talking, and the VAD<br/>is seeing no buffers at all"| out
+    g4 --> sil["silence.isFinite<br/>silence > endpointSilence (0.8s)"]
+    sil -->|"shorter than 0.8s, or infinite<br/>because no voice was ever heard here"| out
+    sil --> clocks["vad.lastVoiceAt() >=<br/>max(utteranceHeardAt - 1.5, muteLiftedAt)"]
+    clocks -->|"the last voice belongs to<br/>the pre-answer past"| decline(["return — the Dart settle<br/>carries this turn"])
+    clocks --> fire["endpointFinalizeRequested = true<br/>analyzer.finalize(through: nil)"]
+```
+
+The two clocks in the last guard are the ones with a history. `utteranceHeardAt`
+answers *whose silence is this?* and `muteLiftedAt` answers *was anyone
+listening during it?* — and the `decline` arm is not a failure. It is the
+endpointer saying it has no honest measurement, which is what the heartbeat's
+`(utterance pending)` reports and what the Dart settle exists to cover.
 
 - **`utteranceHeardAt`** is set when the current utterance's first volatile
   arrives (`if !utteranceInProgress { utteranceHeardAt = now }`). The `- 1.5`

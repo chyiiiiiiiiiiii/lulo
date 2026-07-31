@@ -154,7 +154,7 @@ sequenceDiagram
     Panel-->>Dart: onPresentationChangeRequested → presentationRequests
     Dart->>Dart: _leaving.forward() — answer the keystroke now
     Dart->>Panel: beginPresentationTransition(target)
-    Panel->>Panel: fallback cancelled; glide starts; stage goes inert
+    Panel->>Panel: fallback cancelled, glide starts, stage goes inert
     Panel-->>Dart: canvas geometry
     Dart->>Dart: spring the presence from → to
     Dart->>Panel: endPresentationTransition(target)

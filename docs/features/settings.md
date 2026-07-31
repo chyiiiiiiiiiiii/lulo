@@ -73,6 +73,44 @@ pay for it. It also re-checks `mounted` after saving, because a composition
 being disposed alongside the widget would only throw if asked to load
 something.
 
+One flip of one switch, from the sheet to whatever acts on it. Nothing
+subscribes to a settings object; the write path hands each choice to its own
+consumer, in a fixed order:
+
+```mermaid
+sequenceDiagram
+    participant Sheet as settings_sheet.dart
+    participant App as app.dart<br/>_changeSettings
+    participant Comp as AppComposition
+    participant Panel as DesktopPanelController<br/>(Swift)
+    participant Store as FileSettingsStore
+    participant Voice as PigeonVoiceService
+
+    Sheet->>App: the whole AppSettings, one field flipped
+    App->>App: setState(_settings)
+    Note over App,Panel: _applySettings — the window and the<br/>voice hear it before the disk does
+    App->>Comp: ttsVoice.value = settings.ttsVoice
+    App->>Panel: setWindowBehaviour(keepOrbOnTop,<br/>followAcrossSpaces) — pigeon
+    Panel->>Panel: applyWindowBehaviour(for: storedMode)<br/>+ applySpaceBehaviour()
+    App->>Store: save(settings) → settings.json
+    App->>App: mounted? — disposed alongside the widget stops here
+    alt modelPath changed
+        App->>Comp: useModel(path) →<br/>SwappableInferenceService.replaceWith
+    else any other switch
+        App--xComp: no reload — seconds and gigabytes not spent
+    end
+    Note over Comp,Voice: not now, but at the next sentence
+    Voice->>Comp: voiceOf() → ttsVoice.value
+```
+
+The last arrow is the one worth reading twice. Every other consumer is *told*;
+`PigeonVoiceService` is not, because it was constructed with a closure and asks
+at the moment it has something to say. That is the whole reason a voice changed
+mid-answer is heard on the next sentence rather than the next launch.
+
+`openConversationOnLaunch` is absent on purpose: it is the one setting with no
+live consumer, read once by `_loadSettings` and never again in a run.
+
 ### The one race
 
 The Settings menu item is native (`AppDelegate.installSettingsMenuItem`, which
