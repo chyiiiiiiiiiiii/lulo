@@ -169,7 +169,13 @@ final class VoiceConversationController extends ChangeNotifier {
   int _dispatchedOfActive = 0;
 
   /// Where a spoken chunk may end: a sentence has visibly finished.
-  static final RegExp _sentenceEnd = RegExp(r'[。！？!?.…；;\n]');
+  ///
+  /// The CJK stops here are the ones that need no disambiguation: unlike a
+  /// Latin full stop, none of them appears inside an abbreviation or a
+  /// number, so seeing one is enough. ． (U+FF0E) and ｡ (U+FF61) were
+  /// missing, and a sentence ending in either waited for punctuation that
+  /// had already arrived.
+  static final RegExp _sentenceEnd = RegExp(r'[。．｡！？!?.…；;\n]');
 
   /// Where the answer's very first chunk may end early: a clause has
   /// finished, even though its sentence has not.

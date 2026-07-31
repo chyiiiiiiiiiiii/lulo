@@ -432,6 +432,33 @@ void main() {
     );
   });
 
+  test('full-width and halfwidth ideographic stops end a sentence', () async {
+    // The sentence-end set had 。 but not ．(U+FF0E) or ｡(U+FF61), both of
+    // which appear in Chinese text from real keyboards and in text converted
+    // from Japanese sources. A sentence ending in one of them was never
+    // recognised as finished, so the chunk waited for punctuation that had
+    // already been there. Pipecat treats all of these as unambiguous
+    // sentence ends precisely because no Latin disambiguation applies.
+    await controller.enable();
+    voice.hear(const FinalTranscript('說一段話'));
+    await pump();
+    final Generation generation = await generationStarted();
+    inference.emit(
+      GenerationDelta(
+        generationId: generation.id,
+        delta: '這是第一句話講得夠長足以成為一個完整的段落而且沒有任何逗號．',
+      ),
+    );
+    await pump();
+    await pump();
+
+    expect(
+      voice.spoken,
+      isNotEmpty,
+      reason: 'A full-width period ends a sentence.',
+    );
+  });
+
   test('the user talking over a streaming answer cancels it', () async {
     await controller.enable();
     voice.hear(const FinalTranscript('Tell me a long story.'));
