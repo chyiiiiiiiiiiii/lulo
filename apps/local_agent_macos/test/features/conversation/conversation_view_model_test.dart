@@ -439,6 +439,39 @@ void main() {
     },
   );
 
+  test('a stop whose cancellation fails still returns the composer', () async {
+    // Stopping before the generation started cancels the subscription by
+    // hand, and that is the only thing that re-enables submission on this
+    // path. A throw from the boundary used to skip it, leaving the send key
+    // dead with nothing left to flip it — and stop() memoised the failed
+    // future, so asking again returned the same failure without retrying.
+    final _Harness harness = _Harness();
+    harness.inference.listenerCancellationFailure = StateError(
+      'the host could not answer for this generation',
+    );
+    final ConversationViewModel viewModel = harness.createViewModel();
+
+    await viewModel.submit('Hello');
+    await harness.inference.requestReceived;
+    expect(viewModel.canSubmit, isFalse);
+
+    await expectLater(viewModel.stop(), completes);
+
+    expect(viewModel.canSubmit, isTrue);
+    expect(
+      viewModel.projection.completedTurns.last.status,
+      TurnStatus.cancelled,
+    );
+
+    harness.inference.listenerCancellationFailure = null;
+    await viewModel.submit('And again');
+    await Future<void>.delayed(Duration.zero);
+    expect(harness.inference.requests, hasLength(2));
+
+    viewModel.dispose();
+    await harness.dispose();
+  });
+
   test(
     'dispose while pre-start stop is suspended prevents its continuation',
     () async {

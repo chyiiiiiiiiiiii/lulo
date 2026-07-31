@@ -223,6 +223,7 @@ final class _PigeonGenerationOperation {
   Future<void>? _cancellation;
   bool _fenced = false;
   bool _terminal = false;
+  bool _hostAcknowledgedCancellation = false;
 
   Future<void> start() async {
     _subscription = host.generationEvents
@@ -230,6 +231,15 @@ final class _PigeonGenerationOperation {
         .listen(_receiveEvent);
     try {
       await ensureReady();
+      if (_fenced) {
+        // Cancelled while readiness was still loading the model — seconds,
+        // for a multi-gigabyte one, and every barge-in during prefill lands
+        // here. Sending the start now would put a generation on the runtime
+        // that nothing is listening to and nothing will ever cancel: it holds
+        // the single native slot until it burns its whole token budget, and
+        // every turn behind it is refused as busy.
+        return;
+      }
       onSessionStarted(request.conversationId.value);
       final acknowledgement = await host.startGeneration(
         DesktopGenerationRequest(
@@ -247,6 +257,21 @@ final class _PigeonGenerationOperation {
           seed: config.seed,
         ),
       );
+      if (_fenced) {
+        // Cancelled while this start was in flight. Usually the host had
+        // already registered the generation and acknowledged the cancel, and
+        // there is nothing left to do. When it did not — the cancel and the
+        // start crossed on the wire, and the host accepted this one a moment
+        // after answering "not mine" — this is the last code that knows the
+        // generation exists, so taking it back is this call's job.
+        await _cancellation;
+        if (!_hostAcknowledgedCancellation &&
+            acknowledgement.accepted &&
+            acknowledgement.generationId == generationId.value) {
+          await host.cancelGeneration(generationId.value);
+        }
+        return;
+      }
       if (acknowledgement.generationId != generationId.value) {
         throw const DesktopHostFailure(DesktopHostFailureCode.protocolMismatch);
       }
@@ -301,6 +326,14 @@ final class _PigeonGenerationOperation {
     return _cancellation ??= _cancel();
   }
 
+  /// Stops the generation, and never throws doing it.
+  ///
+  /// Every caller of this reaches it through something that cannot catch:
+  /// `unawaited(stop())` when the user talks over the agent, and a listener
+  /// cancellation that carries the exception up through the composer's stop.
+  /// A failure here is reported on the generation stream, which is the
+  /// channel the conversation already watches, and the future still
+  /// completes.
   Future<void> _cancel() async {
     _fenced = true;
     await _subscription?.cancel();
@@ -309,16 +342,17 @@ final class _PigeonGenerationOperation {
       if (acknowledgement.generationId != generationId.value) {
         throw const DesktopHostFailure(DesktopHostFailureCode.protocolMismatch);
       }
-      if (!acknowledgement.acknowledged) {
-        throw const DesktopHostFailure(DesktopHostFailureCode.generationBusy);
-      }
+      // An unacknowledged cancellation has one meaning at this boundary: the
+      // host is not running this generation. Either it already ended, or the
+      // start has not reached it yet — and `start` compensates for that one.
+      // Both are the state the caller asked for, so neither is a failure.
+      _hostAcknowledgedCancellation = acknowledgement.acknowledged;
       onFinished();
     } on Object catch (error, stackTrace) {
       if (!controller.isClosed) {
         controller.addError(_safeConversationFailure(error), stackTrace);
         await _finish();
       }
-      rethrow;
     }
   }
 

@@ -280,6 +280,12 @@ final class ConversationViewModel extends ChangeNotifier {
   }
 
   /// Stops the active generation.
+  ///
+  /// Never throws. Every caller reaches this through an `unawaited` call —
+  /// the composer's stop button, and the voice controller yielding the floor
+  /// when the user talks over the agent — so an exception here has nobody to
+  /// catch it, and the memoised future would hand the same failure to every
+  /// later attempt.
   Future<void> stop() => _stopOperation ??= _stop();
 
   Future<void> _stop() async {
@@ -295,7 +301,14 @@ final class ConversationViewModel extends ChangeNotifier {
       return;
     }
     _stopRequested = true;
-    await subscription.cancel();
+    try {
+      await subscription.cancel();
+    } on Object catch (_) {
+      // The boundary could not confirm the cancellation. There is no second
+      // thing to try, and the turn is ended below either way — where the
+      // throw used to escape, the send key stayed dead with nothing left to
+      // flip it.
+    }
     if (_disposed) {
       return;
     }
