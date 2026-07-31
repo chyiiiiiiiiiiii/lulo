@@ -157,47 +157,50 @@ void main() {
     );
   });
 
-  test('a part file already the whole size is verified, not refetched', () async {
-    final Directory modelsDirectory = Directory.systemTemp.createTempSync(
-      'models',
-    );
-    addTearDown(() => modelsDirectory.deleteSync(recursive: true));
-    final List<int> whole = List<int>.generate(10, (int index) => index);
-    final ModelCatalogEntry pinned = ModelCatalogEntry(
-      id: 'test-model',
-      name: 'A test model',
-      description: 'Small enough to hold in one hand.',
-      fileName: 'test-model.litertlm',
-      url: 'https://example.invalid/test-model.litertlm',
-      sizeBytes: 10,
-      sha256: sha256.convert(whole).toString(),
-    );
-    // The last byte landed and the process died before the rename: every
-    // byte is home, and asking the server for the range after the end is
-    // how the retry used to wedge.
-    File(
-      '${modelsDirectory.path}/${pinned.fileName}.part',
-    ).writeAsBytesSync(whole);
-    final ModelFileService files = ModelFileService(
-      modelsDirectory: modelsDirectory,
-      fetch: (Uri url) async =>
-          throw StateError('a complete file must not be fetched again'),
-      fetchFrom: (Uri url, int start) async =>
-          throw StateError('a complete file must not be resumed'),
-    );
+  test(
+    'a part file already the whole size is verified, not refetched',
+    () async {
+      final Directory modelsDirectory = Directory.systemTemp.createTempSync(
+        'models',
+      );
+      addTearDown(() => modelsDirectory.deleteSync(recursive: true));
+      final List<int> whole = List<int>.generate(10, (int index) => index);
+      final ModelCatalogEntry pinned = ModelCatalogEntry(
+        id: 'test-model',
+        name: 'A test model',
+        description: 'Small enough to hold in one hand.',
+        fileName: 'test-model.litertlm',
+        url: 'https://example.invalid/test-model.litertlm',
+        sizeBytes: 10,
+        sha256: sha256.convert(whole).toString(),
+      );
+      // The last byte landed and the process died before the rename: every
+      // byte is home, and asking the server for the range after the end is
+      // how the retry used to wedge.
+      File(
+        '${modelsDirectory.path}/${pinned.fileName}.part',
+      ).writeAsBytesSync(whole);
+      final ModelFileService files = ModelFileService(
+        modelsDirectory: modelsDirectory,
+        fetch: (Uri url) async =>
+            throw StateError('a complete file must not be fetched again'),
+        fetchFrom: (Uri url, int start) async =>
+            throw StateError('a complete file must not be resumed'),
+      );
 
-    final List<ModelDownloadProgress> progress = await files
-        .download(pinned)
-        .toList();
+      final List<ModelDownloadProgress> progress = await files
+          .download(pinned)
+          .toList();
 
-    expect(progress.last.receivedBytes, 10);
-    expect(progress.last.totalBytes, 10);
-    expect(files.isInstalled(pinned), isTrue);
-    expect(
-      File('${modelsDirectory.path}/${pinned.fileName}').readAsBytesSync(),
-      whole,
-    );
-  });
+      expect(progress.last.receivedBytes, 10);
+      expect(progress.last.totalBytes, 10);
+      expect(files.isInstalled(pinned), isTrue);
+      expect(
+        File('${modelsDirectory.path}/${pinned.fileName}').readAsBytesSync(),
+        whole,
+      );
+    },
+  );
 
   test('a download that comes up short is an error, not a model', () async {
     // A truncated stream that ends politely is the dangerous case: every
