@@ -491,6 +491,13 @@ String speakableText(String text) {
     (Match m) => m[1] ?? '',
   );
   speakable = speakable.replaceAll(RegExp(r'https?://\S+'), ' ');
+  // Horizontal rules and list markers are layout, not words: "---" read
+  // aloud is a groan, and "- 第一點" starts with a minus.
+  speakable = speakable.replaceAll(
+    RegExp(r'^\s*[-*_]{3,}\s*$', multiLine: true),
+    ' ',
+  );
+  speakable = speakable.replaceAll(RegExp(r'^\s*[-•]\s+', multiLine: true), '');
   // Inline markup keeps its words and loses its marks.
   speakable = speakable.replaceAll(RegExp(r'[`*_~#>]'), '');
   // Emoji and pictographs, including variation selectors.

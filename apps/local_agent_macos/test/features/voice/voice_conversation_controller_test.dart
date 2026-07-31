@@ -481,6 +481,13 @@ void main() {
     expect(spoken, isNot(contains('https://')));
   });
 
+  test('rules and list bullets are layout, not words', () {
+    expect(
+      speakableText('第一段。\n\n---\n\n### 💡 建議\n\n- 第一點\n- 第二點\n* 第三點'),
+      '第一段。 建議 第一點 第二點 第三點',
+    );
+  });
+
   test('speech begins with the first finished sentence', () async {
     // Waiting for the whole answer stacks three delays end to end. A
     // sentence is speakable the moment its full stop arrives.

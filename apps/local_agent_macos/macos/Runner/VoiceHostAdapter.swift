@@ -6,20 +6,22 @@ import Speech
 ///
 /// Listening runs the microphone through SpeechAnalyzer's on-device
 /// transcriber and reports volatile results as partial transcripts and
-/// finalized ones as utterances. Speaking goes through AVSpeechSynthesizer.
+/// finalized ones as utterances. Speaking goes through the Qwen3-TTS
+/// sidecar — one resident voice, no system-synthesizer stand-in.
 /// Everything is reported back over the pigeon event channel; failures are
 /// events too, because the conversation loop must survive a microphone that
 /// went away.
 ///
-/// Half-duplex by design: while the synthesizer speaks, the microphone feed
-/// into the analyzer is muted, so the agent can never hear itself through
-/// the speakers and answer its own answer. Barge-in by voice during speech
-/// returns once echo cancellation has been tuned on real hardware.
+/// Full-duplex when the platform allows it: the sidecar renders PCM, the
+/// app plays it through its own voice-processed output, and the system's
+/// echo cancellation keeps the agent's voice out of its own microphone —
+/// so the user can interrupt by simply talking, like with a person. When
+/// voice processing cannot be enabled, the half-duplex fallback mutes the
+/// microphone while the sidecar plays the sentence itself.
 @available(macOS 26.0, *)
 @MainActor
 final class VoiceHostAdapter: NSObject, VoiceHostApi {
   private let events: VoiceHostEvents
-  private let synthesizer = AVSpeechSynthesizer()
 
   /// Everything one listening run owns, torn down as one.
   private struct ListeningSession {
@@ -29,7 +31,15 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
     let resultsTask: Task<Void, Never>
     let endpointTask: Task<Void, Never>
     let configObserver: NSObjectProtocol
+    /// The mouth, when this session owns playback (full duplex).
+    let playerNode: AVAudioPlayerNode?
+    /// What the sidecar's PCM arrives as: float32 mono at its sample rate.
+    let renderFormat: AVAudioFormat?
   }
+
+  /// True while the session's echo-cancelled output lets the microphone
+  /// stay open during speech. Decided per session in [begin].
+  private var fullDuplex = false
 
   /// A volatile transcript is on screen and unsettled.
   private var utteranceInProgress = false
@@ -87,7 +97,6 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
   init(events: VoiceHostEvents) {
     self.events = events
     super.init()
-    synthesizer.delegate = self
   }
 
   // MARK: - VoiceHostApi
@@ -170,27 +179,132 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
     utteranceBegan()
     let epoch = speakEpoch
     Task { @MainActor in
-      let spoke = await self.speakThroughSidecar(
-        text: text,
-        voice: voice,
-        language: language
-      )
-      if !spoke && epoch == self.speakEpoch {
-        // The resident voice is not running: fall back to the system
-        // synthesizer rather than going silent. The delegate's
-        // didFinish/didCancel ends this utterance. A stale epoch means the
-        // user barged over this sentence while it was in flight, and it
-        // must not be read after all.
-        let utterance = AVSpeechUtterance(string: text)
-        if let systemVoice = Self.bestVoice() {
-          utterance.voice = systemVoice
-        }
-        self.synthesizer.speak(utterance)
+      let spoke: Bool
+      if self.fullDuplex,
+        let player = self.session?.playerNode,
+        let format = self.session?.renderFormat
+      {
+        spoke = await self.renderAndPlay(
+          text: text,
+          voice: voice,
+          language: language,
+          epoch: epoch,
+          player: player,
+          format: format
+        )
       } else {
-        self.utteranceEnded()
+        spoke = await self.speakThroughSidecar(
+          text: text,
+          voice: voice,
+          language: language
+        )
       }
+      if !spoke && epoch == self.speakEpoch {
+        // The resident voice failed for this sentence. Deliberately NO
+        // system-synthesizer fallback: a different voice cutting in
+        // mid-answer reads as the agent changing person, which is worse
+        // than a skipped sentence that is still on screen.
+        NSLog("Lulo voice: sidecar declined a sentence (%d chars)", text.count)
+      }
+      self.utteranceEnded()
     }
     completion(.success(()))
+  }
+
+  /// Streams the sidecar's PCM into the session's player node, returning
+  /// once this sentence has been fully heard or barged over.
+  ///
+  /// Buffers append to whatever is already scheduled, so consecutive
+  /// sentences of one answer play back to back with no seam. The epoch is
+  /// checked as the bytes arrive: a barge-in stops the download, and the
+  /// player was already silenced by stopSpeaking.
+  private func renderAndPlay(
+    text: String,
+    voice: String?,
+    language: String?,
+    epoch: Int,
+    player: AVAudioPlayerNode,
+    format: AVAudioFormat
+  ) async -> Bool {
+    guard let url = URL(string: "http://127.0.0.1:46557/render") else {
+      return false
+    }
+    var request = URLRequest(url: url)
+    request.httpMethod = "POST"
+    request.timeoutInterval = 120
+    var payload: [String: String] = ["text": text, "voice": voice ?? "ryan"]
+    if let language {
+      payload["lang"] = language
+    }
+    request.httpBody = try? JSONSerialization.data(withJSONObject: payload)
+    do {
+      let (bytes, response) = try await URLSession.shared.bytes(for: request)
+      guard (response as? HTTPURLResponse)?.statusCode == 200 else {
+        return false
+      }
+      var pcm = [UInt8]()
+      pcm.reserveCapacity(38_400)
+      func scheduleBuffered(atLeast minimum: Int) {
+        let usable = (pcm.count / 4) * 4
+        guard usable >= minimum, usable > 0,
+          let buffer = AVAudioPCMBuffer(
+            pcmFormat: format,
+            frameCapacity: AVAudioFrameCount(usable / 4)
+          )
+        else {
+          return
+        }
+        let frames = usable / 4
+        pcm.withUnsafeBytes { raw in
+          buffer.floatChannelData![0].update(
+            from: raw.baseAddress!.assumingMemoryBound(to: Float.self),
+            count: frames
+          )
+        }
+        buffer.frameLength = AVAudioFrameCount(frames)
+        pcm.removeFirst(usable)
+        player.scheduleBuffer(buffer)
+        if !player.isPlaying {
+          player.play()
+        }
+      }
+      for try await byte in bytes {
+        if epoch != self.speakEpoch {
+          // Barged over: stop pulling audio; the player is already quiet.
+          bytes.task.cancel()
+          return true
+        }
+        pcm.append(byte)
+        if pcm.count >= 19_200 {
+          // 0.2s of audio at a time: enough to start almost immediately,
+          // steady enough not to starve the output.
+          scheduleBuffered(atLeast: 19_200)
+        }
+      }
+      scheduleBuffered(atLeast: 4)
+      guard epoch == self.speakEpoch else {
+        return true
+      }
+      // Heard to the end: a one-frame tail whose playback callback is the
+      // drain signal. stopSpeaking's player.stop() fires it early, which
+      // is exactly what a barge-in needs.
+      await withCheckedContinuation { (done: CheckedContinuation<Void, Never>) in
+        guard
+          let tail = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 1)
+        else {
+          done.resume()
+          return
+        }
+        tail.frameLength = 1
+        player.scheduleBuffer(tail, completionCallbackType: .dataPlayedBack) {
+          _ in
+          done.resume()
+        }
+      }
+      return true
+    } catch {
+      return false
+    }
   }
 
   /// Cancels a pending delayed unmute when a newer speech state supersedes
@@ -208,10 +322,13 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
     outstandingUtterances += 1
     unmuteGeneration += 1
     if outstandingUtterances == 1 {
-      // Muted before the first sample leaves the speaker, not when a
-      // delegate reports it: the gap is exactly long enough for the agent
-      // to hear its own opening words.
-      mute.muted = true
+      if !fullDuplex {
+        // Muted before the first sample leaves the speaker, not when a
+        // delegate reports it: the gap is exactly long enough for the
+        // agent to hear its own opening words. Full duplex keeps the
+        // microphone open instead — the echo canceller carries the load.
+        mute.muted = true
+      }
       if !speakingReported {
         speakingReported = true
         emit(.speakingStarted)
@@ -235,14 +352,18 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
         else {
           return
         }
-        self.mute.muted = false
-        // Whatever utterance was pending went in before the answer; it
-        // was answered. The endpointer starts the new turn clean, and
-        // only trusts voice heard after this moment.
-        self.muteLiftedAt = ProcessInfo.processInfo.systemUptime
-        self.utteranceInProgress = false
-        self.utteranceHeardAt = .infinity
-        self.endpointFinalizeRequested = false
+        if !self.fullDuplex {
+          self.mute.muted = false
+          // Whatever utterance was pending went in before the answer; it
+          // was answered. The endpointer starts the new turn clean, and
+          // only trusts voice heard after this moment. Full duplex never
+          // muted, never froze the VAD's clock, and the user may be
+          // mid-interruption — its utterance state must survive.
+          self.muteLiftedAt = ProcessInfo.processInfo.systemUptime
+          self.utteranceInProgress = false
+          self.utteranceHeardAt = .infinity
+          self.endpointFinalizeRequested = false
+        }
         self.speakingReported = false
         self.emit(.speakingFinished)
       }
@@ -277,25 +398,11 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
     }
   }
 
-  /// The highest-quality installed voice for the user's language.
-  ///
-  /// Premium and enhanced voices are the ones that do not sound like a
-  /// machine; they exist once the user has downloaded them in System
-  /// Settings, and the default compact voice is the fallback.
-  private static func bestVoice() -> AVSpeechSynthesisVoice? {
-    let wanted = Locale.preferredLanguages.first ?? "en"
-    let prefix = String(wanted.prefix(2))
-    let candidates = AVSpeechSynthesisVoice.speechVoices().filter {
-      $0.language.hasPrefix(prefix)
-    }
-    return candidates.first { $0.quality == .premium }
-      ?? candidates.first { $0.quality == .enhanced }
-      ?? candidates.first
-  }
-
   func stopSpeaking(completion: @escaping (Result<Void, Error>) -> Void) {
     speakEpoch += 1
-    synthesizer.stopSpeaking(at: .immediate)
+    // Full duplex: silence the local player at once; the /stop below also
+    // makes the sidecar abandon whatever it was still rendering.
+    session?.playerNode?.stop()
     if let url = URL(string: "http://127.0.0.1:46557/stop") {
       var request = URLRequest(url: url)
       request.httpMethod = "POST"
@@ -352,10 +459,27 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
 
     let engine = AVAudioEngine()
     let input = engine.inputNode
-    // Deliberately NOT voice-processing: enabling it turns the input node
-    // into a nine-channel unit whose first channel is not the microphone,
-    // and the transcriber hears silence. Half-duplex muting already keeps
-    // the agent from hearing itself.
+    // Voice processing gives the engine's I/O the system echo canceller:
+    // what this process plays through its own output is subtracted from
+    // its microphone, so the mic can stay open while the agent talks and
+    // the user can interrupt by talking over it. Enabled before any
+    // format is read — it reshapes the input unit (nine channels on the
+    // built-in array, and which of them carries the voice is the unit's
+    // business; the loudest-channel mixdown finds it either way).
+    var duplex = false
+    do {
+      // On one node only: input and output share the same voice-processing
+      // I/O unit, and enabling both double-initializes it (kAUInitialize
+      // -10875 on engine start).
+      try input.setVoiceProcessingEnabled(true)
+      duplex = true
+    } catch {
+      NSLog(
+        "Lulo voice: voice processing unavailable (%@); half-duplex",
+        String(describing: error)
+      )
+    }
+    fullDuplex = duplex
     let microphoneFormat = input.outputFormat(forBus: 0)
     // The microphone is an array — three channels built in, more on
     // aggregates — and which channel carries the voice is the device's
@@ -400,6 +524,24 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
       }
       vad.observe(rms: rms, at: ProcessInfo.processInfo.systemUptime)
       builder.yield(AnalyzerInput(buffer: converted))
+    }
+    // The mouth: sidecar PCM plays through this node, inside the voice-
+    // processed output so the echo canceller knows what to subtract.
+    var playerNode: AVAudioPlayerNode?
+    var renderFormat: AVAudioFormat?
+    if duplex,
+      let pcmFormat = AVAudioFormat(
+        commonFormat: .pcmFormatFloat32,
+        sampleRate: 24_000,
+        channels: 1,
+        interleaved: false
+      )
+    {
+      let player = AVAudioPlayerNode()
+      engine.attach(player)
+      engine.connect(player, to: engine.mainMixerNode, format: pcmFormat)
+      playerNode = player
+      renderFormat = pcmFormat
     }
     engine.prepare()
     try engine.start()
@@ -489,7 +631,9 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
       analyzer: analyzer,
       resultsTask: resultsTask,
       endpointTask: endpointTask,
-      configObserver: configObserver
+      configObserver: configObserver,
+      playerNode: playerNode,
+      renderFormat: renderFormat
     )
     emit(.listeningStarted)
   }
@@ -535,6 +679,7 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
   private func endSession() {
     guard let session else { return }
     NotificationCenter.default.removeObserver(session.configObserver)
+    session.playerNode?.stop()
     session.endpointTask.cancel()
     utteranceInProgress = false
     utteranceHeardAt = .infinity
@@ -675,25 +820,6 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
       event: HostVoiceEvent(type: type, text: text),
       completion: { _ in }
     )
-  }
-}
-
-// MARK: - AVSpeechSynthesizerDelegate
-
-@available(macOS 26.0, *)
-extension VoiceHostAdapter: AVSpeechSynthesizerDelegate {
-  nonisolated func speechSynthesizer(
-    _ synthesizer: AVSpeechSynthesizer,
-    didFinish utterance: AVSpeechUtterance
-  ) {
-    Task { @MainActor in self.utteranceEnded() }
-  }
-
-  nonisolated func speechSynthesizer(
-    _ synthesizer: AVSpeechSynthesizer,
-    didCancel utterance: AVSpeechUtterance
-  ) {
-    Task { @MainActor in self.utteranceEnded() }
   }
 }
 
