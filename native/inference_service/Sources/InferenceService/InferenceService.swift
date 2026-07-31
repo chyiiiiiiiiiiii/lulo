@@ -74,12 +74,30 @@ public struct RuntimeModelLoadResult: Equatable, Sendable {
   public let loaded: Bool
 }
 
+/// Who authored one remembered turn.
+public enum RuntimeTurnRole: String, Equatable, Sendable {
+  case user
+  case assistant
+}
+
+/// A turn the runtime did not hear, offered so it can be seeded with it.
+public struct RuntimeConversationTurn: Equatable, Sendable {
+  public init(role: RuntimeTurnRole, text: String) {
+    self.role = role
+    self.text = text
+  }
+
+  public let role: RuntimeTurnRole
+  public let text: String
+}
+
 public struct RuntimeGenerationRequest: Equatable, Sendable {
   public init(
     generationId: String,
     sessionId: String,
     prompt: String,
     context: [String],
+    history: [RuntimeConversationTurn] = [],
     temperature: Double,
     topP: Double,
     maxTokens: Int64,
@@ -89,6 +107,7 @@ public struct RuntimeGenerationRequest: Equatable, Sendable {
     self.sessionId = sessionId
     self.prompt = prompt
     self.context = context
+    self.history = history
     self.temperature = temperature
     self.topP = topP
     self.maxTokens = maxTokens
@@ -99,6 +118,10 @@ public struct RuntimeGenerationRequest: Equatable, Sendable {
   public let sessionId: String
   public let prompt: String
   public let context: [String]
+
+  /// What was already said, oldest first, excluding `prompt`. Consulted
+  /// only when no live session exists for `sessionId`.
+  public let history: [RuntimeConversationTurn]
   public let temperature: Double
   public let topP: Double
   public let maxTokens: Int64

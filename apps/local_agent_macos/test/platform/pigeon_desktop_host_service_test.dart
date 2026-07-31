@@ -1,3 +1,4 @@
+import 'package:agent_core/agent_core.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:local_agent_macos/generated/desktop_host_api.g.dart';
@@ -31,6 +32,16 @@ void main() {
               sessionId: 'session-1',
               prompt: 'private prompt',
               context: <String>['private context'],
+              history: <DesktopConversationTurn>[
+                DesktopConversationTurn(
+                  role: TurnRole.user,
+                  text: 'what was asked before',
+                ),
+                DesktopConversationTurn(
+                  role: TurnRole.assistant,
+                  text: 'what was answered before',
+                ),
+              ],
               temperature: 0.25,
               topP: 0.9,
               maxTokens: 128,
@@ -99,6 +110,16 @@ void main() {
           sessionId: 'session-1',
           prompt: 'private prompt',
           context: <String>['private context'],
+          history: <HostConversationTurn>[
+            HostConversationTurn(
+              role: HostTurnRole.user,
+              text: 'what was asked before',
+            ),
+            HostConversationTurn(
+              role: HostTurnRole.assistant,
+              text: 'what was answered before',
+            ),
+          ],
           temperature: 0.25,
           topP: 0.9,
           maxTokens: 128,

@@ -73,12 +73,28 @@ class HostModelLoadResult {
   bool loaded;
 }
 
+/// Who said one remembered turn.
+enum HostTurnRole { user, assistant }
+
+/// A turn the runtime did not hear, replayed so it can.
+///
+/// The conversation on screen is read back from SQLite; the model behind it
+/// is not, and a session that outlived a relaunch or a model swap starts
+/// empty. These seed it.
+class HostConversationTurn {
+  HostConversationTurn({required this.role, required this.text});
+
+  HostTurnRole role;
+  String text;
+}
+
 class HostGenerationRequest {
   HostGenerationRequest({
     required this.generationId,
     required this.sessionId,
     required this.prompt,
     required this.context,
+    required this.history,
     required this.temperature,
     required this.topP,
     required this.maxTokens,
@@ -89,6 +105,13 @@ class HostGenerationRequest {
   String sessionId;
   String prompt;
   List<String> context;
+
+  /// What was already said, oldest first, excluding [prompt].
+  ///
+  /// Only consulted when the runtime has no live session for [sessionId]:
+  /// a conversation that is still alive is its own memory, and seeding it
+  /// again would say everything twice.
+  List<HostConversationTurn> history;
   double temperature;
   double topP;
   int maxTokens;

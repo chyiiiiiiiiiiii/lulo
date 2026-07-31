@@ -115,6 +115,10 @@ final class LocalModelRuntimeTests: XCTestCase {
       sessionId: "session-7",
       prompt: "Hello",
       context: ["system fact", "prior turn"],
+      history: [
+        RuntimeConversationTurn(role: .user, text: "asked"),
+        RuntimeConversationTurn(role: .assistant, text: "answered"),
+      ],
       temperature: 0.25,
       topP: 0.9,
       maxTokens: 16,
@@ -138,6 +142,10 @@ final class LocalModelRuntimeTests: XCTestCase {
         LiteRTLMDriverGenerationRequest(
           sessionId: "session-7",
           prompt: "Hello",
+          history: [
+            RuntimeConversationTurn(role: .user, text: "asked"),
+            RuntimeConversationTurn(role: .assistant, text: "answered"),
+          ],
           extraContext: ["context": ["system fact", "prior turn"]],
           sampler: LiteRTLMSamplerFingerprint(
             topK: 32,
@@ -4399,6 +4407,33 @@ final class LocalModelRuntimeTests: XCTestCase {
     _ = try await backend.unloadModel()
   }
 
+
+  func testHistoryIsTrimmedToWhatTheContextCanHold() {
+    // A conversation longer than the window must not be seeded whole: it
+    // does not degrade, it fails, and the failure reaches the user as an
+    // empty answer.
+    let long = (1...40).map {
+      RuntimeConversationTurn(role: .user, text: String(repeating: "字", count: 100) + "\($0)")
+    }
+    let kept = LiteRTLMRuntimeBackend.historyFitting(long, contextSize: 4096)
+
+    XCTAssertLessThan(kept.count, long.count)
+    XCTAssertLessThanOrEqual(kept.reduce(0) { $0 + $1.text.count }, 4096 / 3)
+    // What survives is the end of the conversation, in order.
+    XCTAssertEqual(kept.last?.text, long.last?.text)
+    XCTAssertEqual(kept.map(\.text), Array(long.suffix(kept.count)).map(\.text))
+  }
+
+  func testAShortHistoryIsKeptWhole() {
+    let short = [
+      RuntimeConversationTurn(role: .user, text: "what was asked"),
+      RuntimeConversationTurn(role: .assistant, text: "answered"),
+    ]
+    XCTAssertEqual(
+      LiteRTLMRuntimeBackend.historyFitting(short, contextSize: 4096).map(\.text),
+      short.map(\.text)
+    )
+  }
 }
 
 private enum BackendInvocation: Equatable {

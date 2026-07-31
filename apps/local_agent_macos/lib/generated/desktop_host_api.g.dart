@@ -129,6 +129,9 @@ enum HostFailureCode {
   protocolMismatch,
 }
 
+/// Who said one remembered turn.
+enum HostTurnRole { user, assistant }
+
 class HostRequest {
   HostRequest({
     required this.schemaVersion,
@@ -327,12 +330,58 @@ class HostModelLoadResult {
   int get hashCode => _deepHash(<Object?>[runtimeType, ..._toList()]);
 }
 
+/// A turn the runtime did not hear, replayed so it can.
+///
+/// The conversation on screen is read back from SQLite; the model behind it
+/// is not, and a session that outlived a relaunch or a model swap starts
+/// empty. These seed it.
+class HostConversationTurn {
+  HostConversationTurn({required this.role, required this.text});
+
+  HostTurnRole role;
+
+  String text;
+
+  List<Object?> _toList() {
+    return <Object?>[role, text];
+  }
+
+  Object encode() {
+    return _toList();
+  }
+
+  static HostConversationTurn decode(Object result) {
+    result as List<Object?>;
+    return HostConversationTurn(
+      role: result[0]! as HostTurnRole,
+      text: result[1]! as String,
+    );
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  bool operator ==(Object other) {
+    if (other is! HostConversationTurn || other.runtimeType != runtimeType) {
+      return false;
+    }
+    if (identical(this, other)) {
+      return true;
+    }
+    return _deepEquals(role, other.role) && _deepEquals(text, other.text);
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  int get hashCode => _deepHash(<Object?>[runtimeType, ..._toList()]);
+}
+
 class HostGenerationRequest {
   HostGenerationRequest({
     required this.generationId,
     required this.sessionId,
     required this.prompt,
     required this.context,
+    required this.history,
     required this.temperature,
     required this.topP,
     required this.maxTokens,
@@ -346,6 +395,13 @@ class HostGenerationRequest {
   String prompt;
 
   List<String> context;
+
+  /// What was already said, oldest first, excluding [prompt].
+  ///
+  /// Only consulted when the runtime has no live session for [sessionId]:
+  /// a conversation that is still alive is its own memory, and seeding it
+  /// again would say everything twice.
+  List<HostConversationTurn> history;
 
   double temperature;
 
@@ -361,6 +417,7 @@ class HostGenerationRequest {
       sessionId,
       prompt,
       context,
+      history,
       temperature,
       topP,
       maxTokens,
@@ -379,10 +436,11 @@ class HostGenerationRequest {
       sessionId: result[1]! as String,
       prompt: result[2]! as String,
       context: (result[3]! as List<Object?>).cast<String>(),
-      temperature: result[4]! as double,
-      topP: result[5]! as double,
-      maxTokens: result[6]! as int,
-      seed: result[7]! as int,
+      history: (result[4]! as List<Object?>).cast<HostConversationTurn>(),
+      temperature: result[5]! as double,
+      topP: result[6]! as double,
+      maxTokens: result[7]! as int,
+      seed: result[8]! as int,
     );
   }
 
@@ -399,6 +457,7 @@ class HostGenerationRequest {
         _deepEquals(sessionId, other.sessionId) &&
         _deepEquals(prompt, other.prompt) &&
         _deepEquals(context, other.context) &&
+        _deepEquals(history, other.history) &&
         _deepEquals(temperature, other.temperature) &&
         _deepEquals(topP, other.topP) &&
         _deepEquals(maxTokens, other.maxTokens) &&
@@ -734,35 +793,41 @@ class _PigeonCodec extends StandardMessageCodec {
     } else if (value is HostFailureCode) {
       buffer.putUint8(131);
       writeValue(buffer, value.index);
-    } else if (value is HostRequest) {
+    } else if (value is HostTurnRole) {
       buffer.putUint8(132);
-      writeValue(buffer, value.encode());
-    } else if (value is HostHandshakeResult) {
+      writeValue(buffer, value.index);
+    } else if (value is HostRequest) {
       buffer.putUint8(133);
       writeValue(buffer, value.encode());
-    } else if (value is HostModelRequest) {
+    } else if (value is HostHandshakeResult) {
       buffer.putUint8(134);
       writeValue(buffer, value.encode());
-    } else if (value is HostModelLoadResult) {
+    } else if (value is HostModelRequest) {
       buffer.putUint8(135);
       writeValue(buffer, value.encode());
-    } else if (value is HostGenerationRequest) {
+    } else if (value is HostModelLoadResult) {
       buffer.putUint8(136);
       writeValue(buffer, value.encode());
-    } else if (value is HostGenerationAcknowledgement) {
+    } else if (value is HostConversationTurn) {
       buffer.putUint8(137);
       writeValue(buffer, value.encode());
-    } else if (value is HostCancellationAcknowledgement) {
+    } else if (value is HostGenerationRequest) {
       buffer.putUint8(138);
       writeValue(buffer, value.encode());
-    } else if (value is HostOperationCompletion) {
+    } else if (value is HostGenerationAcknowledgement) {
       buffer.putUint8(139);
       writeValue(buffer, value.encode());
-    } else if (value is HostGenerationEvent) {
+    } else if (value is HostCancellationAcknowledgement) {
       buffer.putUint8(140);
       writeValue(buffer, value.encode());
-    } else if (value is HostTransitionGeometry) {
+    } else if (value is HostOperationCompletion) {
       buffer.putUint8(141);
+      writeValue(buffer, value.encode());
+    } else if (value is HostGenerationEvent) {
+      buffer.putUint8(142);
+      writeValue(buffer, value.encode());
+    } else if (value is HostTransitionGeometry) {
+      buffer.putUint8(143);
       writeValue(buffer, value.encode());
     } else {
       super.writeValue(buffer, value);
@@ -782,24 +847,29 @@ class _PigeonCodec extends StandardMessageCodec {
         final value = readValue(buffer) as int?;
         return value == null ? null : HostFailureCode.values[value];
       case 132:
-        return HostRequest.decode(readValue(buffer)!);
+        final value = readValue(buffer) as int?;
+        return value == null ? null : HostTurnRole.values[value];
       case 133:
-        return HostHandshakeResult.decode(readValue(buffer)!);
+        return HostRequest.decode(readValue(buffer)!);
       case 134:
-        return HostModelRequest.decode(readValue(buffer)!);
+        return HostHandshakeResult.decode(readValue(buffer)!);
       case 135:
-        return HostModelLoadResult.decode(readValue(buffer)!);
+        return HostModelRequest.decode(readValue(buffer)!);
       case 136:
-        return HostGenerationRequest.decode(readValue(buffer)!);
+        return HostModelLoadResult.decode(readValue(buffer)!);
       case 137:
-        return HostGenerationAcknowledgement.decode(readValue(buffer)!);
+        return HostConversationTurn.decode(readValue(buffer)!);
       case 138:
-        return HostCancellationAcknowledgement.decode(readValue(buffer)!);
+        return HostGenerationRequest.decode(readValue(buffer)!);
       case 139:
-        return HostOperationCompletion.decode(readValue(buffer)!);
+        return HostGenerationAcknowledgement.decode(readValue(buffer)!);
       case 140:
-        return HostGenerationEvent.decode(readValue(buffer)!);
+        return HostCancellationAcknowledgement.decode(readValue(buffer)!);
       case 141:
+        return HostOperationCompletion.decode(readValue(buffer)!);
+      case 142:
+        return HostGenerationEvent.decode(readValue(buffer)!);
+      case 143:
         return HostTransitionGeometry.decode(readValue(buffer)!);
       default:
         return super.readValueOfType(type, buffer);

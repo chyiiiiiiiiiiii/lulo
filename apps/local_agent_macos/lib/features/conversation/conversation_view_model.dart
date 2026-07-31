@@ -137,6 +137,10 @@ final class ConversationViewModel extends ChangeNotifier {
     _stopOperation = null;
 
     final ConversationId conversationId = _conversationId ??= _idFactory();
+    // Read before the new turn joins it: the prompt travels as the prompt,
+    // and a history ending in the very question being asked would put it to
+    // the model twice.
+    final List<Turn> priorTurns = _projection.completedTurns;
     final Turn userTurn = Turn(
       role: TurnRole.user,
       text: prompt,
@@ -154,6 +158,12 @@ final class ConversationViewModel extends ChangeNotifier {
           request: GenerationRequest(
             conversationId: conversationId,
             prompt: prompt,
+            // What is on screen but possibly not in the runtime. After a
+            // relaunch or a model swap the scrollback is read back from
+            // storage while the model behind it starts empty; sending the
+            // turns lets it be seeded rather than answer a follow-up as
+            // though it were an opening question.
+            history: priorTurns,
           ),
         )
         .listen(_onEvent, onError: _onOperationError, onDone: _onOperationDone);

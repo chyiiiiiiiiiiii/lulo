@@ -100,6 +100,7 @@ struct LiteRTLMSamplerFingerprint: Equatable, Sendable {
 struct LiteRTLMDriverGenerationRequest: Equatable, Sendable {
   let sessionId: String
   let prompt: String
+  let history: [RuntimeConversationTurn]
   let extraContext: [String: [String]]
   let sampler: LiteRTLMSamplerFingerprint
   let maxOutputTokens: Int
@@ -177,8 +178,17 @@ actor SystemLiteRTLMRuntimeDriver: LiteRTLMRuntimeDriving {
         temperature: Float(request.sampler.temperature),
         seed: request.sampler.seed
       )
+      // A conversation the runtime has never held starts empty even when
+      // the window above it is full of turns read back from storage. The
+      // history seeds it; a session already in `conversations` is its own
+      // memory and is left alone.
       conversation = try await engine.createConversation(
-        with: ConversationConfig(samplerConfig: sampler)
+        with: ConversationConfig(
+          initialMessages: request.history.map {
+            Message($0.text, role: $0.role == .user ? .user : .model)
+          },
+          samplerConfig: sampler
+        )
       )
       conversations[request.sessionId] = conversation
     }
@@ -638,6 +648,36 @@ public actor LiteRTLMRuntimeBackend: RuntimeBackend {
     }
   }
 
+  /// As much of the tail of [history] as the context can be expected to
+  /// hold, oldest kept first.
+  ///
+  /// Seeding a conversation with more than fits does not degrade — it
+  /// fails, and the failure arrives as an empty answer, because the turn
+  /// that carries the reason is not shown. Measured on a real one: 33
+  /// turns and 10,093 characters against a 4,096-token window produced a
+  /// stored turn with status failed and no text at all, where the same
+  /// prompt without history answered normally.
+  ///
+  /// One token per character is the pessimistic reading and the right one
+  /// here — Chinese runs close to it, and this budget is a floor under a
+  /// silent failure, not an estimate anyone should tune for accuracy. A
+  /// third of the window leaves the prompt and the answer their room.
+  static func historyFitting(
+    _ history: [RuntimeConversationTurn],
+    contextSize: Int64
+  ) -> [RuntimeConversationTurn] {
+    let budget = max(0, Int(contextSize) / 3)
+    var kept: [RuntimeConversationTurn] = []
+    var used = 0
+    for turn in history.reversed() {
+      let cost = turn.text.count
+      guard used + cost <= budget else { break }
+      used += cost
+      kept.append(turn)
+    }
+    return kept.reversed()
+  }
+
   private func validateGeneration(
     _ generation: RuntimeGenerationRequest,
     contextSize: Int64
@@ -665,6 +705,7 @@ public actor LiteRTLMRuntimeBackend: RuntimeBackend {
     return LiteRTLMDriverGenerationRequest(
       sessionId: generation.sessionId,
       prompt: generation.prompt,
+      history: Self.historyFitting(generation.history, contextSize: contextSize),
       extraContext: ["context": generation.context],
       sampler: LiteRTLMSamplerFingerprint(
         topK: configuration.topK,
