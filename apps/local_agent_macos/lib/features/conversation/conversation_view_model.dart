@@ -87,11 +87,20 @@ final class ConversationViewModel extends ChangeNotifier {
       if (id == null || _disposed) {
         return;
       }
-      final List<Turn> history = await _repository.loadTurns(id);
+      final List<Turn> stored = await _repository.loadTurns(id);
       if (_disposed) {
         return;
       }
       _conversationId = id;
+      // An answer cancelled before it said anything is written to the store
+      // on purpose — the repository's tests pin that down — but it is not
+      // something to show back. Restoring it puts an empty "Response
+      // stopped" bubble in the scrollback on every relaunch, for a turn the
+      // user never saw a word of and ended themselves.
+      final List<Turn> history = <Turn>[
+        for (final Turn turn in stored)
+          if (turn.status != TurnStatus.cancelled || turn.text.isNotEmpty) turn,
+      ];
       if (history.isEmpty) {
         return;
       }
@@ -251,11 +260,21 @@ final class ConversationViewModel extends ChangeNotifier {
           text: '',
           status: TurnStatus.streaming,
         );
+    // An interruption that landed before a single token arrived: the user
+    // ended an answer they were never shown a word of. Listing it leaves an
+    // empty "Response stopped" bubble for a turn that never happened. A
+    // failure with nothing written is kept on purpose — the user caused the
+    // cancellation and needs no receipt, but a failure happened *to* them,
+    // and dropping it would leave a question looking answered that never was.
+    final bool nothingHappened =
+        status == TurnStatus.cancelled && activeTurn.text.isEmpty;
     _projection = ConversationProjection(
-      completedTurns: <Turn>[
-        ..._projection.completedTurns,
-        activeTurn.copyWith(status: status),
-      ],
+      completedTurns: nothingHappened
+          ? _projection.completedTurns
+          : <Turn>[
+              ..._projection.completedTurns,
+              activeTurn.copyWith(status: status),
+            ],
     );
     _completedTurns.value = _projection.completedTurns;
     _activeTurn.value = null;
@@ -263,10 +282,17 @@ final class ConversationViewModel extends ChangeNotifier {
     notifyListeners();
   }
 
-  void _onOperationError(Object _, StackTrace _) {
+  void _onOperationError(Object error, StackTrace _) {
     if (_disposed) {
       return;
     }
+    // What went wrong was thrown away here, and the screen says only
+    // "Response failed". A failure with nothing written and no reason is
+    // unactionable for the user and undiagnosable from a log.
+    debugPrint(
+      'Lulo generation failed: '
+      '${error is ConversationFailure ? error.message : error}',
+    );
     _finishActiveTurn(TurnStatus.failed, createWhenNotStarted: true);
   }
 
