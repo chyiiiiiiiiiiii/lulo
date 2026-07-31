@@ -118,11 +118,26 @@ final class ModelFileService {
           hashing.add(kept);
         }
       }
-      final ModelBytes bytes = (already > 0 && fetchFrom != null)
-          ? await fetchFrom(Uri.parse(entry.url), already)
-          : await _fetch(Uri.parse(entry.url));
-      final int expectedTotal = already + bytes.totalBytes;
-      await for (final List<int> chunk in bytes.stream) {
+      // Every byte is already home: the last chunk landed and the rename
+      // did not. Asking for the range after the end returns 416 rather than
+      // the 206 a resume requires, and that failure is not a StateError, so
+      // the working file survives to wedge the next attempt the same way —
+      // with Retry as the only button and no way out of it in the app.
+      // A complete file is verified instead, which is what the rest of this
+      // method was going to do to it anyway.
+      final ModelBytes? bytes = already == entry.sizeBytes
+          ? null
+          : (already > 0 && fetchFrom != null)
+                ? await fetchFrom(Uri.parse(entry.url), already)
+                : await _fetch(Uri.parse(entry.url));
+      final int expectedTotal = already + (bytes?.totalBytes ?? 0);
+      if (bytes == null) {
+        yield ModelDownloadProgress(
+          receivedBytes: received,
+          totalBytes: expectedTotal,
+        );
+      }
+      await for (final List<int> chunk in bytes?.stream ?? _noBytes()) {
         sink.add(chunk);
         hashing.add(chunk);
         received += chunk.length;
@@ -175,6 +190,9 @@ final class ModelFileService {
       rethrow;
     }
   }
+
+  /// Nothing left to stream, for a file that arrived before the rename did.
+  static Stream<List<int>> _noBytes() => const Stream<List<int>>.empty();
 
   /// The default resume fetcher: HTTPS with a Range header.
   static Future<ModelBytes> _fetchOverHttpsFrom(Uri url, int start) =>
