@@ -459,6 +459,118 @@ void main() {
     );
   });
 
+  test('resuming starts from the earliest sentence still unheard', () async {
+    // Chunks are dispatched as the answer streams and queued back to back by
+    // the native side, so the most recently dispatched sentence is normally
+    // NOT the one being heard — the next one is already handed over while the
+    // current one plays. Resuming "the last thing dispatched" therefore skips
+    // whatever was actually cut off and says something the user never heard a
+    // word of. Over-repeating is recoverable; skipping is not.
+    DateTime clock = DateTime(2026, 8);
+    final VoiceConversationController resuming = VoiceConversationController(
+      voice: voice,
+      conversation: vm,
+      utteranceScheduler: MicrotaskBatchScheduler(),
+      now: () {
+        clock = clock.add(const Duration(milliseconds: 600));
+        return clock;
+      },
+    );
+    addTearDown(resuming.dispose);
+    await resuming.enable();
+    voice.hear(const FinalTranscript('說個長故事。'));
+    await pump();
+    final Generation generation = await generationStarted();
+
+    // Two sentences dispatched, neither confirmed finished.
+    inference.emit(
+      GenerationDelta(
+        generationId: generation.id,
+        delta: '第一句話講得夠長足以成為完整的一個段落。',
+      ),
+    );
+    await pump();
+    await pump();
+    inference.emit(
+      GenerationDelta(
+        generationId: generation.id,
+        delta: '第二句話同樣講得夠長足以成為完整的一個段落，而且它的字數確實已經超過四十個字元的門檻了。',
+      ),
+    );
+    await pump();
+    await pump();
+    // Generation is done; both sentences are still queued for playback.
+    inference.emit(GenerationCompleted(generation.id));
+    await pump();
+    await pump();
+    expect(voice.spoken.length, 2, reason: 'Two chunks must be in flight.');
+    expect(vm.canSubmit, isTrue);
+    final String firstOutstanding = voice.spoken[0];
+
+    voice.hear(const PartialTranscript('等一下我'));
+    await pump();
+    voice.hear(const FinalTranscript('   '));
+    await pump();
+    await pump();
+
+    expect(
+      voice.spoken.last,
+      startsWith(firstOutstanding),
+      reason: 'Resume must not skip the sentence that was actually cut off.',
+    );
+  });
+
+  test('an answer that was cancelled does not come back to life', () async {
+    // The interruption cancelled the generation, so the answer is over. If
+    // the user's words then never settle into a question, the empty final
+    // would otherwise put one orphaned chunk of a dead answer back — the
+    // agent speaks half a sentence of something it already abandoned. The
+    // backstop never fires here, so this is the immediate path alone; with a
+    // real timer the cancel completes first and the same hole opens.
+    DateTime clock = DateTime(2026, 8);
+    final VoiceConversationController resuming = VoiceConversationController(
+      voice: voice,
+      conversation: vm,
+      utteranceScheduler: const _NeverScheduler(),
+      now: () {
+        clock = clock.add(const Duration(milliseconds: 600));
+        return clock;
+      },
+    );
+    addTearDown(resuming.dispose);
+    await resuming.enable();
+    voice.hear(const FinalTranscript('說個長故事。'));
+    await pump();
+    final Generation generation = await generationStarted();
+    inference.emit(
+      GenerationDelta(
+        generationId: generation.id,
+        delta: '第一句話講得夠長足以成為完整的一個段落。',
+      ),
+    );
+    await pump();
+    await pump();
+    final int spokenBefore = voice.spoken.length;
+
+    // Interrupt while it is still generating: this cancels the answer.
+    voice.hear(const PartialTranscript('等一下我'));
+    await pump();
+    await pump();
+    expect(inference.cancellations, contains(generation.id));
+
+    // The utterance dissolves into nothing, so nothing replaced the answer.
+    voice.hear(const FinalTranscript('   '));
+    await pump();
+    await pump();
+    await pump();
+
+    expect(
+      voice.spoken.length,
+      spokenBefore,
+      reason: 'A cancelled answer has nothing left to say.',
+    );
+  });
+
   test('the user talking over a streaming answer cancels it', () async {
     await controller.enable();
     voice.hear(const FinalTranscript('Tell me a long story.'));

@@ -111,19 +111,16 @@ final class VoiceConversationController extends ChangeNotifier {
 
   CancelBatch? _pendingSettle;
 
-  /// The sentence currently handed to the voice, kept so an interruption can
-  /// put it back.
+  /// Sentences handed to the voice and not yet known to have finished.
   ///
-  /// Known limitation: this is the most recently *dispatched* utterance, not
-  /// the one the ear is currently on. While an answer streams, chunks go out
-  /// roughly in step with playback and the two agree closely enough. But a
-  /// completed answer is read back to the user as one utterance, so an
-  /// interruption late in a long one resumes from its beginning rather than
-  /// from where it was cut. Fixing that properly needs the playback position
-  /// from the native side, or a bounded chunking of the completed-answer
-  /// path with a queue-aware notion of "currently playing" — neither of
-  /// which is a change to make without being able to hear the result.
-  String? _speechInFlight;
+  /// Not a single "current" sentence: chunks are dispatched as the answer
+  /// streams and the native side queues them back to back, so the most
+  /// recently dispatched one is normally NOT the one being heard — the next
+  /// is already handed over while the current plays. An interruption cuts
+  /// somewhere inside this list without saying where, so the whole of it is
+  /// put back. Over-repeating a sentence the user already heard is
+  /// recoverable; skipping one is not.
+  final List<String> _speechOutstanding = <String>[];
 
   /// The sentence an interruption cut off, awaiting [_resumeDelay].
   String? _interruptedSpeech;
@@ -224,7 +221,7 @@ final class VoiceConversationController extends ChangeNotifier {
     if (_interruptedSpeech != null) {
       return VoiceActivity.paused;
     }
-    if (_speaking || _speechRequested) {
+    if (_deliveringAnswer) {
       return VoiceActivity.speaking;
     }
     if (!_conversation.canSubmit) {
@@ -373,6 +370,8 @@ final class VoiceConversationController extends ChangeNotifier {
       case SpeakingFinished():
         _speaking = false;
         _speechRequested = false;
+        // Everything handed over has drained; nothing is left to put back.
+        _speechOutstanding.clear();
         notifyListeners();
       case VoiceFailed(:final String message):
         // A dead pipeline must not leave the button lit as listening —
@@ -498,7 +497,7 @@ final class VoiceConversationController extends ChangeNotifier {
     // Held so an interruption can put it back. The dispatch counters record
     // what was handed to the voice, not what was heard, so without this the
     // sentence the user talked over is lost the moment it is cut.
-    _speechInFlight = spoken;
+    _speechOutstanding.add(spoken);
     notifyListeners();
     unawaited(_voice.speak(spoken, language: _activeLang));
   }
@@ -521,7 +520,9 @@ final class VoiceConversationController extends ChangeNotifier {
     }
     debugPrint('Lulo speak: resuming ${interrupted.length} chars');
     _speechRequested = true;
-    _speechInFlight = interrupted;
+    _speechOutstanding
+      ..clear()
+      ..add(interrupted);
     unawaited(_voice.speak(interrupted, language: _activeLang));
   }
 
@@ -579,11 +580,24 @@ final class VoiceConversationController extends ChangeNotifier {
   /// The threshold exists only for speech in progress; see
   /// [_charactersToInterruptSpeech].
   bool _takesTheFloor(String text) {
-    if (!_speaking && !_speechRequested) {
+    if (!_deliveringAnswer) {
       return true;
     }
     return text.trim().runes.length >= _charactersToInterruptSpeech;
   }
+
+  /// Whether an answer is in the middle of being delivered aloud.
+  ///
+  /// Deliberately wider than [_speaking]: the native side reports speech
+  /// finished 300ms after the last chunk drains, and the next chunk needs
+  /// enough new text to be worth synthesising. Whenever generation is slower
+  /// than playback — routine for a local model on a long answer — there are
+  /// gaps between chunks where nothing is technically speaking. Keying the
+  /// interruption threshold on [_speaking] alone switched it off inside every
+  /// one of those gaps, and a single misheard character could still end the
+  /// answer.
+  bool get _deliveringAnswer =>
+      _speaking || _speechRequested || _speechOutstanding.isNotEmpty;
 
   /// The user started talking: whatever the agent was saying or still
   /// generating gives way.
@@ -593,12 +607,15 @@ final class VoiceConversationController extends ChangeNotifier {
       'Lulo yield: from=$from speaking=$_speaking '
       'requested=$_speechRequested cancelsGeneration=$cancelling',
     );
-    if (_speaking || _speechRequested) {
+    if (_deliveringAnswer) {
       // What is being cut off is held for [_resumeDelay]: if the user turns
       // out to be asking something, that wins and this is dropped; if they
       // were only reacting, the answer picks up instead of going silent for
       // the rest of its life.
-      _interruptedSpeech = _speechInFlight;
+      _interruptedSpeech = _speechOutstanding.isEmpty
+          ? null
+          : _speechOutstanding.join();
+      _speechOutstanding.clear();
       _pendingResume?.cancel();
       _pendingResume = _utteranceScheduler.schedule(
         _resumeDelay,
@@ -633,6 +650,11 @@ final class VoiceConversationController extends ChangeNotifier {
           'Lulo turn: ${turn.status.name} — NOT SPOKEN '
           '(${turn.text.length} chars written, $_dispatchedOfActive already out)',
         );
+        // The answer is over, so there is nothing left to put back. Without
+        // this the interruption that ended it would, a moment later, read one
+        // orphaned sentence of an answer already abandoned.
+        _cancelPendingResume();
+        _speechOutstanding.clear();
         _dispatchedOfActive = 0;
         if (_speaking || _speechRequested) {
           _speechRequested = false;

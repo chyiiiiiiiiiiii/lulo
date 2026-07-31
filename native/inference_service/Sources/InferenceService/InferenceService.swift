@@ -1038,10 +1038,24 @@ public actor InferenceCoordinator {
       }
       cancellationOperation = nil
       guard
-        acknowledgement.acknowledged,
         generationToken(for: operation.generationId)
           == operation.generationToken
       else {
+        // A cancellation for a generation this coordinator has already moved
+        // past. Its state belongs to whatever came after.
+        return acknowledgement
+      }
+      guard acknowledgement.acknowledged else {
+        // The backend is not running this generation — almost always because
+        // the start never reached it: the slot is claimed before the backend
+        // is awaited, and that await can sit for minutes while an abandoned
+        // decode drains. "Not running it" is the state the caller asked for,
+        // so the slot has to be given back. Returning here without doing so
+        // left the coordinator claimed for the life of the process, and every
+        // later turn came back as an instant zero-character failure.
+        generationState = .idle
+        lastGenerationSequence = nil
+        recordCancelledGeneration(operation.generationId)
         return acknowledgement
       }
 

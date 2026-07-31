@@ -698,6 +698,94 @@ final class LocalModelRuntimeTests: XCTestCase {
     XCTAssertEqual(loadCallCount, 1)
   }
 
+  func testUnacknowledgedCancellationOfAStartingGenerationReleasesTheSlot()
+    async throws
+  {
+    // The slot is claimed before the backend is awaited, and the backend's
+    // start can block for minutes: LiteRT-LM abandons a cancelled decode
+    // rather than stopping it, and the next start waits for it to burn its
+    // whole token budget. Cancel while that is happening and the backend has
+    // never seen the generation, so it answers acknowledged: false — which
+    // means "I am not running it", the state the caller asked for. Reading
+    // that as a failure and returning left the coordinator claimed forever,
+    // and every later turn came back as an instant zero-character
+    // "Response failed".
+    let backend = RuntimeBackendSpy()
+    let coordinator = InferenceCoordinator(
+      supportedSchemaVersion: 2,
+      backend: backend
+    )
+    let request = RuntimeRequestEnvelope(
+      schemaVersion: 2,
+      requestId: "request-1",
+      timestampMicros: 1
+    )
+    let model = RuntimeModelRequest(
+      modelId: "model-1",
+      modelPath: "/models/model-1.bin",
+      contextSize: 4096
+    )
+    func generation(_ id: String) -> RuntimeGenerationRequest {
+      RuntimeGenerationRequest(
+        generationId: id,
+        sessionId: "session-1",
+        prompt: "prompt",
+        context: [],
+        temperature: 0.25,
+        topP: 0.9,
+        maxTokens: 128,
+        seed: 1
+      )
+    }
+    async let loadResult = coordinator.loadModel(request: request, model: model)
+    await backend.waitForLoadCall()
+    await backend.completeLoads(
+      with: RuntimeModelLoadResult(modelId: model.modelId, loaded: true)
+    )
+    _ = try await loadResult
+
+    // The first start is in flight and never answers — the drain wait.
+    async let firstStart = coordinator.startGeneration(
+      request: request,
+      generation: generation("generation-1")
+    )
+    await backend.waitForStartCall(count: 1)
+
+    // The user barges in. The backend has no such generation.
+    await backend.acknowledgeCancellations(false)
+    let cancellation = try await coordinator.cancelGeneration(
+      request: request,
+      generationId: "generation-1"
+    )
+    XCTAssertFalse(cancellation.acknowledged)
+
+    // The next turn must be accepted, not refused as busy. Captured rather
+    // than thrown: the first start is still suspended on a continuation, and
+    // leaving this scope without resuming it deadlocks the test instead of
+    // failing it.
+    await backend.automaticallyAcknowledgeStarts()
+    var secondStartError: Error?
+    do {
+      _ = try await coordinator.startGeneration(
+        request: request,
+        generation: generation("generation-2")
+      )
+    } catch {
+      secondStartError = error
+    }
+
+    await backend.failStart(
+      generationId: "generation-1",
+      with: RuntimeBoundaryError.cancelled
+    )
+    _ = try? await firstStart
+
+    XCTAssertNil(
+      secondStartError,
+      "The slot was never released, so the next turn was refused as busy."
+    )
+  }
+
   func testSecondGenerationIsRejectedWhileFirstStartIsInFlight() async throws {
     let backend = RuntimeBackendSpy()
     let coordinator = InferenceCoordinator(
@@ -4699,8 +4787,16 @@ private actor RuntimeBackendSpy: RuntimeBackend {
     }
     return RuntimeCancellationAcknowledgement(
       generationId: cancelAcknowledgementGenerationId ?? generationId,
-      acknowledged: true
+      acknowledged: cancellationAcknowledged
     )
+  }
+
+  /// Set false to model a backend that never registered the generation —
+  /// which is what it answers when the start is still in flight.
+  var cancellationAcknowledged = true
+
+  func acknowledgeCancellations(_ acknowledged: Bool) {
+    cancellationAcknowledged = acknowledged
   }
 
   func waitForCancelCall() async {
