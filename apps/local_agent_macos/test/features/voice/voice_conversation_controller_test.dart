@@ -199,6 +199,117 @@ void main() {
     );
   });
 
+  test('a short word while the agent speaks is not an interruption', () async {
+    // "OK" and "嗯嗯" are how people show they are still listening. Taking
+    // them as a request to stop ended a minute of speech that was 571
+    // characters in, and the user got silence for saying the one thing that
+    // means "carry on". While nothing is being said, one character is still
+    // enough — there is nothing to take away.
+    await controller.enable();
+    voice.hear(const FinalTranscript('Tell me a long story.'));
+    await pump();
+    final Generation generation = await generationStarted();
+    // Still streaming, and far enough in that the voice has started: this is
+    // the state a real acknowledgement lands in.
+    inference.emit(
+      GenerationDelta(
+        generationId: generation.id,
+        delta: 'Once upon a time, at very great length indeed. ',
+      ),
+    );
+    await pump();
+    await pump();
+    expect(voice.spoken, isNotEmpty);
+
+    voice.hear(const PartialTranscript('OK'));
+    await pump();
+    voice.hear(const FinalTranscript('OK。'));
+    await pump();
+
+    expect(
+      inference.cancellations,
+      isNot(contains(generation.id)),
+      reason: 'Acknowledging is not interrupting.',
+    );
+    expect(voice.calls, isNot(contains('stopSpeaking')));
+  });
+
+  test('enough words while the agent speaks is an interruption', () async {
+    await controller.enable();
+    voice.hear(const FinalTranscript('Tell me a long story.'));
+    await pump();
+    final Generation generation = await generationStarted();
+    inference.emit(
+      GenerationDelta(
+        generationId: generation.id,
+        delta: 'Once upon a time, at very great length indeed. ',
+      ),
+    );
+    await pump();
+    await pump();
+    expect(voice.spoken, isNotEmpty);
+
+    voice.hear(const PartialTranscript('你可以解釋'));
+    await pump();
+
+    expect(
+      inference.cancellations,
+      contains(generation.id),
+      reason: 'Past the threshold the user still has the floor on demand.',
+    );
+  });
+
+  test('an interruption that asks nothing resumes the answer', () async {
+    // 53 interruptions in one real session stopped the speech; 5 of them
+    // replaced the question. The other 48 left the answer written on screen
+    // and permanently unsaid, because the dispatch counter records what was
+    // handed to the voice rather than what was heard. Saying "嗯" should not
+    // cost the rest of the answer.
+    // Its own scheduler: the shared controller runs the resume on a real
+    // two-second timer, which no amount of pumping will reach.
+    DateTime resumeClock = DateTime(2026, 8);
+    final VoiceConversationController resuming = VoiceConversationController(
+      voice: voice,
+      conversation: vm,
+      utteranceScheduler: MicrotaskBatchScheduler(),
+      // Same 600ms step as the shared controller, so events in one microtask
+      // still land past the post-final cooldown.
+      now: () {
+        resumeClock = resumeClock.add(const Duration(milliseconds: 600));
+        return resumeClock;
+      },
+    );
+    addTearDown(resuming.dispose);
+    // The shared controller stays constructed but never enabled, so every
+    // event below reaches only this one.
+    await resuming.enable();
+    voice.hear(const FinalTranscript('Tell me a long story.'));
+    await pump();
+    // The answer has finished generating and is being read aloud — the state
+    // most of those 53 interruptions actually landed in.
+    await answerCompletely('Once upon a time, at very great length indeed.');
+    final int spokenBefore = voice.spoken.length;
+    expect(spokenBefore, greaterThan(0));
+    expect(vm.canSubmit, isTrue);
+    final String cutOff = voice.spoken.last;
+
+    // Long enough to take the floor, but it never settles into a question.
+    voice.hear(const PartialTranscript('等一下我'));
+    await pump();
+    expect(voice.calls, contains('stopSpeaking'));
+
+    // Nothing was asked, so the answer picks up where it was cut off.
+    await pump();
+    await pump();
+    await pump();
+    expect(
+      voice.spoken.length,
+      greaterThan(spokenBefore),
+      reason: 'The interrupted sentence must be said again.',
+    );
+    expect(voice.spoken.last, cutOff);
+  });
+
   test('the user talking over a streaming answer cancels it', () async {
     await controller.enable();
     voice.hear(const FinalTranscript('Tell me a long story.'));

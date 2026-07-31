@@ -342,7 +342,19 @@ final class _HeardSoFar extends StatelessWidget {
         }
         if (heard.isEmpty) {
           // "Nothing happening" and "listening for you" must not look the
-          // same: an open microphone says so.
+          // same: an open microphone says so. Nor may the three silences
+          // look the same as each other — in full duplex the microphone
+          // never closes, so "Listening…" alone is true while thinking,
+          // while talking, and while broken.
+          final (IconData icon, String label) = switch (voice.activity) {
+            VoiceActivity.listening => (Icons.graphic_eq_rounded, 'Listening…'),
+            VoiceActivity.thinking => (Icons.more_horiz_rounded, 'Thinking…'),
+            VoiceActivity.speaking => (Icons.volume_up_rounded, 'Speaking…'),
+            VoiceActivity.paused => (
+              Icons.pause_circle_outline_rounded,
+              'Paused — say anything to carry on',
+            ),
+          };
           return Padding(
             padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 4),
             child: Row(
@@ -350,13 +362,13 @@ final class _HeardSoFar extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               children: <Widget>[
                 Icon(
-                  Icons.graphic_eq_rounded,
+                  icon,
                   size: 16,
                   color: Theme.of(context).colorScheme.primary,
                 ),
                 const SizedBox(width: 8),
                 Text(
-                  'Listening…',
+                  label,
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
                     color: Theme.of(context).colorScheme.onSurfaceVariant,
                   ),

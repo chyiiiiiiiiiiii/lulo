@@ -114,6 +114,38 @@ void main() {
     expect(find.text('what time'), findsOneWidget);
   });
 
+  testWidgets('the status says which of the three silences this is', (
+    WidgetTester tester,
+  ) async {
+    // In full duplex the microphone never closes, so "Listening…" is true
+    // the whole time and tells the user nothing. A silent window could be
+    // thinking, could be talking too quietly to hear, could be broken —
+    // and for one real session it was the third.
+    final FakeVoiceService voice = FakeVoiceService();
+    addTearDown(voice.dispose);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ConversationView(
+          viewModelFactory: viewModel,
+          voiceService: voice,
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('conversation-voice-button')));
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.text('Listening…'), findsOneWidget);
+
+    // A question is asked: the agent is now thinking, not merely listening.
+    voice.hear(const FinalTranscript('Tell me something.'));
+    await tester.pump();
+    await tester.pump();
+    expect(find.text('Thinking…'), findsOneWidget);
+    expect(find.text('Listening…'), findsNothing);
+  });
+
   testWidgets('a dead pipeline says why over the composer', (
     WidgetTester tester,
   ) async {
