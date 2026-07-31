@@ -1,11 +1,32 @@
 # The agent stops listening while it talks
 
-**Status:** accepted, reversible
-**Decided:** `f4309e9` on `feat/phase-1a-basic-conversation` (not yet merged
-into `main`)
+**Status:** **superseded** by
+[full-duplex-voice.md](full-duplex-voice.md) (`a84a2c4`)
+**Decided:** `f4309e9`
 **Attempt preserved on:** `wip/full-duplex-aec` (`13f2cbb`)
 
-## The decision
+> **This record's conclusion is wrong, and it is kept for the reason it went
+> wrong.** The measurement below — the one the whole decision rests on — used
+> a loudspeaker as a stand-in for a person, and suppressing loudspeaker audio
+> is exactly what a voice-processing unit is for. It measured the echo
+> canceller working and read it as a deaf microphone.
+>
+> The correction that followed (`a84a2c4`) was also wrong, in the same
+> family: it showed the microphone still hears a real voice under voice
+> processing, and read that as proof the canceller removes the agent. It does
+> not follow, and it was not true — the unit had been enabled on the input
+> node only, so it had no far-end reference and subtracted nothing.
+>
+> Full duplex is on and now actually works, with voice processing on **both**
+> ends. See [full-duplex-voice.md](full-duplex-voice.md), which also records
+> why two measurements in a row answered the wrong question.
+>
+> What still holds from this record: the `-10875` diagnosis and the mixer
+> ordering, the two `speakableText` fixes, and the half-duplex state machine,
+> which is now the fallback for hardware where voice processing cannot be
+> enabled. Everything below about the microphone being deaf is not true.
+
+## The decision (as it was believed)
 
 While Lulo is speaking, the microphone feed into the transcriber is muted.
 `fullDuplex` is a field on `VoiceHostAdapter` and it is assigned `false`

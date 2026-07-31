@@ -6,13 +6,12 @@ user has started talking, that they have stopped, and that they have started
 again over an answer they no longer want. Every one of those is a heuristic
 with a way to fail silently.
 
-> **Branch.** This describes `feat/phase-1a-basic-conversation` at `819babf`
-> (worktree `.worktrees/phase-1a`), the tip as of writing; the half-duplex
-> decision it rests on is `f4309e9`, one commit earlier.
-> **Not merged into `main`.** `main` at
-> `0cb7cf6` has the same pipeline without the `fullDuplex` gate and its
-> reasoning; the differences are in `VoiceHostAdapter.swift` and
-> `voice_conversation_controller.dart`.
+> **State.** Full duplex is **on**: voice processing is enabled on both the
+> input and the output node, the microphone stays open while the agent
+> speaks, and the user can talk over an answer. The half-duplex path below
+> is the fallback for hardware where voice processing cannot be enabled.
+> See [../decisions/full-duplex-voice.md](../decisions/full-duplex-voice.md)
+> — including why two measurements in a row concluded the opposite.
 
 ## The files
 
@@ -33,15 +32,19 @@ synthesised rooms), `test/features/voice/voice_conversation_controller_test.dart
 `test/features/voice/pigeon_voice_service_test.dart`,
 `test/features/voice/voice_ui_test.dart`.
 
-## Half duplex, as it stands
+## Full duplex, and the half-duplex fallback
 
-`fullDuplex` is a `var` on the adapter and it is assigned `false`
-unconditionally in `begin`. Every branch that would keep the microphone open
-during speech — the player node, `/render`, `renderAndPlay` — is written,
-tested by hand, and gated off. It is not dead code by accident; it is dead
-code on purpose, waiting for one condition.
+`fullDuplex` is a `var` on the adapter, assigned in `begin` from whether
+Apple's voice processing was actually granted on **both** the input and the
+output node. On this hardware it is, so the microphone stays open while the
+agent speaks and the player node, `/render` and `renderAndPlay` are all live.
+When the output node refuses, the input is turned back off and the mute-based
+path below takes over — input-only voice processing is worse than none, since
+the microphone stays open with nothing removing the agent from it.
 
-The reason, quoted from `git show f4309e9` rather than restated:
+The rest of this section is the history, kept because the reasoning in it was
+wrong twice in the same way and that is worth not repeating. Quoted from
+`git show f4309e9`:
 
 > Full duplex was built on the assumption that macOS voice processing
 > would subtract the agent's own voice from its microphone. Measured
@@ -63,10 +66,15 @@ The reason, quoted from `git show f4309e9` rather than restated:
 > `fullDuplex`, for whenever there is a canceller that works here. The
 > attempt is on `wip/full-duplex-aec`.
 
+That conclusion was wrong, and so was its first correction; the whole story
+is in [../decisions/full-duplex-voice.md](../decisions/full-duplex-voice.md).
+
 The consequence to keep in mind while reading the rest of this document:
-**the VAD's clock stops while the agent is speaking.** Almost every piece of
-state below exists to survive that gap. The decision record is
-[../decisions/half-duplex-voice.md](../decisions/half-duplex-voice.md).
+**in the half-duplex fallback the VAD's clock stops while the agent is
+speaking**, and almost every piece of state below exists to survive that
+gap. Under full duplex none of that happens — the clock runs continuously
+and the mute never engages — which is why so much of the state machine below
+is guarded by `if !self.fullDuplex`.
 
 ## The listening session
 
@@ -115,8 +123,10 @@ flowchart LR
 
 Four things about this graph:
 
-- **The input node is deliberately not voice-processed.** See the quote
-  above. `setVoiceProcessingEnabled(true)` is not called anywhere.
+- **Both the input and the output node are voice-processed**, in that order,
+  after the main mixer has been instantiated. Enabling only one of them
+  leaves the canceller with no far-end reference: it was input-only for the
+  whole of the first full-duplex attempt, and the agent transcribed itself.
 - **The tap runs on the real-time audio thread.** It captures only values it
   owns — the continuation, the converter, `MuteBox`, `VoiceActivityBox` —
   and never `self`, whose state belongs to the main actor. `MuteBox` and
@@ -338,9 +348,9 @@ stateDiagram-v2
 | `muteLiftedAt`, `utteranceHeardAt`, `utteranceInProgress`, `endpointFinalizeRequested` reset together | The endpointer starts each turn clean | See above — first word of the next sentence gets finalized alone |
 
 Note the `if !self.fullDuplex` around the endpointer reset in
-`utteranceEnded`: full duplex never muted, never froze the clock, and the
-user may be mid-interruption, so its utterance state must survive. When
-`fullDuplex` is false — always, today — the reset runs.
+`utteranceEnded`: full duplex never mutes, never freezes the clock, and the
+user may be mid-interruption, so its utterance state must survive. The reset
+runs only on the half-duplex fallback path.
 
 ## The Dart side
 

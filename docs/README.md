@@ -17,7 +17,7 @@ flowchart TD
 
     arch["1 · architecture.md<br/>the four processes, the pigeon seam,<br/>one turn end to end"]
     voice["2 · features/voice.md<br/>VoiceHostAdapter, the endpointer,<br/>VoiceConversationController, the sidecar"]
-    dec["3 · decisions/half-duplex-voice.md<br/>why the microphone shuts while the agent<br/>talks, and what it cost to try not to"]
+    dec["3 · decisions/full-duplex-voice.md<br/>why the microphone stays open, and why<br/>two measurements said it could not"]
 
     arch ==> voice ==> dec
     dec -. "the state this decision forces" .-> voice
@@ -40,9 +40,10 @@ flowchart TD
    intricate part of the project and the one with the most ways to break it
    quietly. Read it before touching anything under `features/voice/` or
    `VoiceHostAdapter.swift`.
-3. **[decisions/half-duplex-voice.md](decisions/half-duplex-voice.md)** — why
-   the agent stops listening while it talks, what full duplex cost to try,
-   and the condition under which it comes back.
+3. **[decisions/full-duplex-voice.md](decisions/full-duplex-voice.md)** — why
+   the microphone stays open while the agent talks, what the echo canceller
+   actually needed, and why two measurements in a row concluded it was
+   impossible. Read it before trusting any measurement of an echo canceller.
 
 For the repository's own rules — the workspace layout, the quality gate, the
 window architecture — see [`CLAUDE.md`](../CLAUDE.md) and
@@ -63,14 +64,11 @@ explanation.
 
 | Document | State |
 |---|---|
-| [decisions/half-duplex-voice.md](decisions/half-duplex-voice.md) | Written |
+| [decisions/full-duplex-voice.md](decisions/full-duplex-voice.md) | Written |
+| [decisions/half-duplex-voice.md](decisions/half-duplex-voice.md) | Superseded, kept for the method error |
 
 ## A note on branches
 
-The voice pipeline as described here is the state of
-`feat/phase-1a-basic-conversation` at `819babf`, in the worktree at
-`.worktrees/phase-1a`; the half-duplex decision it rests on is the commit
-before it, `f4309e9`. **It is not merged into `main`.** `main` (`0cb7cf6`)
-carries the voice work up to the latency sprint but not the full-duplex
-attempt or its revert, and therefore none of the `fullDuplex` gating this
-documentation describes. Where the two differ, the documents say so.
+This describes `test/all-of-today`, where the voice work, the conversation
+memory, the model-download fix and the full-duplex repair are integrated.
+`main` is behind it and carries none of this.
