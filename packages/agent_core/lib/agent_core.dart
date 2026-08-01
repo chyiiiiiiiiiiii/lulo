@@ -7,3 +7,6 @@ export 'src/conversation/conversation_id.dart';
 export 'src/conversation/generation.dart';
 export 'src/conversation/generation_event.dart';
 export 'src/conversation/turn.dart';
+export 'src/transcript_refiner/deterministic_transcript_refiner.dart';
+export 'src/transcript_refiner/transcript_proposal_gate.dart';
+export 'src/transcript_refiner/transcript_refinement.dart';
