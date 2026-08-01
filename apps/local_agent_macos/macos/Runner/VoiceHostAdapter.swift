@@ -107,54 +107,59 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
     sessionCounter += 1
     let id = sessionCounter
     Task { @MainActor in
-      var attempt = 0
-      while true {
-        do {
-          try await self.begin(id: id)
-          if id == self.sessionCounter {
-            self.starting = false
-          }
-          completion(.success(()))
-          return
-        } catch is CancellationError {
-          // Stopped while still starting: nothing runs, nothing to report.
-          // The flag belongs to whoever started most recently.
-          if id == self.sessionCounter {
-            self.starting = false
-          }
-          completion(.success(()))
-          return
-        } catch {
-          // -10875 out of the output unit is the voice-processing graph
-          // refusing to initialize while a Bluetooth route is still
-          // settling — the route renegotiates as the session comes up,
-          // each configuration change tears the session down, and one of
-          // the rebuilds lands mid-flap. Transient: the same start
-          // succeeds once the route holds still. begin() assigns session
-          // only as its last step, so a failed attempt leaves nothing to
-          // unwind.
-          if (error as NSError).code == -10875,
-            attempt < 2,
-            id == self.sessionCounter
-          {
-            attempt += 1
-            NSLog(
-              "Lulo voice: output refused to initialize (-10875); attempt %d",
-              attempt + 1
-            )
-            try? await Task.sleep(for: .seconds(1))
-            continue
-          }
-          if id == self.sessionCounter {
-            self.starting = false
-          }
-          completion(.failure(PigeonError(
-            code: "listening-failed",
-            message: String(describing: error),
-            details: nil
-          )))
-          return
+      do {
+        try await self.beginRetryingOutputRefusal(id: id)
+        if id == self.sessionCounter {
+          self.starting = false
         }
+        completion(.success(()))
+      } catch is CancellationError {
+        // Stopped while still starting: nothing runs, nothing to report.
+        // The flag belongs to whoever started most recently.
+        if id == self.sessionCounter {
+          self.starting = false
+        }
+        completion(.success(()))
+      } catch {
+        if id == self.sessionCounter {
+          self.starting = false
+        }
+        completion(.failure(PigeonError(
+          code: "listening-failed",
+          message: String(describing: error),
+          details: nil
+        )))
+      }
+    }
+  }
+
+  /// Runs begin(id:), retrying the output unit's transient refusal.
+  ///
+  /// -10875 out of the output unit is the graph refusing to initialize
+  /// while a Bluetooth route is still settling; the same start succeeds
+  /// once the route holds still. begin() assigns session only as its last
+  /// step, so a failed attempt leaves nothing to unwind.
+  private func beginRetryingOutputRefusal(id: Int) async throws {
+    var attempt = 0
+    while true {
+      do {
+        try await begin(id: id)
+        return
+      } catch {
+        if !(error is CancellationError),
+          (error as NSError).code == -10875,
+          attempt < 2,
+          id == sessionCounter
+        {
+          attempt += 1
+          NSLog(
+            "Lulo voice: output refused to initialize (-10875); attempt %d",
+            attempt + 1
+          )
+          try? await Task.sleep(for: .seconds(1))
+          continue
+        }
+        throw error
       }
     }
   }
@@ -862,15 +867,18 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
     }
     // The device can change out from under a running engine — AirPods
     // arriving, a USB microphone leaving — and the tap simply goes silent.
-    // Reported as a failure so the other side never shows a live button
-    // over a dead pipeline.
+    // Rebuilt rather than reported: Bluetooth routes do this as a matter
+    // of course, idling and waking and renegotiating, and each one used
+    // to surface as "Voice stopped: the audio device changed" over a
+    // microphone the user never touched. Only a rebuild that itself
+    // fails is a failure.
     let configObserver = NotificationCenter.default.addObserver(
       forName: .AVAudioEngineConfigurationChange,
       object: engine,
       queue: .main
     ) { [weak self] _ in
       Task { @MainActor in
-        self?.pipelineFailed("the audio device changed")
+        self?.audioDeviceChanged()
       }
     }
 
@@ -962,6 +970,41 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
     }
     self.session = nil
   }
+
+  /// The device changed under the running engine: rebuild on the settled
+  /// route. Changes arrive in bursts, so the first one waits them out.
+  private func audioDeviceChanged() {
+    guard session != nil, !rebuildingAfterDeviceChange else {
+      return
+    }
+    rebuildingAfterDeviceChange = true
+    Task { @MainActor in
+      try? await Task.sleep(for: .milliseconds(600))
+      self.rebuildingAfterDeviceChange = false
+      guard self.session != nil else {
+        // Stopped on purpose in the meantime; nothing to rebuild.
+        return
+      }
+      NSLog("Lulo voice: the audio device changed; rebuilding the session")
+      // The same speech-state reset as pipelineFailed, without the verdict.
+      self.speakEpoch += 1
+      self.speakEpochBox.epoch = self.speakEpoch
+      self.turn.listeningStopped()
+      self.mute.muted = false
+      self.endSession()
+      self.sessionCounter += 1
+      let id = self.sessionCounter
+      do {
+        try await self.beginRetryingOutputRefusal(id: id)
+      } catch is CancellationError {
+        // Superseded by a newer start or stop; theirs to report.
+      } catch {
+        self.pipelineFailed(String(describing: error))
+      }
+    }
+  }
+
+  private var rebuildingAfterDeviceChange = false
 
   private func pipelineFailed(_ message: String) {
     // The same speech-state reset as stopListening: a device change mid-
