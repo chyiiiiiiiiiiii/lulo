@@ -66,6 +66,19 @@ final class HoldToTalkReleased extends VoiceEvent {
   const HoldToTalkReleased();
 }
 
+/// What the held speech actually said, from the batch recogniser.
+///
+/// Arrives a beat after [HoldToTalkReleased] and outranks the streaming
+/// transcripts collected during the hold; empty means the recogniser had
+/// nothing to say and the streaming transcripts stand.
+final class HeldTranscript extends VoiceEvent {
+  /// Creates the event with the recognised [text].
+  const HeldTranscript(this.text);
+
+  /// The whole held utterance, or empty when recognition failed.
+  final String text;
+}
+
 /// Ears and voice, independently of who provides them.
 ///
 /// The seam between the conversation loop and the platform: production

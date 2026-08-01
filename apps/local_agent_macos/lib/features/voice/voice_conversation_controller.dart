@@ -144,6 +144,13 @@ final class VoiceConversationController extends ChangeNotifier {
   bool _pttSettling = false;
   bool _pttProtected = false;
 
+  /// Whether this hold has a batch recogniser behind it (the hotkey path
+  /// captures audio natively; the composer button does not), and what it
+  /// heard once it answers.
+  bool _pttAwaitsBatch = false;
+  String? _pttBatchText;
+  static const Duration _pttBatchWait = Duration(seconds: 8);
+
   /// Whether the global hotkey is physically down, tracked apart from
   /// [_pttHeld]: enabling takes seconds, and a press that auto-enabled the
   /// voice must not begin holding after its release already happened.
@@ -361,6 +368,7 @@ final class VoiceConversationController extends ChangeNotifier {
           enable().then((_) {
             if (_hotkeyDown && _enabled) {
               holdToTalkPressed();
+              _pttAwaitsBatch = true;
             }
           }),
         );
@@ -495,9 +503,17 @@ final class VoiceConversationController extends ChangeNotifier {
       case HoldToTalkPressed():
         _hotkeyDown = true;
         holdToTalkPressed();
+        _pttAwaitsBatch = true;
       case HoldToTalkReleased():
         _hotkeyDown = false;
         holdToTalkReleased();
+      case HeldTranscript(:final String text):
+        if (_pttSettling) {
+          if (text.trim().isNotEmpty) {
+            _pttBatchText = text.trim();
+          }
+          _submitHeldSpeech();
+        }
     }
   }
 
@@ -692,6 +708,8 @@ final class VoiceConversationController extends ChangeNotifier {
     _pttSettling = false;
     _pttFinals.clear();
     _pttProtected = false;
+    _pttAwaitsBatch = false;
+    _pttBatchText = null;
     _pttSubmitBackstop?.cancel();
     _pttSubmitBackstop = null;
     _cancelPendingResume();
@@ -719,7 +737,14 @@ final class VoiceConversationController extends ChangeNotifier {
     _pttHeld = false;
     _pttSettling = true;
     notifyListeners();
-    if (_partialTranscript.trim().isEmpty) {
+    if (_pttAwaitsBatch) {
+      // The batch recogniser is listening to the same audio and answers
+      // in a beat or two; Apple's streamed guess is only its backstop.
+      _pttSubmitBackstop = _utteranceScheduler.schedule(
+        _pttBatchWait,
+        _submitHeldSpeech,
+      );
+    } else if (_partialTranscript.trim().isEmpty) {
       _submitHeldSpeech();
     } else {
       _pttSubmitBackstop = _utteranceScheduler.schedule(
@@ -736,7 +761,8 @@ final class VoiceConversationController extends ChangeNotifier {
     _pttSettling = false;
     _pttSubmitBackstop?.cancel();
     _pttSubmitBackstop = null;
-    final String question = _pttFinals.join(' ').trim();
+    final String question = (_pttBatchText ?? _pttFinals.join(' ')).trim();
+    _pttBatchText = null;
     _pttFinals.clear();
     if (question.isEmpty || !_enabled) {
       notifyListeners();

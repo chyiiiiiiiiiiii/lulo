@@ -322,9 +322,36 @@ void main() {
 
     voice.hear(const HoldToTalkReleased());
     await pump();
+    // An empty batch transcript: the streamed words stand.
+    voice.hear(const HeldTranscript(''));
+    await pump();
     await pump();
     expect(inference.requests, hasLength(1));
     expect(inference.requests.single.prompt, contains('今天天氣如何'));
+  });
+
+  test("the batch recogniser's words outrank the streamed ones", () async {
+    // Whisper hears the whole utterance at once and, measured on real held
+    // speech, hears it far better — Apple's streamed guess is only the
+    // fallback for when the sidecar is not there to answer.
+    await controller.enable();
+    voice.hear(const HoldToTalkPressed());
+    await pump();
+    voice.hear(const FinalTranscript('創新片片可以註動畫平臺'));
+    await pump();
+    voice.hear(const HoldToTalkReleased());
+    await pump();
+    expect(
+      inference.requests,
+      isEmpty,
+      reason: 'The question waits for the batch recogniser.',
+    );
+
+    voice.hear(const HeldTranscript('Flutter 是跨平台的畫面框架'));
+    await pump();
+    await pump();
+    expect(inference.requests, hasLength(1));
+    expect(inference.requests.single.prompt, 'Flutter 是跨平台的畫面框架');
   });
 
   test('the hotkey pressed while voice is off turns it on', () async {
@@ -340,6 +367,8 @@ void main() {
     voice.hear(const FinalTranscript('現在幾點'));
     await pump();
     voice.hear(const HoldToTalkReleased());
+    await pump();
+    voice.hear(const HeldTranscript(''));
     await pump();
     await pump();
     expect(inference.requests, hasLength(1));
@@ -370,6 +399,8 @@ void main() {
     controller.holdToTalkPressed();
     voice.hear(const FinalTranscript('講一個長故事'));
     await pump();
+    // The composer button has no batch recogniser behind it; release
+    // submits the streamed words without waiting for one.
     controller.holdToTalkReleased();
     await pump();
     final Generation generation = await generationStarted();

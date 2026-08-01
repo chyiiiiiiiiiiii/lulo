@@ -37,6 +37,13 @@ enum HostVoiceEventType {
 
   /// The global hotkey was released: the held speech is complete.
   holdToTalkReleased,
+
+  /// What the held speech actually said, from the batch recogniser.
+  ///
+  /// Arrives a beat after holdToTalkReleased and replaces the streaming
+  /// transcripts collected during the hold; if it never arrives, the
+  /// streaming transcripts stand.
+  heldTranscript,
 }
 
 /// One event from the native voice pipeline.

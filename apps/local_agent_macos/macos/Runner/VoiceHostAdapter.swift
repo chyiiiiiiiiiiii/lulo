@@ -549,15 +549,32 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
     if began {
       heldSpeech.begin()
     } else if let clip = heldSpeech.end() {
-      Self.writeHeldClip(clip)
+      recognizeHeldClip(clip)
     }
     emit(began ? .holdToTalkPressed : .holdToTalkReleased)
   }
 
-  /// Writes one held utterance to a WAV beside the logs, for judging a
-  /// candidate recogniser on the same audio Apple heard.
-  private static func writeHeldClip(_ clip: HeldSpeechClip) {
-    Task.detached(priority: .utility) {
+  /// Hands one held utterance to the batch recogniser and reports what it
+  /// heard. An unreachable recogniser reports empty, promptly — the app
+  /// falls back to the streamed transcript instead of waiting out its
+  /// backstop.
+  private func recognizeHeldClip(_ clip: HeldSpeechClip) {
+    let terms = vocabulary.all
+    Task { @MainActor in
+      let heard: String
+      if let url = await Self.writeHeldClip(clip) {
+        heard = await Self.transcribeHeld(url, terms: terms)
+      } else {
+        heard = ""
+      }
+      self.emit(.heldTranscript, text: heard)
+    }
+  }
+
+  /// Writes one held utterance to a WAV beside the logs — the same audio
+  /// Apple heard, kept so recognisers can be judged on real utterances.
+  private static func writeHeldClip(_ clip: HeldSpeechClip) async -> URL? {
+    await Task.detached(priority: .userInitiated) { () -> URL? in
       let url = FileManager.default.temporaryDirectory
         .appendingPathComponent(
           String(format: "lulo-held-%.0f.wav", Date().timeIntervalSince1970)
@@ -574,7 +591,7 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
           frameCapacity: AVAudioFrameCount(clip.samples.count)
         )
       else {
-        return
+        return nil
       }
       clip.samples.withUnsafeBufferPointer { raw in
         buffer.floatChannelData![0].update(
@@ -591,9 +608,48 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
           Double(clip.samples.count) / clip.sampleRate,
           url.path
         )
+        return url
       } catch {
         NSLog("Lulo ptt: clip not written (%@)", String(describing: error))
+        return nil
       }
+    }.value
+  }
+
+  /// What the batch recogniser heard in [url], or empty when it could not
+  /// answer.
+  private static func transcribeHeld(
+    _ url: URL,
+    terms: [String]
+  ) async -> String {
+    guard let endpoint = URL(string: "http://127.0.0.1:46558/transcribe")
+    else {
+      return ""
+    }
+    var request = URLRequest(url: endpoint)
+    request.httpMethod = "POST"
+    request.timeoutInterval = 15
+    request.httpBody = try? JSONSerialization.data(
+      withJSONObject: ["path": url.path, "terms": terms]
+    )
+    do {
+      let (data, response) = try await URLSession.shared.data(for: request)
+      guard (response as? HTTPURLResponse)?.statusCode == 200,
+        let payload = try? JSONSerialization.jsonObject(with: data)
+          as? [String: Any],
+        payload["ok"] as? Bool == true,
+        let text = payload["text"] as? String
+      else {
+        return ""
+      }
+      NSLog("Lulo ptt: batch recogniser heard %d chars", text.count)
+      return text
+    } catch {
+      NSLog(
+        "Lulo ptt: batch recogniser unreachable (%@)",
+        String(describing: error)
+      )
+      return ""
     }
   }
 
