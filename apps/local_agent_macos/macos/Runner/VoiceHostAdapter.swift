@@ -95,28 +95,54 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
     sessionCounter += 1
     let id = sessionCounter
     Task { @MainActor in
-      do {
-        try await self.begin(id: id)
-        if id == self.sessionCounter {
-          self.starting = false
+      var attempt = 0
+      while true {
+        do {
+          try await self.begin(id: id)
+          if id == self.sessionCounter {
+            self.starting = false
+          }
+          completion(.success(()))
+          return
+        } catch is CancellationError {
+          // Stopped while still starting: nothing runs, nothing to report.
+          // The flag belongs to whoever started most recently.
+          if id == self.sessionCounter {
+            self.starting = false
+          }
+          completion(.success(()))
+          return
+        } catch {
+          // -10875 out of the output unit is the voice-processing graph
+          // refusing to initialize while a Bluetooth route is still
+          // settling — the route renegotiates as the session comes up,
+          // each configuration change tears the session down, and one of
+          // the rebuilds lands mid-flap. Transient: the same start
+          // succeeds once the route holds still. begin() assigns session
+          // only as its last step, so a failed attempt leaves nothing to
+          // unwind.
+          if (error as NSError).code == -10875,
+            attempt < 2,
+            id == self.sessionCounter
+          {
+            attempt += 1
+            NSLog(
+              "Lulo voice: output refused to initialize (-10875); attempt %d",
+              attempt + 1
+            )
+            try? await Task.sleep(for: .seconds(1))
+            continue
+          }
+          if id == self.sessionCounter {
+            self.starting = false
+          }
+          completion(.failure(PigeonError(
+            code: "listening-failed",
+            message: String(describing: error),
+            details: nil
+          )))
+          return
         }
-        completion(.success(()))
-      } catch is CancellationError {
-        // Stopped while still starting: nothing runs, nothing to report.
-        // The flag belongs to whoever started most recently.
-        if id == self.sessionCounter {
-          self.starting = false
-        }
-        completion(.success(()))
-      } catch {
-        if id == self.sessionCounter {
-          self.starting = false
-        }
-        completion(.failure(PigeonError(
-          code: "listening-failed",
-          message: String(describing: error),
-          details: nil
-        )))
       }
     }
   }
