@@ -151,6 +151,36 @@ void main() {
     await harness.dispose();
   });
 
+  test('a follow-up carries what was already said, and only that', () async {
+    final _Harness harness = _Harness();
+    final ConversationViewModel viewModel = harness.createViewModel();
+    await _startGeneration(harness, viewModel);
+    harness.inference.emit(
+      const GenerationCompleted(GenerationId('generation-1')),
+    );
+    await Future<void>.delayed(Duration.zero);
+
+    await viewModel.submit('Next');
+    await Future<void>.delayed(Duration.zero);
+
+    // The opening question had nothing behind it.
+    expect(harness.inference.requests.first.history, isEmpty);
+
+    // The follow-up carries the finished exchange, oldest first — and stops
+    // there. A history ending in 'Next' would ask the model the same
+    // question twice.
+    final List<Turn> history = harness.inference.requests.last.history;
+    expect(history, hasLength(2));
+    expect(history.first.role, TurnRole.user);
+    expect(history.first.text, 'Hello');
+    expect(history.last.role, TurnRole.assistant);
+    expect(history.last.text, 'Partial');
+    expect(history.map((Turn turn) => turn.text), isNot(contains('Next')));
+
+    viewModel.dispose();
+    await harness.dispose();
+  });
+
   test(
     'cancellation finalizes the partial turn and enables submission',
     () async {
@@ -305,13 +335,12 @@ void main() {
 
     expect(harness.inference.requests, isEmpty);
     expect(viewModel.projection.activeTurn, isNull);
-    expect(viewModel.projection.completedTurns, hasLength(2));
-    expect(viewModel.projection.completedTurns.last.role, TurnRole.assistant);
-    expect(viewModel.projection.completedTurns.last.text, isEmpty);
-    expect(
-      viewModel.projection.completedTurns.last.status,
-      TurnStatus.cancelled,
-    );
+    // The cancelled answer said nothing, so it is not listed — see 'a stop
+    // before the first token leaves no turn behind'. What this test is about
+    // is that two overlapping stops cancel the pending operation once and
+    // hand the composer back.
+    expect(viewModel.projection.completedTurns, hasLength(1));
+    expect(viewModel.projection.completedTurns.single.role, TurnRole.user);
     expect(viewModel.canSubmit, isTrue);
 
     viewModel.dispose();
@@ -408,6 +437,81 @@ void main() {
       await harness.dispose();
     },
   );
+
+  test('a stop before the first token leaves no turn behind', () async {
+    // Barging in during prefill cancels an answer that never said anything.
+    // Listing it puts an empty grey "Response stopped" bubble in the
+    // scrollback — a turn the user was never shown a word of, and which they
+    // ended themselves. Interrupting before there is anything to interrupt
+    // should leave the conversation exactly as it was.
+    final _Harness harness = _Harness();
+    final ConversationViewModel viewModel = harness.createViewModel();
+
+    await viewModel.submit('Hello');
+    await harness.inference.requestReceived;
+    await viewModel.stop();
+
+    expect(viewModel.projection.activeTurn, isNull);
+    expect(viewModel.projection.completedTurns, hasLength(1));
+    expect(viewModel.projection.completedTurns.single.role, TurnRole.user);
+    expect(viewModel.canSubmit, isTrue);
+
+    viewModel.dispose();
+    await harness.dispose();
+  });
+
+  test('a failure with nothing written still says so', () async {
+    // The mirror image, and deliberately not symmetric: the user caused the
+    // cancellation and needs no receipt for it, but a failure is something
+    // that happened to them. Dropping it would leave a question that looks
+    // answered and never was.
+    final _Harness harness = _Harness();
+    final ConversationViewModel viewModel = harness.createViewModel();
+
+    await viewModel.submit('Hello');
+    await harness.inference.requestReceived;
+    harness.inference.emitError(
+      StateError('runtime unavailable'),
+      StackTrace.empty,
+    );
+    await Future<void>.delayed(Duration.zero);
+
+    expect(viewModel.projection.completedTurns, hasLength(2));
+    expect(viewModel.projection.completedTurns.last.status, TurnStatus.failed);
+
+    viewModel.dispose();
+    await harness.dispose();
+  });
+
+  test('a stop whose cancellation fails still returns the composer', () async {
+    // Stopping before the generation started cancels the subscription by
+    // hand, and that is the only thing that re-enables submission on this
+    // path. A throw from the boundary used to skip it, leaving the send key
+    // dead with nothing left to flip it — and stop() memoised the failed
+    // future, so asking again returned the same failure without retrying.
+    final _Harness harness = _Harness();
+    harness.inference.listenerCancellationFailure = StateError(
+      'the host could not answer for this generation',
+    );
+    final ConversationViewModel viewModel = harness.createViewModel();
+
+    await viewModel.submit('Hello');
+    await harness.inference.requestReceived;
+    expect(viewModel.canSubmit, isFalse);
+
+    await expectLater(viewModel.stop(), completes);
+
+    expect(viewModel.canSubmit, isTrue);
+    expect(viewModel.projection.completedTurns.single.role, TurnRole.user);
+
+    harness.inference.listenerCancellationFailure = null;
+    await viewModel.submit('And again');
+    await Future<void>.delayed(Duration.zero);
+    expect(harness.inference.requests, hasLength(2));
+
+    viewModel.dispose();
+    await harness.dispose();
+  });
 
   test(
     'dispose while pre-start stop is suspended prevents its continuation',

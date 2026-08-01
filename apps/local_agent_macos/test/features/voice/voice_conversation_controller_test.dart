@@ -199,6 +199,668 @@ void main() {
     );
   });
 
+  test('a short word while the agent speaks is not an interruption', () async {
+    // "OK" and "嗯嗯" are how people show they are still listening. Taking
+    // them as a request to stop ended a minute of speech that was 571
+    // characters in, and the user got silence for saying the one thing that
+    // means "carry on". While nothing is being said, one character is still
+    // enough — there is nothing to take away.
+    await controller.enable();
+    voice.hear(const FinalTranscript('Tell me a long story.'));
+    await pump();
+    final Generation generation = await generationStarted();
+    // Still streaming, and far enough in that the voice has started: this is
+    // the state a real acknowledgement lands in.
+    inference.emit(
+      GenerationDelta(
+        generationId: generation.id,
+        delta: 'Once upon a time, at very great length indeed. ',
+      ),
+    );
+    await pump();
+    await pump();
+    expect(voice.spoken, isNotEmpty);
+
+    voice.hear(const PartialTranscript('OK'));
+    await pump();
+    voice.hear(const FinalTranscript('OK。'));
+    await pump();
+
+    expect(
+      inference.cancellations,
+      isNot(contains(generation.id)),
+      reason: 'Acknowledging is not interrupting.',
+    );
+    expect(voice.calls, isNot(contains('stopSpeaking')));
+  });
+
+  test('enough words while the agent speaks is an interruption', () async {
+    await controller.enable();
+    voice.hear(const FinalTranscript('Tell me a long story.'));
+    await pump();
+    final Generation generation = await generationStarted();
+    inference.emit(
+      GenerationDelta(
+        generationId: generation.id,
+        delta: 'Once upon a time, at very great length indeed. ',
+      ),
+    );
+    await pump();
+    await pump();
+    expect(voice.spoken, isNotEmpty);
+
+    voice.hear(const PartialTranscript('你可以解釋'));
+    await pump();
+
+    expect(
+      inference.cancellations,
+      contains(generation.id),
+      reason: 'Past the threshold the user still has the floor on demand.',
+    );
+  });
+
+  test('an interruption that asks nothing resumes the answer', () async {
+    // 53 interruptions in one real session stopped the speech; 5 of them
+    // replaced the question. The other 48 left the answer written on screen
+    // and permanently unsaid, because the dispatch counter records what was
+    // handed to the voice rather than what was heard. Saying "嗯" should not
+    // cost the rest of the answer.
+    // Its own scheduler: the shared controller runs the resume on a real
+    // two-second timer, which no amount of pumping will reach.
+    DateTime resumeClock = DateTime(2026, 8);
+    final VoiceConversationController resuming = VoiceConversationController(
+      voice: voice,
+      conversation: vm,
+      utteranceScheduler: MicrotaskBatchScheduler(),
+      // Same 600ms step as the shared controller, so events in one microtask
+      // still land past the post-final cooldown.
+      now: () {
+        resumeClock = resumeClock.add(const Duration(milliseconds: 600));
+        return resumeClock;
+      },
+    );
+    addTearDown(resuming.dispose);
+    // The shared controller stays constructed but never enabled, so every
+    // event below reaches only this one.
+    await resuming.enable();
+    voice.hear(const FinalTranscript('Tell me a long story.'));
+    await pump();
+    // The answer has finished generating and is being read aloud — the state
+    // most of those 53 interruptions actually landed in.
+    await answerCompletely('Once upon a time, at very great length indeed.');
+    final int spokenBefore = voice.spoken.length;
+    expect(spokenBefore, greaterThan(0));
+    expect(vm.canSubmit, isTrue);
+    final String cutOff = voice.spoken.last;
+
+    // Long enough to take the floor, but it never settles into a question.
+    voice.hear(const PartialTranscript('等一下我'));
+    await pump();
+    expect(voice.calls, contains('stopSpeaking'));
+
+    // Nothing was asked, so the answer picks up where it was cut off.
+    await pump();
+    await pump();
+    await pump();
+    expect(
+      voice.spoken.length,
+      greaterThan(spokenBefore),
+      reason: 'The interrupted sentence must be said again.',
+    );
+    expect(voice.spoken.last, cutOff);
+  });
+
+  test('the hotkey held and released asks the question', () async {
+    // The global hotkey is push-to-talk from anywhere: pressed takes the
+    // floor, released sends — same contract as the composer button.
+    await controller.enable();
+    voice.hear(const HoldToTalkPressed());
+    await pump();
+    voice.hear(const FinalTranscript('今天天氣如何'));
+    await pump();
+    expect(inference.requests, isEmpty);
+
+    voice.hear(const HoldToTalkReleased());
+    await pump();
+    // An empty batch transcript: the streamed words stand.
+    voice.hear(const HeldTranscript(''));
+    await pump();
+    await pump();
+    expect(inference.requests, hasLength(1));
+    expect(inference.requests.single.prompt, contains('今天天氣如何'));
+  });
+
+  test("the batch recogniser's words outrank the streamed ones", () async {
+    // Whisper hears the whole utterance at once and, measured on real held
+    // speech, hears it far better — Apple's streamed guess is only the
+    // fallback for when the sidecar is not there to answer.
+    await controller.enable();
+    voice.hear(const HoldToTalkPressed());
+    await pump();
+    voice.hear(const FinalTranscript('創新片片可以註動畫平臺'));
+    await pump();
+    voice.hear(const HoldToTalkReleased());
+    await pump();
+    expect(
+      inference.requests,
+      isEmpty,
+      reason: 'The question waits for the batch recogniser.',
+    );
+
+    voice.hear(const HeldTranscript('Flutter 是跨平台的畫面框架'));
+    await pump();
+    await pump();
+    expect(inference.requests, hasLength(1));
+    expect(inference.requests.single.prompt, 'Flutter 是跨平台的畫面框架');
+  });
+
+  test('the hotkey pressed while voice is off turns it on', () async {
+    // Holding the hotkey IS the intent to talk; making the user find a
+    // toggle first would answer the intent with silence.
+    expect(controller.enabled, isFalse);
+    voice.hear(const HoldToTalkPressed());
+    await pump();
+    await pump();
+    expect(controller.enabled, isTrue);
+    expect(voice.calls, contains('startListening'));
+
+    voice.hear(const FinalTranscript('現在幾點'));
+    await pump();
+    voice.hear(const HoldToTalkReleased());
+    await pump();
+    voice.hear(const HeldTranscript(''));
+    await pump();
+    await pump();
+    expect(inference.requests, hasLength(1));
+  });
+
+  test('held speech submits only on release, as one question', () async {
+    // Push-to-talk: the endpointer keeps firing finals through a long
+    // press — a thinking pause must not send half a question. Release is
+    // the only endpoint.
+    await controller.enable();
+    controller.holdToTalkPressed();
+    voice.hear(const FinalTranscript('第一句話'));
+    await pump();
+    voice.hear(const FinalTranscript('第二句話'));
+    await pump();
+    expect(inference.requests, isEmpty, reason: 'Held speech must wait.');
+
+    controller.holdToTalkReleased();
+    await pump();
+    await pump();
+    expect(inference.requests, hasLength(1));
+    expect(inference.requests.single.prompt, contains('第一句話'));
+    expect(inference.requests.single.prompt, contains('第二句話'));
+  });
+
+  test('the answer to held speech is not talked over', () async {
+    await controller.enable();
+    controller.holdToTalkPressed();
+    voice.hear(const FinalTranscript('講一個長故事'));
+    await pump();
+    // The composer button has no batch recogniser behind it; release
+    // submits the streamed words without waiting for one.
+    controller.holdToTalkReleased();
+    await pump();
+    final Generation generation = await generationStarted();
+    inference.emit(
+      GenerationDelta(generationId: generation.id, delta: '從前有座山，山裡有座廟。'),
+    );
+    await pump();
+    await pump();
+    expect(voice.spoken, isNotEmpty);
+    final int stopsBefore = voice.calls
+        .where((String c) => c == 'stopSpeaking')
+        .length;
+
+    // Ambient speech — long enough to take the floor in open conversation.
+    voice.hear(const PartialTranscript('旁邊有人在講電話啦'));
+    await pump();
+    expect(
+      voice.calls.where((String c) => c == 'stopSpeaking').length,
+      stopsBefore,
+      reason: 'A protected answer must not be stopped by ambient speech.',
+    );
+    voice.hear(const FinalTranscript('旁邊有人在講電話啦'));
+    await pump();
+    expect(
+      inference.requests,
+      hasLength(1),
+      reason: 'Ambient speech must not become a question either.',
+    );
+
+    // The next hold is the one thing that does interrupt.
+    controller.holdToTalkPressed();
+    await pump();
+    expect(
+      voice.calls.where((String c) => c == 'stopSpeaking').length,
+      greaterThan(stopsBefore),
+      reason: 'A new hold explicitly takes the floor.',
+    );
+  });
+
+  test('a resumed answer keeps its language', () async {
+    // The interrupted sentence outlives the turn, but _activeLang does not:
+    // it resets to null the moment the active turn clears. Resuming with a
+    // null language hands the sidecar per-sentence guessing again — the one
+    // answer that must sound like the same person picking up mid-thought is
+    // the one that switches voice.
+    DateTime resumeClock = DateTime(2026, 8);
+    final VoiceConversationController resuming = VoiceConversationController(
+      voice: voice,
+      conversation: vm,
+      utteranceScheduler: MicrotaskBatchScheduler(),
+      now: () {
+        resumeClock = resumeClock.add(const Duration(milliseconds: 600));
+        return resumeClock;
+      },
+    );
+    addTearDown(resuming.dispose);
+    await resuming.enable();
+    voice.hear(const FinalTranscript('講一個很長的故事。'));
+    await pump();
+    await answerCompletely('從前有座山，山裡有座廟，廟裡的故事講也講不完。');
+    final int spokenBefore = voice.spoken.length;
+    expect(voice.spokenLanguages.toSet(), <String?>{'zh'});
+
+    voice.hear(const PartialTranscript('等一下我'));
+    await pump();
+    expect(voice.calls, contains('stopSpeaking'));
+
+    await pump();
+    await pump();
+    await pump();
+    expect(voice.spoken.length, greaterThan(spokenBefore));
+    expect(
+      voice.spokenLanguages.last,
+      'zh',
+      reason: 'The resumed sentence lost the language of its answer.',
+    );
+  });
+
+  test('a noise that settles into nothing resumes at once', () async {
+    // The two-second backstop is the wrong latency for the common case. A
+    // cough or a misheard syllable produces a final with no words in it, and
+    // at that instant it is already known that nothing replaced the answer —
+    // so it picks up immediately rather than leaving a two-second hole.
+    DateTime clock = DateTime(2026, 8);
+    final VoiceConversationController resuming = VoiceConversationController(
+      voice: voice,
+      conversation: vm,
+      // A scheduler that never fires: only the immediate path can pass this.
+      utteranceScheduler: const _NeverScheduler(),
+      now: () {
+        clock = clock.add(const Duration(milliseconds: 600));
+        return clock;
+      },
+    );
+    addTearDown(resuming.dispose);
+    await resuming.enable();
+    voice.hear(const FinalTranscript('Tell me a long story.'));
+    await pump();
+    await answerCompletely('Once upon a time, at very great length indeed.');
+    final int spokenBefore = voice.spoken.length;
+    final String cutOff = voice.spoken.last;
+
+    voice.hear(const PartialTranscript('等一下我'));
+    await pump();
+    expect(voice.calls, contains('stopSpeaking'));
+
+    // The utterance settles into nothing at all.
+    voice.hear(const FinalTranscript('   '));
+    await pump();
+    await pump();
+
+    expect(voice.spoken.length, greaterThan(spokenBefore));
+    expect(voice.spoken.last, cutOff);
+  });
+
+  test('a real question beats the resume it interrupted', () async {
+    // The resume must never talk over the answer to the question that
+    // caused it. If what the user said becomes a question, the interrupted
+    // sentence is dropped, not queued behind it.
+    DateTime clock = DateTime(2026, 8);
+    final VoiceConversationController resuming = VoiceConversationController(
+      voice: voice,
+      conversation: vm,
+      // The backstop never fires, so this isolates the settle path: the
+      // question itself must be what drops the interrupted sentence.
+      utteranceScheduler: const _NeverScheduler(),
+      now: () {
+        clock = clock.add(const Duration(milliseconds: 600));
+        return clock;
+      },
+    );
+    addTearDown(resuming.dispose);
+    await resuming.enable();
+    voice.hear(const FinalTranscript('Tell me a long story.'));
+    await pump();
+    await answerCompletely('Once upon a time, at very great length indeed.');
+    final int spokenBefore = voice.spoken.length;
+
+    voice.hear(const PartialTranscript('等一下我想問'));
+    await pump();
+    expect(voice.calls, contains('stopSpeaking'));
+
+    // It settles into an actual question.
+    voice.hear(const FinalTranscript('等一下我想問別的'));
+    await pump();
+    await pump();
+    await pump();
+
+    expect(
+      inference.requests.map((GenerationRequest r) => r.prompt),
+      contains('等一下我想問別的'),
+    );
+    expect(
+      voice.spoken.length,
+      spokenBefore,
+      reason: 'The abandoned sentence must not be read over the new answer.',
+    );
+  });
+
+  test('a resume that already started is silenced by the question', () async {
+    // The race the backstop makes possible: it puts the sentence back, and
+    // only then does the user's utterance settle into a question. The
+    // resumed sentence would otherwise be read over the answer to it.
+    DateTime clock = DateTime(2026, 8);
+    final VoiceConversationController resuming = VoiceConversationController(
+      voice: voice,
+      conversation: vm,
+      // Fires at once, so the resume always wins the race with the final.
+      utteranceScheduler: MicrotaskBatchScheduler(),
+      now: () {
+        clock = clock.add(const Duration(milliseconds: 600));
+        return clock;
+      },
+    );
+    addTearDown(resuming.dispose);
+    await resuming.enable();
+    voice.hear(const FinalTranscript('Tell me a long story.'));
+    await pump();
+    await answerCompletely('Once upon a time, at very great length indeed.');
+    final int spokenBefore = voice.spoken.length;
+
+    voice.hear(const PartialTranscript('等一下我想問'));
+    await pump();
+    expect(
+      voice.spoken.length,
+      greaterThan(spokenBefore),
+      reason: 'This test is only meaningful if the resume actually ran.',
+    );
+
+    voice.hear(const FinalTranscript('等一下我想問別的'));
+    await pump();
+    await pump();
+
+    expect(
+      voice.calls.lastIndexOf('stopSpeaking'),
+      greaterThan(voice.calls.lastIndexOf('speak')),
+      reason: 'The question must silence the sentence it replaced.',
+    );
+  });
+
+  test('full-width and halfwidth ideographic stops end a sentence', () async {
+    // The sentence-end set had 。 but not ．(U+FF0E) or ｡(U+FF61), both of
+    // which appear in Chinese text from real keyboards and in text converted
+    // from Japanese sources. A sentence ending in one of them was never
+    // recognised as finished, so the chunk waited for punctuation that had
+    // already been there. Pipecat treats all of these as unambiguous
+    // sentence ends precisely because no Latin disambiguation applies.
+    await controller.enable();
+    voice.hear(const FinalTranscript('說一段話'));
+    await pump();
+    final Generation generation = await generationStarted();
+    inference.emit(
+      GenerationDelta(
+        generationId: generation.id,
+        delta: '這是第一句話講得夠長足以成為一個完整的段落而且沒有任何逗號．',
+      ),
+    );
+    await pump();
+    await pump();
+
+    expect(
+      voice.spoken,
+      isNotEmpty,
+      reason: 'A full-width period ends a sentence.',
+    );
+  });
+
+  test('resuming starts from the earliest sentence still unheard', () async {
+    // Chunks are dispatched as the answer streams and queued back to back by
+    // the native side, so the most recently dispatched sentence is normally
+    // NOT the one being heard — the next one is already handed over while the
+    // current one plays. Resuming "the last thing dispatched" therefore skips
+    // whatever was actually cut off and says something the user never heard a
+    // word of. Over-repeating is recoverable; skipping is not.
+    DateTime clock = DateTime(2026, 8);
+    final VoiceConversationController resuming = VoiceConversationController(
+      voice: voice,
+      conversation: vm,
+      utteranceScheduler: MicrotaskBatchScheduler(),
+      now: () {
+        clock = clock.add(const Duration(milliseconds: 600));
+        return clock;
+      },
+    );
+    addTearDown(resuming.dispose);
+    await resuming.enable();
+    voice.hear(const FinalTranscript('說個長故事。'));
+    await pump();
+    final Generation generation = await generationStarted();
+
+    // Two sentences dispatched, neither confirmed finished.
+    inference.emit(
+      GenerationDelta(
+        generationId: generation.id,
+        delta: '第一句話講得夠長足以成為完整的一個段落。',
+      ),
+    );
+    await pump();
+    await pump();
+    inference.emit(
+      GenerationDelta(
+        generationId: generation.id,
+        delta: '第二句話同樣講得夠長足以成為完整的一個段落，而且它的字數確實已經超過四十個字元的門檻了。',
+      ),
+    );
+    await pump();
+    await pump();
+    // Generation is done; both sentences are still queued for playback.
+    inference.emit(GenerationCompleted(generation.id));
+    await pump();
+    await pump();
+    expect(voice.spoken.length, 2, reason: 'Two chunks must be in flight.');
+    expect(vm.canSubmit, isTrue);
+    final String firstOutstanding = voice.spoken[0];
+
+    voice.hear(const PartialTranscript('等一下我'));
+    await pump();
+    voice.hear(const FinalTranscript('   '));
+    await pump();
+    await pump();
+
+    expect(
+      voice.spoken.last,
+      startsWith(firstOutstanding),
+      reason: 'Resume must not skip the sentence that was actually cut off.',
+    );
+  });
+
+  test('an answer that was cancelled does not come back to life', () async {
+    // The interruption cancelled the generation, so the answer is over. If
+    // the user's words then never settle into a question, the empty final
+    // would otherwise put one orphaned chunk of a dead answer back — the
+    // agent speaks half a sentence of something it already abandoned. The
+    // backstop never fires here, so this is the immediate path alone; with a
+    // real timer the cancel completes first and the same hole opens.
+    DateTime clock = DateTime(2026, 8);
+    final VoiceConversationController resuming = VoiceConversationController(
+      voice: voice,
+      conversation: vm,
+      utteranceScheduler: const _NeverScheduler(),
+      now: () {
+        clock = clock.add(const Duration(milliseconds: 600));
+        return clock;
+      },
+    );
+    addTearDown(resuming.dispose);
+    await resuming.enable();
+    voice.hear(const FinalTranscript('說個長故事。'));
+    await pump();
+    final Generation generation = await generationStarted();
+    inference.emit(
+      GenerationDelta(
+        generationId: generation.id,
+        delta: '第一句話講得夠長足以成為完整的一個段落。',
+      ),
+    );
+    await pump();
+    await pump();
+    final int spokenBefore = voice.spoken.length;
+
+    // Interrupt while it is still generating: this cancels the answer.
+    voice.hear(const PartialTranscript('等一下我'));
+    await pump();
+    await pump();
+    expect(inference.cancellations, contains(generation.id));
+
+    // The utterance dissolves into nothing, so nothing replaced the answer.
+    voice.hear(const FinalTranscript('   '));
+    await pump();
+    await pump();
+    await pump();
+
+    expect(
+      voice.spoken.length,
+      spokenBefore,
+      reason: 'A cancelled answer has nothing left to say.',
+    );
+  });
+
+  test(
+    'a Chinese answer is chunked by duration, not by character count',
+    () async {
+      // Measured from the synthesiser's own log: Chinese runs about 0.156
+      // seconds per character, so the same character count is twice the
+      // audio it is in English, and the Chinese target is half the English
+      // one. The numbers move together; the ratio is what this protects.
+      await controller.enable();
+      voice.hear(const FinalTranscript('說說看。'));
+      await pump();
+      final Generation generation = await generationStarted();
+      // First chunk out of the way.
+      inference.emit(
+        GenerationDelta(generationId: generation.id, delta: '好的。'),
+      );
+      await pump();
+      await pump();
+      final int afterFirst = voice.spoken.length;
+
+      // Between the two targets: over the Chinese one, under the English
+      // one — it dispatches only because the answer is Chinese.
+      inference.emit(
+        GenerationDelta(
+          generationId: generation.id,
+          delta: '這是一段長度落在兩個目標之間的中文句子，用來驗證中文的目標確實比英文的小上一半。',
+        ),
+      );
+      await pump();
+      await pump();
+
+      expect(
+        voice.spoken.length,
+        greaterThan(afterFirst),
+        reason:
+            'This many Chinese characters is already six seconds of '
+            'speech.',
+      );
+    },
+  );
+
+  test('a chunk stops at the first sentence past the target', () async {
+    // The target is a minimum, but the boundary was the LAST sentence end in
+    // everything undispatched — so whenever generation ran ahead of speech,
+    // one chunk swallowed every sentence that had arrived. Measured in use:
+    // 5, 18, 21, 62, 67, 74, 114 and 140 characters, the largest of them ten
+    // seconds of audio. Each chunk is synthesised alone with no acoustic
+    // context from the last, so wildly uneven chunks are what "it changes to
+    // another person" is made of — and a ten-second chunk is ten seconds an
+    // interruption throws away.
+    await controller.enable();
+    voice.hear(const FinalTranscript('說說看。'));
+    await pump();
+    final Generation generation = await generationStarted();
+    inference.emit(GenerationDelta(generationId: generation.id, delta: '好的。'));
+    await pump();
+    await pump();
+    final int afterFirst = voice.spoken.length;
+
+    // Four whole sentences arrive at once, far past the target.
+    inference.emit(
+      GenerationDelta(
+        generationId: generation.id,
+        delta:
+            '第一句話大約有二十個字左右的長度。'
+            '第二句話大約有二十個字左右的長度。'
+            '第三句話大約有二十個字左右的長度。'
+            '第四句話大約有二十個字左右的長度。',
+      ),
+    );
+    await pump();
+    await pump();
+
+    expect(voice.spoken.length, greaterThan(afterFirst));
+    final String chunk = voice.spoken.last;
+    expect(
+      chunk.runes.length,
+      lessThan(40),
+      reason: 'One chunk swallowed every sentence that had arrived.',
+    );
+  });
+
+  test('a long clause-only run is broken at a comma', () async {
+    // Conversational Chinese runs a hundred characters between full stops,
+    // and commas are only consulted for the answer's very first chunk. So a
+    // chunk waited for a 。 that was five sentences away: measured in use at
+    // 104, 98, 93, 89 and 84 characters, each of them fifteen seconds of
+    // audio that an interruption throws away whole.
+    await controller.enable();
+    voice.hear(const FinalTranscript('說說看。'));
+    await pump();
+    final Generation generation = await generationStarted();
+    inference.emit(GenerationDelta(generationId: generation.id, delta: '好的。'));
+    await pump();
+    await pump();
+    final int afterFirst = voice.spoken.length;
+
+    // Eighty characters of clauses with no sentence-ending punctuation.
+    inference.emit(
+      GenerationDelta(
+        generationId: generation.id,
+        delta:
+            '聽起來你現在有點不舒服，肚子裡有什麼不適的感覺，'
+            '我不是想給你帶來任何不必要的擔憂，不過是這樣，'
+            '你現在是不是覺得有點脹氣或者不太舒服，還是別的什麼',
+      ),
+    );
+    await pump();
+    await pump();
+
+    expect(
+      voice.spoken.length,
+      greaterThan(afterFirst),
+      reason: 'A run with no full stop must still be spoken.',
+    );
+    expect(
+      voice.spoken.last.runes.length,
+      lessThan(50),
+      reason: 'It waited for a full stop five clauses away.',
+    );
+  });
+
   test('the user talking over a streaming answer cancels it', () async {
     await controller.enable();
     voice.hear(const FinalTranscript('Tell me a long story.'));
@@ -481,6 +1143,13 @@ void main() {
     expect(spoken, isNot(contains('https://')));
   });
 
+  test('rules and list bullets are layout, not words', () {
+    expect(
+      speakableText('第一段。\n\n---\n\n### 💡 建議\n\n- 第一點\n- 第二點\n* 第三點'),
+      '第一段。 建議 第一點 第二點 第三點',
+    );
+  });
+
   test('speech begins with the first finished sentence', () async {
     // Waiting for the whole answer stacks three delays end to end. A
     // sentence is speakable the moment its full stop arrives.
@@ -529,11 +1198,11 @@ void main() {
     final Generation generation = await generationStarted();
 
     inference.emit(
-      GenerationDelta(generationId: generation.id, delta: '台北是台灣的首都,也是'),
+      GenerationDelta(generationId: generation.id, delta: '台北是台灣的首都，也是'),
     );
     await pump();
     expect(voice.spoken, <String>[
-      '台北是台灣的首都,',
+      '台北是台灣的首都，',
     ], reason: 'A finished clause is enough to start the voice.');
 
     inference.emit(
@@ -542,7 +1211,7 @@ void main() {
     inference.emit(GenerationCompleted(generation.id));
     await pump();
     await pump();
-    expect(voice.spoken, <String>['台北是台灣的首都,', '也是最大的城市。']);
+    expect(voice.spoken, <String>['台北是台灣的首都，', '也是最大的城市。']);
   });
 
   test('a clause too short to sound like speech waits for more', () async {
@@ -553,13 +1222,13 @@ void main() {
     await pump();
     final Generation generation = await generationStarted();
 
-    inference.emit(GenerationDelta(generationId: generation.id, delta: '好的,我'));
+    inference.emit(GenerationDelta(generationId: generation.id, delta: '好的，我'));
     await pump();
     expect(voice.spoken, isEmpty);
 
     inference.emit(GenerationDelta(generationId: generation.id, delta: '會幫你。'));
     await pump();
-    expect(voice.spoken, <String>['好的,我會幫你。']);
+    expect(voice.spoken, <String>['好的，我會幫你。']);
     inference.emit(GenerationCompleted(generation.id));
     await pump();
   });
@@ -636,7 +1305,7 @@ void main() {
     inference.emit(
       GenerationDelta(
         generationId: generation.id,
-        delta: '你可以逛夜市,參觀故宮,搭捷運,爬象山,喝珍珠奶茶,吃小籠包,體驗這座城市的多元文化',
+        delta: '你可以逛夜市，參觀故宮，搭捷運，爬象山，喝珍珠奶茶，吃小籠包，體驗這座城市的多元文化',
       ),
     );
     await pump();
@@ -746,6 +1415,28 @@ void main() {
       2,
       reason: 'A finalize that yields nothing leaves no retry armed.',
     );
+  });
+
+  test('pressing stop silences what is already being spoken', () async {
+    // Stop cancels the generation, but the sentences already handed to the
+    // voice keep playing: the button stops the writing and not the talking,
+    // and the only way out is switching the microphone off.
+    await controller.enable();
+    voice.hear(const FinalTranscript('講一個長故事。'));
+    await pump();
+    final Generation generation = await generationStarted();
+    inference.emit(
+      GenerationDelta(generationId: generation.id, delta: '很久很久以前。'),
+    );
+    await pump();
+    expect(voice.spoken, isNotEmpty, reason: 'nothing was being spoken');
+
+    await vm.stop();
+    for (int i = 0; i < 8; i++) {
+      await pump();
+    }
+
+    expect(voice.calls, contains('stopSpeaking'));
   });
 
   test('a barge-in silences the sentence still in the batcher', () async {
@@ -904,7 +1595,7 @@ void main() {
     inference.emit(
       GenerationDelta(
         generationId: generation.id,
-        delta: '是一套跨平台的開發框架,用一份程式碼同時建構多個平台的應用。',
+        delta: '是一套跨平台的開發框架，用一份程式碼同時建構多個平台的應用。',
       ),
     );
     await pump();
@@ -914,7 +1605,7 @@ void main() {
     await pump();
 
     expect(voice.spoken, hasLength(2));
-    expect(voice.spoken[1], 'Flutter。是一套跨平台的開發框架,用一份程式碼同時建構多個平台的應用。');
+    expect(voice.spoken[1], 'Flutter。是一套跨平台的開發框架，用一份程式碼同時建構多個平台的應用。');
     expect(
       voice.spokenLanguages.toSet(),
       <String?>{'zh'},
@@ -1011,4 +1702,20 @@ final class _NeverStartsVoice implements VoiceService {
 
   @override
   Future<void> stopSpeaking() async {}
+}
+
+/// A scheduler whose work never runs: proves a path did not rely on a timer.
+final class _NeverScheduler implements BatchScheduler {
+  const _NeverScheduler();
+
+  @override
+  CancelBatch schedule(Duration delay, void Function() callback) =>
+      const _NeverCancel();
+}
+
+final class _NeverCancel implements CancelBatch {
+  const _NeverCancel();
+
+  @override
+  void cancel() {}
 }

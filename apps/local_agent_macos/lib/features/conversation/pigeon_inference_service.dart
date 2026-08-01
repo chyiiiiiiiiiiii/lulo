@@ -41,6 +41,41 @@ final class LocalModelConfig {
   final int seed;
 }
 
+/// Told to the model ahead of every question, in the question's own language.
+///
+/// Kept terse and bracketed on purpose. Written as flowing prose it was
+/// mirrored straight back: asked to be forgiving about misheard words, the
+/// model opened its answer with a paragraph about how forgiving it would be
+/// about misheard words. A small model answers what it is given, so an
+/// instruction that reads like conversation becomes conversation.
+///
+/// Nothing had ever asked it for prose, so it wrote documentation: headings,
+/// bold runs, horizontal rules and numbered lists, with the asterisks and
+/// hashes showing through on screen. It reads badly, and it reads worse
+/// aloud — every symbol has to be stripped before synthesis, and the blank
+/// lines between list items are sentence boundaries that chop the speech
+/// into fragments.
+///
+/// The language matters more than it looks. An English preamble in front of
+/// a Chinese question turned every reply English, no matter that the
+/// preamble asked in words for the language of the question: for a small
+/// local model the instruction is simply the strongest signal in the prompt,
+/// and it answers in the language it was addressed in. So it is addressed in
+/// the language it should answer in.
+///
+/// Repeated on each turn rather than sent once: a small local model does not
+/// reliably carry an instruction across a long conversation, and thirty
+/// tokens is a cheap way to not depend on it doing so.
+String plainProseInstruction(String prompt) => _cjk.hasMatch(prompt)
+    ? '[指示] 用繁體中文口語回答。不要 Markdown、不要條列。'
+          '輸入來自語音辨識，可能有錯字，照語意理解。'
+    : '[Instruction] Answer in plain spoken prose. No Markdown, no lists. '
+          'Input is from speech recognition and may contain errors; read for '
+          'meaning.';
+
+/// Anything CJK: the question's language decides the instruction's.
+final RegExp _cjk = RegExp(r'[\u4e00-\u9fff\u3040-\u30ff\uac00-\ud7af]');
+
 /// Adapts the typed desktop host boundary to the conversation feature.
 final class PigeonInferenceService implements InferenceService {
   /// Creates a feature adapter around an explicitly owned desktop host.
@@ -223,6 +258,7 @@ final class _PigeonGenerationOperation {
   Future<void>? _cancellation;
   bool _fenced = false;
   bool _terminal = false;
+  bool _hostAcknowledgedCancellation = false;
 
   Future<void> start() async {
     _subscription = host.generationEvents
@@ -230,19 +266,50 @@ final class _PigeonGenerationOperation {
         .listen(_receiveEvent);
     try {
       await ensureReady();
+      if (_fenced) {
+        // Cancelled while readiness was still loading the model — seconds,
+        // for a multi-gigabyte one, and every barge-in during prefill lands
+        // here. Sending the start now would put a generation on the runtime
+        // that nothing is listening to and nothing will ever cancel: it holds
+        // the single native slot until it burns its whole token budget, and
+        // every turn behind it is refused as busy.
+        return;
+      }
       onSessionStarted(request.conversationId.value);
       final acknowledgement = await host.startGeneration(
         DesktopGenerationRequest(
           generationId: generationId.value,
           sessionId: request.conversationId.value,
-          prompt: request.prompt,
+          prompt:
+              '${plainProseInstruction(request.prompt)}\n\n'
+              '${_cjk.hasMatch(request.prompt) ? "[問題] " : "[Question] "}'
+              '${request.prompt}',
           context: const <String>[],
+          history: <DesktopConversationTurn>[
+            for (final Turn turn in request.history)
+              DesktopConversationTurn(role: turn.role, text: turn.text),
+          ],
           temperature: config.temperature,
           topP: config.topP,
           maxTokens: config.maxTokens,
           seed: config.seed,
         ),
       );
+      if (_fenced) {
+        // Cancelled while this start was in flight. Usually the host had
+        // already registered the generation and acknowledged the cancel, and
+        // there is nothing left to do. When it did not — the cancel and the
+        // start crossed on the wire, and the host accepted this one a moment
+        // after answering "not mine" — this is the last code that knows the
+        // generation exists, so taking it back is this call's job.
+        await _cancellation;
+        if (!_hostAcknowledgedCancellation &&
+            acknowledgement.accepted &&
+            acknowledgement.generationId == generationId.value) {
+          await host.cancelGeneration(generationId.value);
+        }
+        return;
+      }
       if (acknowledgement.generationId != generationId.value) {
         throw const DesktopHostFailure(DesktopHostFailureCode.protocolMismatch);
       }
@@ -297,6 +364,14 @@ final class _PigeonGenerationOperation {
     return _cancellation ??= _cancel();
   }
 
+  /// Stops the generation, and never throws doing it.
+  ///
+  /// Every caller of this reaches it through something that cannot catch:
+  /// `unawaited(stop())` when the user talks over the agent, and a listener
+  /// cancellation that carries the exception up through the composer's stop.
+  /// A failure here is reported on the generation stream, which is the
+  /// channel the conversation already watches, and the future still
+  /// completes.
   Future<void> _cancel() async {
     _fenced = true;
     await _subscription?.cancel();
@@ -305,16 +380,17 @@ final class _PigeonGenerationOperation {
       if (acknowledgement.generationId != generationId.value) {
         throw const DesktopHostFailure(DesktopHostFailureCode.protocolMismatch);
       }
-      if (!acknowledgement.acknowledged) {
-        throw const DesktopHostFailure(DesktopHostFailureCode.generationBusy);
-      }
+      // An unacknowledged cancellation has one meaning at this boundary: the
+      // host is not running this generation. Either it already ended, or the
+      // start has not reached it yet — and `start` compensates for that one.
+      // Both are the state the caller asked for, so neither is a failure.
+      _hostAcknowledgedCancellation = acknowledgement.acknowledged;
       onFinished();
     } on Object catch (error, stackTrace) {
       if (!controller.isClosed) {
         controller.addError(_safeConversationFailure(error), stackTrace);
         await _finish();
       }
-      rethrow;
     }
   }
 

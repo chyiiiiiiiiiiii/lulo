@@ -265,7 +265,7 @@ void main() {
     expect(tester.takeException(), isNull);
     expect(
       find.ancestor(
-        of: find.byKey(const Key('active-streaming-plain-text')),
+        of: find.byKey(const Key('active-streaming-markdown')),
         matching: find.byType(Scrollable),
       ),
       findsOneWidget,

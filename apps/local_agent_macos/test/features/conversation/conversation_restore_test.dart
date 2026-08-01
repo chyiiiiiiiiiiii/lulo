@@ -141,4 +141,40 @@ void main() {
       expect(sent.conversationId, yesterday);
     },
   );
+
+  test('a cancelled answer that said nothing is not restored', () async {
+    // Barging in during prefill still writes a terminal turn to the store —
+    // deliberately, and asserted in the repository's own tests. What must not
+    // happen is that empty turn coming back as a grey "Response stopped"
+    // bubble on every relaunch, for an answer the user cut off before it had
+    // said a word.
+    final InMemoryConversationStorageService store =
+        InMemoryConversationStorageService();
+    await store.saveUserTurn(yesterday, user('a question I interrupted'));
+    await store.saveTerminalAssistantTurn(
+      const Turn(
+        role: TurnRole.assistant,
+        text: '',
+        status: TurnStatus.cancelled,
+      ),
+      const Generation(
+        id: GenerationId('generation-1'),
+        request: GenerationRequest(
+          conversationId: yesterday,
+          prompt: 'a question I interrupted',
+        ),
+      ),
+    );
+
+    final ConversationViewModel model = viewModel(
+      store,
+      conversationId: yesterday,
+    );
+    await model.restored;
+
+    expect(model.projection.completedTurns, hasLength(1));
+    expect(model.projection.completedTurns.single.role, TurnRole.user);
+
+    model.dispose();
+  });
 }

@@ -100,6 +100,7 @@ struct LiteRTLMSamplerFingerprint: Equatable, Sendable {
 struct LiteRTLMDriverGenerationRequest: Equatable, Sendable {
   let sessionId: String
   let prompt: String
+  let history: [RuntimeConversationTurn]
   let extraContext: [String: [String]]
   let sampler: LiteRTLMSamplerFingerprint
   let maxOutputTokens: Int
@@ -177,8 +178,17 @@ actor SystemLiteRTLMRuntimeDriver: LiteRTLMRuntimeDriving {
         temperature: Float(request.sampler.temperature),
         seed: request.sampler.seed
       )
+      // A conversation the runtime has never held starts empty even when
+      // the window above it is full of turns read back from storage. The
+      // history seeds it; a session already in `conversations` is its own
+      // memory and is left alone.
       conversation = try await engine.createConversation(
-        with: ConversationConfig(samplerConfig: sampler)
+        with: ConversationConfig(
+          initialMessages: request.history.map {
+            Message($0.text, role: $0.role == .user ? .user : .model)
+          },
+          samplerConfig: sampler
+        )
       )
       conversations[request.sessionId] = conversation
     }
@@ -248,7 +258,23 @@ public actor LiteRTLMRuntimeBackend: RuntimeBackend {
     let token: UInt64
     var nextSequence: Int64
     var task: Task<Void, Never>?
+
+    // The account that names a silent truncation. An answer that stops
+    // mid-sentence "completes" like any other; only these numbers can say
+    // whether it ran out of output budget, was crowded out by its own
+    // history, or simply chose to stop.
+    let promptCharacters: Int
+    let historyCharacters: Int
+    let historyTurns: Int
+    let maxOutputTokens: Int
+    var outputCharacters: Int = 0
   }
+
+  /// Generations cancelled before their start ever claimed the engine —
+  /// each one a start asleep in the drain wait whose caller has already
+  /// let it go. Consumed by the start when it wakes; bounded because ids
+  /// are never reused.
+  private var cancelledBeforeStart: [String] = []
 
   private let configuration: LiteRTLMRuntimeConfiguration
   private let eventRelay: RuntimeGenerationEventRelay
@@ -320,6 +346,13 @@ public actor LiteRTLMRuntimeBackend: RuntimeBackend {
     _ generation: RuntimeGenerationRequest
   ) async throws -> RuntimeGenerationAcknowledgement {
     guard activeGeneration == nil else {
+      // Which guard refused, and what was still holding the slot. A rejection
+      // here reaches the user as a bare "Response failed" with no text and no
+      // reason, seconds after they interrupted something.
+      NSLog(
+        "Lulo runtime: start refused, generation %@ still active",
+        activeGeneration?.generationId ?? "?"
+      )
       throw RuntimeBoundaryError.generationBusy
     }
     // A cancelled generation is abandoned rather than stopped, so its decode
@@ -335,8 +368,36 @@ public actor LiteRTLMRuntimeBackend: RuntimeBackend {
         try? await Task.sleep(nanoseconds: 50_000_000)
       }
       guard drainingGeneration == nil else {
+        NSLog(
+          "Lulo runtime: start refused, abandoned decode still draining after %.0fs",
+          drainTimeoutSeconds
+        )
         throw RuntimeBoundaryError.runtimeUnavailable
       }
+      // Woken, not chosen: every waiter sleeps in this same loop, and the
+      // first to wake claims the engine. The rest must see that claim and
+      // refuse — proceeding would put two decodes on one engine, the
+      // exact overlap this wait exists to prevent.
+      guard activeGeneration == nil else {
+        NSLog(
+          "Lulo runtime: start refused, generation %@ claimed the engine first",
+          activeGeneration?.generationId ?? "?"
+        )
+        throw RuntimeBoundaryError.generationBusy
+      }
+    }
+    // Cancelled while it waited: the caller already let this generation
+    // go, and claiming the engine now would burn a whole budget on a
+    // decode nobody wants.
+    if let fenced = cancelledBeforeStart.firstIndex(
+      of: generation.generationId
+    ) {
+      cancelledBeforeStart.remove(at: fenced)
+      NSLog(
+        "Lulo runtime: start aborted, generation %@ was cancelled before it began",
+        generation.generationId
+      )
+      throw RuntimeBoundaryError.cancelled
     }
     guard let loadedModel, let driver else {
       throw RuntimeBoundaryError.runtimeUnavailable
@@ -360,7 +421,11 @@ public actor LiteRTLMRuntimeBackend: RuntimeBackend {
       sessionId: generation.sessionId,
       token: token,
       nextSequence: 0,
-      task: nil
+      task: nil,
+      promptCharacters: request.prompt.count,
+      historyCharacters: request.history.reduce(0) { $0 + $1.text.count },
+      historyTurns: request.history.count,
+      maxOutputTokens: request.maxOutputTokens
     )
     let task = Task { [weak self] in
       guard let self else {
@@ -387,6 +452,14 @@ public actor LiteRTLMRuntimeBackend: RuntimeBackend {
       var active = activeGeneration,
       active.generationId == generationId
     else {
+      // Nothing running by this name — but its start may be asleep in the
+      // drain wait, about to claim the engine for a generation the caller
+      // has already let go. The fence makes that start abort when it
+      // wakes instead of becoming a zombie decode.
+      cancelledBeforeStart.append(generationId)
+      if cancelledBeforeStart.count > 32 {
+        cancelledBeforeStart.removeFirst()
+      }
       return RuntimeCancellationAcknowledgement(
         generationId: generationId,
         acknowledged: false
@@ -519,6 +592,7 @@ public actor LiteRTLMRuntimeBackend: RuntimeBackend {
       return
     }
     active.nextSequence += 1
+    active.outputCharacters += chunk.count
     activeGeneration = active
     await eventRelay.emit(
       RuntimeGenerationEvent(
@@ -542,6 +616,14 @@ public actor LiteRTLMRuntimeBackend: RuntimeBackend {
     }
     active.nextSequence += 1
     activeGeneration = nil
+    NSLog(
+      "Lulo generation: completed — %d chars out (cap %d tokens), prompt %d chars, history %d chars in %d turns",
+      active.outputCharacters,
+      active.maxOutputTokens,
+      active.promptCharacters,
+      active.historyCharacters,
+      active.historyTurns
+    )
     await eventRelay.emit(
       RuntimeGenerationEvent(
         generationId: generationId,
@@ -638,6 +720,36 @@ public actor LiteRTLMRuntimeBackend: RuntimeBackend {
     }
   }
 
+  /// As much of the tail of [history] as the context can be expected to
+  /// hold, oldest kept first.
+  ///
+  /// Seeding a conversation with more than fits does not degrade — it
+  /// fails, and the failure arrives as an empty answer, because the turn
+  /// that carries the reason is not shown. Measured on a real one: 33
+  /// turns and 10,093 characters against a 4,096-token window produced a
+  /// stored turn with status failed and no text at all, where the same
+  /// prompt without history answered normally.
+  ///
+  /// One token per character is the pessimistic reading and the right one
+  /// here — Chinese runs close to it, and this budget is a floor under a
+  /// silent failure, not an estimate anyone should tune for accuracy. A
+  /// third of the window leaves the prompt and the answer their room.
+  static func historyFitting(
+    _ history: [RuntimeConversationTurn],
+    contextSize: Int64
+  ) -> [RuntimeConversationTurn] {
+    let budget = max(0, Int(contextSize) / 3)
+    var kept: [RuntimeConversationTurn] = []
+    var used = 0
+    for turn in history.reversed() {
+      let cost = turn.text.count
+      guard used + cost <= budget else { break }
+      used += cost
+      kept.append(turn)
+    }
+    return kept.reversed()
+  }
+
   private func validateGeneration(
     _ generation: RuntimeGenerationRequest,
     contextSize: Int64
@@ -665,6 +777,7 @@ public actor LiteRTLMRuntimeBackend: RuntimeBackend {
     return LiteRTLMDriverGenerationRequest(
       sessionId: generation.sessionId,
       prompt: generation.prompt,
+      history: Self.historyFitting(generation.history, contextSize: contextSize),
       extraContext: ["context": generation.context],
       sampler: LiteRTLMSamplerFingerprint(
         topK: configuration.topK,

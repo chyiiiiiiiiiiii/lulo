@@ -7,6 +7,36 @@ import '../conversation/conversation_view_model.dart';
 import '../conversation/token_batcher.dart';
 import 'voice_service.dart';
 
+/// What the agent is doing, as far as the user should be able to tell.
+///
+/// In full duplex the microphone never closes, so "listening" is true from
+/// the moment the ears open until they shut — which makes it useless on its
+/// own as a status. Shown alone it cannot distinguish thinking from talking
+/// from broken, and a user watching a silent window has no way to tell which
+/// one they are looking at.
+enum VoiceActivity {
+  /// Waiting for the user. Nothing is being generated or said.
+  listening,
+
+  /// An answer is being generated, and nothing is being said yet.
+  thinking,
+
+  /// An answer is being read aloud. The microphone is still open.
+  speaking,
+
+  /// Speech was interrupted and is waiting to see whether the user was
+  /// asking something or only reacting.
+  paused,
+
+  /// The push-to-talk key or button is held: the agent is all ears, and
+  /// nothing submits until the release.
+  holding,
+
+  /// An answer born of held speech is playing and yields to nothing but
+  /// the next hold.
+  shielded,
+}
+
 /// Runs the conversation by voice: hear, answer, speak, yield when spoken
 /// over.
 ///
@@ -34,6 +64,10 @@ final class VoiceConversationController extends ChangeNotifier {
     _conversation.canSubmitListenable.addListener(_onCanSubmitChanged);
     _conversation.activeTurnListenable.addListener(_onActiveTurnChanged);
     _spokenThrough = _conversation.completedTurnsListenable.value.length;
+    // Proof that this file's diagnostics reach the captured log at all. With
+    // it, a run with no yield lines means no yield fired; without it, that
+    // same run cannot be told apart from logging that never worked.
+    debugPrint('Lulo voice controller: ready, diagnostics on');
   }
 
   final VoiceService _voice;
@@ -55,6 +89,27 @@ final class VoiceConversationController extends ChangeNotifier {
   /// cooldown branch instead (loudly — they fail, not silently pass).
   static const Duration _postFinalCooldown = Duration(milliseconds: 500);
 
+  /// How much the user must say to take the floor back mid-sentence.
+  ///
+  /// Applies only while the agent is actually speaking. Until this existed,
+  /// one character was enough: "OK" ended an answer 571 characters into
+  /// being read aloud, and a single misheard syllable could do the same. "OK"
+  /// and "嗯嗯" are how people show they are still listening, not requests to
+  /// stop. Four characters is roughly a second of Chinese speech, which is
+  /// about where acknowledging stops and interrupting starts.
+  ///
+  /// While nothing is being said, one character still takes the floor —
+  /// there is nothing to take away, and a correction like "不對" must land
+  /// as fast as it is spoken.
+  static const int _charactersToInterruptSpeech = 4;
+
+  /// How long an interrupted sentence waits to see if it was replaced.
+  ///
+  /// Longer than [_utteranceSettleDelay] on purpose: if what the user said
+  /// becomes a question, that question must win, and it needs time to settle
+  /// and be submitted first.
+  static const Duration _resumeDelay = Duration(seconds: 2);
+
   /// How long a partial may sit unchanged before the utterance is settled.
   ///
   /// The transcriber's own endpointing waits out seconds of silence; a
@@ -63,6 +118,48 @@ final class VoiceConversationController extends ChangeNotifier {
   static const Duration _utteranceSettleDelay = Duration(milliseconds: 1500);
 
   CancelBatch? _pendingSettle;
+
+  /// Sentences handed to the voice and not yet known to have finished.
+  ///
+  /// Not a single "current" sentence: chunks are dispatched as the answer
+  /// streams and the native side queues them back to back, so the most
+  /// recently dispatched one is normally NOT the one being heard — the next
+  /// is already handed over while the current plays. An interruption cuts
+  /// somewhere inside this list without saying where, so the whole of it is
+  /// put back. Over-repeating a sentence the user already heard is
+  /// recoverable; skipping one is not.
+  final List<String> _speechOutstanding = <String>[];
+
+  /// The sentence an interruption cut off, awaiting [_resumeDelay].
+  String? _interruptedSpeech;
+  String? _interruptedLang;
+  String? _outstandingLang;
+
+  // Push-to-talk. While the button is held, finals buffer instead of
+  // submitting — the endpointer keeps firing through a long press, and a
+  // thinking pause must not send half a question. Release is the only
+  // endpoint, and the answer it produces cannot be talked over: the next
+  // hold is the one interruption.
+  bool _pttHeld = false;
+  bool _pttSettling = false;
+  bool _pttProtected = false;
+
+  /// Whether this hold has a batch recogniser behind it (the hotkey path
+  /// captures audio natively; the composer button does not), and what it
+  /// heard once it answers.
+  bool _pttAwaitsBatch = false;
+  String? _pttBatchText;
+  static const Duration _pttBatchWait = Duration(seconds: 8);
+
+  /// Whether a hold is physically in progress, tracked apart from
+  /// [_pttHeld]: enabling takes seconds, and a press that auto-enabled the
+  /// voice must not begin holding after its release already happened.
+  bool _holdIntent = false;
+  bool _holdIntentBatch = false;
+  final List<String> _pttFinals = <String>[];
+  CancelBatch? _pttSubmitBackstop;
+  static const Duration _pttTrailingWait = Duration(milliseconds: 1500);
+  CancelBatch? _pendingResume;
 
   /// Forced-finalize attempts for the current utterance, bounded so a
   /// transcriber that never answers cannot be poked forever.
@@ -104,14 +201,20 @@ final class VoiceConversationController extends ChangeNotifier {
   int _dispatchedOfActive = 0;
 
   /// Where a spoken chunk may end: a sentence has visibly finished.
-  static final RegExp _sentenceEnd = RegExp(r'[。！？!?.…；;\n]');
+  ///
+  /// The CJK stops here are the ones that need no disambiguation: unlike a
+  /// Latin full stop, none of them appears inside an abbreviation or a
+  /// number, so seeing one is enough. ． (U+FF0E) and ｡ (U+FF61) were
+  /// missing, and a sentence ending in either waited for punctuation that
+  /// had already arrived.
+  static final RegExp _sentenceEnd = RegExp(r'[。．｡！？!?.…；;\n]');
 
   /// Where the answer's very first chunk may end early: a clause has
   /// finished, even though its sentence has not.
   ///
   /// Deliberately no colons: a colon is how every URL starts, and a chunk
   /// cut at "https:" leaves a link half stripped and read aloud.
-  static const String _clauseEnds = ',,、';
+  static const String _clauseEnds = ',，、';
 
   /// The first clause must have this much substance before it is worth an
   /// extra synthesis seam; "好的," alone reads as a stutter.
@@ -125,7 +228,31 @@ final class VoiceConversationController extends ChangeNotifier {
   /// After the first fast sentence, chunks accumulate to at least this
   /// many characters: single short sentences drift in timbre, and every
   /// separate synthesis pays its own prosody reset.
-  static const int _chunkTarget = 40;
+  ///
+  /// The target is really a duration, and characters are only a cheap proxy
+  /// for it — a proxy that is wrong by a factor of two between languages.
+  /// Measured from the synthesiser's own log, Chinese runs about 0.156
+  /// seconds per character, so forty characters is 6.2 seconds of audio
+  /// against roughly three for the same count of English. Everything a long
+  /// chunk costs doubles with it: the wait before the next one begins, how
+  /// much of the answer an interruption takes away, and the width of the gap
+  /// where nothing is speaking.
+  ///
+  /// Raised from three seconds' worth once /stop could cut a playing
+  /// sentence mid-word: every chunk boundary is a fresh synthesis and a
+  /// chance for the voice to drift, so fewer seams is a steadier person —
+  /// and an interruption no longer has to wait a chunk out.
+  static const int _chunkTarget = 64;
+
+  /// The same few seconds of speech, counted in Chinese characters.
+  static const int _cjkChunkTarget = 32;
+
+  /// The chunk target for the answer being spoken.
+  ///
+  /// Keyed on the language already pinned for this answer, so it cannot
+  /// change halfway through one.
+  int get _chunkTargetForAnswer =>
+      _activeLang == 'zh' ? _cjkChunkTarget : _chunkTarget;
 
   /// The language pinned to the answer being spoken, decided once at its
   /// first chunk — one English word inside a Chinese reply must not flip
@@ -144,6 +271,26 @@ final class VoiceConversationController extends ChangeNotifier {
 
   /// Whether the conversation is currently being run by voice.
   bool get enabled => _enabled || _enabling;
+
+  /// What the agent is doing right now.
+  ///
+  /// Ordered most-specific first: a paused answer is also technically
+  /// listening, and a speaking one is also technically not submittable.
+  VoiceActivity get activity {
+    if (_pttHeld || _pttSettling) {
+      return VoiceActivity.holding;
+    }
+    if (_interruptedSpeech != null) {
+      return VoiceActivity.paused;
+    }
+    if (_deliveringAnswer) {
+      return _pttProtected ? VoiceActivity.shielded : VoiceActivity.speaking;
+    }
+    if (!_conversation.canSubmit) {
+      return VoiceActivity.thinking;
+    }
+    return VoiceActivity.listening;
+  }
 
   /// Whether the agent is being spoken aloud right now.
   bool get speaking => _speaking;
@@ -205,6 +352,7 @@ final class VoiceConversationController extends ChangeNotifier {
     _listening = false;
     _speaking = false;
     _speechRequested = false;
+    _cancelPendingResume();
     notifyListeners();
     await _voice.stopSpeaking();
     await _voice.stopListening();
@@ -212,17 +360,42 @@ final class VoiceConversationController extends ChangeNotifier {
 
   void _onVoiceEvent(VoiceEvent event) {
     if (!_enabled) {
+      // A hold is the intent to talk; making the user find a toggle first
+      // would answer that intent with silence. Everything else a disabled
+      // controller ignores.
+      if (event is HoldToTalkPressed) {
+        holdToTalkPressed(withBatchRecognition: true);
+      } else if (event is HoldToTalkReleased) {
+        holdToTalkReleased();
+      }
       return;
     }
     switch (event) {
       case PartialTranscript(:final String text):
         _partialTranscript = text;
         notifyListeners();
+        if (_pttHeld || _pttSettling) {
+          // Held speech is the question being composed: no floor to take,
+          // no settle race. The release is the endpoint.
+          return;
+        }
+        if (_pttProtected) {
+          // The answer to held speech plays out; ambient speech is noise.
+          return;
+        }
         if (text.trim().isNotEmpty) {
           final DateTime? lastFinal = _lastFinalAt;
           if (lastFinal == null ||
               _now().difference(lastFinal) >= _postFinalCooldown) {
-            _yieldToTheUser();
+            debugPrint('Lulo partial: ${text.length} chars "$text"');
+            if (_takesTheFloor(text)) {
+              _yieldToTheUser(from: 'partial');
+            }
+          } else {
+            debugPrint(
+              'Lulo partial: ${text.length} chars, inside post-final cooldown '
+              '— no yield',
+            );
           }
           // The user is still talking; push the settle out again.
           _settleAttempts = 0;
@@ -239,16 +412,45 @@ final class VoiceConversationController extends ChangeNotifier {
         _settleAttempts = 0;
         _partialTranscript = '';
         notifyListeners();
+        if (_pttHeld || _pttSettling) {
+          if (text.trim().isNotEmpty) {
+            _pttFinals.add(text.trim());
+          }
+          if (_pttSettling) {
+            // The trailing sentence has settled; the question is whole.
+            _submitHeldSpeech();
+          }
+          return;
+        }
+        if (_pttProtected) {
+          return;
+        }
         if (text.trim().isEmpty) {
+          // Whatever took the floor turned out to be nothing — a cough, a
+          // misheard syllable. That is known now, so the interrupted answer
+          // picks up immediately instead of waiting out the backstop.
+          _resumeInterruptedSpeech();
           return;
         }
         if (_conversation.canSubmit) {
+          // A question was asked; the sentence it talked over is history.
+          // If the backstop already put that sentence back before the
+          // question settled, it is now talking over the answer to the
+          // question — so it is silenced here as well as dropped.
+          _cancelPendingResume();
+          if (_speaking || _speechRequested) {
+            unawaited(_voice.stopSpeaking());
+          }
           unawaited(_conversation.submit(text));
         } else {
           // A correction spoken wholly inside the post-final cooldown
           // never fired the yield from its partials; its final is the
-          // last chance to interrupt the answer it replaces.
-          _yieldToTheUser();
+          // last chance to interrupt the answer it replaces. Short
+          // acknowledgements are held to the same threshold here as in the
+          // partials, or "OK" would simply cancel a moment later instead.
+          if (_takesTheFloor(text)) {
+            _yieldToTheUser(from: 'final');
+          }
           // The previous answer is still winding down from the
           // interruption; the replacement question must not be dropped on
           // the floor.
@@ -260,6 +462,13 @@ final class VoiceConversationController extends ChangeNotifier {
       case SpeakingFinished():
         _speaking = false;
         _speechRequested = false;
+        // Everything handed over has drained; nothing is left to put back.
+        _speechOutstanding.clear();
+        if (_pttProtected && _conversation.canSubmit) {
+          // The protected answer has been heard to the end; open
+          // conversation resumes.
+          _pttProtected = false;
+        }
         notifyListeners();
       case VoiceFailed(:final String message):
         // A dead pipeline must not leave the button lit as listening —
@@ -284,6 +493,17 @@ final class VoiceConversationController extends ChangeNotifier {
       case ListeningStopped():
         _listening = false;
         notifyListeners();
+      case HoldToTalkPressed():
+        holdToTalkPressed(withBatchRecognition: true);
+      case HoldToTalkReleased():
+        holdToTalkReleased();
+      case HeldTranscript(:final String text):
+        if (_pttSettling) {
+          if (text.trim().isNotEmpty) {
+            _pttBatchText = text.trim();
+          }
+          _submitHeldSpeech();
+        }
     }
   }
 
@@ -304,7 +524,21 @@ final class VoiceConversationController extends ChangeNotifier {
       return;
     }
     final String undispatched = text.substring(_dispatchedOfActive);
-    int lastEnd = _lastSentenceEnd(undispatched);
+    final int target = _chunkTargetForAnswer;
+    int lastEnd = _firstChunkOfAnswer
+        ? _lastSentenceEnd(undispatched)
+        : _sentenceEndNear(undispatched, target);
+    if (!_firstChunkOfAnswer && lastEnd + 1 < target) {
+      // Conversational Chinese runs a long way between full stops. Once
+      // twice the target has gone by with no sentence in sight, a clause is
+      // a better seam than waiting: the alternative is one chunk of five
+      // sentences, which is fifteen seconds an interruption throws away and
+      // fifteen seconds of prosody drifting away from its neighbours.
+      final int clause = _lastClauseEnd(undispatched);
+      if (clause + 1 >= target * 2) {
+        lastEnd = _clauseEndNear(undispatched, target);
+      }
+    }
     if (lastEnd < 0) {
       // No sentence yet — but the answer's first chunk may go out on a
       // finished clause, so the voice starts before the full stop arrives.
@@ -318,13 +552,53 @@ final class VoiceConversationController extends ChangeNotifier {
     }
     // The first sentence goes out alone so the voice starts early; after
     // that, sentences accumulate into steadier chunks.
-    if (!_firstChunkOfAnswer && lastEnd + 1 < _chunkTarget) {
+    if (!_firstChunkOfAnswer && lastEnd + 1 < _chunkTargetForAnswer) {
       return;
     }
     final String chunk = undispatched.substring(0, lastEnd + 1);
     _dispatchedOfActive += chunk.length;
     _firstChunkOfAnswer = false;
     _speakAloud(chunk, decidedBy: text);
+  }
+
+  /// The first sentence boundary in [text] at or past [target] that is safe
+  /// to speak through, or the last one available when none reaches it.
+  ///
+  /// The target is a minimum, and taking the last boundary instead made it a
+  /// minimum with no maximum: whenever generation ran ahead of speech, one
+  /// chunk swallowed every sentence that had arrived. Chunks measured in use
+  /// ranged from 5 to 140 characters, the largest ten seconds of audio. Each
+  /// is synthesised alone with no acoustic context from the one before, so
+  /// uneven chunks are heard as the speaker changing — and a ten-second
+  /// chunk is ten seconds an interruption throws away.
+  static int _sentenceEndNear(String text, int target) {
+    final int last = _lastSentenceEnd(text);
+    if (last < 0) {
+      return -1;
+    }
+    for (int i = 0; i <= last; i++) {
+      if (i + 1 >= target && _isSentenceEndAt(text, i)) {
+        return i;
+      }
+    }
+    return last;
+  }
+
+  /// Whether [text] ends a sentence at [i], with the decimal-point guard.
+  static bool _isSentenceEndAt(String text, int i) {
+    if (!_sentenceEnd.hasMatch(text[i])) {
+      return false;
+    }
+    if (text[i] == '.') {
+      if (i + 1 < text.length) {
+        if (_isDigit(text.codeUnitAt(i + 1))) {
+          return false;
+        }
+      } else if (i > 0 && _isDigit(text.codeUnitAt(i - 1))) {
+        return false;
+      }
+    }
+    return true;
   }
 
   /// The last sentence boundary in [text] that is safe to speak through,
@@ -354,6 +628,19 @@ final class VoiceConversationController extends ChangeNotifier {
     return -1;
   }
 
+  /// The first clause boundary in [text] at or past [target].
+  static int _clauseEndNear(String text, int target) {
+    for (int i = target - 1; i < text.length - 1; i++) {
+      if (i < 0) {
+        continue;
+      }
+      if (_clauseEnds.contains(text[i]) && !_isDigit(text.codeUnitAt(i + 1))) {
+        return i;
+      }
+    }
+    return _lastClauseEnd(text);
+  }
+
   /// The last clause boundary in [text] that is safe to speak through, or
   /// -1 when there is none.
   ///
@@ -374,11 +661,167 @@ final class VoiceConversationController extends ChangeNotifier {
   void _speakAloud(String text, {String? decidedBy}) {
     final String spoken = speakableText(text);
     if (spoken.isEmpty) {
+      debugPrint(
+        'Lulo speak: DROPPED — ${text.length} chars left nothing sayable',
+      );
       return;
     }
+    debugPrint('Lulo speak: dispatching ${spoken.length} chars');
     _activeLang ??= _cjk.hasMatch(decidedBy ?? text) ? 'zh' : 'en';
     _speechRequested = true;
+    // Held so an interruption can put it back. The dispatch counters record
+    // what was handed to the voice, not what was heard, so without this the
+    // sentence the user talked over is lost the moment it is cut.
+    _speechOutstanding.add(spoken);
+    // Remembered with the sentences, not looked up at interruption time:
+    // an answer finishing its turn clears _activeLang while its sentences
+    // are still being heard.
+    _outstandingLang = _activeLang;
+    notifyListeners();
     unawaited(_voice.speak(spoken, language: _activeLang));
+  }
+
+  /// Whether the push-to-talk button is currently held.
+  bool get holdingToTalk => _pttHeld;
+
+  /// Whether the current answer came from held speech: it yields to
+  /// nothing but the next hold.
+  bool get answerShielded => _pttProtected;
+
+  /// Push-to-talk pressed: the agent falls silent and held speech starts
+  /// composing. Nothing submits until the release. A press while the
+  /// voice is off turns it on first — the press IS the intent to talk.
+  void holdToTalkPressed({bool withBatchRecognition = false}) {
+    if (_disposed) {
+      return;
+    }
+    _holdIntent = true;
+    _holdIntentBatch = withBatchRecognition;
+    if (!_enabled) {
+      if (!_enabling) {
+        unawaited(
+          enable().then((_) {
+            if (_holdIntent && _enabled) {
+              _beginHold();
+            }
+          }),
+        );
+      }
+      return;
+    }
+    _beginHold();
+  }
+
+  void _beginHold() {
+    _pttHeld = true;
+    _pttSettling = false;
+    _pttFinals.clear();
+    _pttProtected = false;
+    _pttAwaitsBatch = _holdIntentBatch;
+    _pttBatchText = null;
+    _pttSubmitBackstop?.cancel();
+    _pttSubmitBackstop = null;
+    _cancelPendingResume();
+    _pendingSettle?.cancel();
+    _pendingSettle = null;
+    if (_speaking || _speechRequested) {
+      _speechRequested = false;
+      _speechOutstanding.clear();
+      unawaited(_voice.stopSpeaking());
+    }
+    if (!_conversation.canSubmit) {
+      _stopRequestedForActive = true;
+      unawaited(_conversation.stop());
+    }
+    notifyListeners();
+  }
+
+  /// Push-to-talk released: the question is done being spoken. Submits at
+  /// once when the tail has already settled, otherwise waits for the
+  /// trailing final with a backstop.
+  void holdToTalkReleased() {
+    _holdIntent = false;
+    if (!_pttHeld) {
+      return;
+    }
+    _pttHeld = false;
+    _pttSettling = true;
+    notifyListeners();
+    if (_pttAwaitsBatch) {
+      // The batch recogniser is listening to the same audio and answers
+      // in a beat or two; Apple's streamed guess is only its backstop.
+      _pttSubmitBackstop = _utteranceScheduler.schedule(
+        _pttBatchWait,
+        _submitHeldSpeech,
+      );
+    } else if (_partialTranscript.trim().isEmpty) {
+      _submitHeldSpeech();
+    } else {
+      _pttSubmitBackstop = _utteranceScheduler.schedule(
+        _pttTrailingWait,
+        _submitHeldSpeech,
+      );
+    }
+  }
+
+  void _submitHeldSpeech() {
+    if (!_pttSettling) {
+      return;
+    }
+    _pttSettling = false;
+    _pttSubmitBackstop?.cancel();
+    _pttSubmitBackstop = null;
+    final String question = (_pttBatchText ?? _pttFinals.join(' ')).trim();
+    _pttBatchText = null;
+    _pttFinals.clear();
+    if (question.isEmpty || !_enabled) {
+      notifyListeners();
+      return;
+    }
+    // The full text, not the count: the recogniser evaluation pairs this
+    // with the WAV the native side captured for the same hold.
+    debugPrint('Lulo ptt: submitting "$question"');
+    _pttProtected = true;
+    if (_conversation.canSubmit) {
+      unawaited(_conversation.submit(question));
+    } else {
+      _pendingUtterance = question;
+    }
+    notifyListeners();
+  }
+
+  /// Re-says the sentence an interruption cut off, if nothing replaced it.
+  void _resumeInterruptedSpeech() {
+    _pendingResume?.cancel();
+    _pendingResume = null;
+    final String? interrupted = _interruptedSpeech;
+    final String? interruptedLang = _interruptedLang;
+    _interruptedSpeech = null;
+    _interruptedLang = null;
+    notifyListeners();
+    if (!_enabled || interrupted == null || _disposed) {
+      return;
+    }
+    // Something took the floor for real: a question is being answered, or one
+    // is queued behind the answer that was interrupted. Either way the old
+    // sentence is no longer what the user is waiting for.
+    if (!_conversation.canSubmit || _pendingUtterance != null) {
+      return;
+    }
+    debugPrint('Lulo speak: resuming ${interrupted.length} chars');
+    _speechRequested = true;
+    _speechOutstanding
+      ..clear()
+      ..add(interrupted);
+    _outstandingLang = interruptedLang;
+    unawaited(_voice.speak(interrupted, language: interruptedLang));
+  }
+
+  void _cancelPendingResume() {
+    _pendingResume?.cancel();
+    _pendingResume = null;
+    _interruptedSpeech = null;
+    _interruptedLang = null;
   }
 
   /// The partial has sat still long enough: the user has finished talking.
@@ -406,6 +849,9 @@ final class VoiceConversationController extends ChangeNotifier {
   }
 
   void _onCanSubmitChanged() {
+    // Thinking becomes listening (or speaking) here, and nothing else on
+    // this path tells the view.
+    notifyListeners();
     if (_conversation.canSubmit) {
       // The generation has fully ended. The null-to-null active turn of a
       // prefill cancel never notifies, so the dispatch guard is lifted
@@ -417,16 +863,66 @@ final class VoiceConversationController extends ChangeNotifier {
       return;
     }
     _pendingUtterance = null;
+    _cancelPendingResume();
     unawaited(_conversation.submit(pending));
   }
 
+  /// Whether [text] is enough to take the floor from the agent.
+  ///
+  /// The threshold exists only for speech in progress; see
+  /// [_charactersToInterruptSpeech].
+  bool _takesTheFloor(String text) {
+    if (!_deliveringAnswer) {
+      return true;
+    }
+    return text.trim().runes.length >= _charactersToInterruptSpeech;
+  }
+
+  /// Whether an answer is in the middle of being delivered aloud.
+  ///
+  /// Deliberately wider than [_speaking]: the native side reports speech
+  /// finished 300ms after the last chunk drains, and the next chunk needs
+  /// enough new text to be worth synthesising. Whenever generation is slower
+  /// than playback — routine for a local model on a long answer — there are
+  /// gaps between chunks where nothing is technically speaking. Keying the
+  /// interruption threshold on [_speaking] alone switched it off inside every
+  /// one of those gaps, and a single misheard character could still end the
+  /// answer.
+  bool get _deliveringAnswer =>
+      _speaking || _speechRequested || _speechOutstanding.isNotEmpty;
+
   /// The user started talking: whatever the agent was saying or still
   /// generating gives way.
-  void _yieldToTheUser() {
-    if (_speaking || _speechRequested) {
+  void _yieldToTheUser({required String from}) {
+    if (_pttHeld || _pttSettling || _pttProtected) {
+      // Push-to-talk owns the floor: the press already silenced the
+      // agent, and its answer yields to nothing but the next press.
+      return;
+    }
+    final bool cancelling = !_conversation.canSubmit;
+    debugPrint(
+      'Lulo yield: from=$from speaking=$_speaking '
+      'requested=$_speechRequested cancelsGeneration=$cancelling',
+    );
+    if (_deliveringAnswer) {
+      // What is being cut off is held for [_resumeDelay]: if the user turns
+      // out to be asking something, that wins and this is dropped; if they
+      // were only reacting, the answer picks up instead of going silent for
+      // the rest of its life.
+      _interruptedSpeech = _speechOutstanding.isEmpty
+          ? null
+          : _speechOutstanding.join();
+      _interruptedLang = _outstandingLang;
+      _speechOutstanding.clear();
+      _pendingResume?.cancel();
+      _pendingResume = _utteranceScheduler.schedule(
+        _resumeDelay,
+        _resumeInterruptedSpeech,
+      );
+      notifyListeners();
       unawaited(_voice.stopSpeaking());
     }
-    if (!_conversation.canSubmit) {
+    if (cancelling) {
       _stopRequestedForActive = true;
       unawaited(_conversation.stop());
     }
@@ -440,6 +936,30 @@ final class VoiceConversationController extends ChangeNotifier {
     }
     for (; _spokenThrough < turns.length; _spokenThrough++) {
       final Turn turn = turns[_spokenThrough];
+      if (turn.role == TurnRole.assistant &&
+          (turn.status == TurnStatus.cancelled ||
+              turn.status == TurnStatus.failed)) {
+        // The answer was stopped, so stop saying it. Cancelling ends the
+        // writing; the sentences already handed to the voice are minutes of
+        // speech that outlive it, and until this the only way to shut them
+        // up was switching the microphone off — which also stops listening,
+        // which is not what stop means.
+        debugPrint(
+          'Lulo turn: ${turn.status.name} — NOT SPOKEN '
+          '(${turn.text.length} chars written, $_dispatchedOfActive already out)',
+        );
+        // The answer is over, so there is nothing left to put back. Without
+        // this the interruption that ended it would, a moment later, read one
+        // orphaned sentence of an answer already abandoned.
+        _cancelPendingResume();
+        _speechOutstanding.clear();
+        _dispatchedOfActive = 0;
+        if (_speaking || _speechRequested) {
+          _speechRequested = false;
+          unawaited(_voice.stopSpeaking());
+        }
+        continue;
+      }
       if (turn.role == TurnRole.assistant &&
           turn.status == TurnStatus.completed) {
         // Only what the streaming dispatch has not already said. This
@@ -460,6 +980,7 @@ final class VoiceConversationController extends ChangeNotifier {
     _disposed = true;
     _pendingSettle?.cancel();
     _pendingSettle = null;
+    _cancelPendingResume();
     // The view that owns this controller is torn down on every conversation
     // switch; the microphone must not outlive it.
     if (_enabled || _enabling) {
@@ -491,6 +1012,13 @@ String speakableText(String text) {
     (Match m) => m[1] ?? '',
   );
   speakable = speakable.replaceAll(RegExp(r'https?://\S+'), ' ');
+  // Horizontal rules and list markers are layout, not words: "---" read
+  // aloud is a groan, and "- 第一點" starts with a minus.
+  speakable = speakable.replaceAll(
+    RegExp(r'^\s*[-*_]{3,}\s*$', multiLine: true),
+    ' ',
+  );
+  speakable = speakable.replaceAll(RegExp(r'^\s*[-•]\s+', multiLine: true), '');
   // Inline markup keeps its words and loses its marks.
   speakable = speakable.replaceAll(RegExp(r'[`*_~#>]'), '');
   // Emoji and pictographs, including variation selectors.

@@ -219,7 +219,11 @@ void main() {
       final payload = host.generationRequests.single;
       expect(payload.generationId, 'litert-generation-1');
       expect(payload.sessionId, 'conversation-42');
-      expect(payload.prompt, 'Exact private prompt');
+      // The question is carried verbatim, behind an instruction to answer
+      // in prose. Without it the model wrote Markdown, which shows its own
+      // asterisks on screen and has to be stripped again before speech.
+      expect(payload.prompt, endsWith('Exact private prompt'));
+      expect(payload.prompt, contains('No Markdown'));
       expect(payload.context, isEmpty);
       expect(payload.temperature, 0.25);
       expect(payload.topP, 0.9);
@@ -446,6 +450,197 @@ void main() {
     },
   );
 
+  test(
+    'a cancel the host cannot acknowledge is a generation already gone',
+    () async {
+      // The native side answers acknowledged: false for exactly one reason —
+      // it is not running this generation. That is what "make it stop" was
+      // asking for, so it is the successful outcome, not a failure. Treating
+      // it as one threw out of a caller that cannot catch it: the voice
+      // controller yields to the user with unawaited(stop()), and every
+      // barge-in takes this path.
+      final host = RecordingDesktopHostService(
+        onCancel:
+            (RecordingDesktopHostService host, String generationId) async =>
+                DesktopCancellationAcknowledgement(
+                  generationId: generationId,
+                  acknowledged: false,
+                ),
+      );
+      final service = PigeonInferenceService(
+        desktopHostService: host,
+        config: testModelConfig,
+      );
+      final errors = <Object>[];
+      final started = Completer<GenerationId>();
+      final subscription = service
+          .generate(
+            const GenerationRequest(
+              conversationId: ConversationId('conversation-1'),
+              prompt: 'Cancel',
+            ),
+          )
+          .listen((event) {
+            if (event case GenerationStarted(:final generation)) {
+              started.complete(generation.id);
+            }
+          }, onError: errors.add);
+      await Future<void>.delayed(Duration.zero);
+      host.emit(
+        DesktopGenerationEvent(
+          generationId: 'litert-generation-1',
+          sequence: 0,
+          type: HostGenerationEventType.started,
+        ),
+      );
+      final generationId = await started.future;
+
+      await expectLater(service.cancel(generationId), completes);
+      expect(errors, isEmpty);
+
+      await subscription.cancel();
+    },
+  );
+
+  test(
+    'a generation cancelled before it reached the host never starts',
+    () async {
+      // Barging in during prefill cancels while readiness is still loading the
+      // model, seconds before the start goes out. Sending it anyway leaves a
+      // native generation nobody is listening to and nobody will cancel; it
+      // holds the runtime's single slot until it burns its whole token budget,
+      // and every turn in between is rejected as busy.
+      final host = RecordingDesktopHostService()..loadGate = Completer<void>();
+      final service = PigeonInferenceService(
+        desktopHostService: host,
+        config: testModelConfig,
+      );
+      final errors = <Object>[];
+      final subscription = service
+          .generate(
+            const GenerationRequest(
+              conversationId: ConversationId('conversation-1'),
+              prompt: 'Cancel during prefill',
+            ),
+          )
+          .listen((_) {}, onError: errors.add);
+      await Future<void>.delayed(Duration.zero);
+
+      final Future<void> cancelled = subscription.cancel();
+      host.loadGate!.complete();
+      await cancelled;
+      await Future<void>.delayed(Duration.zero);
+
+      expect(host.generationRequests, isEmpty);
+      expect(errors, isEmpty);
+    },
+  );
+
+  test('a start that outran its cancel is taken back', () async {
+    // The cancel and the start crossed on the wire: the host had not
+    // registered the generation when it was asked to cancel, then accepted
+    // the start a moment later. Nothing else will ever cancel it, so the
+    // start has to be undone here.
+    final startGate = Completer<void>();
+    var hostHasGeneration = false;
+    final host = RecordingDesktopHostService(
+      onStart:
+          (
+            RecordingDesktopHostService host,
+            DesktopGenerationRequest request,
+          ) async {
+            await startGate.future;
+            hostHasGeneration = true;
+            return DesktopGenerationAcknowledgement(
+              generationId: request.generationId,
+              accepted: true,
+            );
+          },
+      onCancel: (RecordingDesktopHostService host, String generationId) async =>
+          DesktopCancellationAcknowledgement(
+            generationId: generationId,
+            acknowledged: hostHasGeneration,
+          ),
+    );
+    final service = PigeonInferenceService(
+      desktopHostService: host,
+      config: testModelConfig,
+    );
+    final errors = <Object>[];
+    final subscription = service
+        .generate(
+          const GenerationRequest(
+            conversationId: ConversationId('conversation-1'),
+            prompt: 'Cancel mid-start',
+          ),
+        )
+        .listen((_) {}, onError: errors.add);
+    await Future<void>.delayed(Duration.zero);
+
+    final Future<void> cancelled = subscription.cancel();
+    startGate.complete();
+    await cancelled;
+    await Future<void>.delayed(Duration.zero);
+
+    expect(host.hostCallLog, <String>[
+      'start:litert-generation-1',
+      'cancel:litert-generation-1',
+      'cancel:litert-generation-1',
+    ]);
+    expect(errors, isEmpty);
+  });
+
+  test('the instruction is written in the language of the question', () async {
+    // A small model answers in the language it was instructed in. An English
+    // preamble in front of a Chinese question turned every reply English,
+    // however plainly the preamble asked for the language of the question —
+    // the instruction is simply the strongest signal in the prompt.
+    final host = RecordingDesktopHostService();
+    final service = PigeonInferenceService(
+      desktopHostService: host,
+      config: testModelConfig,
+    );
+
+    final chinese = service
+        .generate(
+          const GenerationRequest(
+            conversationId: ConversationId('conversation-1'),
+            prompt: '你可以跟我說一下意大利麵的做法。',
+          ),
+        )
+        .listen((_) {});
+    await Future<void>.delayed(Duration.zero);
+    final english = service
+        .generate(
+          const GenerationRequest(
+            conversationId: ConversationId('conversation-1'),
+            prompt: 'How do I make spaghetti?',
+          ),
+        )
+        .listen((_) {});
+    await Future<void>.delayed(Duration.zero);
+
+    expect(host.generationRequests, hasLength(2));
+    // "Markdown" is the term in both, so the tell is the surrounding prose.
+    expect(host.generationRequests[0].prompt, contains('口語回答'));
+    // Traditional, not Simplified: the model answered 咱们/东西/开发 to a
+    // Traditional question because nothing said which script to use.
+    expect(host.generationRequests[0].prompt, contains('繁體'));
+    // The question arrives from a speech recogniser, so it can be misheard.
+    // Saying so costs nothing and lets the answer interpret rather than take
+    // "Frant" literally and explain a thing that does not exist.
+    expect(host.generationRequests[0].prompt, contains('語音辨識'));
+    expect(
+      host.generationRequests[0].prompt,
+      isNot(contains('plain spoken prose')),
+    );
+    expect(host.generationRequests[1].prompt, contains('plain spoken prose'));
+    expect(host.generationRequests[1].prompt, isNot(contains('口語回答')));
+
+    await chinese.cancel();
+    await english.cancel();
+  });
+
   test('warmUp reports a failure instead of hiding it', () async {
     final host = RecordingDesktopHostService(loadFailuresRemaining: 1);
     final service = PigeonInferenceService(
@@ -496,6 +691,16 @@ final class RecordingDesktopHostService implements DesktopHostService {
   final StartHandler? onStart;
   final CancelHandler? onCancel;
   int loadFailuresRemaining;
+
+  /// Held open to keep readiness — and so the start behind it — in flight.
+  Completer<void>? loadGate;
+
+  /// Starts and cancels in the order the host was asked for them.
+  ///
+  /// [lifecycleOperations] deliberately omits starts, and several tests
+  /// assert its exact contents; ordering between the two calls needs its own
+  /// log.
+  final List<String> hostCallLog = <String>[];
   late final StreamController<DesktopGenerationEvent> _events;
   int eventListenerCount = 0;
   int? eventListenerCountAtStart;
@@ -528,6 +733,10 @@ final class RecordingDesktopHostService implements DesktopHostService {
   @override
   Future<DesktopModelLoadResult> loadModel(DesktopModelRequest model) async {
     loadModelCount += 1;
+    final Completer<void>? gate = loadGate;
+    if (gate != null) {
+      await gate.future;
+    }
     if (loadFailuresRemaining > 0) {
       loadFailuresRemaining -= 1;
       throw const DesktopHostFailure(DesktopHostFailureCode.modelLoadFailed);
@@ -541,6 +750,7 @@ final class RecordingDesktopHostService implements DesktopHostService {
   ) async {
     eventListenerCountAtStart = eventListenerCount;
     generationRequests.add(generation);
+    hostCallLog.add('start:${generation.generationId}');
     return onStart?.call(this, generation) ??
         DesktopGenerationAcknowledgement(
           generationId: generation.generationId,
@@ -554,6 +764,7 @@ final class RecordingDesktopHostService implements DesktopHostService {
   ) async {
     cancelledGenerationIds.add(generationId);
     lifecycleOperations.add('cancel:$generationId');
+    hostCallLog.add('cancel:$generationId');
     return onCancel?.call(this, generationId) ??
         DesktopCancellationAcknowledgement(
           generationId: generationId,

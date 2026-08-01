@@ -56,6 +56,13 @@ void main() {
 
       expect(find.text('Response stopped'), findsOneWidget);
       expect(find.textContaining('Local inference'), findsOneWidget);
+      // The composer's button follows canSubmit a frame or two behind the
+      // cancellation; waited on rather than assumed, like everything else
+      // in this slice.
+      await _pumpUntil(
+        tester,
+        find.byKey(const Key('conversation-submit-button')),
+      );
       expect(
         find.byKey(const Key('conversation-submit-button')),
         findsOneWidget,
@@ -86,10 +93,13 @@ void main() {
         findsOneWidget,
       );
       expect(find.text('Response stopped'), findsOneWidget);
+      // The streaming bubble renders the same Markdown as a completed one
+      // now, so two markdown bubbles exist while the second response is
+      // still arriving — completion is the composer offering submission
+      // again, not a bubble count.
       await _pumpUntil(
         tester,
-        find.byKey(const Key('terminal-markdown')),
-        count: 2,
+        find.byKey(const Key('conversation-submit-button')),
       );
       expect(find.byKey(const Key('terminal-markdown')), findsNWidgets(2));
       expect(

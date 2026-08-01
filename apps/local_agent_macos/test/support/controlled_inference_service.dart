@@ -11,6 +11,10 @@ final class ControlledInferenceService implements InferenceService {
   final Completer<GenerationRequest> _requestReceived =
       Completer<GenerationRequest>();
 
+  /// Set to make cancelling a listener fail, the way the native boundary can
+  /// when the host cannot answer for the generation being cancelled.
+  Object? listenerCancellationFailure;
+
   Future<GenerationRequest> get requestReceived => _requestReceived.future;
 
   @override
@@ -19,7 +23,29 @@ final class ControlledInferenceService implements InferenceService {
     if (!_requestReceived.isCompleted) {
       _requestReceived.complete(request);
     }
-    return _events.stream;
+    final Object? failure = listenerCancellationFailure;
+    if (failure == null) {
+      return _events.stream;
+    }
+    return _failingOnCancel(failure);
+  }
+
+  Stream<GenerationEvent> _failingOnCancel(Object failure) {
+    late final StreamController<GenerationEvent> controller;
+    StreamSubscription<GenerationEvent>? source;
+    controller = StreamController<GenerationEvent>(
+      onListen: () {
+        source = _events.stream.listen(
+          controller.add,
+          onError: controller.addError,
+        );
+      },
+      onCancel: () async {
+        await source?.cancel();
+        throw failure;
+      },
+    );
+    return controller.stream;
   }
 
   @override

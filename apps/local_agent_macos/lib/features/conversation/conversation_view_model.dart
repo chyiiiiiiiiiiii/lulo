@@ -87,11 +87,20 @@ final class ConversationViewModel extends ChangeNotifier {
       if (id == null || _disposed) {
         return;
       }
-      final List<Turn> history = await _repository.loadTurns(id);
+      final List<Turn> stored = await _repository.loadTurns(id);
       if (_disposed) {
         return;
       }
       _conversationId = id;
+      // An answer cancelled before it said anything is written to the store
+      // on purpose — the repository's tests pin that down — but it is not
+      // something to show back. Restoring it puts an empty "Response
+      // stopped" bubble in the scrollback on every relaunch, for a turn the
+      // user never saw a word of and ended themselves.
+      final List<Turn> history = <Turn>[
+        for (final Turn turn in stored)
+          if (turn.status != TurnStatus.cancelled || turn.text.isNotEmpty) turn,
+      ];
       if (history.isEmpty) {
         return;
       }
@@ -137,6 +146,10 @@ final class ConversationViewModel extends ChangeNotifier {
     _stopOperation = null;
 
     final ConversationId conversationId = _conversationId ??= _idFactory();
+    // Read before the new turn joins it: the prompt travels as the prompt,
+    // and a history ending in the very question being asked would put it to
+    // the model twice.
+    final List<Turn> priorTurns = _projection.completedTurns;
     final Turn userTurn = Turn(
       role: TurnRole.user,
       text: prompt,
@@ -154,6 +167,12 @@ final class ConversationViewModel extends ChangeNotifier {
           request: GenerationRequest(
             conversationId: conversationId,
             prompt: prompt,
+            // What is on screen but possibly not in the runtime. After a
+            // relaunch or a model swap the scrollback is read back from
+            // storage while the model behind it starts empty; sending the
+            // turns lets it be seeded rather than answer a follow-up as
+            // though it were an opening question.
+            history: priorTurns,
           ),
         )
         .listen(_onEvent, onError: _onOperationError, onDone: _onOperationDone);
@@ -241,11 +260,21 @@ final class ConversationViewModel extends ChangeNotifier {
           text: '',
           status: TurnStatus.streaming,
         );
+    // An interruption that landed before a single token arrived: the user
+    // ended an answer they were never shown a word of. Listing it leaves an
+    // empty "Response stopped" bubble for a turn that never happened. A
+    // failure with nothing written is kept on purpose — the user caused the
+    // cancellation and needs no receipt, but a failure happened *to* them,
+    // and dropping it would leave a question looking answered that never was.
+    final bool nothingHappened =
+        status == TurnStatus.cancelled && activeTurn.text.isEmpty;
     _projection = ConversationProjection(
-      completedTurns: <Turn>[
-        ..._projection.completedTurns,
-        activeTurn.copyWith(status: status),
-      ],
+      completedTurns: nothingHappened
+          ? _projection.completedTurns
+          : <Turn>[
+              ..._projection.completedTurns,
+              activeTurn.copyWith(status: status),
+            ],
     );
     _completedTurns.value = _projection.completedTurns;
     _activeTurn.value = null;
@@ -253,10 +282,17 @@ final class ConversationViewModel extends ChangeNotifier {
     notifyListeners();
   }
 
-  void _onOperationError(Object _, StackTrace _) {
+  void _onOperationError(Object error, StackTrace _) {
     if (_disposed) {
       return;
     }
+    // What went wrong was thrown away here, and the screen says only
+    // "Response failed". A failure with nothing written and no reason is
+    // unactionable for the user and undiagnosable from a log.
+    debugPrint(
+      'Lulo generation failed: '
+      '${error is ConversationFailure ? error.message : error}',
+    );
     _finishActiveTurn(TurnStatus.failed, createWhenNotStarted: true);
   }
 
@@ -270,6 +306,12 @@ final class ConversationViewModel extends ChangeNotifier {
   }
 
   /// Stops the active generation.
+  ///
+  /// Never throws. Every caller reaches this through an `unawaited` call —
+  /// the composer's stop button, and the voice controller yielding the floor
+  /// when the user talks over the agent — so an exception here has nobody to
+  /// catch it, and the memoised future would hand the same failure to every
+  /// later attempt.
   Future<void> stop() => _stopOperation ??= _stop();
 
   Future<void> _stop() async {
@@ -285,7 +327,14 @@ final class ConversationViewModel extends ChangeNotifier {
       return;
     }
     _stopRequested = true;
-    await subscription.cancel();
+    try {
+      await subscription.cancel();
+    } on Object catch (_) {
+      // The boundary could not confirm the cancellation. There is no second
+      // thing to try, and the turn is ended below either way — where the
+      // throw used to escape, the send key stayed dead with nothing left to
+      // flip it.
+    }
     if (_disposed) {
       return;
     }

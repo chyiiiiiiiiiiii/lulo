@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../voice/voice_conversation_controller.dart';
 import 'conversation_content_column.dart';
 
 /// Desktop-first prompt composer that owns all of its UI controllers.
@@ -13,12 +14,17 @@ final class ConversationComposer extends StatefulWidget {
     required this.canSubmit,
     required this.onSubmit,
     required this.onStop,
+    this.voice,
     this.onBuild,
     super.key,
   });
 
   /// Whether a new prompt may be submitted.
   final ValueListenable<bool> canSubmit;
+
+  /// Push-to-talk, when a voice is present and enabled: hold the button to
+  /// speak, release to send, and the answer plays out uninterrupted.
+  final VoiceConversationController? voice;
 
   /// Called with a normalized non-empty prompt.
   final ValueChanged<String> onSubmit;
@@ -118,17 +124,20 @@ final class _ConversationComposerState extends State<ConversationComposer> {
                 maxLines: 6,
                 textInputAction: TextInputAction.newline,
                 decoration: InputDecoration(
-                  hintText: 'Message Lulo',
+                  hintText: '跟 Lulo 說些什麼…',
                   filled: true,
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(22),
                     borderSide: BorderSide.none,
                   ),
                   contentPadding: const EdgeInsets.fromLTRB(18, 14, 8, 14),
+                  prefixIcon: widget.voice == null
+                      ? null
+                      : _HoldToTalkButton(voice: widget.voice!),
                   suffixIcon: canSubmit
                       ? IconButton(
                           key: const Key('conversation-submit-button'),
-                          tooltip: 'Send message',
+                          tooltip: '傳送',
                           onPressed: _controller.text.trim().isEmpty
                               ? null
                               : _submit,
@@ -136,11 +145,61 @@ final class _ConversationComposerState extends State<ConversationComposer> {
                         )
                       : IconButton(
                           key: const Key('conversation-stop-button'),
-                          tooltip: 'Stop response',
+                          tooltip: '停止回答',
                           onPressed: _stop,
                           icon: const Icon(Icons.stop_rounded),
                         ),
                 ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+/// Hold to speak, release to send.
+///
+/// While held the agent falls silent and listens; the release submits the
+/// whole utterance as one question, and the answer plays out over any
+/// ambient speech — the next hold is the only interruption.
+final class _HoldToTalkButton extends StatelessWidget {
+  const _HoldToTalkButton({required this.voice});
+
+  final VoiceConversationController voice;
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: voice,
+      builder: (BuildContext context, _) {
+        final bool held = voice.holdingToTalk;
+        final ColorScheme colors = Theme.of(context).colorScheme;
+        // Present in every state: an empty slot where a button sometimes
+        // is reads as a rendering bug, and the button is the invitation.
+        // Holding it with the voice off turns the voice on — the press is
+        // the intent to talk.
+        return Listener(
+          key: const Key('conversation-hold-to-talk'),
+          // No batch recognition behind the button: only the hotkey path
+          // captures audio natively. The streamed transcript is what sends.
+          onPointerDown: (_) => voice.holdToTalkPressed(),
+          onPointerUp: (_) => voice.holdToTalkReleased(),
+          onPointerCancel: (_) => voice.holdToTalkReleased(),
+          child: Tooltip(
+            message: '按住說話，放開送出',
+            child: AnimatedScale(
+              scale: held ? 1.15 : 1,
+              duration: const Duration(milliseconds: 120),
+              curve: Curves.easeOutCubic,
+              child: Icon(
+                held ? Icons.mic_rounded : Icons.mic_none_rounded,
+                color: held
+                    ? colors.primary
+                    : voice.enabled
+                    ? colors.onSurfaceVariant
+                    : colors.onSurfaceVariant.withValues(alpha: 0.45),
               ),
             ),
           ),

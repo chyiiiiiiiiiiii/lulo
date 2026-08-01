@@ -19,12 +19,28 @@ final class AgentPresenceHeader extends StatefulWidget {
     this.controller,
     this.orb,
     this.anchorKey,
+    this.holding,
+    this.speaking,
     this.onControllerCreated,
     this.onOrbPaint,
     this.onSemanticBuild,
     this.shaderLoader = loadAgentPresenceShader,
     super.key,
   });
+
+  /// Whether the user is holding to talk, or null when there is no voice.
+  ///
+  /// The presence leans into listening for as long as this is true — the
+  /// visible sign, in both forms including the desktop orb, that the agent
+  /// is hearing the user right now.
+  final ValueListenable<bool>? holding;
+
+  /// Whether the agent is audibly speaking, or null when there is no voice.
+  ///
+  /// The conversation's text finishes minutes before the voice does; while
+  /// this is true the presence stays in speaking rather than falling idle
+  /// with the pen.
+  final ValueListenable<bool>? speaking;
 
   /// Presence to project into, or null to own one for this header alone.
   ///
@@ -82,8 +98,21 @@ final class _AgentPresenceHeaderState extends State<AgentPresenceHeader> {
     _clock.start();
     widget.completedTurns.addListener(_projectConversation);
     widget.activeTurn.addListener(_projectConversation);
+    widget.holding?.addListener(_holdingChanged);
+    widget.speaking?.addListener(_projectConversation);
     widget.onControllerCreated?.call(_controller);
     _projectConversation();
+  }
+
+  void _holdingChanged() {
+    if (widget.holding?.value ?? false) {
+      _controller.dispatch(AgentPresenceEvent.listeningStarted, _clock.elapsed);
+    } else {
+      // Released: leave listening, then let the conversation reclaim the
+      // presence — a submitted question projects thinking a beat later.
+      _controller.dispatch(AgentPresenceEvent.speechStopped, _clock.elapsed);
+      _projectConversation();
+    }
   }
 
   @override
@@ -97,6 +126,14 @@ final class _AgentPresenceHeaderState extends State<AgentPresenceHeader> {
       oldWidget.activeTurn.removeListener(_projectConversation);
       widget.activeTurn.addListener(_projectConversation);
     }
+    if (oldWidget.holding != widget.holding) {
+      oldWidget.holding?.removeListener(_holdingChanged);
+      widget.holding?.addListener(_holdingChanged);
+    }
+    if (oldWidget.speaking != widget.speaking) {
+      oldWidget.speaking?.removeListener(_projectConversation);
+      widget.speaking?.addListener(_projectConversation);
+    }
     _projectConversation();
   }
 
@@ -104,6 +141,8 @@ final class _AgentPresenceHeaderState extends State<AgentPresenceHeader> {
   void dispose() {
     widget.completedTurns.removeListener(_projectConversation);
     widget.activeTurn.removeListener(_projectConversation);
+    widget.holding?.removeListener(_holdingChanged);
+    widget.speaking?.removeListener(_projectConversation);
     _clock.stop();
     // Only dispose a presence this header created. A supplied controller
     // outlives the header, because the desktop form keeps showing it.
@@ -112,6 +151,16 @@ final class _AgentPresenceHeaderState extends State<AgentPresenceHeader> {
   }
 
   void _projectConversation() {
+    if ((widget.speaking?.value ?? false) &&
+        !(widget.holding?.value ?? false)) {
+      // The mouth outlives the pen: the text can be fully written while
+      // the voice is still reading it, and the presence follows the voice.
+      _controller.projectConversationState(
+        AgentPresenceProjectionState.speaking,
+        _clock.elapsed,
+      );
+      return;
+    }
     final Turn? activeTurn = widget.activeTurn.value;
     if (activeTurn != null) {
       _controller.projectConversationState(

@@ -118,22 +118,41 @@ final class _ConversationViewState extends State<ConversationView> {
   late final ConversationViewModel _viewModel;
   VoiceConversationController? _voice;
 
+  /// Whether the user is holding to talk, narrowed for the presence: the
+  /// orb leans into listening while this is true, in either form.
+  final ValueNotifier<bool> _holdingToTalk = ValueNotifier<bool>(false);
+
+  /// Whether the agent is audibly speaking. The conversation's text can be
+  /// fully written minutes before the voice finishes reading it, and the
+  /// presence must follow the mouth, not the pen.
+  final ValueNotifier<bool> _agentSpeaking = ValueNotifier<bool>(false);
+
   @override
   void initState() {
     super.initState();
     _viewModel = widget.viewModelFactory();
     final VoiceService? voiceService = widget.voiceService;
     if (voiceService != null) {
-      _voice = VoiceConversationController(
+      final VoiceConversationController voice = VoiceConversationController(
         voice: voiceService,
         conversation: _viewModel,
       );
+      _voice = voice;
+      voice.addListener(_reflectVoice);
     }
+  }
+
+  void _reflectVoice() {
+    _holdingToTalk.value = _voice?.holdingToTalk ?? false;
+    _agentSpeaking.value = _voice?.speaking ?? false;
   }
 
   @override
   void dispose() {
+    _voice?.removeListener(_reflectVoice);
     _voice?.dispose();
+    _holdingToTalk.dispose();
+    _agentSpeaking.dispose();
     _viewModel.dispose();
     super.dispose();
   }
@@ -160,6 +179,8 @@ final class _ConversationViewState extends State<ConversationView> {
           children: <Widget>[
             _ConversationChrome(
               voice: _voice,
+              holdingToTalk: _voice == null ? null : _holdingToTalk,
+              agentSpeaking: _voice == null ? null : _agentSpeaking,
               onToggleVoice: _toggleVoice,
               onShowHistory: widget.onShowHistory,
               completedTurns: _viewModel.completedTurnsListenable,
@@ -195,6 +216,7 @@ final class _ConversationViewState extends State<ConversationView> {
               canSubmit: _viewModel.canSubmitListenable,
               onSubmit: _viewModel.submit,
               onStop: _viewModel.stop,
+              voice: _voice,
               onBuild: () => widget.buildObserver?.composerBuilds += 1,
             ),
           ],
@@ -207,6 +229,8 @@ final class _ConversationViewState extends State<ConversationView> {
 final class _ConversationChrome extends StatelessWidget {
   const _ConversationChrome({
     required this.voice,
+    required this.holdingToTalk,
+    required this.agentSpeaking,
     required this.onToggleVoice,
     required this.onShowHistory,
     required this.completedTurns,
@@ -221,6 +245,8 @@ final class _ConversationChrome extends StatelessWidget {
   });
 
   final VoiceConversationController? voice;
+  final ValueListenable<bool>? holdingToTalk;
+  final ValueListenable<bool>? agentSpeaking;
   final VoidCallback onToggleVoice;
   final VoidCallback? onShowHistory;
   final ValueListenable<List<Turn>> completedTurns;
@@ -258,6 +284,8 @@ final class _ConversationChrome extends StatelessWidget {
             controller: presenceController,
             orb: presenceOrb,
             anchorKey: presenceAnchorKey,
+            holding: holdingToTalk,
+            speaking: agentSpeaking,
             onControllerCreated: onPresenceControllerCreated,
             onOrbPaint: onPresenceOrbPaint,
             onSemanticBuild: onPresenceSemanticBuild,
@@ -269,7 +297,7 @@ final class _ConversationChrome extends StatelessWidget {
               animation: voice!,
               builder: (BuildContext context, Widget? _) => IconButton(
                 key: const Key('conversation-voice-button'),
-                tooltip: voice!.enabled ? 'Stop listening' : 'Talk to Lulo',
+                tooltip: voice!.enabled ? '關閉語音對話' : '開啟語音對話',
                 icon: Icon(
                   voice!.enabled ? Icons.mic_rounded : Icons.mic_none_rounded,
                   color: voice!.enabled
@@ -282,12 +310,12 @@ final class _ConversationChrome extends StatelessWidget {
           if (onShowHistory != null)
             IconButton(
               key: const Key('conversation-history-button'),
-              tooltip: 'Conversations',
+              tooltip: '對話紀錄',
               icon: const Icon(Icons.history_rounded),
               onPressed: onShowHistory,
             ),
           Semantics(
-            label: 'Local model',
+            label: '本機模型',
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: <Widget>[
@@ -300,7 +328,7 @@ final class _ConversationChrome extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(width: 8),
-                const Text('Local'),
+                const Text('本機'),
               ],
             ),
           ),
@@ -328,7 +356,7 @@ final class _HeardSoFar extends StatelessWidget {
           return Padding(
             padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 4),
             child: Text(
-              'Voice stopped: $failure',
+              '語音中斷：$failure',
               key: const Key('conversation-voice-failure'),
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                 color: Theme.of(context).colorScheme.error,
@@ -342,7 +370,24 @@ final class _HeardSoFar extends StatelessWidget {
         }
         if (heard.isEmpty) {
           // "Nothing happening" and "listening for you" must not look the
-          // same: an open microphone says so.
+          // same: an open microphone says so. Nor may the three silences
+          // look the same as each other — in full duplex the microphone
+          // never closes, so "Listening…" alone is true while thinking,
+          // while talking, and while broken.
+          final (IconData icon, String label) = switch (voice.activity) {
+            VoiceActivity.listening => (Icons.graphic_eq_rounded, '聆聽中…'),
+            VoiceActivity.thinking => (Icons.more_horiz_rounded, '思考中…'),
+            VoiceActivity.speaking => (Icons.volume_up_rounded, '說話中…'),
+            VoiceActivity.paused => (
+              Icons.pause_circle_outline_rounded,
+              '已暫停——說句話就繼續',
+            ),
+            VoiceActivity.holding => (Icons.mic_rounded, '正在聽你說——放開送出'),
+            VoiceActivity.shielded => (
+              Icons.volume_up_rounded,
+              '回答中——按住 ⇧⌘Space 可插話',
+            ),
+          };
           return Padding(
             padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 4),
             child: Row(
@@ -350,13 +395,13 @@ final class _HeardSoFar extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               children: <Widget>[
                 Icon(
-                  Icons.graphic_eq_rounded,
+                  icon,
                   size: 16,
                   color: Theme.of(context).colorScheme.primary,
                 ),
                 const SizedBox(width: 8),
                 Text(
-                  'Listening…',
+                  label,
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
                     color: Theme.of(context).colorScheme.onSurfaceVariant,
                   ),

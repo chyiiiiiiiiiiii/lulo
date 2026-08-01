@@ -176,6 +176,16 @@ enum HostVoiceEventType: Int {
   case speakingFinished = 5
   /// Something failed; listening may have stopped with it.
   case voiceFailed = 6
+  /// The global hotkey is being held: the user is talking to the agent.
+  case holdToTalkPressed = 7
+  /// The global hotkey was released: the held speech is complete.
+  case holdToTalkReleased = 8
+  /// What the held speech actually said, from the batch recogniser.
+  ///
+  /// Arrives a beat after holdToTalkReleased and replaces the streaming
+  /// transcripts collected during the hold; if it never arrives, the
+  /// streaming transcripts stand.
+  case heldTranscript = 9
 }
 
 /// One event from the native voice pipeline.

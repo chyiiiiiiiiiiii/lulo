@@ -91,6 +91,12 @@ final class LocalRuntimeDesktopHostApi: DesktopHostApi {
       sessionId: generation.sessionId,
       prompt: generation.prompt,
       context: generation.context,
+      history: generation.history.map {
+        RuntimeConversationTurn(
+          role: $0.role == .user ? .user : .assistant,
+          text: $0.text
+        )
+      },
       temperature: generation.temperature,
       topP: generation.topP,
       maxTokens: generation.maxTokens,

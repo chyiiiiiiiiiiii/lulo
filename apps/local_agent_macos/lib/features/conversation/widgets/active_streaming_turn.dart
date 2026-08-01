@@ -2,6 +2,8 @@ import 'package:agent_core/agent_core.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
+import 'completed_turn.dart';
+
 /// The isolated repaint and rebuild boundary for streamed output.
 final class ActiveStreamingTurn extends StatelessWidget {
   /// Creates the active turn listener.
@@ -29,7 +31,7 @@ final class ActiveStreamingTurn extends StatelessWidget {
           }
           return Semantics(
             liveRegion: true,
-            label: 'Assistant is responding',
+            label: '回覆中',
             child: Align(
               alignment: Alignment.centerLeft,
               child: Container(
@@ -43,9 +45,17 @@ final class ActiveStreamingTurn extends StatelessWidget {
                   color: Theme.of(context).colorScheme.surfaceContainerHighest,
                   borderRadius: BorderRadius.circular(18),
                 ),
-                child: SelectableText(
-                  key: const Key('active-streaming-plain-text'),
-                  turn.text.isEmpty ? 'Thinking…' : turn.text,
+                // The same renderer the completed bubble uses. A raw-text
+                // stream showed paragraph breaks as full blank lines, and
+                // the bubble visibly shrank the moment completion swapped
+                // in the block renderer with its tighter spacing — the
+                // same layout for both is what makes the hand-off
+                // invisible.
+                child: KeyedSubtree(
+                  key: const Key('active-streaming-markdown'),
+                  child: TerminalMarkdown(
+                    turn.text.isEmpty ? '思考中…' : turn.text,
+                  ),
                 ),
               ),
             ),
