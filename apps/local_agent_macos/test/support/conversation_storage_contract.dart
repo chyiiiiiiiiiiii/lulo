@@ -64,6 +64,37 @@ void runConversationStorageContract({
     expect(turns[3].status, TurnStatus.cancelled);
   });
 
+  test('voice refinement provenance round-trips with its user turn', () async {
+    final TranscriptRefinement refinement = TranscriptRefinement(
+      rawTranscript: '我用 flutter',
+      proposedTranscript: '我用 Flutter',
+      selectedTranscript: '我用 Flutter',
+      status: TranscriptRefinementStatus.applied,
+      edits: const <TranscriptEdit>[
+        TranscriptEdit(
+          rawStart: 3,
+          rawEnd: 10,
+          replacement: 'Flutter',
+          kind: TranscriptEditKind.vocabulary,
+        ),
+      ],
+      rejectionReasons: const <TranscriptRejectionReason>[],
+      refinerId: 'deterministic',
+      refinerVersion: '1',
+      elapsed: const Duration(milliseconds: 2),
+    );
+    await store.saveUserTurn(conversation, Turn.voice(voiceInput: refinement));
+
+    final Turn restored = (await store.loadTurns(conversation)).single;
+    expect(restored.text, '我用 Flutter');
+    expect(restored.voiceInput?.rawTranscript, '我用 flutter');
+    expect(restored.voiceInput?.proposedTranscript, '我用 Flutter');
+    expect(
+      restored.voiceInput?.edits.single.kind,
+      TranscriptEditKind.vocabulary,
+    );
+  });
+
   test('conversations do not leak into each other', () async {
     await store.saveUserTurn(conversation, userTurn('mine'));
     await store.saveUserTurn(other, userTurn('theirs'));

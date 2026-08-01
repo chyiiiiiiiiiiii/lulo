@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:agent_core/agent_core.dart';
@@ -33,6 +34,24 @@ class TurnRows extends Table {
 
   /// When it was saved, in milliseconds since the epoch.
   IntColumn get savedAtMs => integer()();
+
+  /// Exact recognizer output for a voice-authored user turn.
+  TextColumn get rawTranscript => text().nullable()();
+
+  /// Applied proposal, absent when raw text was selected.
+  TextColumn get refinedTranscript => text().nullable()();
+
+  /// [TranscriptRefinementStatus.name] for voice input.
+  TextColumn get refinementStatus => text().nullable()();
+
+  /// Stable refiner implementation identity.
+  TextColumn get refinerId => text().nullable()();
+
+  /// Refiner implementation or model version.
+  TextColumn get refinerVersion => text().nullable()();
+
+  /// JSON edit trail, rejection categories, and elapsed microseconds.
+  TextColumn get refinementEditsJson => text().nullable()();
 }
 
 /// The SQLite database holding every conversation.
@@ -54,10 +73,20 @@ final class ConversationDatabase extends _$ConversationDatabase {
   ConversationDatabase.atFile(File file) : super(NativeDatabase(file));
 
   @override
-  int get schemaVersion => 1;
+  int get schemaVersion => 2;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
+    onUpgrade: (Migrator migrator, int from, int to) async {
+      if (from < 2) {
+        await migrator.addColumn(turnRows, turnRows.rawTranscript);
+        await migrator.addColumn(turnRows, turnRows.refinedTranscript);
+        await migrator.addColumn(turnRows, turnRows.refinementStatus);
+        await migrator.addColumn(turnRows, turnRows.refinerId);
+        await migrator.addColumn(turnRows, turnRows.refinerVersion);
+        await migrator.addColumn(turnRows, turnRows.refinementEditsJson);
+      }
+    },
     beforeOpen: (OpeningDetails details) async {
       await customStatement('PRAGMA journal_mode = WAL');
       // NORMAL, not FULL: in WAL mode NORMAL still cannot corrupt the file —
@@ -159,6 +188,7 @@ final class DriftConversationStorageService
   Future<void> dispose() => _database.close();
 
   Future<void> _insert(ConversationId conversationId, Turn turn) async {
+    final TranscriptRefinement? voiceInput = turn.voiceInput;
     await _database
         .into(_database.turnRows)
         .insert(
@@ -168,15 +198,97 @@ final class DriftConversationStorageService
             status: turn.status.name,
             content: turn.text,
             savedAtMs: _clock().millisecondsSinceEpoch,
+            rawTranscript: Value<String?>(voiceInput?.rawTranscript),
+            refinedTranscript: Value<String?>(
+              voiceInput?.status == TranscriptRefinementStatus.applied
+                  ? voiceInput?.proposedTranscript
+                  : null,
+            ),
+            refinementStatus: Value<String?>(voiceInput?.status.name),
+            refinerId: Value<String?>(voiceInput?.refinerId),
+            refinerVersion: Value<String?>(voiceInput?.refinerVersion),
+            refinementEditsJson: Value<String?>(
+              voiceInput == null ? null : _encodeRefinementDetails(voiceInput),
+            ),
           ),
         );
   }
 
   Turn _turnFromRow(TurnRow row) {
-    return Turn(
+    final Turn plain = Turn(
       role: row.role == _userRole ? TurnRole.user : TurnRole.assistant,
       text: row.content,
       status: TurnStatus.values.asNameMap()[row.status] ?? TurnStatus.failed,
     );
+    if (plain.role != TurnRole.user ||
+        plain.status != TurnStatus.completed ||
+        row.rawTranscript == null ||
+        row.refinementStatus == null ||
+        row.refinerId == null ||
+        row.refinerVersion == null ||
+        row.refinementEditsJson == null) {
+      return plain;
+    }
+    try {
+      final TranscriptRefinementStatus? status = TranscriptRefinementStatus
+          .values
+          .asNameMap()[row.refinementStatus];
+      if (status == null) {
+        return plain;
+      }
+      final Map<String, Object?> details =
+          jsonDecode(row.refinementEditsJson!) as Map<String, Object?>;
+      final List<Object?> rawEdits = details['edits']! as List<Object?>;
+      final List<Object?> rawReasons =
+          details['rejectionReasons']! as List<Object?>;
+      final TranscriptRefinement refinement = TranscriptRefinement(
+        rawTranscript: row.rawTranscript!,
+        proposedTranscript: row.refinedTranscript,
+        selectedTranscript: row.content,
+        status: status,
+        edits: rawEdits
+            .map((Object? value) {
+              final Map<String, Object?> edit = value! as Map<String, Object?>;
+              return TranscriptEdit(
+                rawStart: edit['rawStart']! as int,
+                rawEnd: edit['rawEnd']! as int,
+                replacement: edit['replacement']! as String,
+                kind: TranscriptEditKind.values.asNameMap()[edit['kind']]!,
+              );
+            })
+            .toList(growable: false),
+        rejectionReasons: rawReasons
+            .map(
+              (Object? value) =>
+                  TranscriptRejectionReason.values.asNameMap()[value]!,
+            )
+            .toList(growable: false),
+        refinerId: row.refinerId!,
+        refinerVersion: row.refinerVersion!,
+        elapsed: Duration(microseconds: details['elapsedMicros']! as int),
+      );
+      return Turn.voice(voiceInput: refinement);
+    } on Object {
+      return plain;
+    }
   }
 }
+
+String _encodeRefinementDetails(TranscriptRefinement refinement) =>
+    jsonEncode(<String, Object?>{
+      'edits': <Object?>[
+        for (final TranscriptEdit edit in refinement.edits)
+          <String, Object?>{
+            'rawStart': edit.rawStart,
+            'rawEnd': edit.rawEnd,
+            'replacement': edit.replacement,
+            'kind': edit.kind.name,
+          },
+      ],
+      'rejectionReasons': <String>[
+        for (final TranscriptRejectionReason reason
+            in refinement.rejectionReasons)
+          reason.name,
+      ],
+      'elapsedMicros': refinement.elapsed.inMicroseconds,
+    });

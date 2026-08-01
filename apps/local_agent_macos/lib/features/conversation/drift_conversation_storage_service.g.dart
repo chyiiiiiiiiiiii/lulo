@@ -72,6 +72,73 @@ class $TurnRowsTable extends TurnRows with TableInfo<$TurnRowsTable, TurnRow> {
     type: DriftSqlType.int,
     requiredDuringInsert: true,
   );
+  static const VerificationMeta _rawTranscriptMeta = const VerificationMeta(
+    'rawTranscript',
+  );
+  @override
+  late final GeneratedColumn<String> rawTranscript = GeneratedColumn<String>(
+    'raw_transcript',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _refinedTranscriptMeta = const VerificationMeta(
+    'refinedTranscript',
+  );
+  @override
+  late final GeneratedColumn<String> refinedTranscript =
+      GeneratedColumn<String>(
+        'refined_transcript',
+        aliasedName,
+        true,
+        type: DriftSqlType.string,
+        requiredDuringInsert: false,
+      );
+  static const VerificationMeta _refinementStatusMeta = const VerificationMeta(
+    'refinementStatus',
+  );
+  @override
+  late final GeneratedColumn<String> refinementStatus = GeneratedColumn<String>(
+    'refinement_status',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _refinerIdMeta = const VerificationMeta(
+    'refinerId',
+  );
+  @override
+  late final GeneratedColumn<String> refinerId = GeneratedColumn<String>(
+    'refiner_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _refinerVersionMeta = const VerificationMeta(
+    'refinerVersion',
+  );
+  @override
+  late final GeneratedColumn<String> refinerVersion = GeneratedColumn<String>(
+    'refiner_version',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _refinementEditsJsonMeta =
+      const VerificationMeta('refinementEditsJson');
+  @override
+  late final GeneratedColumn<String> refinementEditsJson =
+      GeneratedColumn<String>(
+        'refinement_edits_json',
+        aliasedName,
+        true,
+        type: DriftSqlType.string,
+        requiredDuringInsert: false,
+      );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -80,6 +147,12 @@ class $TurnRowsTable extends TurnRows with TableInfo<$TurnRowsTable, TurnRow> {
     status,
     content,
     savedAtMs,
+    rawTranscript,
+    refinedTranscript,
+    refinementStatus,
+    refinerId,
+    refinerVersion,
+    refinementEditsJson,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -139,6 +212,57 @@ class $TurnRowsTable extends TurnRows with TableInfo<$TurnRowsTable, TurnRow> {
     } else if (isInserting) {
       context.missing(_savedAtMsMeta);
     }
+    if (data.containsKey('raw_transcript')) {
+      context.handle(
+        _rawTranscriptMeta,
+        rawTranscript.isAcceptableOrUnknown(
+          data['raw_transcript']!,
+          _rawTranscriptMeta,
+        ),
+      );
+    }
+    if (data.containsKey('refined_transcript')) {
+      context.handle(
+        _refinedTranscriptMeta,
+        refinedTranscript.isAcceptableOrUnknown(
+          data['refined_transcript']!,
+          _refinedTranscriptMeta,
+        ),
+      );
+    }
+    if (data.containsKey('refinement_status')) {
+      context.handle(
+        _refinementStatusMeta,
+        refinementStatus.isAcceptableOrUnknown(
+          data['refinement_status']!,
+          _refinementStatusMeta,
+        ),
+      );
+    }
+    if (data.containsKey('refiner_id')) {
+      context.handle(
+        _refinerIdMeta,
+        refinerId.isAcceptableOrUnknown(data['refiner_id']!, _refinerIdMeta),
+      );
+    }
+    if (data.containsKey('refiner_version')) {
+      context.handle(
+        _refinerVersionMeta,
+        refinerVersion.isAcceptableOrUnknown(
+          data['refiner_version']!,
+          _refinerVersionMeta,
+        ),
+      );
+    }
+    if (data.containsKey('refinement_edits_json')) {
+      context.handle(
+        _refinementEditsJsonMeta,
+        refinementEditsJson.isAcceptableOrUnknown(
+          data['refinement_edits_json']!,
+          _refinementEditsJsonMeta,
+        ),
+      );
+    }
     return context;
   }
 
@@ -172,6 +296,30 @@ class $TurnRowsTable extends TurnRows with TableInfo<$TurnRowsTable, TurnRow> {
         DriftSqlType.int,
         data['${effectivePrefix}saved_at_ms'],
       )!,
+      rawTranscript: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}raw_transcript'],
+      ),
+      refinedTranscript: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}refined_transcript'],
+      ),
+      refinementStatus: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}refinement_status'],
+      ),
+      refinerId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}refiner_id'],
+      ),
+      refinerVersion: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}refiner_version'],
+      ),
+      refinementEditsJson: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}refinement_edits_json'],
+      ),
     );
   }
 
@@ -200,6 +348,24 @@ class TurnRow extends DataClass implements Insertable<TurnRow> {
 
   /// When it was saved, in milliseconds since the epoch.
   final int savedAtMs;
+
+  /// Exact recognizer output for a voice-authored user turn.
+  final String? rawTranscript;
+
+  /// Applied proposal, absent when raw text was selected.
+  final String? refinedTranscript;
+
+  /// [TranscriptRefinementStatus.name] for voice input.
+  final String? refinementStatus;
+
+  /// Stable refiner implementation identity.
+  final String? refinerId;
+
+  /// Refiner implementation or model version.
+  final String? refinerVersion;
+
+  /// JSON edit trail, rejection categories, and elapsed microseconds.
+  final String? refinementEditsJson;
   const TurnRow({
     required this.id,
     required this.conversationId,
@@ -207,6 +373,12 @@ class TurnRow extends DataClass implements Insertable<TurnRow> {
     required this.status,
     required this.content,
     required this.savedAtMs,
+    this.rawTranscript,
+    this.refinedTranscript,
+    this.refinementStatus,
+    this.refinerId,
+    this.refinerVersion,
+    this.refinementEditsJson,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -217,6 +389,24 @@ class TurnRow extends DataClass implements Insertable<TurnRow> {
     map['status'] = Variable<String>(status);
     map['content'] = Variable<String>(content);
     map['saved_at_ms'] = Variable<int>(savedAtMs);
+    if (!nullToAbsent || rawTranscript != null) {
+      map['raw_transcript'] = Variable<String>(rawTranscript);
+    }
+    if (!nullToAbsent || refinedTranscript != null) {
+      map['refined_transcript'] = Variable<String>(refinedTranscript);
+    }
+    if (!nullToAbsent || refinementStatus != null) {
+      map['refinement_status'] = Variable<String>(refinementStatus);
+    }
+    if (!nullToAbsent || refinerId != null) {
+      map['refiner_id'] = Variable<String>(refinerId);
+    }
+    if (!nullToAbsent || refinerVersion != null) {
+      map['refiner_version'] = Variable<String>(refinerVersion);
+    }
+    if (!nullToAbsent || refinementEditsJson != null) {
+      map['refinement_edits_json'] = Variable<String>(refinementEditsJson);
+    }
     return map;
   }
 
@@ -228,6 +418,24 @@ class TurnRow extends DataClass implements Insertable<TurnRow> {
       status: Value(status),
       content: Value(content),
       savedAtMs: Value(savedAtMs),
+      rawTranscript: rawTranscript == null && nullToAbsent
+          ? const Value.absent()
+          : Value(rawTranscript),
+      refinedTranscript: refinedTranscript == null && nullToAbsent
+          ? const Value.absent()
+          : Value(refinedTranscript),
+      refinementStatus: refinementStatus == null && nullToAbsent
+          ? const Value.absent()
+          : Value(refinementStatus),
+      refinerId: refinerId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(refinerId),
+      refinerVersion: refinerVersion == null && nullToAbsent
+          ? const Value.absent()
+          : Value(refinerVersion),
+      refinementEditsJson: refinementEditsJson == null && nullToAbsent
+          ? const Value.absent()
+          : Value(refinementEditsJson),
     );
   }
 
@@ -243,6 +451,16 @@ class TurnRow extends DataClass implements Insertable<TurnRow> {
       status: serializer.fromJson<String>(json['status']),
       content: serializer.fromJson<String>(json['content']),
       savedAtMs: serializer.fromJson<int>(json['savedAtMs']),
+      rawTranscript: serializer.fromJson<String?>(json['rawTranscript']),
+      refinedTranscript: serializer.fromJson<String?>(
+        json['refinedTranscript'],
+      ),
+      refinementStatus: serializer.fromJson<String?>(json['refinementStatus']),
+      refinerId: serializer.fromJson<String?>(json['refinerId']),
+      refinerVersion: serializer.fromJson<String?>(json['refinerVersion']),
+      refinementEditsJson: serializer.fromJson<String?>(
+        json['refinementEditsJson'],
+      ),
     );
   }
   @override
@@ -255,6 +473,12 @@ class TurnRow extends DataClass implements Insertable<TurnRow> {
       'status': serializer.toJson<String>(status),
       'content': serializer.toJson<String>(content),
       'savedAtMs': serializer.toJson<int>(savedAtMs),
+      'rawTranscript': serializer.toJson<String?>(rawTranscript),
+      'refinedTranscript': serializer.toJson<String?>(refinedTranscript),
+      'refinementStatus': serializer.toJson<String?>(refinementStatus),
+      'refinerId': serializer.toJson<String?>(refinerId),
+      'refinerVersion': serializer.toJson<String?>(refinerVersion),
+      'refinementEditsJson': serializer.toJson<String?>(refinementEditsJson),
     };
   }
 
@@ -265,6 +489,12 @@ class TurnRow extends DataClass implements Insertable<TurnRow> {
     String? status,
     String? content,
     int? savedAtMs,
+    Value<String?> rawTranscript = const Value.absent(),
+    Value<String?> refinedTranscript = const Value.absent(),
+    Value<String?> refinementStatus = const Value.absent(),
+    Value<String?> refinerId = const Value.absent(),
+    Value<String?> refinerVersion = const Value.absent(),
+    Value<String?> refinementEditsJson = const Value.absent(),
   }) => TurnRow(
     id: id ?? this.id,
     conversationId: conversationId ?? this.conversationId,
@@ -272,6 +502,22 @@ class TurnRow extends DataClass implements Insertable<TurnRow> {
     status: status ?? this.status,
     content: content ?? this.content,
     savedAtMs: savedAtMs ?? this.savedAtMs,
+    rawTranscript: rawTranscript.present
+        ? rawTranscript.value
+        : this.rawTranscript,
+    refinedTranscript: refinedTranscript.present
+        ? refinedTranscript.value
+        : this.refinedTranscript,
+    refinementStatus: refinementStatus.present
+        ? refinementStatus.value
+        : this.refinementStatus,
+    refinerId: refinerId.present ? refinerId.value : this.refinerId,
+    refinerVersion: refinerVersion.present
+        ? refinerVersion.value
+        : this.refinerVersion,
+    refinementEditsJson: refinementEditsJson.present
+        ? refinementEditsJson.value
+        : this.refinementEditsJson,
   );
   TurnRow copyWithCompanion(TurnRowsCompanion data) {
     return TurnRow(
@@ -283,6 +529,22 @@ class TurnRow extends DataClass implements Insertable<TurnRow> {
       status: data.status.present ? data.status.value : this.status,
       content: data.content.present ? data.content.value : this.content,
       savedAtMs: data.savedAtMs.present ? data.savedAtMs.value : this.savedAtMs,
+      rawTranscript: data.rawTranscript.present
+          ? data.rawTranscript.value
+          : this.rawTranscript,
+      refinedTranscript: data.refinedTranscript.present
+          ? data.refinedTranscript.value
+          : this.refinedTranscript,
+      refinementStatus: data.refinementStatus.present
+          ? data.refinementStatus.value
+          : this.refinementStatus,
+      refinerId: data.refinerId.present ? data.refinerId.value : this.refinerId,
+      refinerVersion: data.refinerVersion.present
+          ? data.refinerVersion.value
+          : this.refinerVersion,
+      refinementEditsJson: data.refinementEditsJson.present
+          ? data.refinementEditsJson.value
+          : this.refinementEditsJson,
     );
   }
 
@@ -294,14 +556,32 @@ class TurnRow extends DataClass implements Insertable<TurnRow> {
           ..write('role: $role, ')
           ..write('status: $status, ')
           ..write('content: $content, ')
-          ..write('savedAtMs: $savedAtMs')
+          ..write('savedAtMs: $savedAtMs, ')
+          ..write('rawTranscript: $rawTranscript, ')
+          ..write('refinedTranscript: $refinedTranscript, ')
+          ..write('refinementStatus: $refinementStatus, ')
+          ..write('refinerId: $refinerId, ')
+          ..write('refinerVersion: $refinerVersion, ')
+          ..write('refinementEditsJson: $refinementEditsJson')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode =>
-      Object.hash(id, conversationId, role, status, content, savedAtMs);
+  int get hashCode => Object.hash(
+    id,
+    conversationId,
+    role,
+    status,
+    content,
+    savedAtMs,
+    rawTranscript,
+    refinedTranscript,
+    refinementStatus,
+    refinerId,
+    refinerVersion,
+    refinementEditsJson,
+  );
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -311,7 +591,13 @@ class TurnRow extends DataClass implements Insertable<TurnRow> {
           other.role == this.role &&
           other.status == this.status &&
           other.content == this.content &&
-          other.savedAtMs == this.savedAtMs);
+          other.savedAtMs == this.savedAtMs &&
+          other.rawTranscript == this.rawTranscript &&
+          other.refinedTranscript == this.refinedTranscript &&
+          other.refinementStatus == this.refinementStatus &&
+          other.refinerId == this.refinerId &&
+          other.refinerVersion == this.refinerVersion &&
+          other.refinementEditsJson == this.refinementEditsJson);
 }
 
 class TurnRowsCompanion extends UpdateCompanion<TurnRow> {
@@ -321,6 +607,12 @@ class TurnRowsCompanion extends UpdateCompanion<TurnRow> {
   final Value<String> status;
   final Value<String> content;
   final Value<int> savedAtMs;
+  final Value<String?> rawTranscript;
+  final Value<String?> refinedTranscript;
+  final Value<String?> refinementStatus;
+  final Value<String?> refinerId;
+  final Value<String?> refinerVersion;
+  final Value<String?> refinementEditsJson;
   const TurnRowsCompanion({
     this.id = const Value.absent(),
     this.conversationId = const Value.absent(),
@@ -328,6 +620,12 @@ class TurnRowsCompanion extends UpdateCompanion<TurnRow> {
     this.status = const Value.absent(),
     this.content = const Value.absent(),
     this.savedAtMs = const Value.absent(),
+    this.rawTranscript = const Value.absent(),
+    this.refinedTranscript = const Value.absent(),
+    this.refinementStatus = const Value.absent(),
+    this.refinerId = const Value.absent(),
+    this.refinerVersion = const Value.absent(),
+    this.refinementEditsJson = const Value.absent(),
   });
   TurnRowsCompanion.insert({
     this.id = const Value.absent(),
@@ -336,6 +634,12 @@ class TurnRowsCompanion extends UpdateCompanion<TurnRow> {
     required String status,
     required String content,
     required int savedAtMs,
+    this.rawTranscript = const Value.absent(),
+    this.refinedTranscript = const Value.absent(),
+    this.refinementStatus = const Value.absent(),
+    this.refinerId = const Value.absent(),
+    this.refinerVersion = const Value.absent(),
+    this.refinementEditsJson = const Value.absent(),
   }) : conversationId = Value(conversationId),
        role = Value(role),
        status = Value(status),
@@ -348,6 +652,12 @@ class TurnRowsCompanion extends UpdateCompanion<TurnRow> {
     Expression<String>? status,
     Expression<String>? content,
     Expression<int>? savedAtMs,
+    Expression<String>? rawTranscript,
+    Expression<String>? refinedTranscript,
+    Expression<String>? refinementStatus,
+    Expression<String>? refinerId,
+    Expression<String>? refinerVersion,
+    Expression<String>? refinementEditsJson,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
@@ -356,6 +666,13 @@ class TurnRowsCompanion extends UpdateCompanion<TurnRow> {
       if (status != null) 'status': status,
       if (content != null) 'content': content,
       if (savedAtMs != null) 'saved_at_ms': savedAtMs,
+      if (rawTranscript != null) 'raw_transcript': rawTranscript,
+      if (refinedTranscript != null) 'refined_transcript': refinedTranscript,
+      if (refinementStatus != null) 'refinement_status': refinementStatus,
+      if (refinerId != null) 'refiner_id': refinerId,
+      if (refinerVersion != null) 'refiner_version': refinerVersion,
+      if (refinementEditsJson != null)
+        'refinement_edits_json': refinementEditsJson,
     });
   }
 
@@ -366,6 +683,12 @@ class TurnRowsCompanion extends UpdateCompanion<TurnRow> {
     Value<String>? status,
     Value<String>? content,
     Value<int>? savedAtMs,
+    Value<String?>? rawTranscript,
+    Value<String?>? refinedTranscript,
+    Value<String?>? refinementStatus,
+    Value<String?>? refinerId,
+    Value<String?>? refinerVersion,
+    Value<String?>? refinementEditsJson,
   }) {
     return TurnRowsCompanion(
       id: id ?? this.id,
@@ -374,6 +697,12 @@ class TurnRowsCompanion extends UpdateCompanion<TurnRow> {
       status: status ?? this.status,
       content: content ?? this.content,
       savedAtMs: savedAtMs ?? this.savedAtMs,
+      rawTranscript: rawTranscript ?? this.rawTranscript,
+      refinedTranscript: refinedTranscript ?? this.refinedTranscript,
+      refinementStatus: refinementStatus ?? this.refinementStatus,
+      refinerId: refinerId ?? this.refinerId,
+      refinerVersion: refinerVersion ?? this.refinerVersion,
+      refinementEditsJson: refinementEditsJson ?? this.refinementEditsJson,
     );
   }
 
@@ -398,6 +727,26 @@ class TurnRowsCompanion extends UpdateCompanion<TurnRow> {
     if (savedAtMs.present) {
       map['saved_at_ms'] = Variable<int>(savedAtMs.value);
     }
+    if (rawTranscript.present) {
+      map['raw_transcript'] = Variable<String>(rawTranscript.value);
+    }
+    if (refinedTranscript.present) {
+      map['refined_transcript'] = Variable<String>(refinedTranscript.value);
+    }
+    if (refinementStatus.present) {
+      map['refinement_status'] = Variable<String>(refinementStatus.value);
+    }
+    if (refinerId.present) {
+      map['refiner_id'] = Variable<String>(refinerId.value);
+    }
+    if (refinerVersion.present) {
+      map['refiner_version'] = Variable<String>(refinerVersion.value);
+    }
+    if (refinementEditsJson.present) {
+      map['refinement_edits_json'] = Variable<String>(
+        refinementEditsJson.value,
+      );
+    }
     return map;
   }
 
@@ -409,7 +758,13 @@ class TurnRowsCompanion extends UpdateCompanion<TurnRow> {
           ..write('role: $role, ')
           ..write('status: $status, ')
           ..write('content: $content, ')
-          ..write('savedAtMs: $savedAtMs')
+          ..write('savedAtMs: $savedAtMs, ')
+          ..write('rawTranscript: $rawTranscript, ')
+          ..write('refinedTranscript: $refinedTranscript, ')
+          ..write('refinementStatus: $refinementStatus, ')
+          ..write('refinerId: $refinerId, ')
+          ..write('refinerVersion: $refinerVersion, ')
+          ..write('refinementEditsJson: $refinementEditsJson')
           ..write(')'))
         .toString();
   }
@@ -435,6 +790,12 @@ typedef $$TurnRowsTableCreateCompanionBuilder =
       required String status,
       required String content,
       required int savedAtMs,
+      Value<String?> rawTranscript,
+      Value<String?> refinedTranscript,
+      Value<String?> refinementStatus,
+      Value<String?> refinerId,
+      Value<String?> refinerVersion,
+      Value<String?> refinementEditsJson,
     });
 typedef $$TurnRowsTableUpdateCompanionBuilder =
     TurnRowsCompanion Function({
@@ -444,6 +805,12 @@ typedef $$TurnRowsTableUpdateCompanionBuilder =
       Value<String> status,
       Value<String> content,
       Value<int> savedAtMs,
+      Value<String?> rawTranscript,
+      Value<String?> refinedTranscript,
+      Value<String?> refinementStatus,
+      Value<String?> refinerId,
+      Value<String?> refinerVersion,
+      Value<String?> refinementEditsJson,
     });
 
 class $$TurnRowsTableFilterComposer
@@ -482,6 +849,36 @@ class $$TurnRowsTableFilterComposer
 
   ColumnFilters<int> get savedAtMs => $composableBuilder(
     column: $table.savedAtMs,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get rawTranscript => $composableBuilder(
+    column: $table.rawTranscript,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get refinedTranscript => $composableBuilder(
+    column: $table.refinedTranscript,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get refinementStatus => $composableBuilder(
+    column: $table.refinementStatus,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get refinerId => $composableBuilder(
+    column: $table.refinerId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get refinerVersion => $composableBuilder(
+    column: $table.refinerVersion,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get refinementEditsJson => $composableBuilder(
+    column: $table.refinementEditsJson,
     builder: (column) => ColumnFilters(column),
   );
 }
@@ -524,6 +921,36 @@ class $$TurnRowsTableOrderingComposer
     column: $table.savedAtMs,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<String> get rawTranscript => $composableBuilder(
+    column: $table.rawTranscript,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get refinedTranscript => $composableBuilder(
+    column: $table.refinedTranscript,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get refinementStatus => $composableBuilder(
+    column: $table.refinementStatus,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get refinerId => $composableBuilder(
+    column: $table.refinerId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get refinerVersion => $composableBuilder(
+    column: $table.refinerVersion,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get refinementEditsJson => $composableBuilder(
+    column: $table.refinementEditsJson,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$TurnRowsTableAnnotationComposer
@@ -554,6 +981,34 @@ class $$TurnRowsTableAnnotationComposer
 
   GeneratedColumn<int> get savedAtMs =>
       $composableBuilder(column: $table.savedAtMs, builder: (column) => column);
+
+  GeneratedColumn<String> get rawTranscript => $composableBuilder(
+    column: $table.rawTranscript,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get refinedTranscript => $composableBuilder(
+    column: $table.refinedTranscript,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get refinementStatus => $composableBuilder(
+    column: $table.refinementStatus,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get refinerId =>
+      $composableBuilder(column: $table.refinerId, builder: (column) => column);
+
+  GeneratedColumn<String> get refinerVersion => $composableBuilder(
+    column: $table.refinerVersion,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get refinementEditsJson => $composableBuilder(
+    column: $table.refinementEditsJson,
+    builder: (column) => column,
+  );
 }
 
 class $$TurnRowsTableTableManager
@@ -593,6 +1048,12 @@ class $$TurnRowsTableTableManager
                 Value<String> status = const Value.absent(),
                 Value<String> content = const Value.absent(),
                 Value<int> savedAtMs = const Value.absent(),
+                Value<String?> rawTranscript = const Value.absent(),
+                Value<String?> refinedTranscript = const Value.absent(),
+                Value<String?> refinementStatus = const Value.absent(),
+                Value<String?> refinerId = const Value.absent(),
+                Value<String?> refinerVersion = const Value.absent(),
+                Value<String?> refinementEditsJson = const Value.absent(),
               }) => TurnRowsCompanion(
                 id: id,
                 conversationId: conversationId,
@@ -600,6 +1061,12 @@ class $$TurnRowsTableTableManager
                 status: status,
                 content: content,
                 savedAtMs: savedAtMs,
+                rawTranscript: rawTranscript,
+                refinedTranscript: refinedTranscript,
+                refinementStatus: refinementStatus,
+                refinerId: refinerId,
+                refinerVersion: refinerVersion,
+                refinementEditsJson: refinementEditsJson,
               ),
           createCompanionCallback:
               ({
@@ -609,6 +1076,12 @@ class $$TurnRowsTableTableManager
                 required String status,
                 required String content,
                 required int savedAtMs,
+                Value<String?> rawTranscript = const Value.absent(),
+                Value<String?> refinedTranscript = const Value.absent(),
+                Value<String?> refinementStatus = const Value.absent(),
+                Value<String?> refinerId = const Value.absent(),
+                Value<String?> refinerVersion = const Value.absent(),
+                Value<String?> refinementEditsJson = const Value.absent(),
               }) => TurnRowsCompanion.insert(
                 id: id,
                 conversationId: conversationId,
@@ -616,6 +1089,12 @@ class $$TurnRowsTableTableManager
                 status: status,
                 content: content,
                 savedAtMs: savedAtMs,
+                rawTranscript: rawTranscript,
+                refinedTranscript: refinedTranscript,
+                refinementStatus: refinementStatus,
+                refinerId: refinerId,
+                refinerVersion: refinerVersion,
+                refinementEditsJson: refinementEditsJson,
               ),
           withReferenceMapper: (p0) => p0
               .map((e) => (e.readTable(table), BaseReferences(db, table, e)))

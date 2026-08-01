@@ -2,6 +2,51 @@ import 'package:agent_core/agent_core.dart';
 import 'package:test/test.dart';
 
 void main() {
+  test('a completed user turn can retain voice refinement provenance', () {
+    final TranscriptRefinement refinement = TranscriptRefinement(
+      rawTranscript: '我用 flutter',
+      proposedTranscript: '我用 Flutter',
+      selectedTranscript: '我用 Flutter',
+      status: TranscriptRefinementStatus.applied,
+      edits: const <TranscriptEdit>[
+        TranscriptEdit(
+          rawStart: 3,
+          rawEnd: 10,
+          replacement: 'Flutter',
+          kind: TranscriptEditKind.vocabulary,
+        ),
+      ],
+      rejectionReasons: const <TranscriptRejectionReason>[],
+      refinerId: 'deterministic',
+      refinerVersion: '1',
+      elapsed: const Duration(milliseconds: 2),
+    );
+    final Turn turn = Turn.voice(voiceInput: refinement);
+
+    expect(turn.voiceInput?.rawTranscript, '我用 flutter');
+    expect(turn.copyWith().voiceInput, same(refinement));
+  });
+
+  test('voice provenance is rejected on incompatible turns', () {
+    final TranscriptRefinement refinement = TranscriptRefinement(
+      rawTranscript: 'raw',
+      proposedTranscript: null,
+      selectedTranscript: 'raw',
+      status: TranscriptRefinementStatus.unchanged,
+      edits: const <TranscriptEdit>[],
+      rejectionReasons: const <TranscriptRejectionReason>[],
+      refinerId: 'deterministic',
+      refinerVersion: '1',
+      elapsed: Duration.zero,
+    );
+
+    expect(
+      () =>
+          Turn.voice(voiceInput: refinement).copyWith(role: TurnRole.assistant),
+      throwsArgumentError,
+    );
+  });
+
   test('appending a streaming assistant turn leaves completed turns unchanged', () {
     // Mutation caught: changing Turn.append to mutate shared state or append to
     // the wrong turn would alter the completed user text or leave the delta out.
