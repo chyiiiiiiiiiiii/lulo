@@ -27,6 +27,7 @@ flowchart TD
     voice -. "the text pipeline it coordinates" .-> conv["features/conversation.md<br/>turns, generation, drift storage"]
 
     voice -. "who speaks" .-> set["features/settings.md<br/>five choices, and who acts on each"]
+    conv -. "who answers and what it remembers" .-> profile["features/agent-profile.md<br/>personality, relevant structured memory"]
     pres -. "window behaviour" .-> set
     model -. "modelPath, the expensive one" .-> set
 ```
@@ -59,6 +60,7 @@ explanation.
 | [features/presence.md](features/presence.md) | `DesktopPanelController.swift`, `lib/features/presence/` | Written |
 | [features/model.md](features/model.md) | `lib/features/model/`, `native/inference_service` | Written |
 | [features/settings.md](features/settings.md) | `lib/features/settings/`, `lib/app/app.dart` | Written |
+| [features/agent-profile.md](features/agent-profile.md) | `packages/agent_core/lib/src/agent_profile/`, `lib/features/agent_profile/` | Written |
 
 ## Decisions
 
@@ -70,6 +72,6 @@ explanation.
 
 ## A note on branches
 
-This describes `test/all-of-today`, where the voice work, the conversation
-memory, the model-download fix and the full-duplex repair are integrated.
-`main` is behind it and carries none of this.
+This describes `main`, where the voice work, conversation memory,
+model-download repair, full-duplex pipeline and developer agent profile are
+integrated.

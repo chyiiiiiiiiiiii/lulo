@@ -132,6 +132,23 @@ restoration, and the conversation's place is kept in memory only
 remembered one means macOS restores the orb's frame on the next launch and the
 conversation opens at orb size. See [presence.md](presence.md).
 
+## Deferred public profile experience
+
+The developer profile is deliberately configured by JSON first; see
+[agent-profile.md](agent-profile.md). A public release should expose the same
+typed schema through human controls rather than showing a raw system prompt:
+
+- a short conversational first-run setup;
+- personality, language, voice and answer-length controls;
+- memory proposals that require confirmation by default;
+- source, global/project scope, edit, disable and delete actions per memory;
+- sensitive categories that are never saved automatically;
+- pause memory, export data and erase-all controls;
+- an advanced **Additional instructions** field for experienced users.
+
+Automatic extraction and semantic retrieval remain disabled until those
+controls and their privacy review exist.
+
 ## Traps
 
 1. **Showing the sheet before `load()` returns.** One flip then writes the
