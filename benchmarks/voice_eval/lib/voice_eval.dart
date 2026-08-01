@@ -2,3 +2,5 @@
 library;
 
 export 'src/corpus.dart';
+export 'src/text_normalizer.dart';
+export 'src/transcript_metrics.dart';
