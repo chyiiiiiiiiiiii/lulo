@@ -61,11 +61,17 @@ final class LocalModelConfig {
 /// reliably carry an instruction across a long conversation, and thirty
 /// tokens is a cheap way to not depend on it doing so.
 String plainProseInstruction(String prompt) => _cjk.hasMatch(prompt)
-    ? '請用口語化的散文回答，不要使用 Markdown：不要星號、井號標題、分隔線、'
-          '條列或編號清單。用完整的句子，像說話一樣。'
-    : 'Reply in plain conversational prose. Do not use Markdown: no '
-          'asterisks, no hash headings, no horizontal rules, no bullet or '
-          'numbered lists. Write in full sentences, as if speaking aloud.';
+    ? '使用者的話來自語音辨識，可能有聽錯的字，尤其是專有名詞；'
+          '請依上下文理解他真正的意思，不要照字面解釋不存在的詞。'
+          '請用繁體中文、口語化的散文回答，不要使用簡體字。不要使用 Markdown：'
+          '不要星號、井號標題、分隔線、條列或編號清單。用完整的句子，'
+          '像說話一樣。'
+    : "The user's words come from speech recognition and may contain "
+          'misheard words, especially proper nouns; read them for meaning '
+          'rather than explaining a term that does not exist. Reply in plain '
+          'conversational prose. Do not use Markdown: no asterisks, no hash '
+          'headings, no horizontal rules, no bullet or numbered lists. Write '
+          'in full sentences, as if speaking aloud.';
 
 /// Anything CJK: the question's language decides the instruction's.
 final RegExp _cjk = RegExp(r'[\u4e00-\u9fff\u3040-\u30ff\uac00-\ud7af]');

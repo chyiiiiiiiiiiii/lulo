@@ -622,13 +622,20 @@ void main() {
 
     expect(host.generationRequests, hasLength(2));
     // "Markdown" is the term in both, so the tell is the surrounding prose.
-    expect(host.generationRequests[0].prompt, contains('請用口語'));
+    expect(host.generationRequests[0].prompt, contains('口語化'));
+    // Traditional, not Simplified: the model answered 咱们/东西/开发 to a
+    // Traditional question because nothing said which script to use.
+    expect(host.generationRequests[0].prompt, contains('繁體'));
+    // The question arrives from a speech recogniser, so it can be misheard.
+    // Saying so costs nothing and lets the answer interpret rather than take
+    // "Frant" literally and explain a thing that does not exist.
+    expect(host.generationRequests[0].prompt, contains('語音辨識'));
     expect(
       host.generationRequests[0].prompt,
       isNot(contains('Reply in plain')),
     );
     expect(host.generationRequests[1].prompt, contains('Reply in plain'));
-    expect(host.generationRequests[1].prompt, isNot(contains('請用口語')));
+    expect(host.generationRequests[1].prompt, isNot(contains('口語化')));
 
     await chinese.cancel();
     await english.cancel();
