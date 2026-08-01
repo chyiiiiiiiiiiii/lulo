@@ -28,8 +28,13 @@ final class AppComposition {
     ModelDownloadManager? modelDownloads,
     this.catalog = modelCatalog,
     this.voiceService,
+    TranscriptRefiner? transcriptRefiner,
+    List<String> Function()? protectedVocabulary,
     ValueNotifier<String>? ttsVoice,
   }) : ttsVoice = ttsVoice ?? ValueNotifier<String>('ryan'),
+       transcriptRefiner =
+           transcriptRefiner ?? const DeterministicTranscriptRefiner(),
+       protectedVocabulary = protectedVocabulary ?? _emptyVocabulary,
        _changeModel = changeModel ?? _keepThePreview,
        settingsStore = settingsStore ?? InMemorySettingsStore(),
        modelDownloads = modelDownloads ?? _downloadsNowhere(),
@@ -57,6 +62,12 @@ final class AppComposition {
   /// The ears and mouth, or null where the surface cannot listen — widget
   /// tests, the preview, and the native test host.
   final VoiceService? voiceService;
+
+  /// Refines final voice transcripts before conversation submission.
+  final TranscriptRefiner transcriptRefiner;
+
+  /// Latest profile vocabulary, read at the moment an utterance settles.
+  final List<String> Function() protectedVocabulary;
 
   /// Who speaks the answers aloud right now; settings keep it current.
   final ValueNotifier<String> ttsVoice;
@@ -133,3 +144,5 @@ final class AppComposition {
     await _disposeServices();
   }
 }
+
+List<String> _emptyVocabulary() => const <String>[];

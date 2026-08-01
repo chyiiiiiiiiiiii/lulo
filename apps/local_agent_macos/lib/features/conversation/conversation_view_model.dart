@@ -131,7 +131,7 @@ final class ConversationViewModel extends ChangeNotifier {
   ValueListenable<bool> get canSubmitListenable => _canSubmit;
 
   /// Starts generation for a normalized non-empty user message.
-  Future<void> submit(String text) async {
+  Future<void> submit(String text, {TranscriptRefinement? voiceInput}) async {
     final String prompt = text.trim();
     if (prompt.isEmpty || !canSubmit) {
       return;
@@ -150,11 +150,9 @@ final class ConversationViewModel extends ChangeNotifier {
     // and a history ending in the very question being asked would put it to
     // the model twice.
     final List<Turn> priorTurns = _projection.completedTurns;
-    final Turn userTurn = Turn(
-      role: TurnRole.user,
-      text: prompt,
-      status: TurnStatus.completed,
-    );
+    final Turn userTurn = voiceInput == null
+        ? Turn(role: TurnRole.user, text: prompt, status: TurnStatus.completed)
+        : Turn.voice(voiceInput: voiceInput);
     _projection = ConversationProjection(
       completedTurns: <Turn>[..._projection.completedTurns, userTurn],
     );

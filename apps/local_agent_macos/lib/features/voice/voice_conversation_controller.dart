@@ -49,13 +49,24 @@ final class VoiceConversationController extends ChangeNotifier {
   VoiceConversationController({
     required VoiceService voice,
     required ConversationViewModel conversation,
+    TranscriptRefiner transcriptRefiner = const _RawTranscriptRefiner(),
+    List<String> Function() protectedVocabulary = _noProtectedVocabulary,
     BatchScheduler utteranceScheduler = const TimerBatchScheduler(),
     DateTime Function() now = DateTime.now,
-  }) : this._(voice, conversation, utteranceScheduler, now);
+  }) : this._(
+         voice,
+         conversation,
+         transcriptRefiner,
+         protectedVocabulary,
+         utteranceScheduler,
+         now,
+       );
 
   VoiceConversationController._(
     this._voice,
     this._conversation,
+    this._transcriptRefiner,
+    this._protectedVocabulary,
     this._utteranceScheduler,
     this._now,
   ) {
@@ -72,6 +83,8 @@ final class VoiceConversationController extends ChangeNotifier {
 
   final VoiceService _voice;
   final ConversationViewModel _conversation;
+  final TranscriptRefiner _transcriptRefiner;
+  final List<String> Function() _protectedVocabulary;
   final BatchScheduler _utteranceScheduler;
   final DateTime Function() _now;
   StreamSubscription<VoiceEvent>? _events;
@@ -191,7 +204,8 @@ final class VoiceConversationController extends ChangeNotifier {
 
   /// An utterance finished while the previous answer was still winding
   /// down; submitted the moment the conversation can take it.
-  String? _pendingUtterance;
+  TranscriptRefinement? _pendingUtterance;
+  int _refinementEpoch = 0;
 
   /// How much of the streaming answer has already been sent to the voice.
   ///
@@ -345,6 +359,7 @@ final class VoiceConversationController extends ChangeNotifier {
       return;
     }
     _enabled = false;
+    _refinementEpoch += 1;
     _partialTranscript = '';
     _pendingUtterance = null;
     _pendingSettle?.cancel();
@@ -432,17 +447,7 @@ final class VoiceConversationController extends ChangeNotifier {
           _resumeInterruptedSpeech();
           return;
         }
-        if (_conversation.canSubmit) {
-          // A question was asked; the sentence it talked over is history.
-          // If the backstop already put that sentence back before the
-          // question settled, it is now talking over the answer to the
-          // question — so it is silenced here as well as dropped.
-          _cancelPendingResume();
-          if (_speaking || _speechRequested) {
-            unawaited(_voice.stopSpeaking());
-          }
-          unawaited(_conversation.submit(text));
-        } else {
+        if (!_conversation.canSubmit) {
           // A correction spoken wholly inside the post-final cooldown
           // never fired the yield from its partials; its final is the
           // last chance to interrupt the answer it replaces. Short
@@ -451,11 +456,8 @@ final class VoiceConversationController extends ChangeNotifier {
           if (_takesTheFloor(text)) {
             _yieldToTheUser(from: 'final');
           }
-          // The previous answer is still winding down from the
-          // interruption; the replacement question must not be dropped on
-          // the floor.
-          _pendingUtterance = text;
         }
+        unawaited(_refineFinalUtterance(text));
       case SpeakingStarted():
         _speaking = true;
         notifyListeners();
@@ -778,16 +780,38 @@ final class VoiceConversationController extends ChangeNotifier {
       notifyListeners();
       return;
     }
-    // The full text, not the count: the recogniser evaluation pairs this
-    // with the WAV the native side captured for the same hold.
-    debugPrint('Lulo ptt: submitting "$question"');
     _pttProtected = true;
-    if (_conversation.canSubmit) {
-      unawaited(_conversation.submit(question));
-    } else {
-      _pendingUtterance = question;
-    }
+    unawaited(_refineFinalUtterance(question));
     notifyListeners();
+  }
+
+  Future<void> _refineFinalUtterance(String raw) async {
+    final int epoch = ++_refinementEpoch;
+    final TranscriptRefinement refinement = await _transcriptRefiner.refine(
+      TranscriptRefinementRequest(
+        rawTranscript: raw,
+        locale: 'zh-TW',
+        protectedVocabulary: _protectedVocabulary(),
+        deadline: const Duration(milliseconds: 250),
+      ),
+    );
+    if (_disposed || !_enabled || epoch != _refinementEpoch) {
+      return;
+    }
+    if (_conversation.canSubmit) {
+      _cancelPendingResume();
+      if (_speaking || _speechRequested) {
+        unawaited(_voice.stopSpeaking());
+      }
+      unawaited(
+        _conversation.submit(
+          refinement.selectedTranscript,
+          voiceInput: refinement,
+        ),
+      );
+    } else {
+      _pendingUtterance = refinement;
+    }
   }
 
   /// Re-says the sentence an interruption cut off, if nothing replaced it.
@@ -858,13 +882,15 @@ final class VoiceConversationController extends ChangeNotifier {
       // here, where the end is always visible.
       _stopRequestedForActive = false;
     }
-    final String? pending = _pendingUtterance;
+    final TranscriptRefinement? pending = _pendingUtterance;
     if (pending == null || !_enabled || !_conversation.canSubmit) {
       return;
     }
     _pendingUtterance = null;
     _cancelPendingResume();
-    unawaited(_conversation.submit(pending));
+    unawaited(
+      _conversation.submit(pending.selectedTranscript, voiceInput: pending),
+    );
   }
 
   /// Whether [text] is enough to take the floor from the agent.
@@ -978,6 +1004,7 @@ final class VoiceConversationController extends ChangeNotifier {
   @override
   void dispose() {
     _disposed = true;
+    _refinementEpoch += 1;
     _pendingSettle?.cancel();
     _pendingSettle = null;
     _cancelPendingResume();
@@ -995,6 +1022,27 @@ final class VoiceConversationController extends ChangeNotifier {
     _conversation.activeTurnListenable.removeListener(_onActiveTurnChanged);
     super.dispose();
   }
+}
+
+List<String> _noProtectedVocabulary() => const <String>[];
+
+final class _RawTranscriptRefiner implements TranscriptRefiner {
+  const _RawTranscriptRefiner();
+
+  @override
+  Future<TranscriptRefinement> refine(
+    TranscriptRefinementRequest request,
+  ) async => TranscriptRefinement(
+    rawTranscript: request.rawTranscript,
+    proposedTranscript: null,
+    selectedTranscript: request.rawTranscript,
+    status: TranscriptRefinementStatus.unchanged,
+    edits: const <TranscriptEdit>[],
+    rejectionReasons: const <TranscriptRejectionReason>[],
+    refinerId: 'raw-pass-through',
+    refinerVersion: '1',
+    elapsed: Duration.zero,
+  );
 }
 
 /// [text] with everything a voice cannot say stripped away.

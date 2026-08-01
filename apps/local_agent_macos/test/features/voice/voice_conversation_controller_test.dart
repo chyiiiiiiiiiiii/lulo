@@ -17,15 +17,17 @@ import '../../support/microtask_batch_scheduler.dart';
 void main() {
   late FakeVoiceService voice;
   late ControlledInferenceService inference;
+  late InMemoryConversationStorageService storage;
   late ConversationViewModel vm;
   late VoiceConversationController controller;
 
   setUp(() {
     voice = FakeVoiceService();
     inference = ControlledInferenceService();
+    storage = InMemoryConversationStorageService();
     vm = ConversationViewModel(
       repository: ConversationRepository(
-        storageService: InMemoryConversationStorageService(),
+        storageService: storage,
         inferenceService: inference,
       ),
       idFactory: () => const ConversationId('freshly-minted'),
@@ -95,6 +97,32 @@ void main() {
     final GenerationRequest sent = await inference.requestReceived;
     expect(sent.prompt, 'What is the weather like?');
   });
+
+  test(
+    'a final transcript is refined once with raw provenance retained',
+    () async {
+      controller.dispose();
+      final _RecordingTranscriptRefiner refiner = _RecordingTranscriptRefiner();
+      controller = VoiceConversationController(
+        voice: voice,
+        conversation: vm,
+        transcriptRefiner: refiner,
+        protectedVocabulary: () => const <String>['Flutter'],
+      );
+      await controller.enable();
+
+      voice.hear(const FinalTranscript('我用 flutter'));
+      await pump();
+      await pump();
+
+      final GenerationRequest sent = await inference.requestReceived;
+      expect(sent.prompt, '我用 Flutter');
+      expect(refiner.calls, 1);
+      final Turn user = vm.completedTurnsListenable.value.single;
+      expect(user.voiceInput?.rawTranscript, '我用 flutter');
+      expect(user.voiceInput?.selectedTranscript, '我用 Flutter');
+    },
+  );
 
   test('a completed answer is spoken aloud', () async {
     await controller.enable();
@@ -1619,6 +1647,36 @@ void main() {
 
     expect(inference.requests, isEmpty);
   });
+}
+
+final class _RecordingTranscriptRefiner implements TranscriptRefiner {
+  int calls = 0;
+
+  @override
+  Future<TranscriptRefinement> refine(
+    TranscriptRefinementRequest request,
+  ) async {
+    calls += 1;
+    const String selected = '我用 Flutter';
+    return TranscriptRefinement(
+      rawTranscript: request.rawTranscript,
+      proposedTranscript: selected,
+      selectedTranscript: selected,
+      status: TranscriptRefinementStatus.applied,
+      edits: const <TranscriptEdit>[
+        TranscriptEdit(
+          rawStart: 3,
+          rawEnd: 10,
+          replacement: 'Flutter',
+          kind: TranscriptEditKind.vocabulary,
+        ),
+      ],
+      rejectionReasons: const <TranscriptRejectionReason>[],
+      refinerId: 'test',
+      refinerVersion: '1',
+      elapsed: Duration.zero,
+    );
+  }
 }
 
 /// Records requests and holds native cancellation open until released.

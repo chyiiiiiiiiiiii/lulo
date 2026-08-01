@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:local_agent_macos/app/app_composition.dart';
 import 'package:local_agent_macos/app/bootstrap.dart';
 import 'package:local_agent_macos/features/agent_profile/agent_profile_store.dart';
+import 'package:local_agent_macos/features/transcript_refiner/deadline_transcript_refiner.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -56,6 +57,21 @@ void main() {
       await composition.dispose();
     }
   });
+
+  test(
+    'bootstrap gives voice a deadline-bound local transcript refiner',
+    () async {
+      final AppComposition composition = createAppComposition();
+
+      expect(composition.transcriptRefiner, isA<DeadlineTranscriptRefiner>());
+      expect(
+        composition.protectedVocabulary(),
+        containsAll(<String>['Lulo', 'Flutter', 'Gemma', 'Qwen']),
+      );
+
+      await composition.dispose();
+    },
+  );
 
   test('an answer is given room to finish', () {
     // 512 tokens cut real answers off mid-sentence, which reads as the app

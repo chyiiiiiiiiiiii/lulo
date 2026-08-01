@@ -61,6 +61,8 @@ final class ConversationView extends StatefulWidget {
     required this.viewModelFactory,
     this.onShowHistory,
     this.voiceService,
+    this.transcriptRefiner,
+    this.protectedVocabulary,
     this.buildObserver,
     this.presenceShaderLoader = loadAgentPresenceShader,
     this.onPresenceController,
@@ -96,6 +98,12 @@ final class ConversationView extends StatefulWidget {
   /// Null hides the button: surfaces with no voice behind them cannot
   /// listen.
   final VoiceService? voiceService;
+
+  /// Final-transcript refiner supplied by the app composition.
+  final TranscriptRefiner? transcriptRefiner;
+
+  /// Latest vocabulary tokens protected during refinement.
+  final List<String> Function()? protectedVocabulary;
 
   /// Optional render instrumentation used by tests.
   final ConversationBuildObserver? buildObserver;
@@ -136,6 +144,10 @@ final class _ConversationViewState extends State<ConversationView> {
       final VoiceConversationController voice = VoiceConversationController(
         voice: voiceService,
         conversation: _viewModel,
+        transcriptRefiner:
+            widget.transcriptRefiner ?? const DeterministicTranscriptRefiner(),
+        protectedVocabulary:
+            widget.protectedVocabulary ?? _emptyProtectedVocabulary,
       );
       _voice = voice;
       voice.addListener(_reflectVoice);
@@ -225,6 +237,8 @@ final class _ConversationViewState extends State<ConversationView> {
     );
   }
 }
+
+List<String> _emptyProtectedVocabulary() => const <String>[];
 
 final class _ConversationChrome extends StatelessWidget {
   const _ConversationChrome({

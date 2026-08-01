@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'dart:io';
 
+import 'package:agent_core/agent_core.dart';
 import 'package:flutter/foundation.dart';
 
 import '../features/agent_profile/agent_context_provider.dart';
@@ -14,6 +15,7 @@ import '../features/model/model_catalog.dart';
 import '../features/model/model_download_manager.dart';
 import '../features/model/model_file_service.dart';
 import '../features/settings/app_settings.dart';
+import '../features/transcript_refiner/deadline_transcript_refiner.dart';
 import '../features/voice/voice_service.dart';
 import '../platform/desktop_host_service.dart';
 import '../platform/pigeon_desktop_host_service.dart';
@@ -125,8 +127,12 @@ AppComposition createAppComposition({
   final AgentContextProvider agentContext = ProfileAgentContextProvider(
     () => profileStore.current,
   );
+  final DeadlineTranscriptRefiner transcriptRefiner = DeadlineTranscriptRefiner(
+    const DeterministicTranscriptRefiner(),
+  );
   if (inferenceRuntime != 'fake' && inferenceRuntime != 'litert') {
     unawaited(profileStore.dispose());
+    transcriptRefiner.dispose();
     throw UnsupportedError(
       'Unsupported INFERENCE_RUNTIME "$inferenceRuntime". '
       'Supported runtimes are "fake" and "litert".',
@@ -159,6 +165,7 @@ AppComposition createAppComposition({
     unawaited(storage.release());
     unawaited(desktopHostService.dispose());
     unawaited(profileStore.dispose());
+    transcriptRefiner.dispose();
     rethrow;
   }
 
@@ -168,6 +175,7 @@ AppComposition createAppComposition({
       await storage.release();
       await desktopHostService.dispose();
       await profileStore.dispose();
+      transcriptRefiner.dispose();
     },
     storageService: storage.service,
     inferenceService: inferenceService,
@@ -176,6 +184,8 @@ AppComposition createAppComposition({
     modelDownloads: modelDownloads ?? createModelDownloadManager(),
     catalog: catalog,
     voiceService: voiceService,
+    transcriptRefiner: transcriptRefiner,
+    protectedVocabulary: () => profileStore.current.vocabulary,
     // The model is chosen in settings, and the only part of the graph that has
     // to change when it does is what sits behind this one service.
     changeModel: (String modelPath) => inferenceService.replaceWith(
