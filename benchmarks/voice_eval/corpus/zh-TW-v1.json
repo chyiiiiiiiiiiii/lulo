@@ -1,0 +1,127 @@
+{
+  "schemaVersion": 1,
+  "corpusId": "zh-TW-v1",
+  "locale": "zh-TW",
+  "cases": [
+    {
+      "id": "short-answer-ready",
+      "category": "short_answer",
+      "prompt": "好，可以開始了。",
+      "expectedTranscript": "好，可以開始了。",
+      "audioPath": "audio/short-answer-ready.wav",
+      "tags": ["short", "acknowledgement"],
+      "expectedPausesMs": [],
+      "notes": "Natural acknowledgement without a complete formal sentence."
+    },
+    {
+      "id": "short-answer-not-yet",
+      "category": "short_answer",
+      "prompt": "等一下，還沒。",
+      "expectedTranscript": "等一下，還沒。",
+      "audioPath": "audio/short-answer-not-yet.wav",
+      "tags": ["short", "negation"],
+      "expectedPausesMs": [280],
+      "notes": "Short correction with a conversational pause."
+    },
+    {
+      "id": "code-switch-product-names",
+      "category": "code_switching",
+      "prompt": "我剛剛把 Flutter 跟 MLX 的版本都更新了。",
+      "expectedTranscript": "我剛剛把 Flutter 跟 MLX 的版本都更新了。",
+      "audioPath": "audio/code-switch-product-names.wav",
+      "tags": ["english", "product-name"],
+      "expectedPausesMs": [],
+      "notes": "English product names inside Taiwan Mandarin."
+    },
+    {
+      "id": "code-switch-agent-tools",
+      "category": "code_switching",
+      "prompt": "先用 Codex 檢查，再跑 Dart test。",
+      "expectedTranscript": "先用 Codex 檢查，再跑 Dart test。",
+      "audioPath": "audio/code-switch-agent-tools.wav",
+      "tags": ["english", "developer"],
+      "expectedPausesMs": [300],
+      "notes": "Tool names and an English command in a Mandarin sentence."
+    },
+    {
+      "id": "numbers-date-time",
+      "category": "numbers",
+      "prompt": "八月二日下午三點半提醒我。",
+      "expectedTranscript": "八月二日下午三點半提醒我。",
+      "audioPath": "audio/numbers-date-time.wav",
+      "tags": ["date", "time"],
+      "expectedPausesMs": [],
+      "notes": "Taiwan Mandarin date and time expression."
+    },
+    {
+      "id": "numbers-money-version",
+      "category": "numbers",
+      "prompt": "預算是一萬二，版本先用三點五。",
+      "expectedTranscript": "預算是一萬二，版本先用三點五。",
+      "audioPath": "audio/numbers-money-version.wav",
+      "tags": ["money", "version"],
+      "expectedPausesMs": [320],
+      "notes": "Colloquial amount and decimal version number."
+    },
+    {
+      "id": "disfluency-self-correction",
+      "category": "disfluency",
+      "prompt": "我想看明天，欸不是，後天的天氣。",
+      "expectedTranscript": "我想看明天，欸不是，後天的天氣。",
+      "audioPath": "audio/disfluency-self-correction.wav",
+      "tags": ["filler", "self-correction"],
+      "expectedPausesMs": [220, 260],
+      "notes": "A correction whose original words must remain in raw ASR."
+    },
+    {
+      "id": "punctuation-natural-clauses",
+      "category": "punctuation",
+      "prompt": "先回答核心，細節我等等再補。",
+      "expectedTranscript": "先回答核心，細節我等等再補。",
+      "audioPath": "audio/punctuation-natural-clauses.wav",
+      "tags": ["comma", "prosody"],
+      "expectedPausesMs": [260],
+      "notes": "A comma should be a light clause break, not a new voice chunk."
+    },
+    {
+      "id": "long-form-project-request",
+      "category": "long_form",
+      "prompt": "幫我先確認目前專案在哪個分支，測試有沒有通過，再告訴我最值得先修的地方。",
+      "expectedTranscript": "幫我先確認目前專案在哪個分支，測試有沒有通過，再告訴我最值得先修的地方。",
+      "audioPath": "audio/long-form-project-request.wav",
+      "tags": ["multi-clause", "developer"],
+      "expectedPausesMs": [280, 320],
+      "notes": "A three-clause request with meaningful internal pauses."
+    },
+    {
+      "id": "long-form-conversational",
+      "category": "long_form",
+      "prompt": "我不是要你全部重做，我只是想知道現在這個版本，哪一段聽起來最不像臺灣人平常講話。",
+      "expectedTranscript": "我不是要你全部重做，我只是想知道現在這個版本，哪一段聽起來最不像臺灣人平常講話。",
+      "audioPath": "audio/long-form-conversational.wav",
+      "tags": ["multi-clause", "taiwan-usage"],
+      "expectedPausesMs": [240, 300],
+      "notes": "Conversational Taiwan wording rather than formal written prose."
+    },
+    {
+      "id": "barge-in-stop-answer",
+      "category": "barge_in",
+      "prompt": "等一下，先不要念完。",
+      "expectedTranscript": "等一下，先不要念完。",
+      "audioPath": "audio/barge-in-stop-answer.wav",
+      "tags": ["interruption", "stop"],
+      "expectedPausesMs": [180],
+      "notes": "Starts while the agent is speaking and should trigger barge-in."
+    },
+    {
+      "id": "endpoint-thinking-pause",
+      "category": "endpoint",
+      "prompt": "我想問的是……如果完全離線的話，記憶要怎麼同步？",
+      "expectedTranscript": "我想問的是……如果完全離線的話，記憶要怎麼同步？",
+      "audioPath": "audio/endpoint-thinking-pause.wav",
+      "tags": ["thinking-pause", "incomplete-prefix"],
+      "expectedPausesMs": [1100],
+      "notes": "A long thinking pause that must not submit the incomplete prefix."
+    }
+  ]
+}
