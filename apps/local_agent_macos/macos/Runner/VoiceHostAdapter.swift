@@ -571,6 +571,24 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
       duplex ? "full duplex" : "half duplex",
       duplex ? "on both ends" : "off — microphone mutes while speaking"
     )
+    // Before the format is read: the format belongs to the device. The
+    // output stays where the user put it — only the ears move.
+    if let transport = InputDevicePolicy.defaultInputTransport(),
+      InputDevicePolicy.pinsBuiltInMicrophone(transport: transport),
+      let builtIn = InputDevicePolicy.builtInMicrophone()
+    {
+      do {
+        try input.auAudioUnit.setDeviceID(builtIn)
+        NSLog(
+          "Lulo voice: bluetooth input declined; listening through the built-in microphone"
+        )
+      } catch {
+        NSLog(
+          "Lulo voice: could not pin the built-in microphone (%@)",
+          String(describing: error)
+        )
+      }
+    }
     let microphoneFormat = input.outputFormat(forBus: 0)
     // The microphone is an array — three channels built in, more on
     // aggregates — and which channel carries the voice is the device's
@@ -934,6 +952,120 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
       event: HostVoiceEvent(type: type, text: text),
       completion: { _ in }
     )
+  }
+}
+
+/// Which microphone the listening engine should actually use.
+///
+/// A Bluetooth headset as the default input puts a telephony microphone
+/// under the voice-processing unit, and what arrives from it is silence —
+/// measured with AirPods Pro: vad peak 0.0000 across a whole spoken
+/// sentence, four pipeline restarts, nothing heard. Worn headphones also
+/// remove the room echo the canceller exists for, so the built-in
+/// microphone is strictly better there. Any other transport — USB,
+/// aggregate, built-in — is a working device, possibly deliberately
+/// chosen, and stays.
+enum InputDevicePolicy {
+  static func pinsBuiltInMicrophone(transport: UInt32) -> Bool {
+    transport == kAudioDeviceTransportTypeBluetooth
+      || transport == kAudioDeviceTransportTypeBluetoothLE
+  }
+
+  /// Transport of the system's default input device, or nil if unknowable.
+  static func defaultInputTransport() -> UInt32? {
+    var device = AudioDeviceID(0)
+    var size = UInt32(MemoryLayout<AudioDeviceID>.size)
+    var address = AudioObjectPropertyAddress(
+      mSelector: kAudioHardwarePropertyDefaultInputDevice,
+      mScope: kAudioObjectPropertyScopeGlobal,
+      mElement: kAudioObjectPropertyElementMain
+    )
+    guard
+      AudioObjectGetPropertyData(
+        AudioObjectID(kAudioObjectSystemObject),
+        &address,
+        0,
+        nil,
+        &size,
+        &device
+      ) == noErr, device != kAudioObjectUnknown
+    else {
+      return nil
+    }
+    return transport(of: device)
+  }
+
+  /// The machine's own microphone, if it has one.
+  static func builtInMicrophone() -> AudioDeviceID? {
+    var address = AudioObjectPropertyAddress(
+      mSelector: kAudioHardwarePropertyDevices,
+      mScope: kAudioObjectPropertyScopeGlobal,
+      mElement: kAudioObjectPropertyElementMain
+    )
+    var size = UInt32(0)
+    guard
+      AudioObjectGetPropertyDataSize(
+        AudioObjectID(kAudioObjectSystemObject),
+        &address,
+        0,
+        nil,
+        &size
+      ) == noErr
+    else {
+      return nil
+    }
+    var devices = [AudioDeviceID](
+      repeating: 0,
+      count: Int(size) / MemoryLayout<AudioDeviceID>.size
+    )
+    guard
+      AudioObjectGetPropertyData(
+        AudioObjectID(kAudioObjectSystemObject),
+        &address,
+        0,
+        nil,
+        &size,
+        &devices
+      ) == noErr
+    else {
+      return nil
+    }
+    return devices.first { device in
+      transport(of: device) == kAudioDeviceTransportTypeBuiltIn
+        && hasInputStreams(device)
+    }
+  }
+
+  private static func transport(of device: AudioDeviceID) -> UInt32? {
+    var transport = UInt32(0)
+    var size = UInt32(MemoryLayout<UInt32>.size)
+    var address = AudioObjectPropertyAddress(
+      mSelector: kAudioDevicePropertyTransportType,
+      mScope: kAudioObjectPropertyScopeGlobal,
+      mElement: kAudioObjectPropertyElementMain
+    )
+    guard
+      AudioObjectGetPropertyData(device, &address, 0, nil, &size, &transport)
+        == noErr
+    else {
+      return nil
+    }
+    return transport
+  }
+
+  private static func hasInputStreams(_ device: AudioDeviceID) -> Bool {
+    var address = AudioObjectPropertyAddress(
+      mSelector: kAudioDevicePropertyStreams,
+      mScope: kAudioObjectPropertyScopeInput,
+      mElement: kAudioObjectPropertyElementMain
+    )
+    var size = UInt32(0)
+    guard
+      AudioObjectGetPropertyDataSize(device, &address, 0, nil, &size) == noErr
+    else {
+      return false
+    }
+    return size > 0
   }
 }
 
