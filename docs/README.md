@@ -61,6 +61,7 @@ explanation.
 | [features/model.md](features/model.md) | `lib/features/model/`, `native/inference_service` | Written |
 | [features/settings.md](features/settings.md) | `lib/features/settings/`, `lib/app/app.dart` | Written |
 | [features/agent-profile.md](features/agent-profile.md) | `packages/agent_core/lib/src/agent_profile/`, `lib/features/agent_profile/` | Written |
+| [Taiwan Mandarin voice evaluation](../benchmarks/voice_eval/README.md) | `benchmarks/voice_eval/` | Implemented |
 
 ## Decisions
 

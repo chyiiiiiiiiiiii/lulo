@@ -30,6 +30,18 @@ Future<void> main() async {
       workingDirectory: _join(workspaceRoot.path, 'packages/agent_core'),
     ),
     _VerificationCommand(
+      name: 'voice eval analysis',
+      executable: 'dart',
+      arguments: const <String>['analyze', '--fatal-infos', '--fatal-warnings'],
+      workingDirectory: _join(workspaceRoot.path, 'benchmarks/voice_eval'),
+    ),
+    _VerificationCommand(
+      name: 'voice eval tests',
+      executable: 'dart',
+      arguments: const <String>['test'],
+      workingDirectory: _join(workspaceRoot.path, 'benchmarks/voice_eval'),
+    ),
+    _VerificationCommand(
       name: 'presence frame metrics tests',
       executable: 'flutter',
       arguments: const <String>[
