@@ -258,6 +258,16 @@ public actor LiteRTLMRuntimeBackend: RuntimeBackend {
     let token: UInt64
     var nextSequence: Int64
     var task: Task<Void, Never>?
+
+    // The account that names a silent truncation. An answer that stops
+    // mid-sentence "completes" like any other; only these numbers can say
+    // whether it ran out of output budget, was crowded out by its own
+    // history, or simply chose to stop.
+    let promptCharacters: Int
+    let historyCharacters: Int
+    let historyTurns: Int
+    let maxOutputTokens: Int
+    var outputCharacters: Int = 0
   }
 
   private let configuration: LiteRTLMRuntimeConfiguration
@@ -381,7 +391,11 @@ public actor LiteRTLMRuntimeBackend: RuntimeBackend {
       sessionId: generation.sessionId,
       token: token,
       nextSequence: 0,
-      task: nil
+      task: nil,
+      promptCharacters: request.prompt.count,
+      historyCharacters: request.history.reduce(0) { $0 + $1.text.count },
+      historyTurns: request.history.count,
+      maxOutputTokens: request.maxOutputTokens
     )
     let task = Task { [weak self] in
       guard let self else {
@@ -540,6 +554,7 @@ public actor LiteRTLMRuntimeBackend: RuntimeBackend {
       return
     }
     active.nextSequence += 1
+    active.outputCharacters += chunk.count
     activeGeneration = active
     await eventRelay.emit(
       RuntimeGenerationEvent(
@@ -563,6 +578,14 @@ public actor LiteRTLMRuntimeBackend: RuntimeBackend {
     }
     active.nextSequence += 1
     activeGeneration = nil
+    NSLog(
+      "Lulo generation: completed — %d chars out (cap %d tokens), prompt %d chars, history %d chars in %d turns",
+      active.outputCharacters,
+      active.maxOutputTokens,
+      active.promptCharacters,
+      active.historyCharacters,
+      active.historyTurns
+    )
     await eventRelay.emit(
       RuntimeGenerationEvent(
         generationId: generationId,
