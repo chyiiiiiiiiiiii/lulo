@@ -141,41 +141,40 @@ void main() {
     await _finish(tester);
   });
 
-  testWidgets(
-    'streaming is plain text and completed output is terminal Markdown',
-    (tester) async {
-      final _Harness harness = _Harness();
-      await tester.pumpWidget(harness.app());
-      await _submit(tester, 'Format this');
-      await harness.inference.requestReceived;
-      harness.start(prompt: 'Format this');
-      harness.inference.emit(
-        const GenerationDelta(
-          generationId: GenerationId('generation-1'),
-          delta: '**Bold**\n\n```dart\nvoid main() {}\n```',
-        ),
-      );
-      await tester.pump();
+  testWidgets('streaming and completed output share one Markdown layout', (
+    tester,
+  ) async {
+    // The stream once showed raw text — paragraph breaks as full blank
+    // lines — and the bubble visibly shrank when completion swapped in
+    // the block renderer with its tighter spacing. One renderer for
+    // both is what makes the hand-off invisible.
+    final _Harness harness = _Harness();
+    await tester.pumpWidget(harness.app());
+    await _submit(tester, 'Format this');
+    await harness.inference.requestReceived;
+    harness.start(prompt: 'Format this');
+    harness.inference.emit(
+      const GenerationDelta(
+        generationId: GenerationId('generation-1'),
+        delta: '**Bold**\n\n```dart\nvoid main() {}\n```',
+      ),
+    );
+    // The token batcher hands text over on a timer, not a microtask.
+    await tester.pump(const Duration(milliseconds: 200));
 
-      expect(
-        find.byKey(const Key('active-streaming-plain-text')),
-        findsOneWidget,
-      );
-      expect(find.byKey(const Key('terminal-markdown')), findsNothing);
+    expect(find.byKey(const Key('active-streaming-markdown')), findsOneWidget);
+    expect(find.text('Bold'), findsOneWidget);
+    expect(find.text('void main() {}'), findsOneWidget);
 
-      harness.complete();
-      await tester.pump();
+    harness.complete();
+    await tester.pump();
 
-      expect(
-        find.byKey(const Key('active-streaming-plain-text')),
-        findsNothing,
-      );
-      expect(find.byKey(const Key('terminal-markdown')), findsOneWidget);
-      expect(find.text('Bold'), findsOneWidget);
-      expect(find.text('void main() {}'), findsOneWidget);
-      await _finish(tester);
-    },
-  );
+    expect(find.byKey(const Key('active-streaming-markdown')), findsNothing);
+    expect(find.byKey(const Key('terminal-markdown')), findsOneWidget);
+    expect(find.text('Bold'), findsOneWidget);
+    expect(find.text('void main() {}'), findsOneWidget);
+    await _finish(tester);
+  });
 
   testWidgets('removing the view disposes its active operation', (
     tester,
