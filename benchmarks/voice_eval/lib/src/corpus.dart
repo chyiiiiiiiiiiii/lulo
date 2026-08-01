@@ -95,7 +95,7 @@ final class VoiceCorpus {
         source,
         caseId: id,
       );
-      if (!_safeAudioPath.hasMatch(audioPath)) {
+      if (!_isSafeAudioPath(audioPath)) {
         throw FormatException('$source: case $id: invalid audioPath');
       }
       final List<String> tags = _stringList(rawCase, 'tags', source, id);
@@ -150,6 +150,18 @@ final class VoiceCorpus {
 final RegExp _safeAudioPath = RegExp(
   r'^audio/[a-zA-Z0-9][a-zA-Z0-9._/-]*\.wav$',
 );
+
+bool _isSafeAudioPath(String value) {
+  if (!_safeAudioPath.hasMatch(value)) {
+    return false;
+  }
+  return value
+      .split('/')
+      .every(
+        (String segment) =>
+            segment.isNotEmpty && segment != '.' && segment != '..',
+      );
+}
 
 T _required<T>(
   Map<String, Object?> json,

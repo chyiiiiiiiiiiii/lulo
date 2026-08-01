@@ -61,6 +61,7 @@ void main() {
     for (final String audioPath in <String>[
       '/tmp/private.wav',
       'audio/../private.wav',
+      'audio/nested/../../private.wav',
       '../audio/private.wav',
       'audio/private.mp3',
       'clips/private.wav',
