@@ -45,6 +45,14 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
   /// microphone never mutes — there is no echo path to protect it from.
   private var openMicWithoutCanceller = false
 
+  /// Control messages ride their own connection pool. /speak requests
+  /// block until playback finishes, and enough of them queued fills
+  /// URLSession.shared's per-host pool — measured in use: thirteen stops
+  /// logged, none delivered, ninety seconds of uninterruptible playback
+  /// while /stop waited in line behind the very speech it was meant to
+  /// end.
+  private let controlSession = URLSession(configuration: .ephemeral)
+
   /// Whose turn it is and when its clocks were last true. Kept as one
   /// value so it can be exercised without an audio device; see [SpeechTurn].
   private var turn = SpeechTurn()
@@ -221,12 +229,18 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
             format: format
           )
         }.value
-      } else {
+      } else if epoch == self.speakEpoch {
         spoke = await self.speakThroughSidecar(
           text: text,
           voice: voice,
-          language: language
+          language: language,
+          epoch: epoch
         )
+      } else {
+        // Barged over while waiting its turn: not even sent. The render
+        // path holds the same line inside its byte loop; without this the
+        // sidecar path re-queued every stopped sentence as fresh work.
+        spoke = true
       }
       if !spoke && epoch == self.speakEpoch {
         // The resident voice failed for this sentence. Deliberately NO
@@ -489,7 +503,8 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
   private func speakThroughSidecar(
     text: String,
     voice: String?,
-    language: String?
+    language: String?,
+    epoch: Int
   ) async -> Bool {
     guard let url = URL(string: "http://127.0.0.1:46557/speak") else {
       return false
@@ -497,7 +512,15 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
     var request = URLRequest(url: url)
     request.httpMethod = "POST"
     request.timeoutInterval = 120
-    var payload: [String: String] = ["text": text, "voice": voice ?? "ryan"]
+    // The epoch rides along because delivery order does not: a request
+    // that sat in the connection pool through a stop arrives after the
+    // sidecar's own epoch bumped, looking like fresh work. The sidecar
+    // compares this against the epoch /stop declared dead and drops it.
+    var payload: [String: Any] = [
+      "text": text,
+      "voice": voice ?? "ryan",
+      "epoch": epoch,
+    ]
     if let language {
       payload["lang"] = language
     }
@@ -525,7 +548,10 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
       var request = URLRequest(url: url)
       request.httpMethod = "POST"
       request.timeoutInterval = 3
-      URLSession.shared.dataTask(with: request).resume()
+      request.httpBody = try? JSONSerialization.data(
+        withJSONObject: ["epoch": speakEpoch]
+      )
+      controlSession.dataTask(with: request).resume()
     }
     // The outstanding requests unwind through their own returns; the mute
     // lifts when the count reaches zero.
