@@ -270,6 +270,12 @@ public actor LiteRTLMRuntimeBackend: RuntimeBackend {
     var outputCharacters: Int = 0
   }
 
+  /// Generations cancelled before their start ever claimed the engine —
+  /// each one a start asleep in the drain wait whose caller has already
+  /// let it go. Consumed by the start when it wakes; bounded because ids
+  /// are never reused.
+  private var cancelledBeforeStart: [String] = []
+
   private let configuration: LiteRTLMRuntimeConfiguration
   private let eventRelay: RuntimeGenerationEventRelay
   private let driverFactory: any LiteRTLMRuntimeDriverFactory
@@ -368,6 +374,30 @@ public actor LiteRTLMRuntimeBackend: RuntimeBackend {
         )
         throw RuntimeBoundaryError.runtimeUnavailable
       }
+      // Woken, not chosen: every waiter sleeps in this same loop, and the
+      // first to wake claims the engine. The rest must see that claim and
+      // refuse — proceeding would put two decodes on one engine, the
+      // exact overlap this wait exists to prevent.
+      guard activeGeneration == nil else {
+        NSLog(
+          "Lulo runtime: start refused, generation %@ claimed the engine first",
+          activeGeneration?.generationId ?? "?"
+        )
+        throw RuntimeBoundaryError.generationBusy
+      }
+    }
+    // Cancelled while it waited: the caller already let this generation
+    // go, and claiming the engine now would burn a whole budget on a
+    // decode nobody wants.
+    if let fenced = cancelledBeforeStart.firstIndex(
+      of: generation.generationId
+    ) {
+      cancelledBeforeStart.remove(at: fenced)
+      NSLog(
+        "Lulo runtime: start aborted, generation %@ was cancelled before it began",
+        generation.generationId
+      )
+      throw RuntimeBoundaryError.cancelled
     }
     guard let loadedModel, let driver else {
       throw RuntimeBoundaryError.runtimeUnavailable
@@ -422,6 +452,14 @@ public actor LiteRTLMRuntimeBackend: RuntimeBackend {
       var active = activeGeneration,
       active.generationId == generationId
     else {
+      // Nothing running by this name — but its start may be asleep in the
+      // drain wait, about to claim the engine for a generation the caller
+      // has already let go. The fence makes that start abort when it
+      // wakes instead of becoming a zombie decode.
+      cancelledBeforeStart.append(generationId)
+      if cancelledBeforeStart.count > 32 {
+        cancelledBeforeStart.removeFirst()
+      }
       return RuntimeCancellationAcknowledgement(
         generationId: generationId,
         acknowledged: false

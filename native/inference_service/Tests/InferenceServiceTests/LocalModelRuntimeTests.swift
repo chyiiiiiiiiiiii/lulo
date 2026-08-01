@@ -360,6 +360,128 @@ final class LocalModelRuntimeTests: XCTestCase {
     )
   }
 
+  func testAStartCancelledWhileDrainingNeverClaimsTheEngine() async throws {
+    // The cancel for a start still waiting out a drain finds nothing
+    // active and answers unacknowledged — which must also mean the start
+    // aborts when its turn comes. Claiming anyway makes a zombie: a
+    // decode nobody wants, burning its whole budget while every real
+    // turn is refused as instantly busy.
+    let harness = try await makeLiteRTLMBackendHarness()
+    defer { try? FileManager.default.removeItem(at: harness.modelDirectory) }
+    func generation(_ id: String) -> RuntimeGenerationRequest {
+      RuntimeGenerationRequest(
+        generationId: id,
+        sessionId: "session-1",
+        prompt: "hi",
+        context: [],
+        temperature: 0.3,
+        topP: 0.9,
+        maxTokens: 16,
+        seed: 1
+      )
+    }
+    _ = try await harness.backend.startGeneration(generation("generation-a"))
+    await harness.driver.waitForGenerationCall()
+    _ = try await harness.backend.cancelGeneration(
+      generationId: "generation-a"
+    )
+
+    async let startB = harness.backend.startGeneration(
+      generation("generation-b")
+    )
+    try await Task.sleep(nanoseconds: 150_000_000)
+    let ack = try await harness.backend.cancelGeneration(
+      generationId: "generation-b"
+    )
+    XCTAssertFalse(ack.acknowledged)
+
+    await harness.driver.finishGeneration()
+    var startBError: Error?
+    do {
+      _ = try await startB
+    } catch {
+      startBError = error
+    }
+
+    XCTAssertEqual(
+      startBError as? RuntimeBoundaryError,
+      .cancelled,
+      "A start whose generation was cancelled while draining must abort."
+    )
+    let requests = await harness.driver.generationRequests.count
+    XCTAssertEqual(
+      requests,
+      1,
+      "The cancelled start claimed the engine anyway — a zombie."
+    )
+    await harness.driver.finishGeneration()
+  }
+
+  func testOneEngineAdmitsOneWaiterWhenTheDrainReleases() async throws {
+    // Every waiter sleeps in the same drain loop, and the loop never
+    // re-checks the claim after waking: when the abandoned decode ends,
+    // all of them proceed and the engine gets two concurrent decodes —
+    // the exact overlap the wait exists to prevent, and by the code's
+    // own account an unrecoverable wedge.
+    let harness = try await makeLiteRTLMBackendHarness()
+    defer { try? FileManager.default.removeItem(at: harness.modelDirectory) }
+    func generation(_ id: String) -> RuntimeGenerationRequest {
+      RuntimeGenerationRequest(
+        generationId: id,
+        sessionId: "session-1",
+        prompt: "hi",
+        context: [],
+        temperature: 0.3,
+        topP: 0.9,
+        maxTokens: 16,
+        seed: 1
+      )
+    }
+    _ = try await harness.backend.startGeneration(generation("generation-a"))
+    await harness.driver.waitForGenerationCall()
+    _ = try await harness.backend.cancelGeneration(
+      generationId: "generation-a"
+    )
+
+    async let startB = harness.backend.startGeneration(
+      generation("generation-b")
+    )
+    async let startC = harness.backend.startGeneration(
+      generation("generation-c")
+    )
+    try await Task.sleep(nanoseconds: 150_000_000)
+    await harness.driver.finishGeneration()
+
+    var refusals: [RuntimeBoundaryError] = []
+    do {
+      _ = try await startB
+    } catch {
+      if let error = error as? RuntimeBoundaryError {
+        refusals.append(error)
+      }
+    }
+    do {
+      _ = try await startC
+    } catch {
+      if let error = error as? RuntimeBoundaryError {
+        refusals.append(error)
+      }
+    }
+
+    XCTAssertEqual(
+      refusals,
+      [.generationBusy],
+      "Exactly one waiter may claim the engine; the other is refused."
+    )
+    let requests = await harness.driver.generationRequests.count
+    XCTAssertEqual(
+      requests,
+      2,
+      "Two waiters were admitted onto one engine at once."
+    )
+    await harness.driver.finishGeneration()
+  }
+
   private func makeLiteRTLMBackendHarness() async throws
     -> LiteRTLMBackendTestHarness
   {
@@ -784,6 +906,80 @@ final class LocalModelRuntimeTests: XCTestCase {
       secondStartError,
       "The slot was never released, so the next turn was refused as busy."
     )
+  }
+
+  func testCancelOfAFencedGenerationStillReachesTheBackend() async throws {
+    // The fence records that the slot let this generation go — it does not
+    // mean the backend will never run it. A start waiting out a drain can
+    // claim the engine after the fence was written, and the compensating
+    // cancel arriving here is the only thing that stops that decode from
+    // burning its whole budget as a zombie, failing every turn in between
+    // as instantly busy. The backend's cancel is idempotent, so forwarding
+    // costs nothing when the fence was right.
+    let backend = RuntimeBackendSpy()
+    let coordinator = InferenceCoordinator(
+      supportedSchemaVersion: 2,
+      backend: backend
+    )
+    let request = RuntimeRequestEnvelope(
+      schemaVersion: 2,
+      requestId: "request-1",
+      timestampMicros: 1
+    )
+    let model = RuntimeModelRequest(
+      modelId: "model-1",
+      modelPath: "/models/model-1.bin",
+      contextSize: 4096
+    )
+    async let loadResult = coordinator.loadModel(request: request, model: model)
+    await backend.waitForLoadCall()
+    await backend.completeLoads(
+      with: RuntimeModelLoadResult(modelId: model.modelId, loaded: true)
+    )
+    _ = try await loadResult
+
+    async let firstStart = coordinator.startGeneration(
+      request: request,
+      generation: RuntimeGenerationRequest(
+        generationId: "generation-1",
+        sessionId: "session-1",
+        prompt: "prompt",
+        context: [],
+        temperature: 0.25,
+        topP: 0.9,
+        maxTokens: 128,
+        seed: 1
+      )
+    )
+    await backend.waitForStartCall(count: 1)
+
+    // The backend has never seen the generation: the cancel is
+    // unacknowledged and the id lands on the fence.
+    await backend.acknowledgeCancellations(false)
+    _ = try await coordinator.cancelGeneration(
+      request: request,
+      generationId: "generation-1"
+    )
+    let firstCancelCount = await backend.cancelCallCount
+    XCTAssertEqual(firstCancelCount, 1)
+
+    // The compensating cancel for the same id must still be forwarded.
+    _ = try await coordinator.cancelGeneration(
+      request: request,
+      generationId: "generation-1"
+    )
+    let secondCancelCount = await backend.cancelCallCount
+    XCTAssertEqual(
+      secondCancelCount,
+      2,
+      "A cancel swallowed by the fence leaves the backend decode a zombie."
+    )
+
+    await backend.failStart(
+      generationId: "generation-1",
+      with: RuntimeBoundaryError.cancelled
+    )
+    _ = try? await firstStart
   }
 
   func testSecondGenerationIsRejectedWhileFirstStartIsInFlight() async throws {
@@ -1251,8 +1447,14 @@ final class LocalModelRuntimeTests: XCTestCase {
         ),
       ]
     )
+    // Two, deliberately: the duplicate is forwarded to the backend even
+    // though the slot already let the generation go, because a start
+    // waiting out a drain can claim the engine after the fence was
+    // written — the forwarded cancel is what stops that zombie. The
+    // backend's cancel is idempotent, so the duplicate costs nothing;
+    // what stays single is the terminal event above.
     let cancelCallCount = await backend.cancelCallCount
-    XCTAssertEqual(cancelCallCount, 1)
+    XCTAssertEqual(cancelCallCount, 2)
 
     await backend.completeStart(
       generationId: firstGeneration.generationId,

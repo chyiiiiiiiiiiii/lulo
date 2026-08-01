@@ -987,6 +987,16 @@ public actor InferenceCoordinator {
       throw RuntimeBoundaryError.runtimeUnavailable
     }
     if cancelledGenerationIds.contains(generationId) {
+      // The fence records that the slot let this generation go — not that
+      // the backend will never run it. A start that was waiting out a
+      // drain can claim the engine after the fence was written, and the
+      // compensating cancel arriving here is the only thing that keeps
+      // that decode from burning its whole budget as a zombie, refusing
+      // every turn in between as instantly busy. The backend's cancel is
+      // idempotent: unknown ids come back unacknowledged, live ones are
+      // properly abandoned — forwarding costs nothing when the fence was
+      // right.
+      _ = try? await backend.cancelGeneration(generationId: generationId)
       return RuntimeCancellationAcknowledgement(
         generationId: generationId,
         acknowledged: true
