@@ -652,6 +652,46 @@ void main() {
     );
   });
 
+  test('a long clause-only run is broken at a comma', () async {
+    // Conversational Chinese runs a hundred characters between full stops,
+    // and commas are only consulted for the answer's very first chunk. So a
+    // chunk waited for a 。 that was five sentences away: measured in use at
+    // 104, 98, 93, 89 and 84 characters, each of them fifteen seconds of
+    // audio that an interruption throws away whole.
+    await controller.enable();
+    voice.hear(const FinalTranscript('說說看。'));
+    await pump();
+    final Generation generation = await generationStarted();
+    inference.emit(GenerationDelta(generationId: generation.id, delta: '好的。'));
+    await pump();
+    await pump();
+    final int afterFirst = voice.spoken.length;
+
+    // Eighty characters of clauses with no sentence-ending punctuation.
+    inference.emit(
+      GenerationDelta(
+        generationId: generation.id,
+        delta:
+            '聽起來你現在有點不舒服，肚子裡有什麼不適的感覺，'
+            '我不是想給你帶來任何不必要的擔憂，不過是這樣，'
+            '你現在是不是覺得有點脹氣或者不太舒服，還是別的什麼',
+      ),
+    );
+    await pump();
+    await pump();
+
+    expect(
+      voice.spoken.length,
+      greaterThan(afterFirst),
+      reason: 'A run with no full stop must still be spoken.',
+    );
+    expect(
+      voice.spoken.last.runes.length,
+      lessThan(50),
+      reason: 'It waited for a full stop five clauses away.',
+    );
+  });
+
   test('the user talking over a streaming answer cancels it', () async {
     await controller.enable();
     voice.hear(const FinalTranscript('Tell me a long story.'));

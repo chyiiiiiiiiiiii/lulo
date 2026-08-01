@@ -223,7 +223,7 @@ void main() {
       // in prose. Without it the model wrote Markdown, which shows its own
       // asterisks on screen and has to be stripped again before speech.
       expect(payload.prompt, endsWith('Exact private prompt'));
-      expect(payload.prompt, contains('Do not use Markdown'));
+      expect(payload.prompt, contains('No Markdown'));
       expect(payload.context, isEmpty);
       expect(payload.temperature, 0.25);
       expect(payload.topP, 0.9);
@@ -622,7 +622,7 @@ void main() {
 
     expect(host.generationRequests, hasLength(2));
     // "Markdown" is the term in both, so the tell is the surrounding prose.
-    expect(host.generationRequests[0].prompt, contains('口語化'));
+    expect(host.generationRequests[0].prompt, contains('口語回答'));
     // Traditional, not Simplified: the model answered 咱们/东西/开发 to a
     // Traditional question because nothing said which script to use.
     expect(host.generationRequests[0].prompt, contains('繁體'));
@@ -632,10 +632,10 @@ void main() {
     expect(host.generationRequests[0].prompt, contains('語音辨識'));
     expect(
       host.generationRequests[0].prompt,
-      isNot(contains('Reply in plain')),
+      isNot(contains('plain spoken prose')),
     );
-    expect(host.generationRequests[1].prompt, contains('Reply in plain'));
-    expect(host.generationRequests[1].prompt, isNot(contains('口語化')));
+    expect(host.generationRequests[1].prompt, contains('plain spoken prose'));
+    expect(host.generationRequests[1].prompt, isNot(contains('口語回答')));
 
     await chinese.cancel();
     await english.cancel();

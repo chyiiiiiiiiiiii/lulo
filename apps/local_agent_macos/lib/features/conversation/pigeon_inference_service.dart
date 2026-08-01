@@ -43,6 +43,12 @@ final class LocalModelConfig {
 
 /// Told to the model ahead of every question, in the question's own language.
 ///
+/// Kept terse and bracketed on purpose. Written as flowing prose it was
+/// mirrored straight back: asked to be forgiving about misheard words, the
+/// model opened its answer with a paragraph about how forgiving it would be
+/// about misheard words. A small model answers what it is given, so an
+/// instruction that reads like conversation becomes conversation.
+///
 /// Nothing had ever asked it for prose, so it wrote documentation: headings,
 /// bold runs, horizontal rules and numbered lists, with the asterisks and
 /// hashes showing through on screen. It reads badly, and it reads worse
@@ -61,17 +67,11 @@ final class LocalModelConfig {
 /// reliably carry an instruction across a long conversation, and thirty
 /// tokens is a cheap way to not depend on it doing so.
 String plainProseInstruction(String prompt) => _cjk.hasMatch(prompt)
-    ? '使用者的話來自語音辨識，可能有聽錯的字，尤其是專有名詞；'
-          '請依上下文理解他真正的意思，不要照字面解釋不存在的詞。'
-          '請用繁體中文、口語化的散文回答，不要使用簡體字。不要使用 Markdown：'
-          '不要星號、井號標題、分隔線、條列或編號清單。用完整的句子，'
-          '像說話一樣。'
-    : "The user's words come from speech recognition and may contain "
-          'misheard words, especially proper nouns; read them for meaning '
-          'rather than explaining a term that does not exist. Reply in plain '
-          'conversational prose. Do not use Markdown: no asterisks, no hash '
-          'headings, no horizontal rules, no bullet or numbered lists. Write '
-          'in full sentences, as if speaking aloud.';
+    ? '[指示] 用繁體中文口語回答。不要 Markdown、不要條列。'
+          '輸入來自語音辨識，可能有錯字，照語意理解。'
+    : '[Instruction] Answer in plain spoken prose. No Markdown, no lists. '
+          'Input is from speech recognition and may contain errors; read for '
+          'meaning.';
 
 /// Anything CJK: the question's language decides the instruction's.
 final RegExp _cjk = RegExp(r'[\u4e00-\u9fff\u3040-\u30ff\uac00-\ud7af]');
@@ -281,7 +281,9 @@ final class _PigeonGenerationOperation {
           generationId: generationId.value,
           sessionId: request.conversationId.value,
           prompt:
-              '${plainProseInstruction(request.prompt)}\n\n${request.prompt}',
+              '${plainProseInstruction(request.prompt)}\n\n'
+              '${_cjk.hasMatch(request.prompt) ? "[問題] " : "[Question] "}'
+              '${request.prompt}',
           context: const <String>[],
           history: <DesktopConversationTurn>[
             for (final Turn turn in request.history)

@@ -435,9 +435,21 @@ final class VoiceConversationController extends ChangeNotifier {
       return;
     }
     final String undispatched = text.substring(_dispatchedOfActive);
+    final int target = _chunkTargetForAnswer;
     int lastEnd = _firstChunkOfAnswer
         ? _lastSentenceEnd(undispatched)
-        : _sentenceEndNear(undispatched, _chunkTargetForAnswer);
+        : _sentenceEndNear(undispatched, target);
+    if (!_firstChunkOfAnswer && lastEnd + 1 < target) {
+      // Conversational Chinese runs a long way between full stops. Once
+      // twice the target has gone by with no sentence in sight, a clause is
+      // a better seam than waiting: the alternative is one chunk of five
+      // sentences, which is fifteen seconds an interruption throws away and
+      // fifteen seconds of prosody drifting away from its neighbours.
+      final int clause = _lastClauseEnd(undispatched);
+      if (clause + 1 >= target * 2) {
+        lastEnd = _clauseEndNear(undispatched, target);
+      }
+    }
     if (lastEnd < 0) {
       // No sentence yet — but the answer's first chunk may go out on a
       // finished clause, so the voice starts before the full stop arrives.
@@ -525,6 +537,19 @@ final class VoiceConversationController extends ChangeNotifier {
       return i;
     }
     return -1;
+  }
+
+  /// The first clause boundary in [text] at or past [target].
+  static int _clauseEndNear(String text, int target) {
+    for (int i = target - 1; i < text.length - 1; i++) {
+      if (i < 0) {
+        continue;
+      }
+      if (_clauseEnds.contains(text[i]) && !_isDigit(text.codeUnitAt(i + 1))) {
+        return i;
+      }
+    }
+    return _lastClauseEnd(text);
   }
 
   /// The last clause boundary in [text] that is safe to speak through, or
