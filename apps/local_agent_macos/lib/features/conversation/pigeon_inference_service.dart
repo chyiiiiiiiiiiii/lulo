@@ -41,6 +41,24 @@ final class LocalModelConfig {
   final int seed;
 }
 
+/// Told to the model ahead of every question.
+///
+/// Nothing had ever asked it for prose, so it wrote documentation: headings,
+/// bold runs, horizontal rules and numbered lists, with the asterisks and
+/// hashes showing through on screen. It reads badly, and it reads worse
+/// aloud — every symbol has to be stripped before synthesis, and the blank
+/// lines between list items are sentence boundaries that chop the speech
+/// into fragments.
+///
+/// Repeated on each turn rather than sent once: a small local model does not
+/// reliably carry an instruction across a long conversation, and thirty
+/// tokens is a cheap way to not depend on it doing so.
+const String plainProseInstruction =
+    'Reply in plain conversational prose. Do not use Markdown: no asterisks, '
+    'no hash headings, no horizontal rules, no bullet or numbered lists. '
+    'Write in full sentences, as if speaking aloud. Answer in the language '
+    "of the question.";
+
 /// Adapts the typed desktop host boundary to the conversation feature.
 final class PigeonInferenceService implements InferenceService {
   /// Creates a feature adapter around an explicitly owned desktop host.
@@ -245,7 +263,7 @@ final class _PigeonGenerationOperation {
         DesktopGenerationRequest(
           generationId: generationId.value,
           sessionId: request.conversationId.value,
-          prompt: request.prompt,
+          prompt: '$plainProseInstruction\n\n${request.prompt}',
           context: const <String>[],
           history: <DesktopConversationTurn>[
             for (final Turn turn in request.history)

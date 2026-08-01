@@ -219,7 +219,11 @@ void main() {
       final payload = host.generationRequests.single;
       expect(payload.generationId, 'litert-generation-1');
       expect(payload.sessionId, 'conversation-42');
-      expect(payload.prompt, 'Exact private prompt');
+      // The question is carried verbatim, behind an instruction to answer
+      // in prose. Without it the model wrote Markdown, which shows its own
+      // asterisks on screen and has to be stripped again before speech.
+      expect(payload.prompt, endsWith('Exact private prompt'));
+      expect(payload.prompt, contains('Do not use Markdown'));
       expect(payload.context, isEmpty);
       expect(payload.temperature, 0.25);
       expect(payload.topP, 0.9);

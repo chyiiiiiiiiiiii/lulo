@@ -271,21 +271,81 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
       // drain signal. stopSpeaking's player.stop() fires it early, which
       // is exactly what a barge-in needs.
       await withCheckedContinuation { (done: CheckedContinuation<Void, Never>) in
+        // Exactly once, from whichever of the three arrives first. A bare
+        // continuation here leaked the whole utterance: a buffer scheduled
+        // onto a stopped player never plays back, so .dataPlayedBack never
+        // fired, renderAndPlay never returned, and utteranceEnded never ran.
+        // outstandingUtterances then stayed above zero for the life of the
+        // process — no SpeakingStarted or SpeakingFinished again, the agent
+        // permanently "speaking" and permanently silent. Observed in use:
+        // ninety seconds of WHILE SPEAKING partials in a silent room.
+        let once = ResumeOnce(done)
         guard
           let tail = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 1)
         else {
-          done.resume()
+          once.resume()
           return
         }
         tail.frameLength = 1
         player.scheduleBuffer(tail, completionCallbackType: .dataPlayedBack) {
           _ in
-          done.resume()
+          once.resume()
         }
+        // A tail scheduled onto a node that is not running would sit there
+        // unplayed, waiting for a play() that a finished answer never makes.
+        if !player.isPlaying {
+          player.play()
+        }
+        // stopSpeaking bumps the epoch; endSession stops the player without
+        // doing so. Neither can deliver the callback, and both must end this
+        // wait — with an absolute cap so no future stop path can leak it
+        // again by forgetting to signal.
+        self.pollForDrain(
+          epoch: epoch,
+          player: player,
+          resume: once,
+          deadline: Date().addingTimeInterval(180)
+        )
       }
       return true
     } catch {
       return false
+    }
+  }
+
+  /// Ends a drain wait that its playback callback can no longer end.
+  ///
+  /// Two stop paths cannot deliver `.dataPlayedBack`: `stopSpeaking`, which
+  /// bumps the epoch, and `endSession`, which stops the player without
+  /// touching it. Both are checked, and the deadline covers whatever is
+  /// added next.
+  nonisolated private func pollForDrain(
+    epoch: Int,
+    player: AVAudioPlayerNode,
+    resume: ResumeOnce,
+    deadline: Date
+  ) {
+    DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 0.1) {
+      [weak self] in
+      guard let self else {
+        resume.resume()
+        return
+      }
+      if epoch != self.speakEpochBox.epoch || !player.isPlaying {
+        resume.resume()
+        return
+      }
+      guard Date() < deadline else {
+        NSLog("Lulo voice: drain never completed; releasing the utterance")
+        resume.resume()
+        return
+      }
+      self.pollForDrain(
+        epoch: epoch,
+        player: player,
+        resume: resume,
+        deadline: deadline
+      )
     }
   }
 
@@ -1189,4 +1249,26 @@ enum VoiceHostError: Error {
   case microphoneDenied
   case localeUnsupported
   case audioFormatUnavailable
+}
+
+/// Resumes a continuation exactly once, from any thread.
+///
+/// The playback callback, the barge-in poll and the deadline all race to end
+/// the same wait; resuming a continuation twice is a crash, never resuming it
+/// is the leak this exists to close.
+private final class ResumeOnce: @unchecked Sendable {
+  init(_ continuation: CheckedContinuation<Void, Never>) {
+    self.continuation = continuation
+  }
+
+  private let lock = NSLock()
+  private var continuation: CheckedContinuation<Void, Never>?
+
+  func resume() {
+    lock.lock()
+    let pending = continuation
+    continuation = nil
+    lock.unlock()
+    pending?.resume()
+  }
 }
