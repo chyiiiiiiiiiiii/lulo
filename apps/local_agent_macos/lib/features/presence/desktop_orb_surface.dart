@@ -144,9 +144,7 @@ final class _DesktopOrbSurfaceState extends State<DesktopOrbSurface> {
           },
           child: Semantics(
             button: true,
-            label:
-                'Lulo, your local agent. Activate to open the conversation, or '
-                'drag to move it.',
+            label: 'Lulo，你的本機助理。點一下開啟對話，或拖曳移動。',
             child: Center(
               child: AnimatedScale(
                 // A restrained hover response: enough to read as alive without

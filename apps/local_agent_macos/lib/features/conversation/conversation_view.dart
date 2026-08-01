@@ -297,7 +297,7 @@ final class _ConversationChrome extends StatelessWidget {
               animation: voice!,
               builder: (BuildContext context, Widget? _) => IconButton(
                 key: const Key('conversation-voice-button'),
-                tooltip: voice!.enabled ? 'Stop listening' : 'Talk to Lulo',
+                tooltip: voice!.enabled ? '關閉語音對話' : '開啟語音對話',
                 icon: Icon(
                   voice!.enabled ? Icons.mic_rounded : Icons.mic_none_rounded,
                   color: voice!.enabled
@@ -310,12 +310,12 @@ final class _ConversationChrome extends StatelessWidget {
           if (onShowHistory != null)
             IconButton(
               key: const Key('conversation-history-button'),
-              tooltip: 'Conversations',
+              tooltip: '對話紀錄',
               icon: const Icon(Icons.history_rounded),
               onPressed: onShowHistory,
             ),
           Semantics(
-            label: 'Local model',
+            label: '本機模型',
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: <Widget>[
@@ -328,7 +328,7 @@ final class _ConversationChrome extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(width: 8),
-                const Text('Local'),
+                const Text('本機'),
               ],
             ),
           ),
@@ -356,7 +356,7 @@ final class _HeardSoFar extends StatelessWidget {
           return Padding(
             padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 4),
             child: Text(
-              'Voice stopped: $failure',
+              '語音中斷：$failure',
               key: const Key('conversation-voice-failure'),
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                 color: Theme.of(context).colorScheme.error,
@@ -375,20 +375,17 @@ final class _HeardSoFar extends StatelessWidget {
           // never closes, so "Listening…" alone is true while thinking,
           // while talking, and while broken.
           final (IconData icon, String label) = switch (voice.activity) {
-            VoiceActivity.listening => (Icons.graphic_eq_rounded, 'Listening…'),
-            VoiceActivity.thinking => (Icons.more_horiz_rounded, 'Thinking…'),
-            VoiceActivity.speaking => (Icons.volume_up_rounded, 'Speaking…'),
+            VoiceActivity.listening => (Icons.graphic_eq_rounded, '聆聽中…'),
+            VoiceActivity.thinking => (Icons.more_horiz_rounded, '思考中…'),
+            VoiceActivity.speaking => (Icons.volume_up_rounded, '說話中…'),
             VoiceActivity.paused => (
               Icons.pause_circle_outline_rounded,
-              'Paused — say anything to carry on',
+              '已暫停——說句話就繼續',
             ),
-            VoiceActivity.holding => (
-              Icons.mic_rounded,
-              'Hearing you — release to send',
-            ),
+            VoiceActivity.holding => (Icons.mic_rounded, '正在聽你說——放開送出'),
             VoiceActivity.shielded => (
               Icons.volume_up_rounded,
-              'Answering — hold ⇧⌘Space to cut in',
+              '回答中——按住 ⇧⌘Space 可插話',
             ),
           };
           return Padding(

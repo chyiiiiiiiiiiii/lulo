@@ -151,10 +151,11 @@ final class VoiceConversationController extends ChangeNotifier {
   String? _pttBatchText;
   static const Duration _pttBatchWait = Duration(seconds: 8);
 
-  /// Whether the global hotkey is physically down, tracked apart from
+  /// Whether a hold is physically in progress, tracked apart from
   /// [_pttHeld]: enabling takes seconds, and a press that auto-enabled the
   /// voice must not begin holding after its release already happened.
-  bool _hotkeyDown = false;
+  bool _holdIntent = false;
+  bool _holdIntentBatch = false;
   final List<String> _pttFinals = <String>[];
   CancelBatch? _pttSubmitBackstop;
   static const Duration _pttTrailingWait = Duration(milliseconds: 1500);
@@ -359,21 +360,13 @@ final class VoiceConversationController extends ChangeNotifier {
 
   void _onVoiceEvent(VoiceEvent event) {
     if (!_enabled) {
-      // The hotkey is the intent to talk; making the user find a toggle
-      // first would answer that intent with silence. Everything else a
-      // disabled controller ignores.
-      if (event is HoldToTalkPressed && !_enabling && !_disposed) {
-        _hotkeyDown = true;
-        unawaited(
-          enable().then((_) {
-            if (_hotkeyDown && _enabled) {
-              holdToTalkPressed();
-              _pttAwaitsBatch = true;
-            }
-          }),
-        );
+      // A hold is the intent to talk; making the user find a toggle first
+      // would answer that intent with silence. Everything else a disabled
+      // controller ignores.
+      if (event is HoldToTalkPressed) {
+        holdToTalkPressed(withBatchRecognition: true);
       } else if (event is HoldToTalkReleased) {
-        _hotkeyDown = false;
+        holdToTalkReleased();
       }
       return;
     }
@@ -501,11 +494,8 @@ final class VoiceConversationController extends ChangeNotifier {
         _listening = false;
         notifyListeners();
       case HoldToTalkPressed():
-        _hotkeyDown = true;
-        holdToTalkPressed();
-        _pttAwaitsBatch = true;
+        holdToTalkPressed(withBatchRecognition: true);
       case HoldToTalkReleased():
-        _hotkeyDown = false;
         holdToTalkReleased();
       case HeldTranscript(:final String text):
         if (_pttSettling) {
@@ -699,16 +689,35 @@ final class VoiceConversationController extends ChangeNotifier {
   bool get answerShielded => _pttProtected;
 
   /// Push-to-talk pressed: the agent falls silent and held speech starts
-  /// composing. Nothing submits until the release.
-  void holdToTalkPressed() {
-    if (!_enabled) {
+  /// composing. Nothing submits until the release. A press while the
+  /// voice is off turns it on first — the press IS the intent to talk.
+  void holdToTalkPressed({bool withBatchRecognition = false}) {
+    if (_disposed) {
       return;
     }
+    _holdIntent = true;
+    _holdIntentBatch = withBatchRecognition;
+    if (!_enabled) {
+      if (!_enabling) {
+        unawaited(
+          enable().then((_) {
+            if (_holdIntent && _enabled) {
+              _beginHold();
+            }
+          }),
+        );
+      }
+      return;
+    }
+    _beginHold();
+  }
+
+  void _beginHold() {
     _pttHeld = true;
     _pttSettling = false;
     _pttFinals.clear();
     _pttProtected = false;
-    _pttAwaitsBatch = false;
+    _pttAwaitsBatch = _holdIntentBatch;
     _pttBatchText = null;
     _pttSubmitBackstop?.cancel();
     _pttSubmitBackstop = null;
@@ -731,6 +740,7 @@ final class VoiceConversationController extends ChangeNotifier {
   /// once when the tail has already settled, otherwise waits for the
   /// trailing final with a backstop.
   void holdToTalkReleased() {
+    _holdIntent = false;
     if (!_pttHeld) {
       return;
     }

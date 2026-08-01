@@ -124,7 +124,7 @@ final class _ConversationComposerState extends State<ConversationComposer> {
                 maxLines: 6,
                 textInputAction: TextInputAction.newline,
                 decoration: InputDecoration(
-                  hintText: 'Message Lulo',
+                  hintText: '跟 Lulo 說些什麼…',
                   filled: true,
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(22),
@@ -137,7 +137,7 @@ final class _ConversationComposerState extends State<ConversationComposer> {
                   suffixIcon: canSubmit
                       ? IconButton(
                           key: const Key('conversation-submit-button'),
-                          tooltip: 'Send message',
+                          tooltip: '傳送',
                           onPressed: _controller.text.trim().isEmpty
                               ? null
                               : _submit,
@@ -145,7 +145,7 @@ final class _ConversationComposerState extends State<ConversationComposer> {
                         )
                       : IconButton(
                           key: const Key('conversation-stop-button'),
-                          tooltip: 'Stop response',
+                          tooltip: '停止回答',
                           onPressed: _stop,
                           icon: const Icon(Icons.stop_rounded),
                         ),
@@ -174,21 +174,33 @@ final class _HoldToTalkButton extends StatelessWidget {
     return AnimatedBuilder(
       animation: voice,
       builder: (BuildContext context, _) {
-        if (!voice.enabled) {
-          return const SizedBox.shrink();
-        }
         final bool held = voice.holdingToTalk;
         final ColorScheme colors = Theme.of(context).colorScheme;
+        // Present in every state: an empty slot where a button sometimes
+        // is reads as a rendering bug, and the button is the invitation.
+        // Holding it with the voice off turns the voice on — the press is
+        // the intent to talk.
         return Listener(
           key: const Key('conversation-hold-to-talk'),
+          // No batch recognition behind the button: only the hotkey path
+          // captures audio natively. The streamed transcript is what sends.
           onPointerDown: (_) => voice.holdToTalkPressed(),
           onPointerUp: (_) => voice.holdToTalkReleased(),
           onPointerCancel: (_) => voice.holdToTalkReleased(),
           child: Tooltip(
-            message: 'Hold to talk; release to send',
-            child: Icon(
-              held ? Icons.mic_rounded : Icons.mic_none_rounded,
-              color: held ? colors.primary : null,
+            message: '按住說話，放開送出',
+            child: AnimatedScale(
+              scale: held ? 1.15 : 1,
+              duration: const Duration(milliseconds: 120),
+              curve: Curves.easeOutCubic,
+              child: Icon(
+                held ? Icons.mic_rounded : Icons.mic_none_rounded,
+                color: held
+                    ? colors.primary
+                    : voice.enabled
+                    ? colors.onSurfaceVariant
+                    : colors.onSurfaceVariant.withValues(alpha: 0.45),
+              ),
             ),
           ),
         );

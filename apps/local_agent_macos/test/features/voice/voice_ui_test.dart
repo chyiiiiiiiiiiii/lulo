@@ -136,14 +136,14 @@ void main() {
     await tester.pump();
     await tester.pump();
 
-    expect(find.text('Listening…'), findsOneWidget);
+    expect(find.text('聆聽中…'), findsOneWidget);
 
     // A question is asked: the agent is now thinking, not merely listening.
     voice.hear(const FinalTranscript('Tell me something.'));
     await tester.pump();
     await tester.pump();
-    expect(find.text('Thinking…'), findsOneWidget);
-    expect(find.text('Listening…'), findsNothing);
+    expect(find.text('思考中…'), findsOneWidget);
+    expect(find.text('聆聽中…'), findsNothing);
   });
 
   testWidgets('a dead pipeline says why over the composer', (
