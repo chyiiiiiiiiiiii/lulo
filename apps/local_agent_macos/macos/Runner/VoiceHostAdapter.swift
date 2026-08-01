@@ -154,6 +154,12 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
   ) {
     utteranceBegan()
     let epoch = speakEpoch
+    NSLog(
+      "Lulo speak: begin %d chars at epoch %d (outstanding %d)",
+      text.count,
+      epoch,
+      turn.outstanding
+    )
     Task { @MainActor in
       let spoke: Bool
       if self.fullDuplex,
@@ -250,9 +256,18 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
           player.play()
         }
       }
+      var abandoned = false
       for try await byte in bytes {
         if epoch != self.speakEpochBox.epoch {
           // Barged over: stop pulling audio; the player is already quiet.
+          if !abandoned {
+            abandoned = true
+            NSLog(
+              "Lulo speak: ABORTED at epoch %d, now %d",
+              epoch,
+              self.speakEpochBox.epoch
+            )
+          }
           bytes.task.cancel()
           return true
         }
@@ -431,6 +446,11 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
   func stopSpeaking(completion: @escaping (Result<Void, Error>) -> Void) {
     speakEpoch += 1
     speakEpochBox.epoch = speakEpoch
+    NSLog(
+      "Lulo speak: STOP -> epoch %d (outstanding %d)",
+      speakEpoch,
+      turn.outstanding
+    )
     // Full duplex: silence the local player at once; the /stop below also
     // makes the sidecar abandon whatever it was still rendering.
     session?.playerNode?.stop()
