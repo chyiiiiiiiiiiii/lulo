@@ -607,32 +607,49 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
     // own words, at a peak of 0.1443 against a 0.0021 noise floor. The first
     // of them cancelled the answer it came from.
     var duplex = false
-    do {
-      try input.setVoiceProcessingEnabled(true)
+    var cancellerless = false
+    if let outputTransport = InputDevicePolicy.defaultOutputTransport(),
+      InputDevicePolicy.skipsEchoCancellation(outputTransport: outputTransport)
+    {
+      // Headphones: the far end goes into the user's ears and never
+      // reaches the room, so there is nothing for the canceller to
+      // subtract — and the voice-processing unit is what fights Bluetooth
+      // routes, -10875 out of the output unit on start after start while
+      // the route renegotiates. Full duplex holds without it: plain
+      // output, open microphone.
+      duplex = true
+      cancellerless = true
+    } else {
       do {
-        try engine.outputNode.setVoiceProcessingEnabled(true)
-        duplex = true
+        try input.setVoiceProcessingEnabled(true)
+        do {
+          try engine.outputNode.setVoiceProcessingEnabled(true)
+          duplex = true
+        } catch {
+          // Input-only voice processing is worse than none at all: the
+          // microphone stays open and nothing removes the agent from it.
+          // Undo it so the half-duplex path, which mutes instead, takes
+          // over.
+          try? input.setVoiceProcessingEnabled(false)
+          NSLog(
+            "Lulo voice: output voice processing refused (%@); half-duplex",
+            String(describing: error)
+          )
+        }
       } catch {
-        // Input-only voice processing is worse than none at all: the
-        // microphone stays open and nothing removes the agent from it. Undo
-        // it so the half-duplex path, which mutes instead, takes over.
-        try? input.setVoiceProcessingEnabled(false)
         NSLog(
-          "Lulo voice: output voice processing refused (%@); half-duplex",
+          "Lulo voice: voice processing unavailable (%@); half-duplex",
           String(describing: error)
         )
       }
-    } catch {
-      NSLog(
-        "Lulo voice: voice processing unavailable (%@); half-duplex",
-        String(describing: error)
-      )
     }
     fullDuplex = duplex
     NSLog(
       "Lulo voice: %@ (echo cancellation %@)",
       duplex ? "full duplex" : "half duplex",
-      duplex ? "on both ends" : "off — microphone mutes while speaking"
+      cancellerless
+        ? "unnecessary — headphone output reaches no microphone"
+        : duplex ? "on both ends" : "off — microphone mutes while speaking"
     )
     // Before the format is read: the format belongs to the device. The
     // output stays where the user put it — only the ears move.
@@ -1098,12 +1115,35 @@ enum InputDevicePolicy {
       || transport == kAudioDeviceTransportTypeBluetoothLE
   }
 
+  /// Whether playback through this output can skip the echo canceller.
+  ///
+  /// Headphones deliver the far end into the user's ears: nothing reaches
+  /// the room, so there is no echo to cancel — and the voice-processing
+  /// unit is exactly what fights Bluetooth routes, -10875 out of the
+  /// output unit on start after start while the route renegotiates. The
+  /// microphone stays open either way; only the canceller is skipped.
+  static func skipsEchoCancellation(outputTransport: UInt32) -> Bool {
+    outputTransport == kAudioDeviceTransportTypeBluetooth
+      || outputTransport == kAudioDeviceTransportTypeBluetoothLE
+  }
+
   /// Transport of the system's default input device, or nil if unknowable.
   static func defaultInputTransport() -> UInt32? {
+    defaultDeviceTransport(kAudioHardwarePropertyDefaultInputDevice)
+  }
+
+  /// Transport of the system's default output device, or nil if unknowable.
+  static func defaultOutputTransport() -> UInt32? {
+    defaultDeviceTransport(kAudioHardwarePropertyDefaultOutputDevice)
+  }
+
+  private static func defaultDeviceTransport(
+    _ selector: AudioObjectPropertySelector
+  ) -> UInt32? {
     var device = AudioDeviceID(0)
     var size = UInt32(MemoryLayout<AudioDeviceID>.size)
     var address = AudioObjectPropertyAddress(
-      mSelector: kAudioHardwarePropertyDefaultInputDevice,
+      mSelector: selector,
       mScope: kAudioObjectPropertyScopeGlobal,
       mElement: kAudioObjectPropertyElementMain
     )
