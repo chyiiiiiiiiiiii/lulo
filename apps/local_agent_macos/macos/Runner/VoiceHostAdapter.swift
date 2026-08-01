@@ -41,6 +41,10 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
   /// stay open during speech. Decided per session in [begin].
   private var fullDuplex = false
 
+  /// Headphone mode: the sidecar speaks, the engine only listens, and the
+  /// microphone never mutes — there is no echo path to protect it from.
+  private var openMicWithoutCanceller = false
+
   /// Whose turn it is and when its clocks were last true. Kept as one
   /// value so it can be exercised without an audio device; see [SpeechTurn].
   private var turn = SpeechTurn()
@@ -441,7 +445,7 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
 
   private func utteranceBegan() {
     let began = turn.began(at: ProcessInfo.processInfo.systemUptime)
-    if began.shouldMute, !fullDuplex {
+    if began.shouldMute, !fullDuplex, !openMicWithoutCanceller {
       // Muted before the first sample leaves the speaker, not when a
       // delegate reports it: the gap is exactly long enough for the
       // agent to hear its own opening words. Full duplex keeps the
@@ -584,42 +588,48 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
 
     let engine = AVAudioEngine()
     let input = engine.inputNode
-    // The main mixer must exist before voice processing reshapes the graph.
-    // Instantiated afterwards it lands on 44.1kHz against 48kHz hardware,
-    // and the output unit then refuses to initialize the moment a player
-    // node is connected to it — kAUInitialize -10875 on engine start, which
-    // reads as "voice processing is impossible here" and is nothing of the
-    // sort. Six trials: input-only, input and output, output-only, and no
-    // voice processing at all, each with and without a player node. Only
-    // the ones that touched the mixer first started.
-    _ = engine.mainMixerNode
-    // Voice processing gives the engine the system echo canceller: what
-    // this process plays through its own output is subtracted from its own
-    // microphone, so the microphone can stay open while the agent talks and
-    // the user can interrupt by talking over it.
-    // The canceller lives in one Voice-Processing I/O unit that owns both
-    // ends of the audio. Enabling it on the input alone gives the microphone
-    // side and leaves playback on a plain output unit, so the unit has no
-    // far-end reference and there is nothing for it to subtract. That was
-    // this app's arrangement, and the microphone was never deaf — it simply
-    // heard the agent. Measured in use: nineteen partial transcripts arrived
-    // while speaking, spelling out "Flonter Google的這個技" in the agent's
-    // own words, at a peak of 0.1443 against a 0.0021 noise floor. The first
-    // of them cancelled the answer it came from.
     var duplex = false
-    var cancellerless = false
+    var openMic = false
     if let outputTransport = InputDevicePolicy.defaultOutputTransport(),
       InputDevicePolicy.skipsEchoCancellation(outputTransport: outputTransport)
     {
       // Headphones: the far end goes into the user's ears and never
-      // reaches the room, so there is nothing for the canceller to
-      // subtract — and the voice-processing unit is what fights Bluetooth
-      // routes, -10875 out of the output unit on start after start while
-      // the route renegotiates. Full duplex holds without it: plain
-      // output, open microphone.
-      duplex = true
-      cancellerless = true
+      // reaches the room, so there is nothing for a canceller to subtract
+      // — and a Bluetooth output is unusable under this engine anyway.
+      // Touching the output side while the route renegotiates its profile
+      // failed start after start, first as kAUInitialize -10875 in the
+      // voice-processing unit, then — with voice processing skipped — as
+      // IsFormatSampleRateAndChannelCountValid(outputHWFormat) on the
+      // plain output, the device mid-switch reporting no sample rate at
+      // all. The engine that only listens initializes no output unit, so
+      // neither failure exists: the sidecar speaks through its own
+      // player, the microphone stays open, and interruption still works.
+      openMic = true
     } else {
+      // The main mixer must exist before voice processing reshapes the
+      // graph. Instantiated afterwards it lands on 44.1kHz against 48kHz
+      // hardware, and the output unit then refuses to initialize the
+      // moment a player node is connected to it — kAUInitialize -10875 on
+      // engine start, which reads as "voice processing is impossible
+      // here" and is nothing of the sort. Six trials: input-only, input
+      // and output, output-only, and no voice processing at all, each
+      // with and without a player node. Only the ones that touched the
+      // mixer first started.
+      _ = engine.mainMixerNode
+      // Voice processing gives the engine the system echo canceller: what
+      // this process plays through its own output is subtracted from its
+      // own microphone, so the microphone can stay open while the agent
+      // talks and the user can interrupt by talking over it.
+      // The canceller lives in one Voice-Processing I/O unit that owns
+      // both ends of the audio. Enabling it on the input alone gives the
+      // microphone side and leaves playback on a plain output unit, so
+      // the unit has no far-end reference and there is nothing for it to
+      // subtract. That was this app's arrangement, and the microphone was
+      // never deaf — it simply heard the agent. Measured in use: nineteen
+      // partial transcripts arrived while speaking, spelling out
+      // "Flonter Google的這個技" in the agent's own words, at a peak of
+      // 0.1443 against a 0.0021 noise floor. The first of them cancelled
+      // the answer it came from.
       do {
         try input.setVoiceProcessingEnabled(true)
         do {
@@ -644,12 +654,14 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
       }
     }
     fullDuplex = duplex
+    openMicWithoutCanceller = openMic
     NSLog(
-      "Lulo voice: %@ (echo cancellation %@)",
-      duplex ? "full duplex" : "half duplex",
-      cancellerless
-        ? "unnecessary — headphone output reaches no microphone"
-        : duplex ? "on both ends" : "off — microphone mutes while speaking"
+      "Lulo voice: %@",
+      openMic
+        ? "open microphone (headphones; the sidecar speaks, nothing echoes)"
+        : duplex
+          ? "full duplex (echo cancellation on both ends)"
+          : "half duplex (microphone mutes while speaking)"
     )
     // Before the format is read: the format belongs to the device. The
     // output stays where the user put it — only the ears move.
