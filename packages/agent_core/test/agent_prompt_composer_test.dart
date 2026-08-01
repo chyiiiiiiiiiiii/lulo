@@ -42,6 +42,7 @@ void main() {
       result.instruction.indexOf('[語音回答方式]'),
       lessThan(result.instruction.indexOf('[使用者偏好]')),
     );
+    expect('[使用者偏好]'.allMatches(result.instruction), hasLength(1));
   });
 
   test('English questions receive English behavior instructions', () {
@@ -103,7 +104,7 @@ void main() {
 
     expect(result.profileCharacterCount, lessThanOrEqualTo(520));
     expect(result.instruction, endsWith('[問題]\n完整問題不可被截斷'));
-    expect(result.instruction, isNot(contains('這一條應該先被截去')));
+    expect(result.instruction, isNot(contains('額額額額額額額額額額額額額額額額額額額額')));
     expect(result.instruction, contains('不確定時坦白說明'));
   });
 }

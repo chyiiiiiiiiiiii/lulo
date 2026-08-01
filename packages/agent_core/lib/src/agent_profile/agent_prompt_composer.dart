@@ -100,7 +100,6 @@ AgentPromptContext composeAgentPrompt({
       title: chinese ? '與這次問題相關的記憶' : 'Relevant memory',
       lines: <String>[memory.content],
       limit: effectiveLimit,
-      mergeExisting: true,
     );
     if (candidate == profileText) {
       continue;
@@ -134,7 +133,6 @@ String _appendSectionWithin(
   required String title,
   required List<String> lines,
   required int limit,
-  bool mergeExisting = false,
 }) {
   String result = current;
   for (final String rawLine in lines) {
@@ -143,7 +141,7 @@ String _appendSectionWithin(
       continue;
     }
     final String header = '[$title]\n';
-    final bool alreadyPresent = mergeExisting && result.contains(header);
+    final bool alreadyPresent = result.contains(header);
     final String addition = alreadyPresent ? '\n$line' : '\n\n$header$line';
     if (result.length + addition.length <= limit) {
       result += addition;
