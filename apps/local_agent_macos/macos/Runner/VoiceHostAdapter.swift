@@ -349,6 +349,18 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
     }
   }
 
+  /// Words the recogniser should lean towards when the audio is ambiguous.
+  ///
+  /// Deliberately short. Contextual biasing trades general accuracy for
+  /// these terms, so a long list of rarely-spoken words costs more than it
+  /// returns; this is the vocabulary this app is actually talked to about.
+  static let spokenVocabulary: [String] = [
+    "Flutter", "Dart", "Swift", "SwiftUI", "Xcode", "Kotlin",
+    "React Native", "Blogger", "GitHub", "Google", "Apple", "Android",
+    "iOS", "macOS", "Gemma", "LiteRT", "Lulo",
+    "cross-platform", "framework", "widget", "repository", "commit",
+  ]
+
   private func utteranceBegan() {
     let began = turn.began(at: ProcessInfo.processInfo.systemUptime)
     if began.shouldMute, !fullDuplex {
@@ -466,7 +478,18 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
       try await installation.downloadAndInstall()
     }
     try guardCurrent(id)
+    // Terms this conversation is about, handed to the recogniser as a bias.
+    //
+    // Without them a product name is transcribed as whatever ordinary words
+    // it sounds like — "Flutter" came back as "Flocker" and then "Frant",
+    // and the model then answered a question about a thing that does not
+    // exist. This is the standard remedy; every production speech stack has
+    // a name for it (LiveKit calls them keyterms, most vendors call it
+    // contextual biasing) and Apple's is contextualStrings.
+    let context = AnalysisContext()
+    context.contextualStrings[.general] = Self.spokenVocabulary
     let analyzer = SpeechAnalyzer(modules: [transcriber])
+    try await analyzer.setContext(context)
     guard
       let analyzerFormat = await SpeechAnalyzer.bestAvailableAudioFormat(
         compatibleWith: [transcriber]

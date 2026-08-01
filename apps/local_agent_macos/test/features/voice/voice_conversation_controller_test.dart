@@ -611,6 +611,47 @@ void main() {
     },
   );
 
+  test('a chunk stops at the first sentence past the target', () async {
+    // The target is a minimum, but the boundary was the LAST sentence end in
+    // everything undispatched — so whenever generation ran ahead of speech,
+    // one chunk swallowed every sentence that had arrived. Measured in use:
+    // 5, 18, 21, 62, 67, 74, 114 and 140 characters, the largest of them ten
+    // seconds of audio. Each chunk is synthesised alone with no acoustic
+    // context from the last, so wildly uneven chunks are what "it changes to
+    // another person" is made of — and a ten-second chunk is ten seconds an
+    // interruption throws away.
+    await controller.enable();
+    voice.hear(const FinalTranscript('說說看。'));
+    await pump();
+    final Generation generation = await generationStarted();
+    inference.emit(GenerationDelta(generationId: generation.id, delta: '好的。'));
+    await pump();
+    await pump();
+    final int afterFirst = voice.spoken.length;
+
+    // Four whole sentences arrive at once, far past the target.
+    inference.emit(
+      GenerationDelta(
+        generationId: generation.id,
+        delta:
+            '第一句話大約有二十個字左右的長度。'
+            '第二句話大約有二十個字左右的長度。'
+            '第三句話大約有二十個字左右的長度。'
+            '第四句話大約有二十個字左右的長度。',
+      ),
+    );
+    await pump();
+    await pump();
+
+    expect(voice.spoken.length, greaterThan(afterFirst));
+    final String chunk = voice.spoken.last;
+    expect(
+      chunk.runes.length,
+      lessThan(40),
+      reason: 'One chunk swallowed every sentence that had arrived.',
+    );
+  });
+
   test('the user talking over a streaming answer cancels it', () async {
     await controller.enable();
     voice.hear(const FinalTranscript('Tell me a long story.'));

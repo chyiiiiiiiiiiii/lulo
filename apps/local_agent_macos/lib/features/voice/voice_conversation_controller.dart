@@ -435,7 +435,9 @@ final class VoiceConversationController extends ChangeNotifier {
       return;
     }
     final String undispatched = text.substring(_dispatchedOfActive);
-    int lastEnd = _lastSentenceEnd(undispatched);
+    int lastEnd = _firstChunkOfAnswer
+        ? _lastSentenceEnd(undispatched)
+        : _sentenceEndNear(undispatched, _chunkTargetForAnswer);
     if (lastEnd < 0) {
       // No sentence yet — but the answer's first chunk may go out on a
       // finished clause, so the voice starts before the full stop arrives.
@@ -456,6 +458,46 @@ final class VoiceConversationController extends ChangeNotifier {
     _dispatchedOfActive += chunk.length;
     _firstChunkOfAnswer = false;
     _speakAloud(chunk, decidedBy: text);
+  }
+
+  /// The first sentence boundary in [text] at or past [target] that is safe
+  /// to speak through, or the last one available when none reaches it.
+  ///
+  /// The target is a minimum, and taking the last boundary instead made it a
+  /// minimum with no maximum: whenever generation ran ahead of speech, one
+  /// chunk swallowed every sentence that had arrived. Chunks measured in use
+  /// ranged from 5 to 140 characters, the largest ten seconds of audio. Each
+  /// is synthesised alone with no acoustic context from the one before, so
+  /// uneven chunks are heard as the speaker changing — and a ten-second
+  /// chunk is ten seconds an interruption throws away.
+  static int _sentenceEndNear(String text, int target) {
+    final int last = _lastSentenceEnd(text);
+    if (last < 0) {
+      return -1;
+    }
+    for (int i = 0; i <= last; i++) {
+      if (i + 1 >= target && _isSentenceEndAt(text, i)) {
+        return i;
+      }
+    }
+    return last;
+  }
+
+  /// Whether [text] ends a sentence at [i], with the decimal-point guard.
+  static bool _isSentenceEndAt(String text, int i) {
+    if (!_sentenceEnd.hasMatch(text[i])) {
+      return false;
+    }
+    if (text[i] == '.') {
+      if (i + 1 < text.length) {
+        if (_isDigit(text.codeUnitAt(i + 1))) {
+          return false;
+        }
+      } else if (i > 0 && _isDigit(text.codeUnitAt(i - 1))) {
+        return false;
+      }
+    }
+    return true;
   }
 
   /// The last sentence boundary in [text] that is safe to speak through,
