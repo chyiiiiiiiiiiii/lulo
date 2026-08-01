@@ -310,6 +310,45 @@ void main() {
     expect(voice.spoken.last, cutOff);
   });
 
+  test('a resumed answer keeps its language', () async {
+    // The interrupted sentence outlives the turn, but _activeLang does not:
+    // it resets to null the moment the active turn clears. Resuming with a
+    // null language hands the sidecar per-sentence guessing again — the one
+    // answer that must sound like the same person picking up mid-thought is
+    // the one that switches voice.
+    DateTime resumeClock = DateTime(2026, 8);
+    final VoiceConversationController resuming = VoiceConversationController(
+      voice: voice,
+      conversation: vm,
+      utteranceScheduler: MicrotaskBatchScheduler(),
+      now: () {
+        resumeClock = resumeClock.add(const Duration(milliseconds: 600));
+        return resumeClock;
+      },
+    );
+    addTearDown(resuming.dispose);
+    await resuming.enable();
+    voice.hear(const FinalTranscript('講一個很長的故事。'));
+    await pump();
+    await answerCompletely('從前有座山，山裡有座廟，廟裡的故事講也講不完。');
+    final int spokenBefore = voice.spoken.length;
+    expect(voice.spokenLanguages.toSet(), <String?>{'zh'});
+
+    voice.hear(const PartialTranscript('等一下我'));
+    await pump();
+    expect(voice.calls, contains('stopSpeaking'));
+
+    await pump();
+    await pump();
+    await pump();
+    expect(voice.spoken.length, greaterThan(spokenBefore));
+    expect(
+      voice.spokenLanguages.last,
+      'zh',
+      reason: 'The resumed sentence lost the language of its answer.',
+    );
+  });
+
   test('a noise that settles into nothing resumes at once', () async {
     // The two-second backstop is the wrong latency for the common case. A
     // cough or a misheard syllable produces a final with no words in it, and

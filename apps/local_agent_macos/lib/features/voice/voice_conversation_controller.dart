@@ -124,6 +124,8 @@ final class VoiceConversationController extends ChangeNotifier {
 
   /// The sentence an interruption cut off, awaiting [_resumeDelay].
   String? _interruptedSpeech;
+  String? _interruptedLang;
+  String? _outstandingLang;
   CancelBatch? _pendingResume;
 
   /// Forced-finalize attempts for the current utterance, bounded so a
@@ -584,6 +586,10 @@ final class VoiceConversationController extends ChangeNotifier {
     // what was handed to the voice, not what was heard, so without this the
     // sentence the user talked over is lost the moment it is cut.
     _speechOutstanding.add(spoken);
+    // Remembered with the sentences, not looked up at interruption time:
+    // an answer finishing its turn clears _activeLang while its sentences
+    // are still being heard.
+    _outstandingLang = _activeLang;
     notifyListeners();
     unawaited(_voice.speak(spoken, language: _activeLang));
   }
@@ -593,7 +599,9 @@ final class VoiceConversationController extends ChangeNotifier {
     _pendingResume?.cancel();
     _pendingResume = null;
     final String? interrupted = _interruptedSpeech;
+    final String? interruptedLang = _interruptedLang;
     _interruptedSpeech = null;
+    _interruptedLang = null;
     notifyListeners();
     if (!_enabled || interrupted == null || _disposed) {
       return;
@@ -609,13 +617,15 @@ final class VoiceConversationController extends ChangeNotifier {
     _speechOutstanding
       ..clear()
       ..add(interrupted);
-    unawaited(_voice.speak(interrupted, language: _activeLang));
+    _outstandingLang = interruptedLang;
+    unawaited(_voice.speak(interrupted, language: interruptedLang));
   }
 
   void _cancelPendingResume() {
     _pendingResume?.cancel();
     _pendingResume = null;
     _interruptedSpeech = null;
+    _interruptedLang = null;
   }
 
   /// The partial has sat still long enough: the user has finished talking.
@@ -701,6 +711,7 @@ final class VoiceConversationController extends ChangeNotifier {
       _interruptedSpeech = _speechOutstanding.isEmpty
           ? null
           : _speechOutstanding.join();
+      _interruptedLang = _outstandingLang;
       _speechOutstanding.clear();
       _pendingResume?.cancel();
       _pendingResume = _utteranceScheduler.schedule(
