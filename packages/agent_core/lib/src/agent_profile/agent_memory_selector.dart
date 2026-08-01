@@ -2,6 +2,7 @@ import 'agent_profile.dart';
 
 /// The bounded memories selected for one user turn.
 final class AgentMemorySelection {
+  /// Creates a selection that owns an immutable snapshot of [memories].
   AgentMemorySelection(List<AgentMemory> memories)
     : memories = List<AgentMemory>.unmodifiable(memories),
       characterCount = memories.fold<int>(
@@ -9,9 +10,13 @@ final class AgentMemorySelection {
         (int total, AgentMemory memory) => total + memory.content.length,
       );
 
+  /// Memories in the order they should enter the prompt.
   final List<AgentMemory> memories;
+
+  /// Total Unicode characters in the selected memory content.
   final int characterCount;
 
+  /// Stable IDs suitable for diagnostics that do not expose private content.
   List<String> get memoryIds => List<String>.unmodifiable(
     memories.map((AgentMemory memory) => memory.id),
   );

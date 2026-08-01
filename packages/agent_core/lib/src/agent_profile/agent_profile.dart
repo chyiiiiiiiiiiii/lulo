@@ -1,16 +1,31 @@
 /// How much detail Lulo should provide unless the question requires more.
-enum AgentResponseLength { concise, balanced, detailed }
+enum AgentResponseLength {
+  /// Lead with a short answer and offer to expand.
+  concise,
+
+  /// Provide enough explanation for the ordinary case.
+  balanced,
+
+  /// Prefer a thorough answer when the user explicitly chooses it.
+  detailed,
+}
 
 /// The stable names and language used to address each other.
 final class AgentIdentity {
+  /// Creates the stable names and locale used by prompt composition.
   const AgentIdentity({
     this.agentName = 'Lulo',
     this.userName = '',
     this.locale = 'zh-TW',
   });
 
+  /// The assistant's chosen name.
   final String agentName;
+
+  /// How the assistant may address the user, empty when unspecified.
   final String userName;
+
+  /// BCP-47 locale for the user's preferred language and region.
   final String locale;
 
   @override
@@ -26,6 +41,7 @@ final class AgentIdentity {
 
 /// The interpersonal behavior of the agent, independently of its voice.
 final class AgentPersonality {
+  /// Creates the interpersonal behavior used for every answer.
   const AgentPersonality({
     this.tone = '親近但不裝熟',
     this.responseLength = AgentResponseLength.concise,
@@ -33,9 +49,16 @@ final class AgentPersonality {
     this.leadWithAnswer = true,
   });
 
+  /// Human-readable relationship style.
   final String tone;
+
+  /// Default amount of detail.
   final AgentResponseLength responseLength;
+
+  /// Whether uncertainty must be stated rather than hidden.
   final bool admitUncertainty;
+
+  /// Whether the useful answer should precede background explanation.
   final bool leadWithAnswer;
 
   @override
@@ -53,6 +76,7 @@ final class AgentPersonality {
 
 /// Rules that keep generated prose natural when it is read aloud.
 final class VoiceResponseBehavior {
+  /// Creates the rules applied to prose that may be spoken aloud.
   const VoiceResponseBehavior({
     this.avoidMarkdown = true,
     this.avoidReadingUrls = true,
@@ -60,9 +84,16 @@ final class VoiceResponseBehavior {
     this.preferNaturalShortSentences = true,
   });
 
+  /// Whether generated prose should omit Markdown syntax.
   final bool avoidMarkdown;
+
+  /// Whether full URLs should be described instead of read character by character.
   final bool avoidReadingUrls;
+
+  /// Whether long enumerations should be replaced by a concise summary.
   final bool avoidLongLists;
+
+  /// Whether short natural sentences are preferred for speech.
   final bool preferNaturalShortSentences;
 
   @override
@@ -83,10 +114,23 @@ final class VoiceResponseBehavior {
 }
 
 /// The narrow product categories a durable memory may belong to.
-enum AgentMemoryKind { personal, preference, project, vocabulary }
+enum AgentMemoryKind {
+  /// A stable fact about the user, such as their chosen name.
+  personal,
+
+  /// A stated interaction or output preference.
+  preference,
+
+  /// Context about a named project or ongoing body of work.
+  project,
+
+  /// A term whose spelling or interpretation should remain stable.
+  vocabulary,
+}
 
 /// One explicit personal fact, selected by explainable string triggers.
 final class AgentMemory {
+  /// Creates a validated memory with explicitly owned triggers.
   AgentMemory({
     required String id,
     required this.kind,
@@ -97,10 +141,19 @@ final class AgentMemory {
        content = _required(content, 'content'),
        triggers = List<String>.unmodifiable(triggers);
 
+  /// Stable identifier used for diagnostics and future editing.
   final String id;
+
+  /// Product category governing triggerless eligibility.
   final AgentMemoryKind kind;
+
+  /// Concise fact inserted into a relevant prompt.
   final String content;
+
+  /// Substrings that make this memory relevant to a user turn.
   final List<String> triggers;
+
+  /// Whether this memory may currently be selected.
   final bool enabled;
 
   static String _required(String value, String name) {
@@ -126,6 +179,7 @@ final class AgentMemory {
 
 /// The complete developer-authored context available to prompt composition.
 final class AgentProfile {
+  /// Creates a versioned immutable developer profile.
   AgentProfile({
     this.schemaVersion = 1,
     this.identity = const AgentIdentity(),
@@ -140,14 +194,28 @@ final class AgentProfile {
          additionalInstructions,
        );
 
+  /// Creates Lulo's safe profile when no valid local file is available.
   factory AgentProfile.builtIn() => AgentProfile();
 
+  /// Schema version of the decoded profile.
   final int schemaVersion;
+
+  /// Stable names and locale.
   final AgentIdentity identity;
+
+  /// Interpersonal answer behavior.
   final AgentPersonality personality;
+
+  /// Constraints for prose that may be spoken aloud.
   final VoiceResponseBehavior voiceBehavior;
+
+  /// Structured facts eligible for deterministic selection.
   final List<AgentMemory> memories;
+
+  /// Terms available to later ASR and transcript-refinement slices.
   final List<String> vocabulary;
+
+  /// Developer-authored instructions appended after bounded memories.
   final List<String> additionalInstructions;
 
   @override
