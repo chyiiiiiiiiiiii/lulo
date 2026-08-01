@@ -65,6 +65,7 @@ explanation.
 | Document | State |
 |---|---|
 | [decisions/full-duplex-voice.md](decisions/full-duplex-voice.md) | Written |
+| [decisions/no-dart-audio-engine.md](decisions/no-dart-audio-engine.md) | Written — read before adding any audio package |
 | [decisions/half-duplex-voice.md](decisions/half-duplex-voice.md) | Superseded, kept for the method error |
 
 ## A note on branches
