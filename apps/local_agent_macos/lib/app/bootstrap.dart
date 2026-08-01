@@ -4,6 +4,8 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 
+import '../features/agent_profile/agent_context_provider.dart';
+import '../features/agent_profile/agent_profile_store.dart';
 import '../features/conversation/conversation_storage_service.dart';
 import '../features/conversation/drift_conversation_storage_service.dart';
 import '../features/conversation/pigeon_inference_service.dart';
@@ -111,12 +113,20 @@ AppComposition createAppComposition({
   SettingsStore? settingsStore,
   OwnedConversationStorage? conversationStorage,
   ModelDownloadManager? modelDownloads,
+  AgentProfileStore? agentProfileStore,
   List<ModelCatalogEntry> catalog = modelCatalog,
   VoiceService? voiceService,
   ValueNotifier<String>? ttsVoice,
 }) {
   final SettingsStore store = settingsStore ?? createSettingsStore();
+  final AgentProfileStore profileStore =
+      agentProfileStore ?? createAgentProfileStore();
+  unawaited(profileStore.load());
+  final AgentContextProvider agentContext = ProfileAgentContextProvider(
+    () => profileStore.current,
+  );
   if (inferenceRuntime != 'fake' && inferenceRuntime != 'litert') {
+    unawaited(profileStore.dispose());
     throw UnsupportedError(
       'Unsupported INFERENCE_RUNTIME "$inferenceRuntime". '
       'Supported runtimes are "fake" and "litert".',
@@ -142,11 +152,13 @@ AppComposition createAppComposition({
         inferenceRuntime: inferenceRuntime,
         localModelPath: localModelPath,
         desktopHostService: desktopHostService,
+        agentContext: agentContext,
       ),
     );
   } on Object {
     unawaited(storage.release());
     unawaited(desktopHostService.dispose());
+    unawaited(profileStore.dispose());
     rethrow;
   }
 
@@ -155,6 +167,7 @@ AppComposition createAppComposition({
       await inferenceService.dispose();
       await storage.release();
       await desktopHostService.dispose();
+      await profileStore.dispose();
     },
     storageService: storage.service,
     inferenceService: inferenceService,
@@ -170,6 +183,7 @@ AppComposition createAppComposition({
         inferenceRuntime: modelPath.trim().isEmpty ? 'fake' : 'litert',
         localModelPath: modelPath,
         desktopHostService: desktopHostService,
+        agentContext: agentContext,
       ),
     ),
   );
@@ -197,6 +211,7 @@ OwnedInferenceService createInferenceService({
   required String inferenceRuntime,
   required String localModelPath,
   required DesktopHostService desktopHostService,
+  AgentContextProvider? agentContext,
 }) {
   if (inferenceRuntime == 'litert') {
     final String modelPath = localModelPath.trim();
@@ -209,6 +224,7 @@ OwnedInferenceService createInferenceService({
     }
     final PigeonInferenceService inferenceService = PigeonInferenceService(
       desktopHostService: desktopHostService,
+      agentContext: agentContext,
       config: LocalModelConfig(
         modelId: 'gemma-4-E4B-it',
         modelPath: modelPath,
@@ -254,5 +270,21 @@ SettingsStore createSettingsStore() {
   }
   return FileSettingsStore(
     directory: Directory('$home/Library/Application Support/Lulo'),
+  );
+}
+
+/// Opens the developer profile beside Lulo's other application data.
+FileAgentProfileStore createAgentProfileStore({
+  String? home,
+  bool watch = !kReleaseMode,
+}) {
+  final String? resolvedHome = home ?? Platform.environment['HOME'];
+  final String base = resolvedHome == null || resolvedHome.isEmpty
+      ? Directory.systemTemp.path
+      : '$resolvedHome/Library/Application Support/Lulo';
+  final Directory directory = Directory(base)..createSync(recursive: true);
+  return FileAgentProfileStore(
+    file: File('${directory.path}/agent_profile.json'),
+    watch: watch,
   );
 }

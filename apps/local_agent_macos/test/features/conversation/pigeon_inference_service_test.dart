@@ -4,6 +4,7 @@ import 'dart:ui' show Rect, Size;
 import 'package:agent_core/agent_core.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:local_agent_macos/features/agent_profile/agent_context_provider.dart';
 import 'package:local_agent_macos/features/conversation/pigeon_inference_service.dart';
 import 'package:local_agent_macos/generated/desktop_host_api.g.dart';
 import 'package:local_agent_macos/platform/desktop_host_service.dart';
@@ -223,7 +224,7 @@ void main() {
       // in prose. Without it the model wrote Markdown, which shows its own
       // asterisks on screen and has to be stripped again before speech.
       expect(payload.prompt, endsWith('Exact private prompt'));
-      expect(payload.prompt, contains('No Markdown'));
+      expect(payload.prompt, contains('Do not use Markdown'));
       expect(payload.context, isEmpty);
       expect(payload.temperature, 0.25);
       expect(payload.topP, 0.9);
@@ -590,6 +591,62 @@ void main() {
     expect(errors, isEmpty);
   });
 
+  test(
+    'structured context selects only relevant memory for the native request',
+    () async {
+      final host = RecordingDesktopHostService();
+      final service = PigeonInferenceService(
+        desktopHostService: host,
+        config: testModelConfig,
+        agentContext: ProfileAgentContextProvider(
+          () => AgentProfile(
+            identity: const AgentIdentity(userName: 'Yii'),
+            memories: <AgentMemory>[
+              AgentMemory(
+                id: 'lulo',
+                kind: AgentMemoryKind.project,
+                content: 'Yii 正在開發 Lulo。',
+                triggers: const <String>['Lulo'],
+              ),
+              AgentMemory(
+                id: 'moniit',
+                kind: AgentMemoryKind.project,
+                content: '這次不相關的 Moniit。',
+                triggers: const <String>['Moniit'],
+              ),
+            ],
+          ),
+        ),
+      );
+
+      final subscription = service
+          .generate(
+            const GenerationRequest(
+              conversationId: ConversationId('conversation-1'),
+              prompt: 'Lulo 下一步怎麼做？',
+              history: <Turn>[
+                Turn(
+                  role: TurnRole.user,
+                  text: '先前的問題',
+                  status: TurnStatus.completed,
+                ),
+              ],
+            ),
+          )
+          .listen((_) {});
+      await Future<void>.delayed(Duration.zero);
+
+      final DesktopGenerationRequest request = host.generationRequests.single;
+      expect(request.prompt, contains('稱呼使用者：Yii'));
+      expect(request.prompt, contains('Yii 正在開發 Lulo'));
+      expect(request.prompt, isNot(contains('這次不相關的 Moniit')));
+      expect('Lulo 下一步怎麼做？'.allMatches(request.prompt), hasLength(1));
+      expect(request.history.single.text, '先前的問題');
+
+      await subscription.cancel();
+    },
+  );
+
   test('the instruction is written in the language of the question', () async {
     // A small model answers in the language it was instructed in. An English
     // preamble in front of a Chinese question turned every reply English,
@@ -622,20 +679,23 @@ void main() {
 
     expect(host.generationRequests, hasLength(2));
     // "Markdown" is the term in both, so the tell is the surrounding prose.
-    expect(host.generationRequests[0].prompt, contains('口語回答'));
+    expect(host.generationRequests[0].prompt, contains('臺灣繁體中文'));
     // Traditional, not Simplified: the model answered 咱们/东西/开发 to a
     // Traditional question because nothing said which script to use.
     expect(host.generationRequests[0].prompt, contains('繁體'));
     // The question arrives from a speech recogniser, so it can be misheard.
     // Saying so costs nothing and lets the answer interpret rather than take
     // "Frant" literally and explain a thing that does not exist.
-    expect(host.generationRequests[0].prompt, contains('語音辨識'));
+    expect(host.generationRequests[0].prompt, contains('不確定時坦白說明'));
     expect(
       host.generationRequests[0].prompt,
-      isNot(contains('plain spoken prose')),
+      isNot(contains('natural spoken English')),
     );
-    expect(host.generationRequests[1].prompt, contains('plain spoken prose'));
-    expect(host.generationRequests[1].prompt, isNot(contains('口語回答')));
+    expect(
+      host.generationRequests[1].prompt,
+      contains('natural spoken English'),
+    );
+    expect(host.generationRequests[1].prompt, isNot(contains('臺灣繁體中文')));
 
     await chinese.cancel();
     await english.cancel();

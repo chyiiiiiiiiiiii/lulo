@@ -65,7 +65,7 @@ final class FileAgentProfileStore implements AgentProfileStore {
     if (_disposed) {
       throw StateError('The agent profile store is disposed.');
     }
-    await _reload();
+    _reload();
     if (watch && !_loaded) {
       _loaded = true;
       _events = file.parent.watch().listen(_onEvent);
@@ -78,20 +78,20 @@ final class FileAgentProfileStore implements AgentProfileStore {
     }
     _pending?.cancel();
     _pending = Timer(debounce, () {
-      unawaited(_reload());
+      _reload();
     });
   }
 
-  Future<void> _reload() async {
+  void _reload() {
     if (_disposed) {
       return;
     }
-    if (!await file.exists()) {
+    if (!file.existsSync()) {
       _replace(profile: AgentProfile.builtIn(), error: null);
       return;
     }
     try {
-      final Object? json = jsonDecode(await file.readAsString());
+      final Object? json = jsonDecode(file.readAsStringSync());
       final AgentProfileDecodeResult result = decodeAgentProfile(json);
       if (result.error != null) {
         _replace(profile: _current, error: result.error);

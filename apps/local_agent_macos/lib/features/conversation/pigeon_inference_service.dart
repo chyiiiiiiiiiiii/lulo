@@ -4,6 +4,7 @@ import 'package:agent_core/agent_core.dart';
 
 import '../../generated/desktop_host_api.g.dart';
 import '../../platform/desktop_host_service.dart';
+import '../agent_profile/agent_context_provider.dart';
 import 'inference_service.dart';
 
 /// Immutable native model and sampling configuration.
@@ -41,51 +42,19 @@ final class LocalModelConfig {
   final int seed;
 }
 
-/// Told to the model ahead of every question, in the question's own language.
-///
-/// Kept terse and bracketed on purpose. Written as flowing prose it was
-/// mirrored straight back: asked to be forgiving about misheard words, the
-/// model opened its answer with a paragraph about how forgiving it would be
-/// about misheard words. A small model answers what it is given, so an
-/// instruction that reads like conversation becomes conversation.
-///
-/// Nothing had ever asked it for prose, so it wrote documentation: headings,
-/// bold runs, horizontal rules and numbered lists, with the asterisks and
-/// hashes showing through on screen. It reads badly, and it reads worse
-/// aloud — every symbol has to be stripped before synthesis, and the blank
-/// lines between list items are sentence boundaries that chop the speech
-/// into fragments.
-///
-/// The language matters more than it looks. An English preamble in front of
-/// a Chinese question turned every reply English, no matter that the
-/// preamble asked in words for the language of the question: for a small
-/// local model the instruction is simply the strongest signal in the prompt,
-/// and it answers in the language it was addressed in. So it is addressed in
-/// the language it should answer in.
-///
-/// Repeated on each turn rather than sent once: a small local model does not
-/// reliably carry an instruction across a long conversation, and thirty
-/// tokens is a cheap way to not depend on it doing so.
-String plainProseInstruction(String prompt) => _cjk.hasMatch(prompt)
-    ? '[指示] 用繁體中文口語回答。不要 Markdown、不要條列。'
-          '輸入來自語音辨識，可能有錯字，照語意理解。'
-    : '[Instruction] Answer in plain spoken prose. No Markdown, no lists. '
-          'Input is from speech recognition and may contain errors; read for '
-          'meaning.';
-
-/// Anything CJK: the question's language decides the instruction's.
-final RegExp _cjk = RegExp(r'[\u4e00-\u9fff\u3040-\u30ff\uac00-\ud7af]');
-
 /// Adapts the typed desktop host boundary to the conversation feature.
 final class PigeonInferenceService implements InferenceService {
   /// Creates a feature adapter around an explicitly owned desktop host.
   PigeonInferenceService({
     required this._desktopHostService,
     required this._config,
-  });
+    AgentContextProvider? agentContext,
+  }) : _agentContext =
+           agentContext ?? ProfileAgentContextProvider(AgentProfile.builtIn);
 
   final DesktopHostService _desktopHostService;
   final LocalModelConfig _config;
+  final AgentContextProvider _agentContext;
   int _nextGeneration = 0;
   Future<DesktopRuntimeCapabilities>? _handshakeAttempt;
   DesktopRuntimeCapabilities? _capabilities;
@@ -117,6 +86,7 @@ final class PigeonInferenceService implements InferenceService {
       generationId: generationId,
       controller: controller,
       ensureReady: _ensureReady,
+      agentContext: _agentContext,
       onSessionStarted: _startedSessionIds.add,
       onFinished: () => _operations.remove(generationId.value),
     );
@@ -242,6 +212,7 @@ final class _PigeonGenerationOperation {
     required this.generationId,
     required this.controller,
     required this.ensureReady,
+    required this.agentContext,
     required this.onSessionStarted,
     required this.onFinished,
   });
@@ -252,6 +223,7 @@ final class _PigeonGenerationOperation {
   final GenerationId generationId;
   final StreamController<GenerationEvent> controller;
   final Future<void> Function() ensureReady;
+  final AgentContextProvider agentContext;
   final void Function(String sessionId) onSessionStarted;
   final void Function() onFinished;
   StreamSubscription<DesktopGenerationEvent>? _subscription;
@@ -276,14 +248,12 @@ final class _PigeonGenerationOperation {
         return;
       }
       onSessionStarted(request.conversationId.value);
+      final AgentPromptContext context = agentContext.compose(request.prompt);
       final acknowledgement = await host.startGeneration(
         DesktopGenerationRequest(
           generationId: generationId.value,
           sessionId: request.conversationId.value,
-          prompt:
-              '${plainProseInstruction(request.prompt)}\n\n'
-              '${_cjk.hasMatch(request.prompt) ? "[問題] " : "[Question] "}'
-              '${request.prompt}',
+          prompt: context.instruction,
           context: const <String>[],
           history: <DesktopConversationTurn>[
             for (final Turn turn in request.history)

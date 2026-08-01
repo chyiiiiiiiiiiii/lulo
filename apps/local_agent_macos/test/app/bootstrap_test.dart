@@ -1,6 +1,9 @@
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:local_agent_macos/app/app_composition.dart';
 import 'package:local_agent_macos/app/bootstrap.dart';
+import 'package:local_agent_macos/features/agent_profile/agent_profile_store.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -76,4 +79,25 @@ void main() {
       throwsA(isA<ArgumentError>()),
     );
   });
+
+  test(
+    'the durable developer profile lives beside Lulo application data',
+    () async {
+      final Directory home = await Directory.systemTemp.createTemp(
+        'lulo-home-',
+      );
+      addTearDown(() => home.delete(recursive: true));
+
+      final FileAgentProfileStore store = createAgentProfileStore(
+        home: home.path,
+        watch: false,
+      );
+      addTearDown(store.dispose);
+
+      expect(
+        store.file.path,
+        '${home.path}/Library/Application Support/Lulo/agent_profile.json',
+      );
+    },
+  );
 }
