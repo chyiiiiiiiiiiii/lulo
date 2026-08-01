@@ -45,6 +45,14 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
   /// value so it can be exercised without an audio device; see [SpeechTurn].
   private var turn = SpeechTurn()
 
+  /// What the recogniser should lean towards, growing with the answers
+  /// spoken aloud. Outlives any one listening session on purpose: the
+  /// conversation does too.
+  private var vocabulary = SpokenVocabularyBook(
+    seeds: VoiceHostAdapter.spokenVocabulary
+  )
+  private var vocabularyRefresh: Task<Void, Never>?
+
   /// How much silence after speech means the user has finished talking.
   ///
   /// The transcriber's own endpointing waits out several seconds, and the
@@ -153,6 +161,9 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
     completion: @escaping (Result<Void, Error>) -> Void
   ) {
     utteranceBegan()
+    if vocabulary.learn(from: text) {
+      scheduleVocabularyRefresh()
+    }
     let epoch = speakEpoch
     NSLog(
       "Lulo speak: begin %d chars at epoch %d (outstanding %d)",
@@ -374,7 +385,33 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
     "React Native", "Blogger", "GitHub", "Google", "Apple", "Android",
     "iOS", "macOS", "Gemma", "LiteRT", "Lulo",
     "cross-platform", "framework", "widget", "repository", "commit",
+    "Claude", "Anthropic", "AI", "API", "LLM", "MCP", "TTS", "app",
   ]
+
+  /// Hands the recogniser the newest vocabulary, a beat after the answer
+  /// that taught it — one update per burst of sentences, not one per chunk.
+  private func scheduleVocabularyRefresh() {
+    guard vocabularyRefresh == nil else { return }
+    vocabularyRefresh = Task { @MainActor in
+      try? await Task.sleep(for: .seconds(2))
+      self.vocabularyRefresh = nil
+      guard let analyzer = self.session?.analyzer else { return }
+      let context = AnalysisContext()
+      context.contextualStrings[.general] = self.vocabulary.all
+      do {
+        try await analyzer.setContext(context)
+        NSLog(
+          "Lulo voice: listening for %d terms",
+          self.vocabulary.all.count
+        )
+      } catch {
+        NSLog(
+          "Lulo voice: vocabulary update refused (%@)",
+          String(describing: error)
+        )
+      }
+    }
+  }
 
   private func utteranceBegan() {
     let began = turn.began(at: ProcessInfo.processInfo.systemUptime)
@@ -507,7 +544,7 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
     // a name for it (LiveKit calls them keyterms, most vendors call it
     // contextual biasing) and Apple's is contextualStrings.
     let context = AnalysisContext()
-    context.contextualStrings[.general] = Self.spokenVocabulary
+    context.contextualStrings[.general] = vocabulary.all
     let analyzer = SpeechAnalyzer(modules: [transcriber])
     try await analyzer.setContext(context)
     guard
@@ -952,6 +989,70 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
       event: HostVoiceEvent(type: type, text: text),
       completion: { _ in }
     )
+  }
+}
+
+/// The words this conversation is actually about, offered to the
+/// recogniser as bias.
+///
+/// The static seed list only covers what the app is usually talked to
+/// about. The terms that matter most are the ones the agent just said —
+/// the user's next sentence quotes them back, and an unbiased recogniser
+/// turns "hot reload" into whatever ordinary words it sounds like. The
+/// agent's answers are clean text, so every Latin phrase spoken aloud is
+/// learned here; user transcripts are never learned, because they are the
+/// recogniser's own guesses and would only reinforce its mistakes.
+///
+/// Bounded, oldest-out: contextual biasing trades general accuracy for the
+/// listed terms, so the book holds the current conversation, not a career.
+struct SpokenVocabularyBook {
+  static let capacity = 40
+
+  private let seeds: [String]
+  private var learned: [String] = []
+  private var known: Set<String>
+
+  init(seeds: [String]) {
+    self.seeds = seeds
+    self.known = Set(seeds.map { $0.lowercased() })
+  }
+
+  /// Every term the recogniser should lean towards, seeds first.
+  var all: [String] { seeds + learned }
+
+  /// Learns the Latin phrases of [text]; true when anything was new.
+  mutating func learn(from text: String) -> Bool {
+    var added = false
+    for term in Self.latinPhrases(in: text) {
+      let key = term.lowercased()
+      guard !known.contains(key) else { continue }
+      known.insert(key)
+      learned.append(term)
+      added = true
+      if learned.count > Self.capacity {
+        known.remove(learned.removeFirst().lowercased())
+      }
+    }
+    return added
+  }
+
+  /// Maximal runs of Latin words, kept as phrases: "hot reload" biases as
+  /// itself, not as two unrelated words. Single letters and bare numbers
+  /// are noise, not vocabulary.
+  private static let latinPhrase = try! NSRegularExpression(
+    pattern: "[A-Za-z][A-Za-z0-9+#'.-]*(?: [A-Za-z][A-Za-z0-9+#'.-]*)*"
+  )
+
+  private static func latinPhrases(in text: String) -> [String] {
+    let range = NSRange(text.startIndex..., in: text)
+    return latinPhrase.matches(in: text, range: range).compactMap { match in
+      guard let found = Range(match.range, in: text) else { return nil }
+      var term = String(text[found])
+      while let last = term.last, ".,'-".contains(last) {
+        term.removeLast()
+      }
+      return term.count >= 2 ? term : nil
+    }
   }
 }
 
