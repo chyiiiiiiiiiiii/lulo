@@ -543,6 +543,27 @@ pulling bytes mid-download and cancel the task.
 On the `/render` path the client hanging up *is* the barge-in signal: the
 sidecar's `_stream_render` stops at the first failed write.
 
+## Reversible transcript refinement
+
+Only a finalized utterance is refined. Partial text remains display-only;
+push-to-talk fragments are joined first and refined once. The production
+path uses a local deterministic refiner behind a 250 ms deadline. Timeout,
+exception, rejection, overlap, or disposal selects the exact recognizer text.
+
+Every voice-authored user turn keeps the raw transcript, applied proposal,
+status, redacted edit metadata, refiner identity, version, and elapsed time in
+the same SQLite row. Inference and the conversation UI use the selected text,
+while the original remains available for audit or a future restore action.
+Profile vocabulary is read from the current structured agent profile when the
+utterance settles; conversation history is not injected into the refiner.
+
+`buildTranscriptCandidateExport` converts explicitly supplied refinements to
+the existing `voice_eval` transcript candidate envelope. It is a pure builder:
+it accepts no output path and performs no file writes. Development tooling
+must JSON-encode its return value to a caller-selected location, then pass that
+file to `benchmarks/voice_eval/tool/evaluate.dart`. Production startup never
+exports private transcripts.
+
 ## Traps
 
 Ranked by how quietly they break.
