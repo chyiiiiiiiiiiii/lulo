@@ -41,7 +41,7 @@ final class LocalModelConfig {
   final int seed;
 }
 
-/// Told to the model ahead of every question.
+/// Told to the model ahead of every question, in the question's own language.
 ///
 /// Nothing had ever asked it for prose, so it wrote documentation: headings,
 /// bold runs, horizontal rules and numbered lists, with the asterisks and
@@ -50,14 +50,25 @@ final class LocalModelConfig {
 /// lines between list items are sentence boundaries that chop the speech
 /// into fragments.
 ///
+/// The language matters more than it looks. An English preamble in front of
+/// a Chinese question turned every reply English, no matter that the
+/// preamble asked in words for the language of the question: for a small
+/// local model the instruction is simply the strongest signal in the prompt,
+/// and it answers in the language it was addressed in. So it is addressed in
+/// the language it should answer in.
+///
 /// Repeated on each turn rather than sent once: a small local model does not
 /// reliably carry an instruction across a long conversation, and thirty
 /// tokens is a cheap way to not depend on it doing so.
-const String plainProseInstruction =
-    'Reply in plain conversational prose. Do not use Markdown: no asterisks, '
-    'no hash headings, no horizontal rules, no bullet or numbered lists. '
-    'Write in full sentences, as if speaking aloud. Answer in the language '
-    "of the question.";
+String plainProseInstruction(String prompt) => _cjk.hasMatch(prompt)
+    ? '請用口語化的散文回答，不要使用 Markdown：不要星號、井號標題、分隔線、'
+          '條列或編號清單。用完整的句子，像說話一樣。'
+    : 'Reply in plain conversational prose. Do not use Markdown: no '
+          'asterisks, no hash headings, no horizontal rules, no bullet or '
+          'numbered lists. Write in full sentences, as if speaking aloud.';
+
+/// Anything CJK: the question's language decides the instruction's.
+final RegExp _cjk = RegExp(r'[\u4e00-\u9fff\u3040-\u30ff\uac00-\ud7af]');
 
 /// Adapts the typed desktop host boundary to the conversation feature.
 final class PigeonInferenceService implements InferenceService {
@@ -263,7 +274,8 @@ final class _PigeonGenerationOperation {
         DesktopGenerationRequest(
           generationId: generationId.value,
           sessionId: request.conversationId.value,
-          prompt: '$plainProseInstruction\n\n${request.prompt}',
+          prompt:
+              '${plainProseInstruction(request.prompt)}\n\n${request.prompt}',
           context: const <String>[],
           history: <DesktopConversationTurn>[
             for (final Turn turn in request.history)

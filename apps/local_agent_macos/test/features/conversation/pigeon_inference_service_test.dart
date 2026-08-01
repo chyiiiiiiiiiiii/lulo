@@ -590,6 +590,50 @@ void main() {
     expect(errors, isEmpty);
   });
 
+  test('the instruction is written in the language of the question', () async {
+    // A small model answers in the language it was instructed in. An English
+    // preamble in front of a Chinese question turned every reply English,
+    // however plainly the preamble asked for the language of the question —
+    // the instruction is simply the strongest signal in the prompt.
+    final host = RecordingDesktopHostService();
+    final service = PigeonInferenceService(
+      desktopHostService: host,
+      config: testModelConfig,
+    );
+
+    final chinese = service
+        .generate(
+          const GenerationRequest(
+            conversationId: ConversationId('conversation-1'),
+            prompt: '你可以跟我說一下意大利麵的做法。',
+          ),
+        )
+        .listen((_) {});
+    await Future<void>.delayed(Duration.zero);
+    final english = service
+        .generate(
+          const GenerationRequest(
+            conversationId: ConversationId('conversation-1'),
+            prompt: 'How do I make spaghetti?',
+          ),
+        )
+        .listen((_) {});
+    await Future<void>.delayed(Duration.zero);
+
+    expect(host.generationRequests, hasLength(2));
+    // "Markdown" is the term in both, so the tell is the surrounding prose.
+    expect(host.generationRequests[0].prompt, contains('請用口語'));
+    expect(
+      host.generationRequests[0].prompt,
+      isNot(contains('Reply in plain')),
+    );
+    expect(host.generationRequests[1].prompt, contains('Reply in plain'));
+    expect(host.generationRequests[1].prompt, isNot(contains('請用口語')));
+
+    await chinese.cancel();
+    await english.cancel();
+  });
+
   test('warmUp reports a failure instead of hiding it', () async {
     final host = RecordingDesktopHostService(loadFailuresRemaining: 1);
     final service = PigeonInferenceService(
