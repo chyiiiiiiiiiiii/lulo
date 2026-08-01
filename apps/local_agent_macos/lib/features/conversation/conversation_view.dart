@@ -195,6 +195,7 @@ final class _ConversationViewState extends State<ConversationView> {
               canSubmit: _viewModel.canSubmitListenable,
               onSubmit: _viewModel.submit,
               onStop: _viewModel.stop,
+              voice: _voice,
               onBuild: () => widget.buildObserver?.composerBuilds += 1,
             ),
           ],

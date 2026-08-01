@@ -310,6 +310,70 @@ void main() {
     expect(voice.spoken.last, cutOff);
   });
 
+  test('held speech submits only on release, as one question', () async {
+    // Push-to-talk: the endpointer keeps firing finals through a long
+    // press — a thinking pause must not send half a question. Release is
+    // the only endpoint.
+    await controller.enable();
+    controller.holdToTalkPressed();
+    voice.hear(const FinalTranscript('第一句話'));
+    await pump();
+    voice.hear(const FinalTranscript('第二句話'));
+    await pump();
+    expect(inference.requests, isEmpty, reason: 'Held speech must wait.');
+
+    controller.holdToTalkReleased();
+    await pump();
+    await pump();
+    expect(inference.requests, hasLength(1));
+    expect(inference.requests.single.prompt, contains('第一句話'));
+    expect(inference.requests.single.prompt, contains('第二句話'));
+  });
+
+  test('the answer to held speech is not talked over', () async {
+    await controller.enable();
+    controller.holdToTalkPressed();
+    voice.hear(const FinalTranscript('講一個長故事'));
+    await pump();
+    controller.holdToTalkReleased();
+    await pump();
+    final Generation generation = await generationStarted();
+    inference.emit(
+      GenerationDelta(generationId: generation.id, delta: '從前有座山，山裡有座廟。'),
+    );
+    await pump();
+    await pump();
+    expect(voice.spoken, isNotEmpty);
+    final int stopsBefore = voice.calls
+        .where((String c) => c == 'stopSpeaking')
+        .length;
+
+    // Ambient speech — long enough to take the floor in open conversation.
+    voice.hear(const PartialTranscript('旁邊有人在講電話啦'));
+    await pump();
+    expect(
+      voice.calls.where((String c) => c == 'stopSpeaking').length,
+      stopsBefore,
+      reason: 'A protected answer must not be stopped by ambient speech.',
+    );
+    voice.hear(const FinalTranscript('旁邊有人在講電話啦'));
+    await pump();
+    expect(
+      inference.requests,
+      hasLength(1),
+      reason: 'Ambient speech must not become a question either.',
+    );
+
+    // The next hold is the one thing that does interrupt.
+    controller.holdToTalkPressed();
+    await pump();
+    expect(
+      voice.calls.where((String c) => c == 'stopSpeaking').length,
+      greaterThan(stopsBefore),
+      reason: 'A new hold explicitly takes the floor.',
+    );
+  });
+
   test('a resumed answer keeps its language', () async {
     // The interrupted sentence outlives the turn, but _activeLang does not:
     // it resets to null the moment the active turn clears. Resuming with a

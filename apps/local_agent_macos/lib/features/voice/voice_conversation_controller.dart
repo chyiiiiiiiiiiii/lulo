@@ -126,6 +126,18 @@ final class VoiceConversationController extends ChangeNotifier {
   String? _interruptedSpeech;
   String? _interruptedLang;
   String? _outstandingLang;
+
+  // Push-to-talk. While the button is held, finals buffer instead of
+  // submitting — the endpointer keeps firing through a long press, and a
+  // thinking pause must not send half a question. Release is the only
+  // endpoint, and the answer it produces cannot be talked over: the next
+  // hold is the one interruption.
+  bool _pttHeld = false;
+  bool _pttSettling = false;
+  bool _pttProtected = false;
+  final List<String> _pttFinals = <String>[];
+  CancelBatch? _pttSubmitBackstop;
+  static const Duration _pttTrailingWait = Duration(milliseconds: 1500);
   CancelBatch? _pendingResume;
 
   /// Forced-finalize attempts for the current utterance, bounded so a
@@ -325,6 +337,15 @@ final class VoiceConversationController extends ChangeNotifier {
       case PartialTranscript(:final String text):
         _partialTranscript = text;
         notifyListeners();
+        if (_pttHeld || _pttSettling) {
+          // Held speech is the question being composed: no floor to take,
+          // no settle race. The release is the endpoint.
+          return;
+        }
+        if (_pttProtected) {
+          // The answer to held speech plays out; ambient speech is noise.
+          return;
+        }
         if (text.trim().isNotEmpty) {
           final DateTime? lastFinal = _lastFinalAt;
           if (lastFinal == null ||
@@ -354,6 +375,19 @@ final class VoiceConversationController extends ChangeNotifier {
         _settleAttempts = 0;
         _partialTranscript = '';
         notifyListeners();
+        if (_pttHeld || _pttSettling) {
+          if (text.trim().isNotEmpty) {
+            _pttFinals.add(text.trim());
+          }
+          if (_pttSettling) {
+            // The trailing sentence has settled; the question is whole.
+            _submitHeldSpeech();
+          }
+          return;
+        }
+        if (_pttProtected) {
+          return;
+        }
         if (text.trim().isEmpty) {
           // Whatever took the floor turned out to be nothing — a cough, a
           // misheard syllable. That is known now, so the interrupted answer
@@ -393,6 +427,11 @@ final class VoiceConversationController extends ChangeNotifier {
         _speechRequested = false;
         // Everything handed over has drained; nothing is left to put back.
         _speechOutstanding.clear();
+        if (_pttProtected && _conversation.canSubmit) {
+          // The protected answer has been heard to the end; open
+          // conversation resumes.
+          _pttProtected = false;
+        }
         notifyListeners();
       case VoiceFailed(:final String message):
         // A dead pipeline must not leave the button lit as listening —
@@ -594,6 +633,79 @@ final class VoiceConversationController extends ChangeNotifier {
     unawaited(_voice.speak(spoken, language: _activeLang));
   }
 
+  /// Whether the push-to-talk button is currently held.
+  bool get holdingToTalk => _pttHeld;
+
+  /// Push-to-talk pressed: the agent falls silent and held speech starts
+  /// composing. Nothing submits until the release.
+  void holdToTalkPressed() {
+    if (!_enabled) {
+      return;
+    }
+    _pttHeld = true;
+    _pttSettling = false;
+    _pttFinals.clear();
+    _pttProtected = false;
+    _pttSubmitBackstop?.cancel();
+    _pttSubmitBackstop = null;
+    _cancelPendingResume();
+    _pendingSettle?.cancel();
+    _pendingSettle = null;
+    if (_speaking || _speechRequested) {
+      _speechRequested = false;
+      _speechOutstanding.clear();
+      unawaited(_voice.stopSpeaking());
+    }
+    if (!_conversation.canSubmit) {
+      _stopRequestedForActive = true;
+      unawaited(_conversation.stop());
+    }
+    notifyListeners();
+  }
+
+  /// Push-to-talk released: the question is done being spoken. Submits at
+  /// once when the tail has already settled, otherwise waits for the
+  /// trailing final with a backstop.
+  void holdToTalkReleased() {
+    if (!_pttHeld) {
+      return;
+    }
+    _pttHeld = false;
+    _pttSettling = true;
+    notifyListeners();
+    if (_partialTranscript.trim().isEmpty) {
+      _submitHeldSpeech();
+    } else {
+      _pttSubmitBackstop = _utteranceScheduler.schedule(
+        _pttTrailingWait,
+        _submitHeldSpeech,
+      );
+    }
+  }
+
+  void _submitHeldSpeech() {
+    if (!_pttSettling) {
+      return;
+    }
+    _pttSettling = false;
+    _pttSubmitBackstop?.cancel();
+    _pttSubmitBackstop = null;
+    final String question = _pttFinals.join(' ').trim();
+    _pttFinals.clear();
+    if (question.isEmpty || !_enabled) {
+      notifyListeners();
+      return;
+    }
+    debugPrint('Lulo ptt: submitting ${question.length} chars');
+    _pttProtected = true;
+    if (_conversation.canSubmit) {
+      unawaited(_conversation.submit(question));
+    } else {
+      _pendingUtterance = question;
+    }
+    notifyListeners();
+  }
+
   /// Re-says the sentence an interruption cut off, if nothing replaced it.
   void _resumeInterruptedSpeech() {
     _pendingResume?.cancel();
@@ -698,6 +810,11 @@ final class VoiceConversationController extends ChangeNotifier {
   /// The user started talking: whatever the agent was saying or still
   /// generating gives way.
   void _yieldToTheUser({required String from}) {
+    if (_pttHeld || _pttSettling || _pttProtected) {
+      // Push-to-talk owns the floor: the press already silenced the
+      // agent, and its answer yields to nothing but the next press.
+      return;
+    }
     final bool cancelling = !_conversation.canSubmit;
     debugPrint(
       'Lulo yield: from=$from speaking=$_speaking '

@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../voice/voice_conversation_controller.dart';
 import 'conversation_content_column.dart';
 
 /// Desktop-first prompt composer that owns all of its UI controllers.
@@ -13,12 +14,17 @@ final class ConversationComposer extends StatefulWidget {
     required this.canSubmit,
     required this.onSubmit,
     required this.onStop,
+    this.voice,
     this.onBuild,
     super.key,
   });
 
   /// Whether a new prompt may be submitted.
   final ValueListenable<bool> canSubmit;
+
+  /// Push-to-talk, when a voice is present and enabled: hold the button to
+  /// speak, release to send, and the answer plays out uninterrupted.
+  final VoiceConversationController? voice;
 
   /// Called with a normalized non-empty prompt.
   final ValueChanged<String> onSubmit;
@@ -125,6 +131,9 @@ final class _ConversationComposerState extends State<ConversationComposer> {
                     borderSide: BorderSide.none,
                   ),
                   contentPadding: const EdgeInsets.fromLTRB(18, 14, 8, 14),
+                  prefixIcon: widget.voice == null
+                      ? null
+                      : _HoldToTalkButton(voice: widget.voice!),
                   suffixIcon: canSubmit
                       ? IconButton(
                           key: const Key('conversation-submit-button'),
@@ -142,6 +151,44 @@ final class _ConversationComposerState extends State<ConversationComposer> {
                         ),
                 ),
               ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+/// Hold to speak, release to send.
+///
+/// While held the agent falls silent and listens; the release submits the
+/// whole utterance as one question, and the answer plays out over any
+/// ambient speech — the next hold is the only interruption.
+final class _HoldToTalkButton extends StatelessWidget {
+  const _HoldToTalkButton({required this.voice});
+
+  final VoiceConversationController voice;
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: voice,
+      builder: (BuildContext context, _) {
+        if (!voice.enabled) {
+          return const SizedBox.shrink();
+        }
+        final bool held = voice.holdingToTalk;
+        final ColorScheme colors = Theme.of(context).colorScheme;
+        return Listener(
+          key: const Key('conversation-hold-to-talk'),
+          onPointerDown: (_) => voice.holdToTalkPressed(),
+          onPointerUp: (_) => voice.holdToTalkReleased(),
+          onPointerCancel: (_) => voice.holdToTalkReleased(),
+          child: Tooltip(
+            message: 'Hold to talk; release to send',
+            child: Icon(
+              held ? Icons.mic_rounded : Icons.mic_none_rounded,
+              color: held ? colors.primary : null,
             ),
           ),
         );
