@@ -533,6 +533,13 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
     }
   }
 
+  /// The global hotkey's hold, reported to the conversation as an event:
+  /// pressed is the user talking, released is the speech complete. The
+  /// Dart side owns what that means; this side only relays the key.
+  func hotKeyHold(began: Bool) {
+    emit(began ? .holdToTalkPressed : .holdToTalkReleased)
+  }
+
   func stopSpeaking(completion: @escaping (Result<Void, Error>) -> Void) {
     speakEpoch += 1
     speakEpochBox.epoch = speakEpoch

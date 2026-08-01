@@ -118,22 +118,34 @@ final class _ConversationViewState extends State<ConversationView> {
   late final ConversationViewModel _viewModel;
   VoiceConversationController? _voice;
 
+  /// Whether the user is holding to talk, narrowed for the presence: the
+  /// orb leans into listening while this is true, in either form.
+  final ValueNotifier<bool> _holdingToTalk = ValueNotifier<bool>(false);
+
   @override
   void initState() {
     super.initState();
     _viewModel = widget.viewModelFactory();
     final VoiceService? voiceService = widget.voiceService;
     if (voiceService != null) {
-      _voice = VoiceConversationController(
+      final VoiceConversationController voice = VoiceConversationController(
         voice: voiceService,
         conversation: _viewModel,
       );
+      _voice = voice;
+      voice.addListener(_reflectHolding);
     }
+  }
+
+  void _reflectHolding() {
+    _holdingToTalk.value = _voice?.holdingToTalk ?? false;
   }
 
   @override
   void dispose() {
+    _voice?.removeListener(_reflectHolding);
     _voice?.dispose();
+    _holdingToTalk.dispose();
     _viewModel.dispose();
     super.dispose();
   }
@@ -160,6 +172,7 @@ final class _ConversationViewState extends State<ConversationView> {
           children: <Widget>[
             _ConversationChrome(
               voice: _voice,
+              holdingToTalk: _voice == null ? null : _holdingToTalk,
               onToggleVoice: _toggleVoice,
               onShowHistory: widget.onShowHistory,
               completedTurns: _viewModel.completedTurnsListenable,
@@ -208,6 +221,7 @@ final class _ConversationViewState extends State<ConversationView> {
 final class _ConversationChrome extends StatelessWidget {
   const _ConversationChrome({
     required this.voice,
+    required this.holdingToTalk,
     required this.onToggleVoice,
     required this.onShowHistory,
     required this.completedTurns,
@@ -222,6 +236,7 @@ final class _ConversationChrome extends StatelessWidget {
   });
 
   final VoiceConversationController? voice;
+  final ValueListenable<bool>? holdingToTalk;
   final VoidCallback onToggleVoice;
   final VoidCallback? onShowHistory;
   final ValueListenable<List<Turn>> completedTurns;
@@ -259,6 +274,7 @@ final class _ConversationChrome extends StatelessWidget {
             controller: presenceController,
             orb: presenceOrb,
             anchorKey: presenceAnchorKey,
+            holding: holdingToTalk,
             onControllerCreated: onPresenceControllerCreated,
             onOrbPaint: onPresenceOrbPaint,
             onSemanticBuild: onPresenceSemanticBuild,
@@ -354,6 +370,14 @@ final class _HeardSoFar extends StatelessWidget {
             VoiceActivity.paused => (
               Icons.pause_circle_outline_rounded,
               'Paused — say anything to carry on',
+            ),
+            VoiceActivity.holding => (
+              Icons.mic_rounded,
+              'Hearing you — release to send',
+            ),
+            VoiceActivity.shielded => (
+              Icons.volume_up_rounded,
+              'Answering — hold ⇧⌘Space to cut in',
             ),
           };
           return Padding(

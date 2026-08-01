@@ -48,19 +48,31 @@ final class GlobalHotKeyControllerTests: XCTestCase {
     let callback = CarbonHotKeyCallback(
       signature: expectedSignature,
       id: 7,
-      handler: { invocationCount += 1 }
+      handler: { invocationCount += 1 },
+      releaseHandler: nil
     )
 
     XCTAssertFalse(
       callback.route(
-        EventHotKeyID(signature: OSType(0x4F_54_48_52), id: 7)
+        EventHotKeyID(signature: OSType(0x4F_54_48_52), id: 7),
+        kind: UInt32(kEventHotKeyPressed)
       )
     )
     XCTAssertEqual(invocationCount, 0)
 
     XCTAssertTrue(
       callback.route(
-        EventHotKeyID(signature: expectedSignature, id: 7)
+        EventHotKeyID(signature: expectedSignature, id: 7),
+        kind: UInt32(kEventHotKeyPressed)
+      )
+    )
+    XCTAssertEqual(invocationCount, 1)
+
+    // A release with no release handler is not this callback's event.
+    XCTAssertFalse(
+      callback.route(
+        EventHotKeyID(signature: expectedSignature, id: 7),
+        kind: UInt32(kEventHotKeyReleased)
       )
     )
     XCTAssertEqual(invocationCount, 1)
@@ -79,7 +91,8 @@ private final class RecordingHotKeyBackend: HotKeyBackend {
   func register(
     _ key: GlobalHotKey,
     id: UInt32,
-    handler: @escaping () -> Void
+    handler: @escaping () -> Void,
+    releaseHandler: (() -> Void)?
   ) throws -> HotKeyRegistration {
     if key == keyToReject {
       throw GlobalHotKeyError.registrationFailed(

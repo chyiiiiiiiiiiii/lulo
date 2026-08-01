@@ -16,21 +16,95 @@ protocol HotKeyBackend: AnyObject {
   func register(
     _ key: GlobalHotKey,
     id: UInt32,
-    handler: @escaping () -> Void
+    handler: @escaping () -> Void,
+    releaseHandler: (() -> Void)?
   ) throws -> HotKeyRegistration
   func unregister(_ registration: HotKeyRegistration)
 }
 
 @MainActor
 protocol GlobalHotKeyRegistering: AnyObject {
-  func register(_ key: GlobalHotKey, handler: @escaping () -> Void) throws
-  func replace(with key: GlobalHotKey, handler: @escaping () -> Void) throws
+  func register(
+    _ key: GlobalHotKey,
+    handler: @escaping () -> Void,
+    releaseHandler: (() -> Void)?
+  ) throws
+  func replace(
+    with key: GlobalHotKey,
+    handler: @escaping () -> Void,
+    releaseHandler: (() -> Void)?
+  ) throws
   func unregister()
+}
+
+extension GlobalHotKeyRegistering {
+  func register(_ key: GlobalHotKey, handler: @escaping () -> Void) throws {
+    try register(key, handler: handler, releaseHandler: nil)
+  }
+
+  func replace(with key: GlobalHotKey, handler: @escaping () -> Void) throws {
+    try replace(with: key, handler: handler, releaseHandler: nil)
+  }
 }
 
 enum GlobalHotKeyError: Error, Equatable {
   case registrationFailed(status: OSStatus)
   case eventHandlerInstallationFailed(status: OSStatus)
+}
+
+/// Splits one hotkey into a tap and a hold by time.
+///
+/// A press starts the threshold clock; a release that beats it is a tap,
+/// and one that does not ends the hold the clock began. One key, two
+/// meanings: tap toggles the window, hold is push-to-talk — no second
+/// binding to learn, and no way to do both at once.
+@MainActor
+final class HotKeyHoldSplitter {
+  /// Schedules [work] after the hold threshold; returns its cancellation.
+  typealias Schedule = (@escaping () -> Void) -> () -> Void
+
+  private let onTap: () -> Void
+  private let onHoldBegan: () -> Void
+  private let onHoldEnded: () -> Void
+  private let schedule: Schedule
+  private var cancelPending: (() -> Void)?
+  private var holding = false
+
+  init(
+    onTap: @escaping () -> Void,
+    onHoldBegan: @escaping () -> Void,
+    onHoldEnded: @escaping () -> Void,
+    schedule: @escaping Schedule
+  ) {
+    self.onTap = onTap
+    self.onHoldBegan = onHoldBegan
+    self.onHoldEnded = onHoldEnded
+    self.schedule = schedule
+  }
+
+  func pressed() {
+    guard cancelPending == nil, !holding else {
+      // Key-repeat delivers extra presses for one physical hold.
+      return
+    }
+    cancelPending = schedule { [weak self] in
+      guard let self else { return }
+      self.cancelPending = nil
+      self.holding = true
+      self.onHoldBegan()
+    }
+  }
+
+  func released() {
+    if holding {
+      holding = false
+      onHoldEnded()
+    } else if let cancel = cancelPending {
+      cancel()
+      cancelPending = nil
+      onTap()
+    }
+  }
 }
 
 @MainActor
@@ -47,19 +121,32 @@ final class GlobalHotKeyController: GlobalHotKeyRegistering {
     self.init(backend: CarbonHotKeyBackend())
   }
 
-  func register(_ key: GlobalHotKey, handler: @escaping () -> Void) throws {
+  func register(
+    _ key: GlobalHotKey,
+    handler: @escaping () -> Void,
+    releaseHandler: (() -> Void)?
+  ) throws {
     guard registration == nil else {
-      try replace(with: key, handler: handler)
+      try replace(with: key, handler: handler, releaseHandler: releaseHandler)
       return
     }
-    registration = try makeRegistration(for: key, handler: handler)
+    registration = try makeRegistration(
+      for: key,
+      handler: handler,
+      releaseHandler: releaseHandler
+    )
   }
 
   func replace(
     with key: GlobalHotKey,
-    handler: @escaping () -> Void
+    handler: @escaping () -> Void,
+    releaseHandler: (() -> Void)?
   ) throws {
-    let replacement = try makeRegistration(for: key, handler: handler)
+    let replacement = try makeRegistration(
+      for: key,
+      handler: handler,
+      releaseHandler: releaseHandler
+    )
     if let previous = registration {
       backend.unregister(previous)
     }
@@ -76,10 +163,16 @@ final class GlobalHotKeyController: GlobalHotKeyRegistering {
 
   private func makeRegistration(
     for key: GlobalHotKey,
-    handler: @escaping () -> Void
+    handler: @escaping () -> Void,
+    releaseHandler: (() -> Void)?
   ) throws -> HotKeyRegistration {
     defer { nextID &+= 1 }
-    return try backend.register(key, id: nextID, handler: handler)
+    return try backend.register(
+      key,
+      id: nextID,
+      handler: handler,
+      releaseHandler: releaseHandler
+    )
   }
 }
 
@@ -88,19 +181,28 @@ final class CarbonHotKeyBackend: HotKeyBackend {
   func register(
     _ key: GlobalHotKey,
     id: UInt32,
-    handler: @escaping () -> Void
+    handler: @escaping () -> Void,
+    releaseHandler: (() -> Void)?
   ) throws -> HotKeyRegistration {
     let signature = OSType(0x4C_41_47_54)
     let mainQueueHandler = MainQueueHotKeyHandler(handler: handler)
+    let mainQueueRelease = releaseHandler.map(MainQueueHotKeyHandler.init)
     let callback = CarbonHotKeyCallback(
       signature: signature,
       id: id,
-      handler: mainQueueHandler.enqueue
+      handler: mainQueueHandler.enqueue,
+      releaseHandler: mainQueueRelease?.enqueue
     )
-    var eventSpec = EventTypeSpec(
-      eventClass: OSType(kEventClassKeyboard),
-      eventKind: UInt32(kEventHotKeyPressed)
-    )
+    var eventSpecs = [
+      EventTypeSpec(
+        eventClass: OSType(kEventClassKeyboard),
+        eventKind: UInt32(kEventHotKeyPressed)
+      ),
+      EventTypeSpec(
+        eventClass: OSType(kEventClassKeyboard),
+        eventKind: UInt32(kEventHotKeyReleased)
+      ),
+    ]
     var eventHandlerRef: EventHandlerRef?
     let handlerStatus = InstallEventHandler(
       GetApplicationEventTarget(),
@@ -121,13 +223,15 @@ final class CarbonHotKeyBackend: HotKeyBackend {
           nil,
           &eventID
         )
-        guard status == noErr, callback.route(eventID) else {
+        guard status == noErr,
+          callback.route(eventID, kind: GetEventKind(event))
+        else {
           return OSStatus(eventNotHandledErr)
         }
         return noErr
       },
-      1,
-      &eventSpec,
+      2,
+      &eventSpecs,
       Unmanaged.passUnretained(callback).toOpaque(),
       &eventHandlerRef
     )
@@ -190,22 +294,32 @@ final class CarbonHotKeyCallback {
   private let signature: OSType
   private let id: UInt32
   private let handler: () -> Void
+  private let releaseHandler: (() -> Void)?
 
   init(
     signature: OSType,
     id: UInt32,
-    handler: @escaping () -> Void
+    handler: @escaping () -> Void,
+    releaseHandler: (() -> Void)?
   ) {
     self.signature = signature
     self.id = id
     self.handler = handler
+    self.releaseHandler = releaseHandler
   }
 
-  func route(_ eventID: EventHotKeyID) -> Bool {
+  func route(_ eventID: EventHotKeyID, kind: UInt32) -> Bool {
     guard eventID.signature == signature, eventID.id == id else {
       return false
     }
-    handler()
+    if kind == UInt32(kEventHotKeyReleased) {
+      guard let releaseHandler else {
+        return false
+      }
+      releaseHandler()
+    } else {
+      handler()
+    }
     return true
   }
 }

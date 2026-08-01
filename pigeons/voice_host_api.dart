@@ -31,6 +31,12 @@ enum HostVoiceEventType {
 
   /// Something failed; listening may have stopped with it.
   voiceFailed,
+
+  /// The global hotkey is being held: the user is talking to the agent.
+  holdToTalkPressed,
+
+  /// The global hotkey was released: the held speech is complete.
+  holdToTalkReleased,
 }
 
 /// One event from the native voice pipeline.

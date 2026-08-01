@@ -310,6 +310,41 @@ void main() {
     expect(voice.spoken.last, cutOff);
   });
 
+  test('the hotkey held and released asks the question', () async {
+    // The global hotkey is push-to-talk from anywhere: pressed takes the
+    // floor, released sends — same contract as the composer button.
+    await controller.enable();
+    voice.hear(const HoldToTalkPressed());
+    await pump();
+    voice.hear(const FinalTranscript('今天天氣如何'));
+    await pump();
+    expect(inference.requests, isEmpty);
+
+    voice.hear(const HoldToTalkReleased());
+    await pump();
+    await pump();
+    expect(inference.requests, hasLength(1));
+    expect(inference.requests.single.prompt, contains('今天天氣如何'));
+  });
+
+  test('the hotkey pressed while voice is off turns it on', () async {
+    // Holding the hotkey IS the intent to talk; making the user find a
+    // toggle first would answer the intent with silence.
+    expect(controller.enabled, isFalse);
+    voice.hear(const HoldToTalkPressed());
+    await pump();
+    await pump();
+    expect(controller.enabled, isTrue);
+    expect(voice.calls, contains('startListening'));
+
+    voice.hear(const FinalTranscript('現在幾點'));
+    await pump();
+    voice.hear(const HoldToTalkReleased());
+    await pump();
+    await pump();
+    expect(inference.requests, hasLength(1));
+  });
+
   test('held speech submits only on release, as one question', () async {
     // Push-to-talk: the endpointer keeps firing finals through a long
     // press — a thinking pause must not send half a question. Release is

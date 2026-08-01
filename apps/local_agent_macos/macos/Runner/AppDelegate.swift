@@ -99,6 +99,7 @@ class AppDelegate: FlutterAppDelegate {
 
   private var menuBarController: MenuBarController?
   private var hotKeyController: GlobalHotKeyController?
+  private var hotKeySplitter: HotKeyHoldSplitter?
   private var desktopHostApi: LocalRuntimeDesktopHostApi?
   private var binaryMessenger: FlutterBinaryMessenger?
   // Held as Any: the adapter's type only exists on macOS 26, and the voice
@@ -119,20 +120,42 @@ class AppDelegate: FlutterAppDelegate {
 
     let menuBarController = MenuBarController(panelController: panelController)
     let hotKeyController = GlobalHotKeyController()
+    // One key, two meanings: a tap of ⌘⇧Space toggles the window as it
+    // always has; holding it is push-to-talk from anywhere — the agent
+    // falls silent and listens for as long as the key is down.
+    let holdSplitter = HotKeyHoldSplitter(
+      onTap: { [weak panelController] in
+        panelController?.toggle()
+      },
+      onHoldBegan: { [weak self] in
+        self?.voiceHold(began: true)
+      },
+      onHoldEnded: { [weak self] in
+        self?.voiceHold(began: false)
+      },
+      schedule: { work in
+        let pending = DispatchWorkItem(block: work)
+        DispatchQueue.main.asyncAfter(
+          deadline: .now() + .milliseconds(300),
+          execute: pending
+        )
+        return { pending.cancel() }
+      }
+    )
     do {
       try hotKeyController.register(
         GlobalHotKey(
           keyCode: UInt32(kVK_Space),
           modifiers: UInt32(cmdKey | shiftKey)
         ),
-        handler: { [weak panelController] in
-          panelController?.toggle()
-        }
+        handler: { holdSplitter.pressed() },
+        releaseHandler: { holdSplitter.released() }
       )
       menuBarController.setHotKeyAvailable(true)
     } catch {
       menuBarController.setHotKeyAvailable(false)
     }
+    self.hotKeySplitter = holdSplitter
 
     let binaryMessenger = window.flutterEngine.binaryMessenger
     let eventApi = DesktopHostEventApi(binaryMessenger: binaryMessenger)
@@ -219,6 +242,19 @@ class AppDelegate: FlutterAppDelegate {
     // conversation would put a panel in front of whatever the user is doing.
     panelController.setPresentationMode(.orb)
     super.applicationDidFinishLaunching(notification)
+  }
+
+  /// The held hotkey, handed to the voice pipeline as push-to-talk.
+  private func voiceHold(began: Bool) {
+    if #available(macOS 26.0, *) {
+      guard let adapter = voiceHostApi as? VoiceHostAdapter else {
+        return
+      }
+      // The splitter's callbacks arrive on the main queue already.
+      MainActor.assumeIsolated {
+        adapter.hotKeyHold(began: began)
+      }
+    }
   }
 
   override func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {

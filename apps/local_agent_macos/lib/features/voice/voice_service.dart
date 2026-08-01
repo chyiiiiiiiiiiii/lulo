@@ -54,6 +54,18 @@ final class VoiceFailed extends VoiceEvent {
   final String message;
 }
 
+/// The global hotkey is being held: the user is talking to the agent.
+final class HoldToTalkPressed extends VoiceEvent {
+  /// Creates the event.
+  const HoldToTalkPressed();
+}
+
+/// The global hotkey was released: the held speech is complete.
+final class HoldToTalkReleased extends VoiceEvent {
+  /// Creates the event.
+  const HoldToTalkReleased();
+}
+
 /// Ears and voice, independently of who provides them.
 ///
 /// The seam between the conversation loop and the platform: production

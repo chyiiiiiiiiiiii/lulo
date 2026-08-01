@@ -27,6 +27,14 @@ enum VoiceActivity {
   /// Speech was interrupted and is waiting to see whether the user was
   /// asking something or only reacting.
   paused,
+
+  /// The push-to-talk key or button is held: the agent is all ears, and
+  /// nothing submits until the release.
+  holding,
+
+  /// An answer born of held speech is playing and yields to nothing but
+  /// the next hold.
+  shielded,
 }
 
 /// Runs the conversation by voice: hear, answer, speak, yield when spoken
@@ -135,6 +143,11 @@ final class VoiceConversationController extends ChangeNotifier {
   bool _pttHeld = false;
   bool _pttSettling = false;
   bool _pttProtected = false;
+
+  /// Whether the global hotkey is physically down, tracked apart from
+  /// [_pttHeld]: enabling takes seconds, and a press that auto-enabled the
+  /// voice must not begin holding after its release already happened.
+  bool _hotkeyDown = false;
   final List<String> _pttFinals = <String>[];
   CancelBatch? _pttSubmitBackstop;
   static const Duration _pttTrailingWait = Duration(milliseconds: 1500);
@@ -251,11 +264,14 @@ final class VoiceConversationController extends ChangeNotifier {
   /// Ordered most-specific first: a paused answer is also technically
   /// listening, and a speaking one is also technically not submittable.
   VoiceActivity get activity {
+    if (_pttHeld || _pttSettling) {
+      return VoiceActivity.holding;
+    }
     if (_interruptedSpeech != null) {
       return VoiceActivity.paused;
     }
     if (_deliveringAnswer) {
-      return VoiceActivity.speaking;
+      return _pttProtected ? VoiceActivity.shielded : VoiceActivity.speaking;
     }
     if (!_conversation.canSubmit) {
       return VoiceActivity.thinking;
@@ -331,6 +347,21 @@ final class VoiceConversationController extends ChangeNotifier {
 
   void _onVoiceEvent(VoiceEvent event) {
     if (!_enabled) {
+      // The hotkey is the intent to talk; making the user find a toggle
+      // first would answer that intent with silence. Everything else a
+      // disabled controller ignores.
+      if (event is HoldToTalkPressed && !_enabling && !_disposed) {
+        _hotkeyDown = true;
+        unawaited(
+          enable().then((_) {
+            if (_hotkeyDown && _enabled) {
+              holdToTalkPressed();
+            }
+          }),
+        );
+      } else if (event is HoldToTalkReleased) {
+        _hotkeyDown = false;
+      }
       return;
     }
     switch (event) {
@@ -456,6 +487,12 @@ final class VoiceConversationController extends ChangeNotifier {
       case ListeningStopped():
         _listening = false;
         notifyListeners();
+      case HoldToTalkPressed():
+        _hotkeyDown = true;
+        holdToTalkPressed();
+      case HoldToTalkReleased():
+        _hotkeyDown = false;
+        holdToTalkReleased();
     }
   }
 
@@ -635,6 +672,10 @@ final class VoiceConversationController extends ChangeNotifier {
 
   /// Whether the push-to-talk button is currently held.
   bool get holdingToTalk => _pttHeld;
+
+  /// Whether the current answer came from held speech: it yields to
+  /// nothing but the next hold.
+  bool get answerShielded => _pttProtected;
 
   /// Push-to-talk pressed: the agent falls silent and held speech starts
   /// composing. Nothing submits until the release.

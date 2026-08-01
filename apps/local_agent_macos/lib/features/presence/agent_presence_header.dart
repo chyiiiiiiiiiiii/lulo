@@ -19,12 +19,20 @@ final class AgentPresenceHeader extends StatefulWidget {
     this.controller,
     this.orb,
     this.anchorKey,
+    this.holding,
     this.onControllerCreated,
     this.onOrbPaint,
     this.onSemanticBuild,
     this.shaderLoader = loadAgentPresenceShader,
     super.key,
   });
+
+  /// Whether the user is holding to talk, or null when there is no voice.
+  ///
+  /// The presence leans into listening for as long as this is true — the
+  /// visible sign, in both forms including the desktop orb, that the agent
+  /// is hearing the user right now.
+  final ValueListenable<bool>? holding;
 
   /// Presence to project into, or null to own one for this header alone.
   ///
@@ -82,8 +90,20 @@ final class _AgentPresenceHeaderState extends State<AgentPresenceHeader> {
     _clock.start();
     widget.completedTurns.addListener(_projectConversation);
     widget.activeTurn.addListener(_projectConversation);
+    widget.holding?.addListener(_holdingChanged);
     widget.onControllerCreated?.call(_controller);
     _projectConversation();
+  }
+
+  void _holdingChanged() {
+    if (widget.holding?.value ?? false) {
+      _controller.dispatch(AgentPresenceEvent.listeningStarted, _clock.elapsed);
+    } else {
+      // Released: leave listening, then let the conversation reclaim the
+      // presence — a submitted question projects thinking a beat later.
+      _controller.dispatch(AgentPresenceEvent.speechStopped, _clock.elapsed);
+      _projectConversation();
+    }
   }
 
   @override
@@ -97,6 +117,10 @@ final class _AgentPresenceHeaderState extends State<AgentPresenceHeader> {
       oldWidget.activeTurn.removeListener(_projectConversation);
       widget.activeTurn.addListener(_projectConversation);
     }
+    if (oldWidget.holding != widget.holding) {
+      oldWidget.holding?.removeListener(_holdingChanged);
+      widget.holding?.addListener(_holdingChanged);
+    }
     _projectConversation();
   }
 
@@ -104,6 +128,7 @@ final class _AgentPresenceHeaderState extends State<AgentPresenceHeader> {
   void dispose() {
     widget.completedTurns.removeListener(_projectConversation);
     widget.activeTurn.removeListener(_projectConversation);
+    widget.holding?.removeListener(_holdingChanged);
     _clock.stop();
     // Only dispose a presence this header created. A supplied controller
     // outlives the header, because the desktop form keeps showing it.
