@@ -122,6 +122,11 @@ final class _ConversationViewState extends State<ConversationView> {
   /// orb leans into listening while this is true, in either form.
   final ValueNotifier<bool> _holdingToTalk = ValueNotifier<bool>(false);
 
+  /// Whether the agent is audibly speaking. The conversation's text can be
+  /// fully written minutes before the voice finishes reading it, and the
+  /// presence must follow the mouth, not the pen.
+  final ValueNotifier<bool> _agentSpeaking = ValueNotifier<bool>(false);
+
   @override
   void initState() {
     super.initState();
@@ -133,19 +138,21 @@ final class _ConversationViewState extends State<ConversationView> {
         conversation: _viewModel,
       );
       _voice = voice;
-      voice.addListener(_reflectHolding);
+      voice.addListener(_reflectVoice);
     }
   }
 
-  void _reflectHolding() {
+  void _reflectVoice() {
     _holdingToTalk.value = _voice?.holdingToTalk ?? false;
+    _agentSpeaking.value = _voice?.speaking ?? false;
   }
 
   @override
   void dispose() {
-    _voice?.removeListener(_reflectHolding);
+    _voice?.removeListener(_reflectVoice);
     _voice?.dispose();
     _holdingToTalk.dispose();
+    _agentSpeaking.dispose();
     _viewModel.dispose();
     super.dispose();
   }
@@ -173,6 +180,7 @@ final class _ConversationViewState extends State<ConversationView> {
             _ConversationChrome(
               voice: _voice,
               holdingToTalk: _voice == null ? null : _holdingToTalk,
+              agentSpeaking: _voice == null ? null : _agentSpeaking,
               onToggleVoice: _toggleVoice,
               onShowHistory: widget.onShowHistory,
               completedTurns: _viewModel.completedTurnsListenable,
@@ -222,6 +230,7 @@ final class _ConversationChrome extends StatelessWidget {
   const _ConversationChrome({
     required this.voice,
     required this.holdingToTalk,
+    required this.agentSpeaking,
     required this.onToggleVoice,
     required this.onShowHistory,
     required this.completedTurns,
@@ -237,6 +246,7 @@ final class _ConversationChrome extends StatelessWidget {
 
   final VoiceConversationController? voice;
   final ValueListenable<bool>? holdingToTalk;
+  final ValueListenable<bool>? agentSpeaking;
   final VoidCallback onToggleVoice;
   final VoidCallback? onShowHistory;
   final ValueListenable<List<Turn>> completedTurns;
@@ -275,6 +285,7 @@ final class _ConversationChrome extends StatelessWidget {
             orb: presenceOrb,
             anchorKey: presenceAnchorKey,
             holding: holdingToTalk,
+            speaking: agentSpeaking,
             onControllerCreated: onPresenceControllerCreated,
             onOrbPaint: onPresenceOrbPaint,
             onSemanticBuild: onPresenceSemanticBuild,

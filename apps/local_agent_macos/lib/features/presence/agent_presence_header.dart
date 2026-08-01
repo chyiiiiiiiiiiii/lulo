@@ -20,6 +20,7 @@ final class AgentPresenceHeader extends StatefulWidget {
     this.orb,
     this.anchorKey,
     this.holding,
+    this.speaking,
     this.onControllerCreated,
     this.onOrbPaint,
     this.onSemanticBuild,
@@ -33,6 +34,13 @@ final class AgentPresenceHeader extends StatefulWidget {
   /// visible sign, in both forms including the desktop orb, that the agent
   /// is hearing the user right now.
   final ValueListenable<bool>? holding;
+
+  /// Whether the agent is audibly speaking, or null when there is no voice.
+  ///
+  /// The conversation's text finishes minutes before the voice does; while
+  /// this is true the presence stays in speaking rather than falling idle
+  /// with the pen.
+  final ValueListenable<bool>? speaking;
 
   /// Presence to project into, or null to own one for this header alone.
   ///
@@ -91,6 +99,7 @@ final class _AgentPresenceHeaderState extends State<AgentPresenceHeader> {
     widget.completedTurns.addListener(_projectConversation);
     widget.activeTurn.addListener(_projectConversation);
     widget.holding?.addListener(_holdingChanged);
+    widget.speaking?.addListener(_projectConversation);
     widget.onControllerCreated?.call(_controller);
     _projectConversation();
   }
@@ -121,6 +130,10 @@ final class _AgentPresenceHeaderState extends State<AgentPresenceHeader> {
       oldWidget.holding?.removeListener(_holdingChanged);
       widget.holding?.addListener(_holdingChanged);
     }
+    if (oldWidget.speaking != widget.speaking) {
+      oldWidget.speaking?.removeListener(_projectConversation);
+      widget.speaking?.addListener(_projectConversation);
+    }
     _projectConversation();
   }
 
@@ -129,6 +142,7 @@ final class _AgentPresenceHeaderState extends State<AgentPresenceHeader> {
     widget.completedTurns.removeListener(_projectConversation);
     widget.activeTurn.removeListener(_projectConversation);
     widget.holding?.removeListener(_holdingChanged);
+    widget.speaking?.removeListener(_projectConversation);
     _clock.stop();
     // Only dispose a presence this header created. A supplied controller
     // outlives the header, because the desktop form keeps showing it.
@@ -137,6 +151,16 @@ final class _AgentPresenceHeaderState extends State<AgentPresenceHeader> {
   }
 
   void _projectConversation() {
+    if ((widget.speaking?.value ?? false) &&
+        !(widget.holding?.value ?? false)) {
+      // The mouth outlives the pen: the text can be fully written while
+      // the voice is still reading it, and the presence follows the voice.
+      _controller.projectConversationState(
+        AgentPresenceProjectionState.speaking,
+        _clock.elapsed,
+      );
+      return;
+    }
     final Turn? activeTurn = widget.activeTurn.value;
     if (activeTurn != null) {
       _controller.projectConversationState(
