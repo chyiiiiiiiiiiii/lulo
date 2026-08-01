@@ -229,10 +229,15 @@ final class VoiceConversationController extends ChangeNotifier {
   /// chunk costs doubles with it: the wait before the next one begins, how
   /// much of the answer an interruption takes away, and the width of the gap
   /// where nothing is speaking.
-  static const int _chunkTarget = 40;
+  ///
+  /// Raised from three seconds' worth once /stop could cut a playing
+  /// sentence mid-word: every chunk boundary is a fresh synthesis and a
+  /// chance for the voice to drift, so fewer seams is a steadier person —
+  /// and an interruption no longer has to wait a chunk out.
+  static const int _chunkTarget = 64;
 
   /// The same few seconds of speech, counted in Chinese characters.
-  static const int _cjkChunkTarget = 20;
+  static const int _cjkChunkTarget = 32;
 
   /// The chunk target for the answer being spoken.
   ///
@@ -737,7 +742,9 @@ final class VoiceConversationController extends ChangeNotifier {
       notifyListeners();
       return;
     }
-    debugPrint('Lulo ptt: submitting ${question.length} chars');
+    // The full text, not the count: the recogniser evaluation pairs this
+    // with the WAV the native side captured for the same hold.
+    debugPrint('Lulo ptt: submitting "$question"');
     _pttProtected = true;
     if (_conversation.canSubmit) {
       unawaited(_conversation.submit(question));

@@ -65,6 +65,10 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
   )
   private var vocabularyRefresh: Task<Void, Never>?
 
+  /// What the microphone heard during a hotkey hold, kept for the
+  /// recogniser evaluation.
+  private let heldSpeech = HeldSpeechCaptureBox()
+
   /// How much silence after speech means the user has finished talking.
   ///
   /// The transcriber's own endpointing waits out several seconds, and the
@@ -542,7 +546,55 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
   /// pressed is the user talking, released is the speech complete. The
   /// Dart side owns what that means; this side only relays the key.
   func hotKeyHold(began: Bool) {
+    if began {
+      heldSpeech.begin()
+    } else if let clip = heldSpeech.end() {
+      Self.writeHeldClip(clip)
+    }
     emit(began ? .holdToTalkPressed : .holdToTalkReleased)
+  }
+
+  /// Writes one held utterance to a WAV beside the logs, for judging a
+  /// candidate recogniser on the same audio Apple heard.
+  private static func writeHeldClip(_ clip: HeldSpeechClip) {
+    Task.detached(priority: .utility) {
+      let url = FileManager.default.temporaryDirectory
+        .appendingPathComponent(
+          String(format: "lulo-held-%.0f.wav", Date().timeIntervalSince1970)
+        )
+      guard
+        let format = AVAudioFormat(
+          commonFormat: .pcmFormatFloat32,
+          sampleRate: clip.sampleRate,
+          channels: 1,
+          interleaved: false
+        ),
+        let buffer = AVAudioPCMBuffer(
+          pcmFormat: format,
+          frameCapacity: AVAudioFrameCount(clip.samples.count)
+        )
+      else {
+        return
+      }
+      clip.samples.withUnsafeBufferPointer { raw in
+        buffer.floatChannelData![0].update(
+          from: raw.baseAddress!,
+          count: clip.samples.count
+        )
+      }
+      buffer.frameLength = AVAudioFrameCount(clip.samples.count)
+      do {
+        let file = try AVAudioFile(forWriting: url, settings: format.settings)
+        try file.write(from: buffer)
+        NSLog(
+          "Lulo ptt: captured %.1fs -> %@",
+          Double(clip.samples.count) / clip.sampleRate,
+          url.path
+        )
+      } catch {
+        NSLog("Lulo ptt: clip not written (%@)", String(describing: error))
+      }
+    }
   }
 
   func stopSpeaking(completion: @escaping (Result<Void, Error>) -> Void) {
@@ -742,6 +794,7 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
     // the adapter, whose state belongs to the main actor.
     let muteBox = mute
     let vad = VoiceActivityBox()
+    let heldSpeechBox = heldSpeech
     input.installTap(onBus: 0, bufferSize: 4096, format: microphoneFormat) {
       buffer, _ in
       if muteBox.muted {
@@ -762,6 +815,15 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
         return
       }
       vad.observe(rms: rms, at: ProcessInfo.processInfo.systemUptime)
+      heldSpeechBox.append(
+        Array(
+          UnsafeBufferPointer(
+            start: mono.floatChannelData![0],
+            count: Int(mono.frameLength)
+          )
+        ),
+        sampleRate: mono.format.sampleRate
+      )
       builder.yield(AnalyzerInput(buffer: converted))
     }
     // The mouth: sidecar PCM plays through this node, inside the voice-
@@ -1120,6 +1182,53 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
       event: HostVoiceEvent(type: type, text: text),
       completion: { _ in }
     )
+  }
+}
+
+/// One held utterance's audio, as captured.
+struct HeldSpeechClip {
+  let samples: [Float]
+  let sampleRate: Double
+}
+
+/// Collects the microphone's samples for the duration of one hold.
+///
+/// Exists for the recogniser evaluation: the same audio Apple transcribed
+/// is written to disk, so a candidate recogniser can be judged on real
+/// utterances instead of benchmarks. Appends land on the audio thread,
+/// begin and end on the main one; the lock is held only long enough to
+/// move samples.
+final class HeldSpeechCaptureBox: @unchecked Sendable {
+  private let lock = NSLock()
+  private var samples: [Float] = []
+  private var rate: Double = 0
+  private var active = false
+
+  func begin() {
+    lock.lock()
+    defer { lock.unlock() }
+    active = true
+    samples.removeAll(keepingCapacity: true)
+    rate = 0
+  }
+
+  func append(_ newSamples: [Float], sampleRate: Double) {
+    lock.lock()
+    defer { lock.unlock() }
+    guard active else { return }
+    samples.append(contentsOf: newSamples)
+    rate = sampleRate
+  }
+
+  /// The clip this hold heard, exactly once; nil for an empty hold.
+  func end() -> HeldSpeechClip? {
+    lock.lock()
+    defer { lock.unlock() }
+    active = false
+    guard !samples.isEmpty, rate > 0 else { return nil }
+    let clip = HeldSpeechClip(samples: samples, sampleRate: rate)
+    samples.removeAll(keepingCapacity: false)
+    return clip
   }
 }
 

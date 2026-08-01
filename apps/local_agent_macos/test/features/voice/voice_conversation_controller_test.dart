@@ -713,11 +713,9 @@ void main() {
     'a Chinese answer is chunked by duration, not by character count',
     () async {
       // Measured from the synthesiser's own log: Chinese runs about 0.156
-      // seconds per character, so the 40-character target is 6.2 seconds of
-      // audio, against roughly 3 for the same count of English. Every
-      // consequence of a long chunk doubles with it — the wait before the next
-      // one starts, how much is lost to an interruption, and the width of the
-      // gap where nothing is speaking.
+      // seconds per character, so the same character count is twice the
+      // audio it is in English, and the Chinese target is half the English
+      // one. The numbers move together; the ratio is what this protects.
       await controller.enable();
       voice.hear(const FinalTranscript('說說看。'));
       await pump();
@@ -730,11 +728,12 @@ void main() {
       await pump();
       final int afterFirst = voice.spoken.length;
 
-      // 24 characters: under the English target, over a sane Chinese one.
+      // Between the two targets: over the Chinese one, under the English
+      // one — it dispatches only because the answer is Chinese.
       inference.emit(
         GenerationDelta(
           generationId: generation.id,
-          delta: '這是一段長度大約二十四個字的中文句子確實如此。',
+          delta: '這是一段長度落在兩個目標之間的中文句子，用來驗證中文的目標確實比英文的小上一半。',
         ),
       );
       await pump();
@@ -744,7 +743,8 @@ void main() {
         voice.spoken.length,
         greaterThan(afterFirst),
         reason:
-            'Twenty-four Chinese characters is already four seconds of speech.',
+            'This many Chinese characters is already six seconds of '
+            'speech.',
       );
     },
   );
