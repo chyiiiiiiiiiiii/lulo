@@ -571,6 +571,46 @@ void main() {
     );
   });
 
+  test(
+    'a Chinese answer is chunked by duration, not by character count',
+    () async {
+      // Measured from the synthesiser's own log: Chinese runs about 0.156
+      // seconds per character, so the 40-character target is 6.2 seconds of
+      // audio, against roughly 3 for the same count of English. Every
+      // consequence of a long chunk doubles with it — the wait before the next
+      // one starts, how much is lost to an interruption, and the width of the
+      // gap where nothing is speaking.
+      await controller.enable();
+      voice.hear(const FinalTranscript('說說看。'));
+      await pump();
+      final Generation generation = await generationStarted();
+      // First chunk out of the way.
+      inference.emit(
+        GenerationDelta(generationId: generation.id, delta: '好的。'),
+      );
+      await pump();
+      await pump();
+      final int afterFirst = voice.spoken.length;
+
+      // 24 characters: under the English target, over a sane Chinese one.
+      inference.emit(
+        GenerationDelta(
+          generationId: generation.id,
+          delta: '這是一段長度大約二十四個字的中文句子確實如此。',
+        ),
+      );
+      await pump();
+      await pump();
+
+      expect(
+        voice.spoken.length,
+        greaterThan(afterFirst),
+        reason:
+            'Twenty-four Chinese characters is already four seconds of speech.',
+      );
+    },
+  );
+
   test('the user talking over a streaming answer cancels it', () async {
     await controller.enable();
     voice.hear(const FinalTranscript('Tell me a long story.'));

@@ -193,7 +193,26 @@ final class VoiceConversationController extends ChangeNotifier {
   /// After the first fast sentence, chunks accumulate to at least this
   /// many characters: single short sentences drift in timbre, and every
   /// separate synthesis pays its own prosody reset.
+  ///
+  /// The target is really a duration, and characters are only a cheap proxy
+  /// for it — a proxy that is wrong by a factor of two between languages.
+  /// Measured from the synthesiser's own log, Chinese runs about 0.156
+  /// seconds per character, so forty characters is 6.2 seconds of audio
+  /// against roughly three for the same count of English. Everything a long
+  /// chunk costs doubles with it: the wait before the next one begins, how
+  /// much of the answer an interruption takes away, and the width of the gap
+  /// where nothing is speaking.
   static const int _chunkTarget = 40;
+
+  /// The same few seconds of speech, counted in Chinese characters.
+  static const int _cjkChunkTarget = 20;
+
+  /// The chunk target for the answer being spoken.
+  ///
+  /// Keyed on the language already pinned for this answer, so it cannot
+  /// change halfway through one.
+  int get _chunkTargetForAnswer =>
+      _activeLang == 'zh' ? _cjkChunkTarget : _chunkTarget;
 
   /// The language pinned to the answer being spoken, decided once at its
   /// first chunk — one English word inside a Chinese reply must not flip
@@ -430,7 +449,7 @@ final class VoiceConversationController extends ChangeNotifier {
     }
     // The first sentence goes out alone so the voice starts early; after
     // that, sentences accumulate into steadier chunks.
-    if (!_firstChunkOfAnswer && lastEnd + 1 < _chunkTarget) {
+    if (!_firstChunkOfAnswer && lastEnd + 1 < _chunkTargetForAnswer) {
       return;
     }
     final String chunk = undispatched.substring(0, lastEnd + 1);
