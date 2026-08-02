@@ -564,6 +564,27 @@ must JSON-encode its return value to a caller-selected location, then pass that
 file to `benchmarks/voice_eval/tool/evaluate.dart`. Production startup never
 exports private transcripts.
 
+### Qwen proposal shadow
+
+The live turn still belongs exclusively to the deadline-bound deterministic
+refiner. An optional `TranscriptShadowCoordinator` can copy one finalized
+utterance to a proposal provider without being awaited. It allows one request
+at a time, skips rather than queues during bursts, rejects mismatched request
+IDs, fences late results when voice stops, and runs every returned proposal
+through `TranscriptProposalGate`.
+
+`LoopbackTranscriptProposalProvider` accepts only literal
+`http://127.0.0.1:<port>` or `http://[::1]:<port>` endpoints. It performs one
+non-redirecting POST with bounded response bytes and never launches or
+downloads a model. Bootstrap leaves the coordinator null, so ordinary builds
+make no request and retain no transcript evidence.
+
+For explicit golden-corpus runs, `TranscriptShadowEvidence` retains only cases
+that carry a development `caseId`, evicts oldest cases at its fixed capacity,
+and clears them on request. Ordinary voice turns update transcript-free status
+counters only. `buildTranscriptShadowCandidateExport` converts an explicit
+snapshot into the existing candidate JSON data without writing it to disk.
+
 ## Traps
 
 Ranked by how quietly they break.

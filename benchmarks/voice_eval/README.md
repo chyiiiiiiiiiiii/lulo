@@ -59,6 +59,13 @@ also produce `review.json` with opaque labels and a separate
 Smart Turn evidence is shadow-only: candidate timestamps are scored here but
 never invoke Lulo's production endpoint.
 
+Qwen transcript proposals follow the same rule. The Flutter app's optional
+loopback provider is disabled by default and cannot change live text. During
+an explicit corpus run, attach corpus case IDs, take a bounded evidence
+snapshot, and pass it to `buildTranscriptShadowCandidateExport`. The builder
+returns JSON-compatible data only; the development runner chooses the output
+path. Ordinary app startup never writes private transcripts.
+
 ## Development
 
 ```sh
