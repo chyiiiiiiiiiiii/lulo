@@ -938,6 +938,7 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
                   self.mute.muted ? " muted" : ""
                 )
                 self.turn.heardVolatile(
+                  text: text,
                   at: ProcessInfo.processInfo.systemUptime
                 )
               }
@@ -1505,6 +1506,14 @@ struct SpeechTurn {
   /// A volatile transcript is on screen and unsettled.
   private(set) var utteranceInProgress = false
 
+  /// Latest volatile words, kept only until this utterance settles.
+  ///
+  /// A few conversational prefixes are complete-looking commands on their
+  /// own but commonly introduce a correction after a long pause. The user's
+  /// Taiwan Mandarin corpus contains both "等一下……還沒" and
+  /// "我想問的是……如果"; the ordinary 800ms endpoint split both in half.
+  private(set) var volatileText = ""
+
   /// When the current utterance's first volatile arrived.
   ///
   /// The VAD's clock freezes while the microphone is muted, so right after
@@ -1581,10 +1590,16 @@ struct SpeechTurn {
 
   /// A volatile transcript arrived with words in it.
   mutating func heardVolatile(at now: TimeInterval) {
+    heardVolatile(text: "", at: now)
+  }
+
+  /// A volatile transcript arrived with its current local text.
+  mutating func heardVolatile(text: String, at now: TimeInterval) {
     if !utteranceInProgress {
       heardAt = now
     }
     utteranceInProgress = true
+    volatileText = text
   }
 
   /// A result settled the utterance, final or empty.
@@ -1593,6 +1608,7 @@ struct SpeechTurn {
   /// clear the request, or the fast path stays latched off for the session.
   mutating func settled() {
     utteranceInProgress = false
+    volatileText = ""
     finalizeRequested = false
     finalizeAskedAt = .infinity
   }
@@ -1621,8 +1637,20 @@ struct SpeechTurn {
         return false
       }
     }
-    guard silence.isFinite, silence > endpointSilence else { return false }
+    let requiredSilence = endpointSilence + (needsContinuationGrace ? 0.6 : 0)
+    guard silence.isFinite, silence > requiredSilence else { return false }
     return lastVoiceAt >= max(heardAt - margin, muteLiftedAt)
+  }
+
+  /// Whether this partial commonly introduces words after a thinking pause.
+  private var needsContinuationGrace: Bool {
+    let punctuation = CharacterSet.whitespacesAndNewlines.union(
+      .punctuationCharacters
+    )
+    let text = volatileText.trimmingCharacters(in: punctuation)
+    return ["等一下", "我想問的是", "我想說的是"].contains {
+      text.hasSuffix($0)
+    }
   }
 
   /// One sentence of an answer has been handed to the sidecar.
@@ -1689,6 +1717,7 @@ struct SpeechTurn {
   mutating func microphoneReopened(at now: TimeInterval) {
     muteLiftedAt = now
     utteranceInProgress = false
+    volatileText = ""
     heardAt = .infinity
     finalizeRequested = false
     finalizeAskedAt = .infinity
@@ -1697,6 +1726,7 @@ struct SpeechTurn {
   /// A session ended: forget the utterance, keep nothing to steer the next.
   mutating func sessionEnded() {
     utteranceInProgress = false
+    volatileText = ""
     heardAt = .infinity
     finalizeRequested = false
     finalizeAskedAt = .infinity

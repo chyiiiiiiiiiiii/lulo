@@ -115,6 +115,44 @@ final class SpeechTurnTests: XCTestCase {
     )
   }
 
+  func testAContinuationPrefixGetsTimeToFinishAfterALongNaturalPause() {
+    var turn = SpeechTurn()
+    turn.heardVolatile(text: "等一下", at: 10)
+
+    XCTAssertFalse(
+      turn.shouldFinalize(
+        silence: 1.22, lastVoiceAt: 10, endpointSilence: 0.8, now: 11.22
+      )
+    )
+    XCTAssertTrue(
+      turn.shouldFinalize(
+        silence: 1.41, lastVoiceAt: 10, endpointSilence: 0.8, now: 11.41
+      )
+    )
+  }
+
+  func testAnOrdinaryCompleteSentenceKeepsTheFastEndpoint() {
+    var turn = SpeechTurn()
+    turn.heardVolatile(text: "好，可以開始了", at: 10)
+
+    XCTAssertTrue(
+      turn.shouldFinalize(
+        silence: 0.81, lastVoiceAt: 10, endpointSilence: 0.8, now: 10.81
+      )
+    )
+  }
+
+  func testAQuestionLeadInAlsoGetsTheMeasuredThinkingPause() {
+    var turn = SpeechTurn()
+    turn.heardVolatile(text: "我想問的是……", at: 10)
+
+    XCTAssertFalse(
+      turn.shouldFinalize(
+        silence: 0.95, lastVoiceAt: 10, endpointSilence: 0.8, now: 10.95
+      )
+    )
+  }
+
   func testAnEmptyResultStillUnlatchesTheEndpointer() {
     // A finalize that produced nothing must not leave the fast path off
     // for the rest of the session.
