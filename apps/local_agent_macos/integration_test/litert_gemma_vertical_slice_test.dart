@@ -41,6 +41,11 @@ void main() {
         ),
       );
       await tester.pump();
+      // The injected loader rejects on a microtask, so the setState that moves
+      // the orb into its fallback lands after this first frame; the fallback
+      // subtree only exists from the next one. Asserting on one pump was a
+      // race that nothing noticed, because nothing ran this test.
+      await tester.pump(const Duration(milliseconds: 32));
 
       expect(find.text('Start a conversation'), findsOneWidget);
       expect(find.byKey(const Key('agent-presence-fallback')), findsOneWidget);
