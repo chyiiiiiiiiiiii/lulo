@@ -7,6 +7,7 @@ import 'package:local_agent_macos/features/conversation/conversation_repository.
 import 'package:local_agent_macos/features/conversation/conversation_view_model.dart';
 import 'package:local_agent_macos/features/conversation/inference_service.dart';
 import 'package:local_agent_macos/features/conversation/token_batcher.dart';
+import 'package:local_agent_macos/features/transcript_refiner/transcript_shadow_coordinator.dart';
 import 'package:local_agent_macos/features/voice/voice_conversation_controller.dart';
 import 'package:local_agent_macos/features/voice/voice_service.dart';
 
@@ -123,6 +124,49 @@ void main() {
       expect(user.voiceInput?.selectedTranscript, '我用 Flutter');
     },
   );
+
+  test('a final transcript submits live without awaiting its shadow', () async {
+    controller.dispose();
+    final Completer<TranscriptProposal> pending =
+        Completer<TranscriptProposal>();
+    final List<TranscriptProposalRequest> shadowRequests =
+        <TranscriptProposalRequest>[];
+    final TranscriptShadowCoordinator shadow = TranscriptShadowCoordinator(
+      provider: _FunctionTranscriptProposalProvider((
+        TranscriptProposalRequest request,
+      ) {
+        shadowRequests.add(request);
+        return pending.future;
+      }),
+      onResult: (_) {},
+    );
+    controller = VoiceConversationController(
+      voice: voice,
+      conversation: vm,
+      protectedVocabulary: () => const <String>['Flutter'],
+      transcriptShadow: shadow,
+    );
+    await controller.enable();
+
+    voice.hear(const FinalTranscript('我用 flutter'));
+    await pump();
+    await pump();
+
+    final GenerationRequest sent = await inference.requestReceived;
+    expect(sent.prompt, '我用 flutter');
+    expect(shadowRequests.single.rawTranscript, '我用 flutter');
+    expect(shadowRequests.single.locale, 'zh-TW');
+    expect(shadowRequests.single.protectedVocabulary, <String>['Flutter']);
+    pending.complete(
+      TranscriptProposal(
+        requestId: shadowRequests.single.requestId,
+        refinedTranscript: '我用 Flutter',
+        providerId: 'qwen',
+        providerVersion: '1',
+        elapsed: Duration.zero,
+      ),
+    );
+  });
 
   test('a completed answer is spoken aloud', () async {
     await controller.enable();
@@ -420,6 +464,45 @@ void main() {
     expect(inference.requests, hasLength(1));
     expect(inference.requests.single.prompt, contains('第一句話'));
     expect(inference.requests.single.prompt, contains('第二句話'));
+  });
+
+  test('held fragments become one shadow request after release', () async {
+    controller.dispose();
+    final List<TranscriptProposalRequest> requests =
+        <TranscriptProposalRequest>[];
+    final TranscriptShadowCoordinator shadow = TranscriptShadowCoordinator(
+      provider: _FunctionTranscriptProposalProvider((request) async {
+        requests.add(request);
+        return TranscriptProposal(
+          requestId: request.requestId,
+          refinedTranscript: request.rawTranscript,
+          providerId: 'qwen',
+          providerVersion: '1',
+          elapsed: Duration.zero,
+        );
+      }),
+      onResult: (_) {},
+    );
+    controller = VoiceConversationController(
+      voice: voice,
+      conversation: vm,
+      transcriptShadow: shadow,
+    );
+    await controller.enable();
+
+    controller.holdToTalkPressed();
+    voice.hear(const FinalTranscript('第一句話'));
+    await pump();
+    voice.hear(const FinalTranscript('第二句話'));
+    await pump();
+    expect(requests, isEmpty);
+
+    controller.holdToTalkReleased();
+    await pump();
+    await pump();
+
+    expect(requests, hasLength(1));
+    expect(requests.single.rawTranscript, '第一句話 第二句話');
   });
 
   test('the answer to held speech is not talked over', () async {
@@ -1677,6 +1760,18 @@ final class _RecordingTranscriptRefiner implements TranscriptRefiner {
       elapsed: Duration.zero,
     );
   }
+}
+
+final class _FunctionTranscriptProposalProvider
+    implements TranscriptProposalProvider {
+  const _FunctionTranscriptProposalProvider(this.callback);
+
+  final Future<TranscriptProposal> Function(TranscriptProposalRequest request)
+  callback;
+
+  @override
+  Future<TranscriptProposal> propose(TranscriptProposalRequest request) =>
+      callback(request);
 }
 
 /// Records requests and holds native cancellation open until released.

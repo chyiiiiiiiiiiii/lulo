@@ -12,6 +12,7 @@ import '../features/model/model_catalog.dart';
 import '../features/model/model_download_manager.dart';
 import '../features/model/model_file_service.dart';
 import '../features/settings/app_settings.dart';
+import '../features/transcript_refiner/transcript_shadow_coordinator.dart';
 import '../features/voice/voice_service.dart';
 import '../platform/desktop_host_service.dart';
 
@@ -29,6 +30,7 @@ final class AppComposition {
     this.catalog = modelCatalog,
     this.voiceService,
     TranscriptRefiner? transcriptRefiner,
+    this.transcriptShadow,
     List<String> Function()? protectedVocabulary,
     ValueNotifier<String>? ttsVoice,
   }) : ttsVoice = ttsVoice ?? ValueNotifier<String>('ryan'),
@@ -65,6 +67,9 @@ final class AppComposition {
 
   /// Refines final voice transcripts before conversation submission.
   final TranscriptRefiner transcriptRefiner;
+
+  /// Optional developer-only proposal path; null keeps shadowing disabled.
+  final TranscriptShadowCoordinator? transcriptShadow;
 
   /// Latest profile vocabulary, read at the moment an utterance settles.
   final List<String> Function() protectedVocabulary;
@@ -141,6 +146,7 @@ final class AppComposition {
     }
     _disposed = true;
     modelDownloads.dispose();
+    transcriptShadow?.dispose();
     await _disposeServices();
   }
 }

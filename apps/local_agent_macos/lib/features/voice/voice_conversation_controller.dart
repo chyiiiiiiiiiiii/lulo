@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 
 import '../conversation/conversation_view_model.dart';
 import '../conversation/token_batcher.dart';
+import '../transcript_refiner/transcript_shadow_coordinator.dart';
 import 'voice_service.dart';
 
 /// What the agent is doing, as far as the user should be able to tell.
@@ -50,6 +51,7 @@ final class VoiceConversationController extends ChangeNotifier {
     required VoiceService voice,
     required ConversationViewModel conversation,
     TranscriptRefiner transcriptRefiner = const _RawTranscriptRefiner(),
+    TranscriptShadowCoordinator? transcriptShadow,
     List<String> Function() protectedVocabulary = _noProtectedVocabulary,
     BatchScheduler utteranceScheduler = const TimerBatchScheduler(),
     DateTime Function() now = DateTime.now,
@@ -57,6 +59,7 @@ final class VoiceConversationController extends ChangeNotifier {
          voice,
          conversation,
          transcriptRefiner,
+         transcriptShadow,
          protectedVocabulary,
          utteranceScheduler,
          now,
@@ -66,6 +69,7 @@ final class VoiceConversationController extends ChangeNotifier {
     this._voice,
     this._conversation,
     this._transcriptRefiner,
+    this._transcriptShadow,
     this._protectedVocabulary,
     this._utteranceScheduler,
     this._now,
@@ -84,6 +88,7 @@ final class VoiceConversationController extends ChangeNotifier {
   final VoiceService _voice;
   final ConversationViewModel _conversation;
   final TranscriptRefiner _transcriptRefiner;
+  final TranscriptShadowCoordinator? _transcriptShadow;
   final List<String> Function() _protectedVocabulary;
   final BatchScheduler _utteranceScheduler;
   final DateTime Function() _now;
@@ -191,6 +196,7 @@ final class VoiceConversationController extends ChangeNotifier {
   /// True while [enable] is waiting for the stored history to land.
   bool _enabling = false;
   bool _disposed = false;
+  int _nextShadowRequest = 1;
   bool _speaking = false;
   bool _listening = false;
 
@@ -360,6 +366,7 @@ final class VoiceConversationController extends ChangeNotifier {
     }
     _enabled = false;
     _refinementEpoch += 1;
+    _transcriptShadow?.cancelSession();
     _partialTranscript = '';
     _pendingUtterance = null;
     _pendingSettle?.cancel();
@@ -787,11 +794,21 @@ final class VoiceConversationController extends ChangeNotifier {
 
   Future<void> _refineFinalUtterance(String raw) async {
     final int epoch = ++_refinementEpoch;
+    final List<String> vocabulary = _protectedVocabulary();
+    _transcriptShadow?.submit(
+      TranscriptProposalRequest(
+        requestId: 'voice-shadow-${_nextShadowRequest++}',
+        rawTranscript: raw,
+        locale: 'zh-TW',
+        protectedVocabulary: vocabulary,
+        deadline: const Duration(milliseconds: 250),
+      ),
+    );
     final TranscriptRefinement refinement = await _transcriptRefiner.refine(
       TranscriptRefinementRequest(
         rawTranscript: raw,
         locale: 'zh-TW',
-        protectedVocabulary: _protectedVocabulary(),
+        protectedVocabulary: vocabulary,
         deadline: const Duration(milliseconds: 250),
       ),
     );
@@ -1005,6 +1022,7 @@ final class VoiceConversationController extends ChangeNotifier {
   void dispose() {
     _disposed = true;
     _refinementEpoch += 1;
+    _transcriptShadow?.cancelSession();
     _pendingSettle?.cancel();
     _pendingSettle = null;
     _cancelPendingResume();

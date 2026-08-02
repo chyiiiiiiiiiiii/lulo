@@ -622,6 +622,7 @@ final class _PresentationSwitchState extends State<_PresentationSwitch>
             : () => unawaited(_showConversations()),
         voiceService: widget.composition.voiceService,
         transcriptRefiner: widget.composition.transcriptRefiner,
+        transcriptShadow: widget.composition.transcriptShadow,
         protectedVocabulary: widget.composition.protectedVocabulary,
         presenceShaderLoader: widget.presenceShaderLoader,
         presenceController: _presence,

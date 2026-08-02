@@ -64,6 +64,7 @@ void main() {
       final AppComposition composition = createAppComposition();
 
       expect(composition.transcriptRefiner, isA<DeadlineTranscriptRefiner>());
+      expect(composition.transcriptShadow, isNull);
       expect(
         composition.protectedVocabulary(),
         containsAll(<String>['Lulo', 'Flutter', 'Gemma', 'Qwen']),

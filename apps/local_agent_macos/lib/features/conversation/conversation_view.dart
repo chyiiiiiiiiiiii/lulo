@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../presence/agent_presence_controller.dart';
 import '../presence/agent_presence_header.dart';
 import '../presence/agent_presence_orb.dart';
+import '../transcript_refiner/transcript_shadow_coordinator.dart';
 import '../voice/voice_conversation_controller.dart';
 import '../voice/voice_service.dart';
 import 'conversation_view_model.dart';
@@ -62,6 +63,7 @@ final class ConversationView extends StatefulWidget {
     this.onShowHistory,
     this.voiceService,
     this.transcriptRefiner,
+    this.transcriptShadow,
     this.protectedVocabulary,
     this.buildObserver,
     this.presenceShaderLoader = loadAgentPresenceShader,
@@ -101,6 +103,9 @@ final class ConversationView extends StatefulWidget {
 
   /// Final-transcript refiner supplied by the app composition.
   final TranscriptRefiner? transcriptRefiner;
+
+  /// Optional developer-only transcript shadow coordinator.
+  final TranscriptShadowCoordinator? transcriptShadow;
 
   /// Latest vocabulary tokens protected during refinement.
   final List<String> Function()? protectedVocabulary;
@@ -146,6 +151,7 @@ final class _ConversationViewState extends State<ConversationView> {
         conversation: _viewModel,
         transcriptRefiner:
             widget.transcriptRefiner ?? const DeterministicTranscriptRefiner(),
+        transcriptShadow: widget.transcriptShadow,
         protectedVocabulary:
             widget.protectedVocabulary ?? _emptyProtectedVocabulary,
       );
