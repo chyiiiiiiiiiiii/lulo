@@ -51,6 +51,12 @@ Future<void> main() async {
       ),
     ),
     _VerificationCommand(
+      name: 'Smart Turn shadow tests',
+      executable: 'python3',
+      arguments: const <String>['-m', 'unittest', 'discover'],
+      workingDirectory: _join(workspaceRoot.path, 'sidecars/smart_turn_shadow'),
+    ),
+    _VerificationCommand(
       name: 'presence frame metrics tests',
       executable: 'flutter',
       arguments: const <String>[
