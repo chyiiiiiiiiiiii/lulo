@@ -5,6 +5,7 @@ import 'package:local_agent_macos/app/app_composition.dart';
 import 'package:local_agent_macos/app/bootstrap.dart';
 import 'package:local_agent_macos/features/agent_profile/agent_profile_store.dart';
 import 'package:local_agent_macos/features/transcript_refiner/deadline_transcript_refiner.dart';
+import 'package:local_agent_macos/features/transcript_refiner/loopback_transcript_proposal_provider.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -73,6 +74,30 @@ void main() {
       await composition.dispose();
     },
   );
+
+  test('an explicit loopback endpoint enables transcript shadowing', () async {
+    final AppComposition composition = createAppComposition(
+      transcriptShadowEndpoint: 'http://127.0.0.1:46559/v1/refine',
+    );
+
+    expect(composition.transcriptShadow, isNotNull);
+    expect(
+      composition.transcriptShadow?.provider,
+      isA<LoopbackTranscriptProposalProvider>(),
+    );
+    expect(composition.transcriptShadowEvidence, isNotNull);
+
+    await composition.dispose();
+  });
+
+  test('a non-loopback transcript endpoint is rejected', () {
+    expect(
+      () => createAppComposition(
+        transcriptShadowEndpoint: 'https://example.com/v1/refine',
+      ),
+      throwsArgumentError,
+    );
+  });
 
   test('an answer is given room to finish', () {
     // 512 tokens cut real answers off mid-sentence, which reads as the app

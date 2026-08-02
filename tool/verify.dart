@@ -42,6 +42,15 @@ Future<void> main() async {
       workingDirectory: _join(workspaceRoot.path, 'benchmarks/voice_eval'),
     ),
     _VerificationCommand(
+      name: 'Qwen transcript sidecar tests',
+      executable: 'python3',
+      arguments: const <String>['-m', 'unittest', 'test_server.py'],
+      workingDirectory: _join(
+        workspaceRoot.path,
+        'sidecars/qwen_transcript_refiner',
+      ),
+    ),
+    _VerificationCommand(
       name: 'presence frame metrics tests',
       executable: 'flutter',
       arguments: const <String>[

@@ -16,6 +16,9 @@ import '../features/model/model_download_manager.dart';
 import '../features/model/model_file_service.dart';
 import '../features/settings/app_settings.dart';
 import '../features/transcript_refiner/deadline_transcript_refiner.dart';
+import '../features/transcript_refiner/loopback_transcript_proposal_provider.dart';
+import '../features/transcript_refiner/transcript_shadow_coordinator.dart';
+import '../features/transcript_refiner/transcript_shadow_evidence.dart';
 import '../features/voice/voice_service.dart';
 import '../platform/desktop_host_service.dart';
 import '../platform/pigeon_desktop_host_service.dart';
@@ -119,7 +122,27 @@ AppComposition createAppComposition({
   List<ModelCatalogEntry> catalog = modelCatalog,
   VoiceService? voiceService,
   ValueNotifier<String>? ttsVoice,
+  String transcriptShadowEndpoint = const String.fromEnvironment(
+    'TRANSCRIPT_SHADOW_ENDPOINT',
+  ),
 }) {
+  final LoopbackTranscriptProposalProvider? transcriptProposalProvider =
+      transcriptShadowEndpoint.trim().isEmpty
+      ? null
+      : LoopbackTranscriptProposalProvider(
+          endpoint: Uri.parse(transcriptShadowEndpoint.trim()),
+        );
+  final TranscriptShadowEvidence? transcriptShadowEvidence =
+      transcriptProposalProvider == null
+      ? null
+      : TranscriptShadowEvidence(capacity: 128);
+  final TranscriptShadowCoordinator? transcriptShadow =
+      transcriptProposalProvider == null
+      ? null
+      : TranscriptShadowCoordinator(
+          provider: transcriptProposalProvider,
+          onResult: transcriptShadowEvidence!.record,
+        );
   final SettingsStore store = settingsStore ?? createSettingsStore();
   final AgentProfileStore profileStore =
       agentProfileStore ?? createAgentProfileStore();
@@ -133,6 +156,8 @@ AppComposition createAppComposition({
   if (inferenceRuntime != 'fake' && inferenceRuntime != 'litert') {
     unawaited(profileStore.dispose());
     transcriptRefiner.dispose();
+    transcriptProposalProvider?.dispose();
+    transcriptShadowEvidence?.clear();
     throw UnsupportedError(
       'Unsupported INFERENCE_RUNTIME "$inferenceRuntime". '
       'Supported runtimes are "fake" and "litert".',
@@ -166,6 +191,8 @@ AppComposition createAppComposition({
     unawaited(desktopHostService.dispose());
     unawaited(profileStore.dispose());
     transcriptRefiner.dispose();
+    transcriptProposalProvider?.dispose();
+    transcriptShadowEvidence?.clear();
     rethrow;
   }
 
@@ -176,6 +203,8 @@ AppComposition createAppComposition({
       await desktopHostService.dispose();
       await profileStore.dispose();
       transcriptRefiner.dispose();
+      transcriptProposalProvider?.dispose();
+      transcriptShadowEvidence?.clear();
     },
     storageService: storage.service,
     inferenceService: inferenceService,
@@ -185,6 +214,8 @@ AppComposition createAppComposition({
     catalog: catalog,
     voiceService: voiceService,
     transcriptRefiner: transcriptRefiner,
+    transcriptShadow: transcriptShadow,
+    transcriptShadowEvidence: transcriptShadowEvidence,
     protectedVocabulary: () => profileStore.current.vocabulary,
     // The model is chosen in settings, and the only part of the graph that has
     // to change when it does is what sits behind this one service.

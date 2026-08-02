@@ -13,6 +13,7 @@ import '../features/model/model_download_manager.dart';
 import '../features/model/model_file_service.dart';
 import '../features/settings/app_settings.dart';
 import '../features/transcript_refiner/transcript_shadow_coordinator.dart';
+import '../features/transcript_refiner/transcript_shadow_evidence.dart';
 import '../features/voice/voice_service.dart';
 import '../platform/desktop_host_service.dart';
 
@@ -31,6 +32,7 @@ final class AppComposition {
     this.voiceService,
     TranscriptRefiner? transcriptRefiner,
     this.transcriptShadow,
+    this.transcriptShadowEvidence,
     List<String> Function()? protectedVocabulary,
     ValueNotifier<String>? ttsVoice,
   }) : ttsVoice = ttsVoice ?? ValueNotifier<String>('ryan'),
@@ -70,6 +72,9 @@ final class AppComposition {
 
   /// Optional developer-only proposal path; null keeps shadowing disabled.
   final TranscriptShadowCoordinator? transcriptShadow;
+
+  /// Bounded, in-memory developer evidence; null when shadowing is disabled.
+  final TranscriptShadowEvidence? transcriptShadowEvidence;
 
   /// Latest profile vocabulary, read at the moment an utterance settles.
   final List<String> Function() protectedVocabulary;
