@@ -44,7 +44,7 @@ Future<void> main() async {
     _VerificationCommand(
       name: 'Qwen transcript sidecar tests',
       executable: 'python3',
-      arguments: const <String>['-m', 'unittest', 'test_server.py'],
+      arguments: const <String>['-m', 'unittest', 'discover'],
       workingDirectory: _join(
         workspaceRoot.path,
         'sidecars/qwen_transcript_refiner',

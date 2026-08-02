@@ -30,9 +30,34 @@ No conversation history, memory, profile, or previous transcript is accepted
 by the protocol. Logs contain request IDs and timing only, never transcript
 text or protected vocabulary.
 
+## Golden candidate run
+
+First produce the normal ASR transcript candidate from the private golden
+audio. With the sidecar running, create a separate Qwen candidate without
+altering that raw evidence:
+
+```bash
+.venv/bin/python run_candidate.py \
+  --input /tmp/whisper-transcript.json \
+  --output /tmp/qwen-transcript.json \
+  --vocabulary Flutter --vocabulary MLX --vocabulary Lulo
+
+cd ../../benchmarks/voice_eval
+dart run tool/evaluate.dart \
+  --corpus corpus/zh-TW-v1.json \
+  --candidate /tmp/whisper-transcript.json \
+  --candidate /tmp/qwen-transcript.json \
+  --output /tmp/lulo-qwen-eval \
+  --require-audio
+```
+
+The runner sends only each case's finalized raw transcript. It does not send
+partials, prior cases, corpus notes, or audio, and refuses to overwrite an
+existing output file.
+
 ## Checks
 
 ```bash
-python3 -m unittest test_server.py
-python3 -m py_compile server.py
+python3 -m unittest discover
+python3 -m py_compile server.py run_candidate.py
 ```
