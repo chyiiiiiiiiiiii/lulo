@@ -52,6 +52,13 @@ final class SwappableInferenceService implements InferenceService {
     await _current?.service.cancel(generationId);
   }
 
+  /// Only the model currently installed can be holding the session: a model on
+  /// its way out was released whole, KV caches and all.
+  @override
+  Future<void> releaseSession(ConversationId conversationId) async {
+    await _current?.service.releaseSession(conversationId);
+  }
+
   /// Releases the current model and puts the one [build] returns in its place.
   ///
   /// Released first and built second, deliberately: these models are gigabytes

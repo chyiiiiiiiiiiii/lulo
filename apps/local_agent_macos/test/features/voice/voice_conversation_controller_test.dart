@@ -1795,6 +1795,9 @@ final class _HeldCancelVoiceInference implements InferenceService {
   @override
   Future<void> cancel(GenerationId generationId) => _cancelGate.future;
 
+  @override
+  Future<void> releaseSession(ConversationId conversationId) async {}
+
   void emit(GenerationEvent event) => _events.add(event);
 
   void releaseCancel() {

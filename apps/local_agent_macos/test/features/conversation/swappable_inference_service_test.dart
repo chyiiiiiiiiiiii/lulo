@@ -51,6 +51,30 @@ void main() {
     expect(first.requests, hasLength(1));
   });
 
+  test('releasing a session reaches the model currently loaded', () async {
+    // This is the service the app actually installs, so a delete that stopped
+    // here would leave the KV cache resident with nothing to say so.
+    final List<String> released = <String>[];
+    final ControlledInferenceService first = ControlledInferenceService();
+    final ControlledInferenceService second = ControlledInferenceService();
+    final SwappableInferenceService service = SwappableInferenceService(
+      owned(first, released: released, name: 'first'),
+    );
+
+    await service.releaseSession(const ConversationId('conversation-1'));
+    await service.replaceWith(
+      () async => owned(second, released: released, name: 'second'),
+    );
+    await service.releaseSession(const ConversationId('conversation-2'));
+
+    expect(first.releasedSessions, <ConversationId>[
+      const ConversationId('conversation-1'),
+    ]);
+    expect(second.releasedSessions, <ConversationId>[
+      const ConversationId('conversation-2'),
+    ]);
+  });
+
   test('the model being replaced is released before the next one is built', () {
     // The models are gigabytes. Building the new one first would hold two of
     // them in memory at once, and the native runtime serialises a load behind

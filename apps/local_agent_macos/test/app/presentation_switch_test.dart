@@ -558,4 +558,7 @@ final class _HoldingInferenceService implements InferenceService {
   Future<void> cancel(GenerationId generationId) async {
     cancelledGenerations.add(generationId);
   }
+
+  @override
+  Future<void> releaseSession(ConversationId conversationId) async {}
 }

@@ -42,13 +42,19 @@ final class ConversationRepository {
   /// cancellation would otherwise write a terminal turn back into the store,
   /// and in this schema rows *are* the conversation, so the forgotten
   /// conversation would stand back up as a ghost with a blank title.
-  Future<void> deleteConversation(ConversationId conversationId) {
+  ///
+  /// The runtime is told last. It keeps one live conversation per session id,
+  /// each holding its own KV cache, and nothing evicts them — so deleting the
+  /// rows alone left the cost of a forgotten conversation resident until the
+  /// model was swapped or the app exited.
+  Future<void> deleteConversation(ConversationId conversationId) async {
     for (final _GenerationOperation operation in _liveOperations) {
       if (operation.conversationId == conversationId) {
         operation.forget();
       }
     }
-    return _storageService.deleteConversation(conversationId);
+    await _storageService.deleteConversation(conversationId);
+    await _inferenceService.releaseSession(conversationId);
   }
 
   /// Persists [userTurn], then exposes ordered events for [request].

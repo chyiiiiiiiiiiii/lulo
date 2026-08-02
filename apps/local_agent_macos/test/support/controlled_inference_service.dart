@@ -8,6 +8,7 @@ final class ControlledInferenceService implements InferenceService {
       StreamController<GenerationEvent>.broadcast();
   final List<GenerationRequest> requests = <GenerationRequest>[];
   final List<GenerationId> cancellations = <GenerationId>[];
+  final List<ConversationId> releasedSessions = <ConversationId>[];
   final Completer<GenerationRequest> _requestReceived =
       Completer<GenerationRequest>();
 
@@ -51,6 +52,11 @@ final class ControlledInferenceService implements InferenceService {
   @override
   Future<void> cancel(GenerationId generationId) async {
     cancellations.add(generationId);
+  }
+
+  @override
+  Future<void> releaseSession(ConversationId conversationId) async {
+    releasedSessions.add(conversationId);
   }
 
   void emit(GenerationEvent event) {

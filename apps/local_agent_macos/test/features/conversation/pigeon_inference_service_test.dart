@@ -415,6 +415,82 @@ void main() {
     ]);
     expect(host.disposeCount, 0);
   });
+
+  test(
+    'releasing a session cancels the generation still running in it',
+    () async {
+      // resetSession drops the runtime's active generation without emitting a
+      // terminal event, and the coordinator frees its single generation slot
+      // only when it observes one. Releasing a session mid-answer without
+      // cancelling first therefore wedges the runtime: every later turn is
+      // refused as busy for the life of the process. Teardown has always
+      // cancelled before resetting; this path has to do the same.
+      final host = _startingHost();
+      final service = PigeonInferenceService(
+        desktopHostService: host,
+        config: testModelConfig,
+      );
+      final subscription = await _startedGeneration(
+        service,
+        const ConversationId('conversation-forgotten'),
+      );
+
+      await service.releaseSession(
+        const ConversationId('conversation-forgotten'),
+      );
+
+      expect(host.lifecycleOperations, <String>[
+        'cancel:litert-generation-1',
+        'reset:conversation-forgotten',
+      ]);
+      await subscription.cancel();
+      await service.dispose();
+    },
+  );
+
+  test('releasing a session that never started costs no round trip', () async {
+    // Mutation caught: dropping the started-sessions guard sends a reset for
+    // every conversation the user deletes, including ones this adapter never
+    // spoke in.
+    final host = _startingHost();
+    final service = PigeonInferenceService(
+      desktopHostService: host,
+      config: testModelConfig,
+    );
+
+    await service.releaseSession(const ConversationId('never-spoken-in'));
+
+    expect(host.lifecycleOperations, isEmpty);
+    await service.dispose();
+  });
+
+  test('a released session is not reset again during teardown', () async {
+    // Mutation caught: releasing without forgetting the id leaves teardown
+    // resetting a session the runtime has already dropped.
+    final host = _startingHost();
+    final service = PigeonInferenceService(
+      desktopHostService: host,
+      config: testModelConfig,
+    );
+    final subscription = await _startedGeneration(
+      service,
+      const ConversationId('conversation-forgotten'),
+    );
+    await service.releaseSession(
+      const ConversationId('conversation-forgotten'),
+    );
+
+    await subscription.cancel();
+    await service.dispose();
+
+    expect(
+      host.lifecycleOperations.where(
+        (String operation) => operation == 'reset:conversation-forgotten',
+      ),
+      hasLength(1),
+    );
+  });
+
   test(
     'warmUp loads the model once so the first prompt does not pay for it',
     () async {
@@ -711,6 +787,47 @@ void main() {
     await expectLater(service.warmUp(), throwsA(isA<DesktopHostFailure>()));
     await service.dispose();
   });
+}
+
+/// A host that acknowledges every start and reports the generation running.
+RecordingDesktopHostService _startingHost() {
+  return RecordingDesktopHostService(
+    onStart:
+        (
+          RecordingDesktopHostService host,
+          DesktopGenerationRequest request,
+        ) async {
+          host.emit(
+            DesktopGenerationEvent(
+              generationId: request.generationId,
+              sequence: 0,
+              type: HostGenerationEventType.started,
+            ),
+          );
+          return DesktopGenerationAcknowledgement(
+            generationId: request.generationId,
+            accepted: true,
+          );
+        },
+  );
+}
+
+/// Runs one generation in [conversationId] far enough that the adapter counts
+/// the session as started, and returns its still-live subscription.
+Future<StreamSubscription<GenerationEvent>> _startedGeneration(
+  PigeonInferenceService service,
+  ConversationId conversationId,
+) async {
+  final Completer<void> started = Completer<void>();
+  final StreamSubscription<GenerationEvent> subscription = service
+      .generate(GenerationRequest(conversationId: conversationId, prompt: 'Hi'))
+      .listen((GenerationEvent event) {
+        if (event is GenerationStarted && !started.isCompleted) {
+          started.complete();
+        }
+      });
+  await started.future;
+  return subscription;
 }
 
 const LocalModelConfig testModelConfig = LocalModelConfig(

@@ -124,6 +124,10 @@ final class DeterministicFakeInferenceService implements InferenceService {
     await _operations[generationId]?.cancel();
   }
 
+  /// Holds no per-session runtime state, so there is nothing to let go of.
+  @override
+  Future<void> releaseSession(ConversationId conversationId) async {}
+
   /// Cancels all operation-scoped resources owned by this service.
   Future<void> dispose() async {
     if (_disposed) {

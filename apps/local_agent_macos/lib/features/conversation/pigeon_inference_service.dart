@@ -175,6 +175,31 @@ final class PigeonInferenceService implements InferenceService {
     await _operations[generationId.value]?.cancel();
   }
 
+  /// Drops the runtime session started for [conversationId], if there was one.
+  ///
+  /// Sessions this adapter never started are not worth a boundary round trip,
+  /// and forgetting the id here also keeps teardown from resetting it twice.
+  ///
+  /// A generation still running in the session is cancelled first, the way
+  /// teardown has always done it. Resetting a session takes the runtime's
+  /// active generation away without emitting a terminal event, and the
+  /// coordinator releases its single generation slot only when it observes
+  /// one — so reaching the reset first would refuse every later turn as busy
+  /// for the lifetime of the process.
+  @override
+  Future<void> releaseSession(ConversationId conversationId) async {
+    if (!_startedSessionIds.remove(conversationId.value)) {
+      return;
+    }
+    final operations = List<_PigeonGenerationOperation>.of(_operations.values);
+    for (final operation in operations) {
+      if (operation.request.conversationId == conversationId) {
+        await operation.cancel();
+      }
+    }
+    await _desktopHostService.resetSession(conversationId.value);
+  }
+
   /// Releases operation-scoped resources owned by this adapter.
   ///
   /// Fences new work immediately, awaits cancellation of the active

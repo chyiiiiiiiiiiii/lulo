@@ -666,6 +666,55 @@ void main() {
   );
 
   test(
+    'forgetting a conversation releases the runtime session it held',
+    () async {
+      // Deleting only ever removed rows. The runtime keeps one live LiteRT-LM
+      // conversation per session id, each holding its own KV cache, and nothing
+      // on this path ever told it to let go: the user says forget this, and the
+      // memory it costs outlives the thing they forgot.
+      final RecordingConversationStorageService storage =
+          RecordingConversationStorageService();
+      final ControlledInferenceService inference = ControlledInferenceService();
+      final ConversationRepository repository = ConversationRepository(
+        storageService: storage,
+        inferenceService: inference,
+      );
+
+      await repository.deleteConversation(conversationId);
+
+      expect(inference.releasedSessions, <ConversationId>[conversationId]);
+      await inference.dispose();
+    },
+  );
+
+  test(
+    'a conversation deleted mid-answer still releases its runtime session',
+    () async {
+      // The costliest case to leak: the session is not merely allocated, it is
+      // the one currently holding a live generation and its grown KV cache.
+      final RecordingConversationStorageService storage =
+          RecordingConversationStorageService();
+      final ControlledInferenceService inference = ControlledInferenceService();
+      final ConversationRepository repository = ConversationRepository(
+        storageService: storage,
+        inferenceService: inference,
+      );
+      final StreamSubscription<GenerationEvent> subscription = repository
+          .startGeneration(userTurn: userTurn, request: request)
+          .listen((GenerationEvent _) {});
+      await inference.requestReceived;
+      inference.emit(GenerationStarted(generation));
+      await Future<void>.delayed(Duration.zero);
+
+      await repository.deleteConversation(conversationId);
+      await subscription.cancel();
+
+      expect(inference.releasedSessions, <ConversationId>[conversationId]);
+      await inference.dispose();
+    },
+  );
+
+  test(
     'a message sent while the last answer is still cancelling waits its turn',
     () async {
       // Switching conversations disposes the old ViewModel, whose
@@ -755,6 +804,9 @@ final class _HeldCancelInferenceService implements InferenceService {
   @override
   Future<void> cancel(GenerationId generationId) => _cancelGate.future;
 
+  @override
+  Future<void> releaseSession(ConversationId conversationId) async {}
+
   void emit(GenerationEvent event) => _events.add(event);
 
   void releaseCancel() {
@@ -807,6 +859,9 @@ final class CancellationRaceInferenceService implements InferenceService {
     cancelRequested.complete();
     await cancelAcknowledged.future;
   }
+
+  @override
+  Future<void> releaseSession(ConversationId conversationId) async {}
 
   void emit(GenerationEvent event) {
     _events.add(event);
