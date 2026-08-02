@@ -1,14 +1,44 @@
 import 'dart:async';
 import 'dart:io';
 
-/// Runs the CP0 quality gate from the workspace root.
+import 'macos_app_bundle.dart';
+
+/// Runs the workspace quality gate from the workspace root.
 Future<void> main() async {
   final Directory workspaceRoot = Directory.current;
+
+  // Resolved from the checked-in app configuration rather than hard-coded,
+  // because the built bundle is named after PRODUCT_NAME and the last rename
+  // left a stale `local_agent_macos.app` sitting beside the current one: any
+  // glob or literal here would happily verify the wrong bundle.
+  String? appBundlePath;
+  String? appBundleResolutionFailure;
+  try {
+    appBundlePath = macosAppBundlePath(
+      workspaceRoot: workspaceRoot.path,
+      configuration: 'Profile',
+      productName: readProductName(
+        File(defaultAppInfoConfigPath(workspaceRoot.path)),
+      ),
+    );
+  } on FormatException catch (error) {
+    appBundleResolutionFailure = error.message;
+  }
+
   final List<_VerificationCommand> commands = <_VerificationCommand>[
     _VerificationCommand(
       name: 'format',
       executable: 'dart',
       arguments: const <String>['format', '--set-exit-if-changed', '.'],
+      workingDirectory: workspaceRoot.path,
+    ),
+    // The root package is where `tool/` lives, and nothing here analysed it:
+    // the gate's own scripts were the only Dart in the repo that could rot
+    // unlinted.
+    _VerificationCommand(
+      name: 'workspace analysis',
+      executable: 'dart',
+      arguments: const <String>['analyze', '--fatal-infos', '--fatal-warnings'],
       workingDirectory: workspaceRoot.path,
     ),
     _VerificationCommand(
@@ -28,6 +58,21 @@ Future<void> main() async {
       executable: 'dart',
       arguments: const <String>['test'],
       workingDirectory: _join(workspaceRoot.path, 'packages/agent_core'),
+    ),
+    // The gate's own checks had tests that nothing ran, which is the same
+    // trap the window tests fell into: a verifier that has quietly stopped
+    // detecting anything still reports success.
+    _VerificationCommand(
+      name: 'app bundle path resolver tests',
+      executable: 'dart',
+      arguments: const <String>['tool/macos_app_bundle_test.dart'],
+      workingDirectory: workspaceRoot.path,
+    ),
+    _VerificationCommand(
+      name: 'LiteRT-LM app bundle gate tests',
+      executable: 'dart',
+      arguments: const <String>['tool/verify_litert_app_bundle_test.dart'],
+      workingDirectory: workspaceRoot.path,
     ),
     _VerificationCommand(
       name: 'voice eval analysis',
@@ -88,6 +133,24 @@ Future<void> main() async {
       arguments: const <String>['build', 'macos', '--profile'],
       workingDirectory: _join(workspaceRoot.path, 'apps/local_agent_macos'),
     ),
+    // Nothing linked the LiteRT-LM dylib check to the build that produces it,
+    // so an app bundle that had lost the library, its @rpath, or its signature
+    // still went green here — the one failure that makes every real-model path
+    // fail at launch. It runs against the profile build directly above.
+    //
+    // Static checks only: --launch-smoke actually starts the app, and a window
+    // opened from CI has already cost this repo hours (full-screen Space, TCC
+    // prompts). Run that by hand when the launch path itself is in question.
+    if (appBundlePath != null)
+      _VerificationCommand(
+        name: 'LiteRT-LM app bundle gate',
+        executable: 'dart',
+        arguments: <String>[
+          'tool/verify_litert_app_bundle.dart',
+          appBundlePath,
+        ],
+        workingDirectory: workspaceRoot.path,
+      ),
     // The window is where this app's hardest bugs live, and its tests were
     // being written but never run: nothing here invoked them, so a rename of
     // the app quietly broke the test target and a click that went straight
@@ -137,7 +200,16 @@ Future<void> main() async {
     );
   }
 
-  final List<_VerificationResult> results = <_VerificationResult>[];
+  // A bundle path we could not resolve is reported as a failure rather than a
+  // skipped step, so that renaming the app can never quietly retire the check.
+  final List<_VerificationResult> results = <_VerificationResult>[
+    if (appBundleResolutionFailure != null)
+      _VerificationResult(
+        name: 'LiteRT-LM app bundle gate',
+        exitCode: 1,
+        output: 'bundle-smoke-error: $appBundleResolutionFailure',
+      ),
+  ];
   for (final _VerificationCommand command in commands) {
     results.add(await _runCommand(command));
   }

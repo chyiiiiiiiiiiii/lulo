@@ -4,7 +4,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-Local, macOS-first conversation agent. Currently at **CP0**: repository and quality baseline only — the app is an intentional empty shell (`lib/main.dart` renders one `Text`). The value in the repo right now is the quality gate and the performance-evidence harness, not features.
+Local, macOS-first conversation agent ("Lulo"). Text and voice conversation against a real on-device Gemma via LiteRT-LM both work end to end: `AppDelegate` wires `LiteRTLMRuntimeBackend` into `InferenceCoordinator`, and `lib/main.dart` selects the real runtime whenever a model is installed (falling back to `fake_runtime.dart` only with no model, or under XCTest).
+
+Next up is harness reliability rather than new features, in this order: close the verification gates (the `verify_litert_app_bundle.dart` signing/dylib check is **not** yet part of `verify.dart` or CI, and real-model coverage is opt-in via `--dart-define=LOCAL_MODEL_PATH`); then a real context budget to replace the char-count truncation in `LiteRTLMRuntimeBackend.historyFitting`; then durable run events; then tool calling with a permission layer. There is no tool calling today.
+
+Toolchain is pinned by CI: Flutter **3.44.1** stable, Dart SDK `^3.12.0`.
 
 Toolchain is pinned by CI: Flutter **3.44.1** stable, Dart SDK `^3.12.0`.
 
