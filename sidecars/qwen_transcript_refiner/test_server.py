@@ -9,6 +9,7 @@ from server import (
     decode_request,
     extract_refinement,
     parse_content_length,
+    redacted_exception_name,
 )
 
 
@@ -86,6 +87,12 @@ class HttpTests(unittest.TestCase):
     def test_invalid_content_length_is_a_redacted_client_error(self) -> None:
         with self.assertRaisesRegex(ProtocolError, "content length"):
             parse_content_length("not-a-number")
+
+    def test_internal_failure_diagnostics_never_include_private_text(self) -> None:
+        diagnostic = redacted_exception_name(RuntimeError("我的私人逐字稿"))
+
+        self.assertEqual(diagnostic, "RuntimeError")
+        self.assertNotIn("私人", diagnostic)
 
 
 if __name__ == "__main__":

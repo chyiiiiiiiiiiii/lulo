@@ -89,6 +89,10 @@ def parse_content_length(value: str | None) -> int:
     return length
 
 
+def redacted_exception_name(error: BaseException) -> str:
+    return type(error).__name__
+
+
 def _bounded_string(value: dict[str, object], key: str, limit: int) -> str:
     field = value.get(key)
     if not isinstance(field, str) or not field.strip() or len(field) > limit:
@@ -199,8 +203,12 @@ def make_handler(engine: ProposalEngine) -> type[BaseHTTPRequestHandler]:
             except ProtocolError as error:
                 logging.warning("proposal rejected request_id=%s reason=%s", request_id, error)
                 self._write_json(HTTPStatus.BAD_REQUEST, {"error": str(error)})
-            except Exception:
-                logging.exception("proposal failed request_id=%s", request_id)
+            except Exception as error:
+                logging.error(
+                    "proposal failed request_id=%s exception_type=%s",
+                    request_id,
+                    redacted_exception_name(error),
+                )
                 self._write_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"error": "proposal failed"})
 
         def log_message(self, format: str, *args: object) -> None:
