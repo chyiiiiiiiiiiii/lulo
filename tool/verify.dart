@@ -25,6 +25,26 @@ Future<void> main() async {
     appBundleResolutionFailure = error.message;
   }
 
+  // `flutter build macos` rewrites App.framework on every run, but Xcode only
+  // re-signs the outer bundle when the Runner target itself relinks. So an
+  // incremental build leaves a signature sealing a framework that has since
+  // changed, and codesign rightly calls the result `nested code is modified`.
+  // Removing the product first makes the build assemble and sign in one pass,
+  // the way a clean CI checkout always does. Measured at ~10s: this discards
+  // the assembled bundle, not the compile caches that make it.
+  if (appBundlePath != null) {
+    final Directory staleBundle = Directory(appBundlePath);
+    try {
+      if (staleBundle.existsSync()) {
+        staleBundle.deleteSync(recursive: true);
+      }
+    } on FileSystemException {
+      appBundleResolutionFailure =
+          'the previously built app bundle could not be removed.';
+      appBundlePath = null;
+    }
+  }
+
   final List<_VerificationCommand> commands = <_VerificationCommand>[
     _VerificationCommand(
       name: 'format',
