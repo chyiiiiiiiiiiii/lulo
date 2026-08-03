@@ -63,6 +63,7 @@ final class ConversationProjection {
     TurnStatus.completed => true,
     TurnStatus.cancelled => true,
     TurnStatus.failed => true,
+    TurnStatus.interrupted => true,
     TurnStatus.streaming => false,
   };
 }

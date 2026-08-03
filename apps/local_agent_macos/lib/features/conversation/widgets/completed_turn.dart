@@ -15,6 +15,7 @@ final class CompletedTurn extends StatelessWidget {
     final String? statusLabel = switch (turn.status) {
       TurnStatus.failed => 'Response failed',
       TurnStatus.cancelled => 'Response stopped',
+      TurnStatus.interrupted => 'Response interrupted',
       TurnStatus.completed || TurnStatus.streaming => null,
     };
     return Semantics(

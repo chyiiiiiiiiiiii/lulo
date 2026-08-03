@@ -96,6 +96,15 @@ final class AppComposition {
   int _nextConversation = 1;
   bool _disposed = false;
 
+  /// Settles anything the last process left mid-answer.
+  ///
+  /// Awaited before the first surface reads a conversation, so a recovered
+  /// turn is there when the history is first drawn rather than appearing
+  /// under the user a moment later. On a clean start it is one query that
+  /// returns nothing.
+  Future<void> recoverInterruptedRuns() =>
+      _conversationRepository.recoverInterruptedRuns();
+
   /// Loads [modelPath] in place of whatever the agent is currently thinking
   /// with, so choosing a model does not mean restarting.
   ///

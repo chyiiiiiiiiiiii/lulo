@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:agent_core/agent_core.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:local_agent_macos/features/conversation/conversation_repository.dart';
+import 'package:local_agent_macos/features/conversation/conversation_storage_service.dart';
 import 'package:local_agent_macos/features/conversation/inference_service.dart';
 
 import '../../support/controlled_inference_service.dart';
@@ -990,6 +991,125 @@ void main() {
     expect(storage.endedRuns, isEmpty);
 
     await subscription.cancel();
+  });
+
+  // Recovery. Everything above only writes; this is what makes the writing
+  // worth anything.
+
+  test('an interrupted run comes back as a turn saying so', () async {
+    final RecordingConversationStorageService storage =
+        RecordingConversationStorageService()
+          ..unfinishedRuns = <RunRecord>[
+            RunRecord(
+              id: const GenerationId('died-mid-answer'),
+              conversationId: conversationId,
+              modelId: 'gemma-4-E2B-it',
+              startedAt: DateTime.fromMillisecondsSinceEpoch(1),
+              partialText: 'It was going to say',
+            ),
+          ];
+    final ConversationRepository repository = ConversationRepository(
+      storageService: storage,
+      inferenceService: ControlledInferenceService(),
+    );
+
+    await repository.recoverInterruptedRuns();
+
+    expect(storage.assistantTurns.single.turn.text, 'It was going to say');
+    expect(
+      storage.assistantTurns.single.turn.status,
+      TurnStatus.interrupted,
+      reason:
+          'Nothing failed and nobody stopped it; the process went away, and '
+          'the turn must not claim otherwise.',
+    );
+    expect(
+      storage.assistantTurns.single.generation.request.conversationId,
+      conversationId,
+    );
+    // Closed behind the turn, or the next launch recovers it a second time
+    // and the conversation grows a duplicate every time the app opens.
+    expect(storage.endedRuns, <TurnStatus>[TurnStatus.interrupted]);
+  });
+
+  test('a run interrupted before its first word leaves no turn', () async {
+    // An empty turn is worse than none: it renders as a blank bubble the
+    // user cannot account for.
+    final RecordingConversationStorageService storage =
+        RecordingConversationStorageService()
+          ..unfinishedRuns = <RunRecord>[
+            RunRecord(
+              id: const GenerationId('died-immediately'),
+              conversationId: conversationId,
+              modelId: 'gemma-4-E2B-it',
+              startedAt: DateTime.fromMillisecondsSinceEpoch(1),
+            ),
+          ];
+    final ConversationRepository repository = ConversationRepository(
+      storageService: storage,
+      inferenceService: ControlledInferenceService(),
+    );
+
+    await repository.recoverInterruptedRuns();
+
+    expect(storage.assistantTurns, isEmpty);
+    // The run is still closed, so it is not reconsidered on every launch.
+    expect(storage.endedRuns, <TurnStatus>[TurnStatus.interrupted]);
+  });
+
+  test('a clean start recovers nothing', () async {
+    final RecordingConversationStorageService storage =
+        RecordingConversationStorageService();
+    final ConversationRepository repository = ConversationRepository(
+      storageService: storage,
+      inferenceService: ControlledInferenceService(),
+    );
+
+    await repository.recoverInterruptedRuns();
+
+    expect(storage.assistantTurns, isEmpty);
+    expect(storage.endedRuns, isEmpty);
+  });
+
+  test('every interrupted run is recovered, not just the first', () async {
+    final RecordingConversationStorageService storage =
+        RecordingConversationStorageService()
+          ..unfinishedRuns = <RunRecord>[
+            RunRecord(
+              id: const GenerationId('one'),
+              conversationId: conversationId,
+              modelId: 'gemma-4-E2B-it',
+              startedAt: DateTime.fromMillisecondsSinceEpoch(1),
+              partialText: 'first',
+            ),
+            RunRecord(
+              id: const GenerationId('two'),
+              conversationId: const ConversationId('another'),
+              modelId: 'gemma-4-E2B-it',
+              startedAt: DateTime.fromMillisecondsSinceEpoch(2),
+              partialText: 'second',
+            ),
+          ];
+    final ConversationRepository repository = ConversationRepository(
+      storageService: storage,
+      inferenceService: ControlledInferenceService(),
+    );
+
+    await repository.recoverInterruptedRuns();
+
+    expect(
+      storage.assistantTurns.map((SavedAssistantTurn saved) => saved.turn.text),
+      <String>['first', 'second'],
+    );
+    expect(
+      storage.assistantTurns
+          .map(
+            (SavedAssistantTurn saved) =>
+                saved.generation.request.conversationId,
+          )
+          .toList(),
+      <ConversationId>[conversationId, const ConversationId('another')],
+    );
   });
 }
 

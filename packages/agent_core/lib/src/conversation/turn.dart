@@ -22,6 +22,15 @@ enum TurnStatus {
 
   /// The turn stopped because generation failed.
   failed,
+
+  /// The process did not survive the generation.
+  ///
+  /// Distinct from [failed] and [cancelled] because neither is true: nothing
+  /// failed and nobody stopped it — the app went away mid-answer, and what
+  /// is stored is however much of it had been checkpointed. Recording it as
+  /// either of the others would put a reason on the turn that never
+  /// happened.
+  interrupted,
 }
 
 /// An immutable unit of conversation text and lifecycle state.

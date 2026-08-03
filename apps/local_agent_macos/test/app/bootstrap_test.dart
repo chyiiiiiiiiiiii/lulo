@@ -1,9 +1,11 @@
 import 'dart:io';
 
+import 'package:agent_core/agent_core.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:local_agent_macos/app/app_composition.dart';
 import 'package:local_agent_macos/app/bootstrap.dart';
 import 'package:local_agent_macos/features/agent_profile/agent_profile_store.dart';
+import 'package:local_agent_macos/features/conversation/conversation_storage_service.dart';
 import 'package:local_agent_macos/features/transcript_refiner/deadline_transcript_refiner.dart';
 import 'package:local_agent_macos/features/transcript_refiner/loopback_transcript_proposal_provider.dart';
 
@@ -142,4 +144,75 @@ void main() {
       );
     },
   );
+
+  test(
+    'the composition settles an interrupted run before the app runs',
+    () async {
+      // The recovery is one delegation deep, which is exactly the kind of wire
+      // that can be cut without any test noticing: everything below it would
+      // still pass while nothing on disk was ever recovered.
+      final _InterruptedRunStorage storage = _InterruptedRunStorage();
+      final AppComposition composition = createAppComposition(
+        conversationStorage: OwnedConversationStorage(
+          service: storage,
+          release: () async {},
+        ),
+      );
+
+      await composition.recoverInterruptedRuns();
+
+      expect(storage.recoveredText, 'what it had managed to say');
+      await composition.dispose();
+    },
+  );
+}
+
+/// A store holding one run the last process never finished.
+final class _InterruptedRunStorage implements ConversationStorageService {
+  String? recoveredText;
+
+  @override
+  Future<List<RunRecord>> loadUnfinishedRuns() async => <RunRecord>[
+    RunRecord(
+      id: const GenerationId('died'),
+      conversationId: const ConversationId('yesterday'),
+      modelId: 'gemma-4-E2B-it',
+      startedAt: DateTime.fromMillisecondsSinceEpoch(1),
+      partialText: 'what it had managed to say',
+    ),
+  ];
+
+  @override
+  Future<void> saveTerminalAssistantTurn(
+    Turn turn,
+    Generation generation,
+  ) async {
+    recoveredText = turn.text;
+  }
+
+  @override
+  Future<void> endRun(GenerationId generationId, TurnStatus outcome) async {}
+
+  @override
+  Future<void> beginRun(RunRecord run) async {}
+
+  @override
+  Future<void> checkpointRun(
+    GenerationId generationId,
+    String partialText,
+  ) async {}
+
+  @override
+  Future<List<Turn>> loadTurns(ConversationId conversationId) async =>
+      const <Turn>[];
+
+  @override
+  Future<void> saveUserTurn(ConversationId conversationId, Turn turn) async {}
+
+  @override
+  Future<List<ConversationSummary>> listConversations() async =>
+      const <ConversationSummary>[];
+
+  @override
+  Future<void> deleteConversation(ConversationId conversationId) async {}
 }

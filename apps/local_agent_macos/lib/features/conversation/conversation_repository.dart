@@ -51,6 +51,43 @@ final class ConversationRepository {
   Future<List<Turn>> loadTurns(ConversationId conversationId) =>
       _storageService.loadTurns(conversationId);
 
+  /// Turns runs the last process did not finish into the turns they were.
+  ///
+  /// Call once at startup, before anything reads a conversation. On a clean
+  /// exit there is nothing to do: a run is closed as its terminal turn is
+  /// written, so anything still open is the residue of a process that went
+  /// away mid-answer. What it had checkpointed becomes an assistant turn
+  /// marked [TurnStatus.interrupted] — the answer stops where the record
+  /// stops, rather than the whole thing vanishing.
+  ///
+  /// Every run is closed either way, including ones with nothing to show, so
+  /// the same wreckage is not reconsidered on every launch.
+  Future<void> recoverInterruptedRuns() async {
+    final List<RunRecord> interrupted = await _storageService
+        .loadUnfinishedRuns();
+    for (final RunRecord run in interrupted) {
+      // An empty turn is worse than no turn: it renders as a blank bubble
+      // the user cannot account for.
+      if (run.partialText.isNotEmpty) {
+        await _storageService.saveTerminalAssistantTurn(
+          Turn(
+            role: TurnRole.assistant,
+            text: run.partialText,
+            status: TurnStatus.interrupted,
+          ),
+          Generation(
+            id: run.id,
+            request: GenerationRequest(
+              conversationId: run.conversationId,
+              prompt: '',
+            ),
+          ),
+        );
+      }
+      await _storageService.endRun(run.id, TurnStatus.interrupted);
+    }
+  }
+
   /// Every stored conversation, most recently spoken-in first.
   Future<List<ConversationSummary>> listConversations() =>
       _storageService.listConversations();
