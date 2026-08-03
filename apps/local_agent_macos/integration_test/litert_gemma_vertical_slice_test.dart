@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
@@ -5,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 import 'package:local_agent_macos/app/app.dart';
 import 'package:local_agent_macos/app/bootstrap.dart';
+import 'package:local_agent_macos/features/conversation/widgets/completed_turn.dart';
 import 'package:local_agent_macos/platform/desktop_host_service.dart';
 
 /// Absolute path to the installed Gemma 4 E4B model.
@@ -148,14 +150,20 @@ void main() {
         findsOneWidget,
       );
 
-      binding.reportData = <String, dynamic>{
-        'litert_gemma_slice': <String, Object?>{
-          'cold_first_token_millis': coldFirstTokenMillis,
-          'warm_first_token_millis': warmFirstTokenMillis,
-          'first_answer_characters': firstAnswer.trim().length,
-          'terminal_turn_count': _terminalTexts(tester).length,
-        },
+      final Map<String, Object?> measurements = <String, Object?>{
+        'cold_first_token_millis': coldFirstTokenMillis,
+        'warm_first_token_millis': warmFirstTokenMillis,
+        'first_answer_characters': firstAnswer.trim().length,
+        'terminal_turn_count': _terminalTexts(tester).length,
       };
+      binding.reportData = <String, dynamic>{
+        'litert_gemma_slice': measurements,
+      };
+      // reportData only reaches a file through a driver, and this slice is run
+      // as a plain `flutter test`. Printing it too is what makes the numbers a
+      // latency baseline anyone can keep rather than a value computed and
+      // dropped on the floor.
+      debugPrint('litert_gemma_slice ${jsonEncode(measurements)}');
 
       await tester.pumpWidget(const SizedBox.shrink());
       await tester.pumpAndSettle();
@@ -274,10 +282,22 @@ String _visibleText(WidgetTester tester) {
 
 /// Flattens each terminal turn, which renders as a column of rich blocks
 /// rather than a single text widget.
+///
+/// Scoped to [CompletedTurn]. `terminal-markdown` sits on the root of
+/// TerminalMarkdown itself, and the streaming bubble renders through the very
+/// same widget — so an unscoped search counts the answer still being written
+/// as though it had finished, and the wait for a terminal turn returns while
+/// the model is mid-sentence. User turns carry no such key: they render as
+/// plain SelectableText.
 List<String> _terminalTexts(WidgetTester tester) {
   final List<String> texts = <String>[];
   for (final Element root
-      in find.byKey(const Key('terminal-markdown')).evaluate()) {
+      in find
+          .descendant(
+            of: find.byType(CompletedTurn),
+            matching: find.byKey(const Key('terminal-markdown')),
+          )
+          .evaluate()) {
     final StringBuffer buffer = StringBuffer();
     void visit(Element element) {
       final String? text = _widgetText(element.widget);
