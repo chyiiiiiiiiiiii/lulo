@@ -190,9 +190,14 @@ sentence needs a bound before it is allowed to speak to a user.
 - **Nobody has listened.** Thirty A/B pairs are in `~/Desktop/lulo-voice-ab`,
   named `word__candidate.wav`. Naturalness, pacing and whether it still
   sounds like the same person are not in any of these numbers.
-- **Taiwanese Hokkien is unexplored.** VoxCPM2 advertises nine dialects
-  including Hokkien, which is the one candidate here with a plausible path
-  to it. Not tested.
+- **Taiwanese Hokkien is rendered but unjudged.** VoxCPM2 lists nine
+  Chinese dialects including 閩南話, and four Taiwanese sentences written
+  in Han characters are in `~/Desktop/lulo-voice-ab/taiwanese/`. Whether
+  they are Taiwanese or Mandarin read off Taiwanese spelling cannot be
+  decided here: a Mandarin recogniser is no help, and none of the
+  measurements in this document apply. It needs a speaker. If it does work
+  it is the only candidate with a route to Hokkien at all, which may
+  matter more than the Mandarin difference.
 
 ## Rejected without testing
 
