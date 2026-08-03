@@ -2,6 +2,13 @@ import 'package:agent_core/agent_core.dart';
 
 /// Streams inference events independently of a local model implementation.
 abstract interface class InferenceService {
+  /// What is answering, for the durable run record.
+  ///
+  /// Recorded with every run so an answer can be read in the light of the
+  /// model that wrote it rather than whichever one happens to be installed
+  /// when it is read back.
+  String get modelId;
+
   /// Starts inference for [request].
   Stream<GenerationEvent> generate(GenerationRequest request);
 

@@ -4,6 +4,10 @@ import 'package:agent_core/agent_core.dart';
 import 'package:local_agent_macos/features/conversation/inference_service.dart';
 
 final class ControlledInferenceService implements InferenceService {
+  /// What a run opened during this test records as its model.
+  @override
+  String modelId = 'test-model';
+
   final StreamController<GenerationEvent> _events =
       StreamController<GenerationEvent>.broadcast();
   final List<GenerationRequest> requests = <GenerationRequest>[];

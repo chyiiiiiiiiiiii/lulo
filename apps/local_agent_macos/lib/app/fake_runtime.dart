@@ -145,6 +145,11 @@ final class DeterministicFakeInferenceService implements InferenceService {
     'This preview is deterministic and runs without a network connection.',
   ];
 
+  /// Named for what it is, so a run recorded under the preview cannot be
+  /// mistaken later for one a real model produced.
+  @override
+  String get modelId => 'deterministic-fake';
+
   @override
   Stream<GenerationEvent> generate(GenerationRequest request) {
     if (_disposed) {

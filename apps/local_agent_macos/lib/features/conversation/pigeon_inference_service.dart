@@ -56,6 +56,9 @@ final class PigeonInferenceService implements InferenceService {
   final LocalModelConfig _config;
   final AgentContextProvider _agentContext;
   int _nextGeneration = 0;
+
+  @override
+  String get modelId => _config.modelId;
   Future<DesktopRuntimeCapabilities>? _handshakeAttempt;
   DesktopRuntimeCapabilities? _capabilities;
   Future<void>? _readinessAttempt;

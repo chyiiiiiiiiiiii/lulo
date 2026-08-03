@@ -65,7 +65,17 @@ void main() {
 
       expect(storage.userTurns, <Turn>[userTurn]);
       expect(visibleEvents.whereType<GenerationDelta>(), hasLength(1));
-      expect(storage.lifecycle, <String>['user-saved', 'delta-visible']);
+      // The user turn is stored before anything about the answer exists,
+      // which is what this test is for. The run opening and its first
+      // checkpoint sit between because a delta is handed to the stream
+      // before its write is awaited, and delivery to a listener is a later
+      // microtask than a store that records synchronously.
+      expect(storage.lifecycle, <String>[
+        'user-saved',
+        'run-begun',
+        'run-checkpointed',
+        'delta-visible',
+      ]);
 
       await subscription.cancel();
       await inference.dispose();
@@ -777,10 +787,217 @@ void main() {
       await second.cancel();
     },
   );
+
+  // Run records. The turn is written once, at the end; these are what is on
+  // disk while the answer is still being written.
+
+  test('a generation opens a run naming its model and conversation', () async {
+    final RecordingConversationStorageService storage =
+        RecordingConversationStorageService();
+    final ControlledInferenceService inference = ControlledInferenceService()
+      ..modelId = 'gemma-4-E2B-it';
+    final ConversationRepository repository = ConversationRepository(
+      storageService: storage,
+      inferenceService: inference,
+      clock: () => DateTime.fromMillisecondsSinceEpoch(5000),
+    );
+    final StreamSubscription<GenerationEvent> subscription = repository
+        .startGeneration(userTurn: userTurn, request: request)
+        .listen((GenerationEvent _) {});
+
+    await inference.requestReceived;
+    inference.emit(GenerationStarted(generation));
+    await Future<void>.delayed(Duration.zero);
+
+    expect(storage.begunRuns.single.id, generation.id);
+    expect(storage.begunRuns.single.conversationId, conversationId);
+    expect(storage.begunRuns.single.modelId, 'gemma-4-E2B-it');
+    expect(
+      storage.begunRuns.single.startedAt,
+      DateTime.fromMillisecondsSinceEpoch(5000),
+    );
+    // The run must be open before any answer text exists, or a crash during
+    // the first token leaves nothing at all.
+    expect(storage.lifecycle, contains('run-begun'));
+    expect(
+      storage.lifecycle.indexOf('run-begun'),
+      lessThan(storage.lifecycle.length),
+    );
+
+    await subscription.cancel();
+  });
+
+  test('checkpoints carry the whole answer so far, not the delta', () async {
+    // Appending instead of overwriting is the mistake this shape invites,
+    // and it would double every word on recovery.
+    final RecordingConversationStorageService storage =
+        RecordingConversationStorageService();
+    final ControlledInferenceService inference = ControlledInferenceService();
+    DateTime now = DateTime.fromMillisecondsSinceEpoch(0);
+    final ConversationRepository repository = ConversationRepository(
+      storageService: storage,
+      inferenceService: inference,
+      clock: () => now,
+      checkpointInterval: const Duration(milliseconds: 500),
+    );
+    final StreamSubscription<GenerationEvent> subscription = repository
+        .startGeneration(userTurn: userTurn, request: request)
+        .listen((GenerationEvent _) {});
+
+    await inference.requestReceived;
+    inference.emit(GenerationStarted(generation));
+    await Future<void>.delayed(Duration.zero);
+
+    inference.emit(
+      const GenerationDelta(
+        generationId: GenerationId('generation-1'),
+        delta: 'Hello',
+      ),
+    );
+    await Future<void>.delayed(Duration.zero);
+    now = DateTime.fromMillisecondsSinceEpoch(600);
+    inference.emit(
+      const GenerationDelta(
+        generationId: GenerationId('generation-1'),
+        delta: ' there',
+      ),
+    );
+    await Future<void>.delayed(Duration.zero);
+
+    expect(storage.checkpoints, <String>['Hello', 'Hello there']);
+
+    await subscription.cancel();
+  });
+
+  test('deltas inside the interval do not each cost a write', () async {
+    // A token-per-write store would put thousands of UPDATEs on the path
+    // that is already streaming; the interval is what keeps it to dozens.
+    final RecordingConversationStorageService storage =
+        RecordingConversationStorageService();
+    final ControlledInferenceService inference = ControlledInferenceService();
+    DateTime now = DateTime.fromMillisecondsSinceEpoch(0);
+    final ConversationRepository repository = ConversationRepository(
+      storageService: storage,
+      inferenceService: inference,
+      clock: () => now,
+      checkpointInterval: const Duration(milliseconds: 500),
+    );
+    final StreamSubscription<GenerationEvent> subscription = repository
+        .startGeneration(userTurn: userTurn, request: request)
+        .listen((GenerationEvent _) {});
+
+    await inference.requestReceived;
+    inference.emit(GenerationStarted(generation));
+    await Future<void>.delayed(Duration.zero);
+
+    for (int index = 0; index < 20; index += 1) {
+      now = DateTime.fromMillisecondsSinceEpoch(index * 10);
+      inference.emit(
+        const GenerationDelta(
+          generationId: GenerationId('generation-1'),
+          delta: 'x',
+        ),
+      );
+      await Future<void>.delayed(Duration.zero);
+    }
+
+    // The first delta always checkpoints, so a crash on the first token still
+    // leaves a word behind. The remaining nineteen land inside one interval.
+    expect(storage.checkpoints, hasLength(1));
+
+    await subscription.cancel();
+  });
+
+  test('a completed generation closes its run', () async {
+    final RecordingConversationStorageService storage =
+        RecordingConversationStorageService();
+    final ControlledInferenceService inference = ControlledInferenceService();
+    final ConversationRepository repository = ConversationRepository(
+      storageService: storage,
+      inferenceService: inference,
+    );
+    final StreamSubscription<GenerationEvent> subscription = repository
+        .startGeneration(userTurn: userTurn, request: request)
+        .listen((GenerationEvent _) {});
+
+    await inference.requestReceived;
+    inference.emit(GenerationStarted(generation));
+    await Future<void>.delayed(Duration.zero);
+    inference.emit(const GenerationCompleted(GenerationId('generation-1')));
+    await Future<void>.delayed(Duration.zero);
+
+    expect(storage.endedRuns, <TurnStatus>[TurnStatus.completed]);
+    // The turn is the durable record once it exists; the run must not be
+    // left open behind it.
+    expect(storage.lifecycle, contains('assistant-saved'));
+    expect(storage.lifecycle, contains('run-ended'));
+
+    await subscription.cancel();
+  });
+
+  test('a cancelled generation closes its run as cancelled', () async {
+    final RecordingConversationStorageService storage =
+        RecordingConversationStorageService();
+    final ControlledInferenceService inference = ControlledInferenceService();
+    final ConversationRepository repository = ConversationRepository(
+      storageService: storage,
+      inferenceService: inference,
+    );
+    final StreamSubscription<GenerationEvent> subscription = repository
+        .startGeneration(userTurn: userTurn, request: request)
+        .listen((GenerationEvent _) {});
+
+    await inference.requestReceived;
+    inference.emit(GenerationStarted(generation));
+    await Future<void>.delayed(Duration.zero);
+    inference.emit(const GenerationCancelled(GenerationId('generation-1')));
+    await Future<void>.delayed(Duration.zero);
+
+    expect(storage.endedRuns, <TurnStatus>[TurnStatus.cancelled]);
+
+    await subscription.cancel();
+  });
+
+  test('a forgotten conversation writes no run at all', () async {
+    // Deleting a conversation mid-answer must not leave a run pointing at
+    // rows that no longer exist -- the same ghost the terminal turn avoids.
+    final RecordingConversationStorageService storage =
+        RecordingConversationStorageService();
+    final ControlledInferenceService inference = ControlledInferenceService();
+    final ConversationRepository repository = ConversationRepository(
+      storageService: storage,
+      inferenceService: inference,
+    );
+    final StreamSubscription<GenerationEvent> subscription = repository
+        .startGeneration(userTurn: userTurn, request: request)
+        .listen((GenerationEvent _) {});
+
+    await inference.requestReceived;
+    inference.emit(GenerationStarted(generation));
+    await Future<void>.delayed(Duration.zero);
+    await repository.deleteConversation(conversationId);
+
+    inference.emit(
+      const GenerationDelta(
+        generationId: GenerationId('generation-1'),
+        delta: 'orphaned',
+      ),
+    );
+    inference.emit(const GenerationCompleted(GenerationId('generation-1')));
+    await Future<void>.delayed(Duration.zero);
+
+    expect(storage.checkpoints, isEmpty);
+    expect(storage.endedRuns, isEmpty);
+
+    await subscription.cancel();
+  });
 }
 
 /// Records requests and holds native cancellation open until released.
 final class _HeldCancelInferenceService implements InferenceService {
+  @override
+  String get modelId => 'test-model';
+
   final StreamController<GenerationEvent> _events =
       StreamController<GenerationEvent>.broadcast();
   final List<GenerationRequest> requests = <GenerationRequest>[];
@@ -823,6 +1040,9 @@ bool _isTerminalGenerationEvent(GenerationEvent event) {
 }
 
 final class CancellationRaceInferenceService implements InferenceService {
+  @override
+  String get modelId => 'test-model';
+
   CancellationRaceInferenceService() {
     _events = StreamController<GenerationEvent>(
       sync: true,

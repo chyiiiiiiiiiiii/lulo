@@ -11,15 +11,34 @@ import 'inference_service.dart';
 /// Callers receive an error stream when they attempt to begin another operation.
 final class ConversationRepository {
   /// Creates a repository with explicit persistence and inference dependencies.
+  ///
+  /// [checkpointInterval] is how often a still-streaming answer is written
+  /// down. It is a floor on how much of an answer a crash can cost and a
+  /// ceiling on how many writes a long answer pays for: a checkpoint per
+  /// token would be thousands of updates on the path that is streaming.
   ConversationRepository({
     required ConversationStorageService storageService,
     required InferenceService inferenceService,
-  }) : this._(storageService, inferenceService);
+    DateTime Function()? clock,
+    Duration checkpointInterval = const Duration(milliseconds: 500),
+  }) : this._(
+         storageService,
+         inferenceService,
+         clock ?? DateTime.now,
+         checkpointInterval,
+       );
 
-  ConversationRepository._(this._storageService, this._inferenceService);
+  ConversationRepository._(
+    this._storageService,
+    this._inferenceService,
+    this._clock,
+    this._checkpointInterval,
+  );
 
   final ConversationStorageService _storageService;
   final InferenceService _inferenceService;
+  final DateTime Function() _clock;
+  final Duration _checkpointInterval;
   _GenerationOperation? _activeOperation;
 
   /// Every operation not yet fully torn down, including ones cancelling.
@@ -93,6 +112,8 @@ final class ConversationRepository {
       request,
       controller,
       () => _release(operation),
+      _clock,
+      _checkpointInterval,
     );
     _activeOperation = operation;
     _liveOperations.add(operation);
@@ -126,6 +147,8 @@ final class _GenerationOperation {
     this._request,
     this._controller,
     this._onFinished,
+    this._clock,
+    this._checkpointInterval,
   );
 
   final ConversationStorageService _storageService;
@@ -134,6 +157,11 @@ final class _GenerationOperation {
   final GenerationRequest _request;
   final StreamController<GenerationEvent> _controller;
   final void Function() _onFinished;
+  final DateTime Function() _clock;
+  final Duration _checkpointInterval;
+
+  /// When the answer so far was last written down, absent until it has been.
+  DateTime? _checkpointedAt;
 
   StreamSubscription<GenerationEvent>? _subscription;
   Generation? _generation;
@@ -249,6 +277,9 @@ final class _GenerationOperation {
         return;
       }
       _generation = generation;
+      // Opened before any answer text exists. A crash during the first token
+      // must still leave a record that a generation was under way.
+      await _openRun(generation);
       _controller.add(event);
       return;
     }
@@ -261,7 +292,13 @@ final class _GenerationOperation {
     switch (event) {
       case GenerationDelta(:final String delta):
         _assistantText += delta;
+        // Handed to the stream before the checkpoint is awaited, so the write
+        // is never what the next frame waits on. Not an ordering guarantee
+        // against the listener: delivery is asynchronous and a store that
+        // records synchronously will be seen to act first. What is guaranteed
+        // is that the delta is already on its way.
         _controller.add(event);
+        await _checkpoint(generation);
       case GenerationCompleted():
         await _finishFromEvent(event, TurnStatus.completed);
       case GenerationCancelled():
@@ -309,10 +346,43 @@ final class _GenerationOperation {
     if (_forgotten) {
       return;
     }
-    return _storageService.saveTerminalAssistantTurn(
+    await _storageService.saveTerminalAssistantTurn(
       Turn(role: TurnRole.assistant, text: _assistantText, status: status),
       generation,
     );
+    // The turn is the durable record once it exists, so the run is closed
+    // behind it. Left open it would look to the next launch like an answer
+    // that never finished, and be recovered on top of the one that did.
+    await _storageService.endRun(generation.id, status);
+  }
+
+  Future<void> _openRun(Generation generation) async {
+    if (_forgotten) {
+      return;
+    }
+    await _storageService.beginRun(
+      RunRecord(
+        id: generation.id,
+        conversationId: _request.conversationId,
+        modelId: _inferenceService.modelId,
+        startedAt: _clock(),
+      ),
+    );
+  }
+
+  Future<void> _checkpoint(Generation generation) async {
+    if (_forgotten) {
+      return;
+    }
+    final DateTime now = _clock();
+    final DateTime? last = _checkpointedAt;
+    // The first delta always writes, so a crash on the first token still
+    // leaves a word behind rather than an empty run.
+    if (last != null && now.difference(last) < _checkpointInterval) {
+      return;
+    }
+    _checkpointedAt = now;
+    await _storageService.checkpointRun(generation.id, _assistantText);
   }
 
   void _receiveError(Object error, StackTrace stackTrace) {

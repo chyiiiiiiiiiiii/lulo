@@ -35,6 +35,13 @@ final class SwappableInferenceService implements InferenceService {
   Future<void>? _swap;
   int _changesUnderway = 0;
 
+  /// The installed model's identity, or empty when nothing is installed.
+  ///
+  /// Read at the moment a run opens rather than cached, because swapping the
+  /// model is exactly what this class exists to allow.
+  @override
+  String get modelId => _current?.service.modelId ?? '';
+
   @override
   Stream<GenerationEvent> generate(GenerationRequest request) {
     final OwnedInferenceService? current = _current;

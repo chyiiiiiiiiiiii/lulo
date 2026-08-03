@@ -1776,6 +1776,9 @@ final class _FunctionTranscriptProposalProvider
 
 /// Records requests and holds native cancellation open until released.
 final class _HeldCancelVoiceInference implements InferenceService {
+  @override
+  String get modelId => 'test-model';
+
   final StreamController<GenerationEvent> _events =
       StreamController<GenerationEvent>.broadcast();
   final List<GenerationRequest> requests = <GenerationRequest>[];

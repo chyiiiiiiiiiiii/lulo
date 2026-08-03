@@ -529,6 +529,9 @@ void main() {
 
 /// Streams a started event and then holds, so a generation stays in flight.
 final class _HoldingInferenceService implements InferenceService {
+  @override
+  String get modelId => 'test-model';
+
   int activeRequests = 0;
   final List<GenerationId> cancelledGenerations = <GenerationId>[];
   final List<StreamController<GenerationEvent>> _controllers =
