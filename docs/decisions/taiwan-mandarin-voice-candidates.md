@@ -151,17 +151,31 @@ Pro with the model generating the words it is about to say, so 1.02 is
 optimistic and 0.52 is the margin that makes the current voice feel
 immediate.
 
-What the evidence does support:
+### Quantisation is not the cause — tested and refused
 
-1. **Try the unquantised resident model first.** We run
-   `Qwen3-TTS-12Hz-0.6B-Base-8bit`; `-bf16` is the same model, the same
-   voice and the same integration. If the mispronunciation is partly a
-   quantisation artefact in a model this small, that is the cheapest fix
-   available and carries no product risk at all.
-2. **Then listen.** Thirty A/B word pairs and sixteen sentence pairs are
-   waiting. Naturalness and whether it still sounds like the same person
-   are not in any of these numbers, and they are most of what the
-   complaint was about.
+The cheapest possible fix would have been the same model without the
+8-bit quantisation: same voice, same integration, no product risk.
+
+`Qwen3-TTS-12Hz-0.6B-Base-bf16` scores **26/37 — 70%**, against the 8-bit
+build's 27/37. That is noise, not an improvement; the two lose slightly
+different words (bf16 says 企業 correctly and loses 垃圾 and 媽媽, which
+the 8-bit build gets right) and the same number overall.
+
+So the mispronunciation is in the model, not in its compression. Nothing
+is to be gained by shipping the larger weights, and the possibility is now
+closed rather than left hanging as an untested hope.
+
+(Its RTF of 2.14 is not comparable to the 8-bit 0.60: this run went
+through mlx-audio cold while the baseline is a warm resident server. Speed
+was not what the experiment was asking.)
+
+### What the evidence does support
+
+**Listen before deciding anything else.** Thirty A/B word pairs and sixteen
+sentence pairs are waiting in `~/Desktop/lulo-voice-ab`. Naturalness,
+pacing, and whether it still sounds like the same person are in none of
+these numbers, and they are most of what the complaint was about. The
+measurements have gone as far as they usefully can without an ear.
 
 If a swap does happen later, two things are unresolved: VoxCPM2 emits
 48 kHz against the resident 24 kHz, and its occasional catastrophic
