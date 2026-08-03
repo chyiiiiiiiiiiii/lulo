@@ -6,9 +6,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Local, macOS-first conversation agent ("Lulo"). Text and voice conversation against a real on-device Gemma via LiteRT-LM both work end to end: `AppDelegate` wires `LiteRTLMRuntimeBackend` into `InferenceCoordinator`, and `lib/main.dart` selects the real runtime whenever a model is installed (falling back to `fake_runtime.dart` only with no model, or under XCTest).
 
-Next up is harness reliability rather than new features, in this order: close the verification gates (the `verify_litert_app_bundle.dart` signing/dylib check is **not** yet part of `verify.dart` or CI, and real-model coverage is opt-in via `--dart-define=LOCAL_MODEL_PATH`); then a real context budget to replace the char-count truncation in `LiteRTLMRuntimeBackend.historyFitting`; then durable run events; then tool calling with a permission layer. There is no tool calling today.
+The verification gates are closed: `verify_litert_app_bundle.dart` runs inside `verify.dart` against the profile build, so an app bundle that has lost the LiteRT-LM dylib, its `@rpath`, or its signature fails the gate. The one path still outside the gate is real-model coverage, which stays opt-in via `--dart-define=LOCAL_MODEL_PATH` because it puts a live, focus-stealing window on the desktop for minutes.
 
-Toolchain is pinned by CI: Flutter **3.44.1** stable, Dart SDK `^3.12.0`.
+Next up, in this order: a real context budget to replace the char-count truncation in `LiteRTLMRuntimeBackend.historyFitting`; then durable run events; then tool calling with a permission layer. There is no tool calling today.
 
 Toolchain is pinned by CI: Flutter **3.44.1** stable, Dart SDK `^3.12.0`.
 
@@ -35,16 +35,26 @@ dart run tool/verify.dart
 
 `verify.dart` runs its subprocesses **sequentially** and buffers each one's output, printing it grouped per-command at the end rather than streamed. It always runs everything and reports every failure — a failing early step does not short-circuit the rest. The steps are:
 
+Before the first step it deletes the previously built app bundle, because `flutter build macos` rewrites App.framework without always re-signing the outer bundle, and the stale signature then fails the bundle gate as `nested code is modified`.
+
 1. `dart format --set-exit-if-changed .` (root)
-2. `dart analyze --fatal-infos --fatal-warnings` in `packages/agent_core`
-3. `flutter analyze --fatal-infos --fatal-warnings` in `apps/local_agent_macos`
-4. `dart test` in `packages/agent_core`
-5. `flutter test test/features/presence/agent_presence_frame_metrics_test.dart`
-6. `flutter test` in `apps/local_agent_macos`
-7. `flutter test integration_test/conversation_vertical_slice_test.dart -d macos` — launches a real window; hangs if the **current Space is another app's full-screen Space** (switch to a normal desktop first)
-8. `flutter build macos --profile`
-9. `xcodebuild test` (RunnerTests) via `Runner.xcworkspace`, derived data in `../build/macos` — the macOS window tests
-10. `swift test` in `native/inference_service`
+2. `dart analyze --fatal-infos --fatal-warnings` (root — this is where `tool/` lives)
+3. `dart analyze --fatal-infos --fatal-warnings` in `packages/agent_core`
+4. `flutter analyze --fatal-infos --fatal-warnings` in `apps/local_agent_macos`
+5. `dart test` in `packages/agent_core`
+6. `dart tool/macos_app_bundle_test.dart` — the bundle path resolver
+7. `dart tool/verify_litert_app_bundle_test.dart` — the bundle gate's own tests
+8. `dart analyze --fatal-infos --fatal-warnings` in `benchmarks/voice_eval`
+9. `dart test` in `benchmarks/voice_eval`
+10. `python3 -m unittest discover` in `sidecars/qwen_transcript_refiner`
+11. `python3 -m unittest discover` in `sidecars/smart_turn_shadow`
+12. `flutter test test/features/presence/agent_presence_frame_metrics_test.dart`
+13. `flutter test` in `apps/local_agent_macos`
+14. `flutter test integration_test/conversation_vertical_slice_test.dart -d macos` — launches a real window; hangs if the **current Space is another app's full-screen Space** (switch to a normal desktop first)
+15. `flutter build macos --profile`
+16. `dart tool/verify_litert_app_bundle.dart <bundle>` — static checks that the profile build still carries the LiteRT-LM dylib, its `@rpath`, and a valid signature. The bundle path is resolved from `PRODUCT_NAME` rather than hard-coded, and a path that cannot be resolved is reported as a failing step rather than a skipped one
+17. `xcodebuild test` (RunnerTests) via `Runner.xcworkspace`, derived data in `../build/macos_window_tests` — the macOS window tests. Deliberately not Flutter's own build directory: two build systems over one Products directory delete each other's outputs
+18. `swift test` in `native/inference_service`
 
 Before running the gate, quit any running Lulo.app first — a live instance with the same bundle ID makes the xcodebuild test host hang ("test runner hung before establishing connection").
 
