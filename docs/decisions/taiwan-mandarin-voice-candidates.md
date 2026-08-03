@@ -169,6 +169,35 @@ closed rather than left hanging as an untested hope.
 through mlx-audio cold while the baseline is a warm resident server. Speed
 was not what the experiment was asking.)
 
+### What did fix it: spell the word as a different word
+
+Every avenue above assumed the answer was a better model. It was not.
+
+Writing 氣業 makes the voice say qì yè, which is what 企業 is. The
+recogniser, given audio synthesised from 氣業, writes back 企業 — the sound
+was right enough for a language model to prefer the real word, which is the
+evidence that it was right.
+
+Ten of the eleven measured failures are fixed this way. On whole sentences:
+
+| Sentence | Before | After |
+|---|---|---|
+| 危險的操作… | CER 0.214 | 0.111 |
+| 品質跟速度… | 0.077 | 0.038 |
+| 成長最快的… | 0.074 | 0.019 |
+| 好的，我幫你確認… | 0.122 | 0.122 |
+
+The last row is the control and the useful one: 結構 was already correct in
+that sentence, and the remaining error was 確認, absent from the table at
+the time. The substitution changes what it was measured on and nothing
+else.
+
+Shipped as `sidecars/pronunciation`, applied between the text and the
+synthesiser and nowhere else — the conversation, the stored turn and the
+screen all keep the real spelling. No model change, no speed cost, and the
+table records the defect each entry fixes so it can be deleted when a
+future model no longer needs it.
+
 ### What the evidence does support
 
 **Listen before deciding anything else.** Thirty A/B word pairs and sixteen
@@ -176,6 +205,10 @@ sentence pairs are waiting in `~/Desktop/lulo-voice-ab`. Naturalness,
 pacing, and whether it still sounds like the same person are in none of
 these numbers, and they are most of what the complaint was about. The
 measurements have gone as far as they usefully can without an ear.
+
+The respelling table makes a swap less urgent rather than unnecessary: it
+fixes the words it was measured against, and does nothing for the next word
+nobody has hit yet.
 
 If a swap does happen later, two things are unresolved: VoxCPM2 emits
 48 kHz against the resident 24 kHz, and its occasional catastrophic

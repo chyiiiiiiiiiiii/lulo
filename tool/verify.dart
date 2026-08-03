@@ -131,6 +131,15 @@ Future<void> main() async {
       arguments: const <String>['-m', 'unittest', 'discover'],
       workingDirectory: _join(workspaceRoot.path, 'sidecars/tone_probe'),
     ),
+    // The respelling table changes what the agent says out loud. An entry
+    // that quietly altered the sound would be invisible everywhere text is
+    // read, which is everywhere anyone would look for it.
+    _VerificationCommand(
+      name: 'pronunciation lexicon tests',
+      executable: 'python3',
+      arguments: const <String>['-m', 'unittest', 'discover'],
+      workingDirectory: _join(workspaceRoot.path, 'sidecars/pronunciation'),
+    ),
     _VerificationCommand(
       name: 'presence frame metrics tests',
       executable: 'flutter',
