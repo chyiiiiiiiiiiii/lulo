@@ -121,6 +121,16 @@ Future<void> main() async {
       arguments: const <String>['-m', 'unittest', 'discover'],
       workingDirectory: _join(workspaceRoot.path, 'sidecars/smart_turn_shadow'),
     ),
+    // The instrument that decides which voice is better has to be as
+    // trustworthy as the thing it measures, and it is the kind of code that
+    // rots invisibly: a segmenter that quietly stops finding syllables
+    // still returns a number, and the number still looks like a result.
+    _VerificationCommand(
+      name: 'tone probe tests',
+      executable: 'python3',
+      arguments: const <String>['-m', 'unittest', 'discover'],
+      workingDirectory: _join(workspaceRoot.path, 'sidecars/tone_probe'),
+    ),
     _VerificationCommand(
       name: 'presence frame metrics tests',
       executable: 'flutter',
