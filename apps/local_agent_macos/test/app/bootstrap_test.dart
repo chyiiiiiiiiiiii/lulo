@@ -145,6 +145,24 @@ void main() {
     },
   );
 
+  test('a model is named after the file the user actually chose', () {
+    // It was fixed at gemma-4-E4B-it whatever was loaded, so choosing E2B
+    // recorded every run under a model that had not answered it -- and the
+    // load check compared that constant against the echo of itself, so it
+    // could never catch the mismatch.
+    expect(
+      modelIdForPath(
+        '/Users/someone/Application Support/Lulo/models/gemma-4-E2B-it.litertlm',
+      ),
+      'gemma-4-E2B-it',
+    );
+    expect(modelIdForPath('gemma-4-E4B-it.litertlm'), 'gemma-4-E4B-it');
+    // A file from outside the catalogue keeps its own name rather than
+    // borrowing another model's.
+    expect(modelIdForPath('/tmp/something-else.litertlm'), 'something-else');
+    expect(modelIdForPath('/tmp/no-extension'), 'no-extension');
+  });
+
   test(
     'the composition settles an interrupted run before the app runs',
     () async {

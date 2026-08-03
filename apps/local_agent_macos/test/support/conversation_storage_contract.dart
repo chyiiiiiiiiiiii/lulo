@@ -229,6 +229,40 @@ void runConversationStorageContract({
     expect(await store.loadUnfinishedRuns(), isEmpty);
   });
 
+  test('a reused generation id does not overwrite the run before it', () async {
+    // Generation ids are only unique within one inference service, and a new
+    // one is built every time the user changes model -- its counter restarts,
+    // so `litert-generation-1` comes round again. Keying runs by that id made
+    // the second one land on top of the first: the earlier run's conversation
+    // and model were rewritten, and because the row it landed on had already
+    // ended, every later checkpoint and the close were filtered out by the
+    // `not yet ended` scope. Run recording died silently at the first model
+    // change.
+    final RunRecord first = runFor(conversation);
+    await store.beginRun(first);
+    await store.checkpointRun(first.id, 'the first answer');
+    await store.endRun(first.id, TurnStatus.completed);
+
+    final RunRecord reused = RunRecord(
+      id: first.id,
+      conversationId: other,
+      modelId: 'gemma-4-E4B-it',
+      startedAt: DateTime.fromMillisecondsSinceEpoch(9999),
+    );
+    await store.beginRun(reused);
+    await store.checkpointRun(reused.id, 'the second answer');
+
+    final List<RunRecord> unfinished = await store.loadUnfinishedRuns();
+    expect(unfinished.single.conversationId, other);
+    expect(unfinished.single.partialText, 'the second answer');
+    expect(unfinished.single.startedAt, reused.startedAt);
+
+    // And closing the new one leaves the old one closed rather than reopening
+    // or rewriting it.
+    await store.endRun(reused.id, TurnStatus.completed);
+    expect(await store.loadUnfinishedRuns(), isEmpty);
+  });
+
   test('deleting a conversation forgets its unfinished runs', () async {
     await store.beginRun(runFor(conversation, 1));
     await store.beginRun(runFor(other, 2));

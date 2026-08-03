@@ -61,7 +61,22 @@ class TurnRows extends Table {
 /// and only some runs ever become turns. Merging them would put a row that
 /// changes every half second into the table every conversation read scans.
 class RunRows extends Table {
-  /// The generation identifier, which is the run's identity.
+  /// Insertion order, and the row's identity.
+  ///
+  /// Deliberately not [generationId]. Those are only unique within one
+  /// inference service, and a new one is built every time the user changes
+  /// model — its counter restarts, so `litert-generation-1` comes round
+  /// again. Keyed by the generation, the second run landed on top of the
+  /// first: it rewrote that run's conversation and model, and because the row
+  /// already carried an end time every later checkpoint and the close were
+  /// filtered out by the not-yet-ended scope. Run recording died silently at
+  /// the first model change.
+  IntColumn get id => integer().autoIncrement()();
+
+  /// The generation this run records.
+  ///
+  /// Unique only among runs that are open at the same time, which is what the
+  /// checkpoint and close scopes rely on.
   TextColumn get generationId => text()();
 
   /// The conversation the generation belongs to.
@@ -82,9 +97,6 @@ class RunRows extends Table {
   /// The whole answer as of the last checkpoint, not the last delta.
   TextColumn get partialText =>
       text().withDefault(const Constant<String>(''))();
-
-  @override
-  Set<Column<Object>> get primaryKey => <Column<Object>>{generationId};
 }
 
 /// The SQLite database holding every conversation.
@@ -106,7 +118,7 @@ final class ConversationDatabase extends _$ConversationDatabase {
   ConversationDatabase.atFile(File file) : super(NativeDatabase(file));
 
   @override
-  int get schemaVersion => 3;
+  int get schemaVersion => 4;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -120,6 +132,14 @@ final class ConversationDatabase extends _$ConversationDatabase {
         await migrator.addColumn(turnRows, turnRows.refinementEditsJson);
       }
       if (from < 3) {
+        await migrator.createTable(runRows);
+      }
+      if (from < 4) {
+        // Schema 3 keyed runs by their generation id, which repeats after a
+        // model change. Nothing has ever been recovered from these rows, and
+        // an open run only means the last process died mid-answer, so the
+        // table is rebuilt rather than migrated row by row.
+        await migrator.deleteTable(runRows.actualTableName);
         await migrator.createTable(runRows);
       }
     },
@@ -228,7 +248,7 @@ final class DriftConversationStorageService
   Future<void> beginRun(RunRecord run) async {
     await _database
         .into(_database.runRows)
-        .insertOnConflictUpdate(
+        .insert(
           RunRowsCompanion.insert(
             generationId: run.id.value,
             conversationId: run.conversationId.value,

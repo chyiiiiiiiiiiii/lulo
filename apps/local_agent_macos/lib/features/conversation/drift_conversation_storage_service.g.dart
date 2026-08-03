@@ -775,6 +775,19 @@ class $RunRowsTable extends RunRows with TableInfo<$RunRowsTable, RunRow> {
   final GeneratedDatabase attachedDatabase;
   final String? _alias;
   $RunRowsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+    'id',
+    aliasedName,
+    false,
+    hasAutoIncrement: true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'PRIMARY KEY AUTOINCREMENT',
+    ),
+  );
   static const VerificationMeta _generationIdMeta = const VerificationMeta(
     'generationId',
   );
@@ -855,6 +868,7 @@ class $RunRowsTable extends RunRows with TableInfo<$RunRowsTable, RunRow> {
   );
   @override
   List<GeneratedColumn> get $columns => [
+    id,
     generationId,
     conversationId,
     modelId,
@@ -875,6 +889,9 @@ class $RunRowsTable extends RunRows with TableInfo<$RunRowsTable, RunRow> {
   }) {
     final context = VerificationContext();
     final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
     if (data.containsKey('generation_id')) {
       context.handle(
         _generationIdMeta,
@@ -941,11 +958,15 @@ class $RunRowsTable extends RunRows with TableInfo<$RunRowsTable, RunRow> {
   }
 
   @override
-  Set<GeneratedColumn> get $primaryKey => {generationId};
+  Set<GeneratedColumn> get $primaryKey => {id};
   @override
   RunRow map(Map<String, dynamic> data, {String? tablePrefix}) {
     final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
     return RunRow(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}id'],
+      )!,
       generationId: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}generation_id'],
@@ -984,7 +1005,22 @@ class $RunRowsTable extends RunRows with TableInfo<$RunRowsTable, RunRow> {
 }
 
 class RunRow extends DataClass implements Insertable<RunRow> {
-  /// The generation identifier, which is the run's identity.
+  /// Insertion order, and the row's identity.
+  ///
+  /// Deliberately not [generationId]. Those are only unique within one
+  /// inference service, and a new one is built every time the user changes
+  /// model — its counter restarts, so `litert-generation-1` comes round
+  /// again. Keyed by the generation, the second run landed on top of the
+  /// first: it rewrote that run's conversation and model, and because the row
+  /// already carried an end time every later checkpoint and the close were
+  /// filtered out by the not-yet-ended scope. Run recording died silently at
+  /// the first model change.
+  final int id;
+
+  /// The generation this run records.
+  ///
+  /// Unique only among runs that are open at the same time, which is what the
+  /// checkpoint and close scopes rely on.
   final String generationId;
 
   /// The conversation the generation belongs to.
@@ -1005,6 +1041,7 @@ class RunRow extends DataClass implements Insertable<RunRow> {
   /// The whole answer as of the last checkpoint, not the last delta.
   final String partialText;
   const RunRow({
+    required this.id,
     required this.generationId,
     required this.conversationId,
     required this.modelId,
@@ -1016,6 +1053,7 @@ class RunRow extends DataClass implements Insertable<RunRow> {
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
     final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
     map['generation_id'] = Variable<String>(generationId);
     map['conversation_id'] = Variable<String>(conversationId);
     map['model_id'] = Variable<String>(modelId);
@@ -1032,6 +1070,7 @@ class RunRow extends DataClass implements Insertable<RunRow> {
 
   RunRowsCompanion toCompanion(bool nullToAbsent) {
     return RunRowsCompanion(
+      id: Value(id),
       generationId: Value(generationId),
       conversationId: Value(conversationId),
       modelId: Value(modelId),
@@ -1052,6 +1091,7 @@ class RunRow extends DataClass implements Insertable<RunRow> {
   }) {
     serializer ??= driftRuntimeOptions.defaultSerializer;
     return RunRow(
+      id: serializer.fromJson<int>(json['id']),
       generationId: serializer.fromJson<String>(json['generationId']),
       conversationId: serializer.fromJson<String>(json['conversationId']),
       modelId: serializer.fromJson<String>(json['modelId']),
@@ -1065,6 +1105,7 @@ class RunRow extends DataClass implements Insertable<RunRow> {
   Map<String, dynamic> toJson({ValueSerializer? serializer}) {
     serializer ??= driftRuntimeOptions.defaultSerializer;
     return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
       'generationId': serializer.toJson<String>(generationId),
       'conversationId': serializer.toJson<String>(conversationId),
       'modelId': serializer.toJson<String>(modelId),
@@ -1076,6 +1117,7 @@ class RunRow extends DataClass implements Insertable<RunRow> {
   }
 
   RunRow copyWith({
+    int? id,
     String? generationId,
     String? conversationId,
     String? modelId,
@@ -1084,6 +1126,7 @@ class RunRow extends DataClass implements Insertable<RunRow> {
     Value<String?> outcome = const Value.absent(),
     String? partialText,
   }) => RunRow(
+    id: id ?? this.id,
     generationId: generationId ?? this.generationId,
     conversationId: conversationId ?? this.conversationId,
     modelId: modelId ?? this.modelId,
@@ -1094,6 +1137,7 @@ class RunRow extends DataClass implements Insertable<RunRow> {
   );
   RunRow copyWithCompanion(RunRowsCompanion data) {
     return RunRow(
+      id: data.id.present ? data.id.value : this.id,
       generationId: data.generationId.present
           ? data.generationId.value
           : this.generationId,
@@ -1115,6 +1159,7 @@ class RunRow extends DataClass implements Insertable<RunRow> {
   @override
   String toString() {
     return (StringBuffer('RunRow(')
+          ..write('id: $id, ')
           ..write('generationId: $generationId, ')
           ..write('conversationId: $conversationId, ')
           ..write('modelId: $modelId, ')
@@ -1128,6 +1173,7 @@ class RunRow extends DataClass implements Insertable<RunRow> {
 
   @override
   int get hashCode => Object.hash(
+    id,
     generationId,
     conversationId,
     modelId,
@@ -1140,6 +1186,7 @@ class RunRow extends DataClass implements Insertable<RunRow> {
   bool operator ==(Object other) =>
       identical(this, other) ||
       (other is RunRow &&
+          other.id == this.id &&
           other.generationId == this.generationId &&
           other.conversationId == this.conversationId &&
           other.modelId == this.modelId &&
@@ -1150,6 +1197,7 @@ class RunRow extends DataClass implements Insertable<RunRow> {
 }
 
 class RunRowsCompanion extends UpdateCompanion<RunRow> {
+  final Value<int> id;
   final Value<String> generationId;
   final Value<String> conversationId;
   final Value<String> modelId;
@@ -1157,8 +1205,8 @@ class RunRowsCompanion extends UpdateCompanion<RunRow> {
   final Value<int?> endedAtMs;
   final Value<String?> outcome;
   final Value<String> partialText;
-  final Value<int> rowid;
   const RunRowsCompanion({
+    this.id = const Value.absent(),
     this.generationId = const Value.absent(),
     this.conversationId = const Value.absent(),
     this.modelId = const Value.absent(),
@@ -1166,9 +1214,9 @@ class RunRowsCompanion extends UpdateCompanion<RunRow> {
     this.endedAtMs = const Value.absent(),
     this.outcome = const Value.absent(),
     this.partialText = const Value.absent(),
-    this.rowid = const Value.absent(),
   });
   RunRowsCompanion.insert({
+    this.id = const Value.absent(),
     required String generationId,
     required String conversationId,
     required String modelId,
@@ -1176,12 +1224,12 @@ class RunRowsCompanion extends UpdateCompanion<RunRow> {
     this.endedAtMs = const Value.absent(),
     this.outcome = const Value.absent(),
     this.partialText = const Value.absent(),
-    this.rowid = const Value.absent(),
   }) : generationId = Value(generationId),
        conversationId = Value(conversationId),
        modelId = Value(modelId),
        startedAtMs = Value(startedAtMs);
   static Insertable<RunRow> custom({
+    Expression<int>? id,
     Expression<String>? generationId,
     Expression<String>? conversationId,
     Expression<String>? modelId,
@@ -1189,9 +1237,9 @@ class RunRowsCompanion extends UpdateCompanion<RunRow> {
     Expression<int>? endedAtMs,
     Expression<String>? outcome,
     Expression<String>? partialText,
-    Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
+      if (id != null) 'id': id,
       if (generationId != null) 'generation_id': generationId,
       if (conversationId != null) 'conversation_id': conversationId,
       if (modelId != null) 'model_id': modelId,
@@ -1199,11 +1247,11 @@ class RunRowsCompanion extends UpdateCompanion<RunRow> {
       if (endedAtMs != null) 'ended_at_ms': endedAtMs,
       if (outcome != null) 'outcome': outcome,
       if (partialText != null) 'partial_text': partialText,
-      if (rowid != null) 'rowid': rowid,
     });
   }
 
   RunRowsCompanion copyWith({
+    Value<int>? id,
     Value<String>? generationId,
     Value<String>? conversationId,
     Value<String>? modelId,
@@ -1211,9 +1259,9 @@ class RunRowsCompanion extends UpdateCompanion<RunRow> {
     Value<int?>? endedAtMs,
     Value<String?>? outcome,
     Value<String>? partialText,
-    Value<int>? rowid,
   }) {
     return RunRowsCompanion(
+      id: id ?? this.id,
       generationId: generationId ?? this.generationId,
       conversationId: conversationId ?? this.conversationId,
       modelId: modelId ?? this.modelId,
@@ -1221,13 +1269,15 @@ class RunRowsCompanion extends UpdateCompanion<RunRow> {
       endedAtMs: endedAtMs ?? this.endedAtMs,
       outcome: outcome ?? this.outcome,
       partialText: partialText ?? this.partialText,
-      rowid: rowid ?? this.rowid,
     );
   }
 
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
     final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
     if (generationId.present) {
       map['generation_id'] = Variable<String>(generationId.value);
     }
@@ -1249,23 +1299,20 @@ class RunRowsCompanion extends UpdateCompanion<RunRow> {
     if (partialText.present) {
       map['partial_text'] = Variable<String>(partialText.value);
     }
-    if (rowid.present) {
-      map['rowid'] = Variable<int>(rowid.value);
-    }
     return map;
   }
 
   @override
   String toString() {
     return (StringBuffer('RunRowsCompanion(')
+          ..write('id: $id, ')
           ..write('generationId: $generationId, ')
           ..write('conversationId: $conversationId, ')
           ..write('modelId: $modelId, ')
           ..write('startedAtMs: $startedAtMs, ')
           ..write('endedAtMs: $endedAtMs, ')
           ..write('outcome: $outcome, ')
-          ..write('partialText: $partialText, ')
-          ..write('rowid: $rowid')
+          ..write('partialText: $partialText')
           ..write(')'))
         .toString();
   }
@@ -1625,6 +1672,7 @@ typedef $$TurnRowsTableProcessedTableManager =
     >;
 typedef $$RunRowsTableCreateCompanionBuilder =
     RunRowsCompanion Function({
+      Value<int> id,
       required String generationId,
       required String conversationId,
       required String modelId,
@@ -1632,10 +1680,10 @@ typedef $$RunRowsTableCreateCompanionBuilder =
       Value<int?> endedAtMs,
       Value<String?> outcome,
       Value<String> partialText,
-      Value<int> rowid,
     });
 typedef $$RunRowsTableUpdateCompanionBuilder =
     RunRowsCompanion Function({
+      Value<int> id,
       Value<String> generationId,
       Value<String> conversationId,
       Value<String> modelId,
@@ -1643,7 +1691,6 @@ typedef $$RunRowsTableUpdateCompanionBuilder =
       Value<int?> endedAtMs,
       Value<String?> outcome,
       Value<String> partialText,
-      Value<int> rowid,
     });
 
 class $$RunRowsTableFilterComposer
@@ -1655,6 +1702,11 @@ class $$RunRowsTableFilterComposer
     super.$addJoinBuilderToRootComposer,
     super.$removeJoinBuilderFromRootComposer,
   });
+  ColumnFilters<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
   ColumnFilters<String> get generationId => $composableBuilder(
     column: $table.generationId,
     builder: (column) => ColumnFilters(column),
@@ -1700,6 +1752,11 @@ class $$RunRowsTableOrderingComposer
     super.$addJoinBuilderToRootComposer,
     super.$removeJoinBuilderFromRootComposer,
   });
+  ColumnOrderings<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<String> get generationId => $composableBuilder(
     column: $table.generationId,
     builder: (column) => ColumnOrderings(column),
@@ -1745,6 +1802,9 @@ class $$RunRowsTableAnnotationComposer
     super.$addJoinBuilderToRootComposer,
     super.$removeJoinBuilderFromRootComposer,
   });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
   GeneratedColumn<String> get generationId => $composableBuilder(
     column: $table.generationId,
     builder: (column) => column,
@@ -1806,6 +1866,7 @@ class $$RunRowsTableTableManager
               $$RunRowsTableAnnotationComposer($db: db, $table: table),
           updateCompanionCallback:
               ({
+                Value<int> id = const Value.absent(),
                 Value<String> generationId = const Value.absent(),
                 Value<String> conversationId = const Value.absent(),
                 Value<String> modelId = const Value.absent(),
@@ -1813,8 +1874,8 @@ class $$RunRowsTableTableManager
                 Value<int?> endedAtMs = const Value.absent(),
                 Value<String?> outcome = const Value.absent(),
                 Value<String> partialText = const Value.absent(),
-                Value<int> rowid = const Value.absent(),
               }) => RunRowsCompanion(
+                id: id,
                 generationId: generationId,
                 conversationId: conversationId,
                 modelId: modelId,
@@ -1822,10 +1883,10 @@ class $$RunRowsTableTableManager
                 endedAtMs: endedAtMs,
                 outcome: outcome,
                 partialText: partialText,
-                rowid: rowid,
               ),
           createCompanionCallback:
               ({
+                Value<int> id = const Value.absent(),
                 required String generationId,
                 required String conversationId,
                 required String modelId,
@@ -1833,8 +1894,8 @@ class $$RunRowsTableTableManager
                 Value<int?> endedAtMs = const Value.absent(),
                 Value<String?> outcome = const Value.absent(),
                 Value<String> partialText = const Value.absent(),
-                Value<int> rowid = const Value.absent(),
               }) => RunRowsCompanion.insert(
+                id: id,
                 generationId: generationId,
                 conversationId: conversationId,
                 modelId: modelId,
@@ -1842,7 +1903,6 @@ class $$RunRowsTableTableManager
                 endedAtMs: endedAtMs,
                 outcome: outcome,
                 partialText: partialText,
-                rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0
               .map((e) => (e.readTable(table), BaseReferences(db, table, e)))

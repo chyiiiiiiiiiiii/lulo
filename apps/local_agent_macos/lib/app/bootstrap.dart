@@ -243,6 +243,22 @@ const int localModelContextSize = 4096;
 /// halfway through its point reads as broken, not as concise.
 const int localAnswerTokenBudget = 2048;
 
+/// The catalogue identity of the model file at [modelPath].
+///
+/// Catalogue entries are named `<id>.litertlm`, so the file name without its
+/// extension is the id. Derived rather than fixed because it was fixed, at
+/// `gemma-4-E4B-it`, for every model the user could choose: switching to E2B
+/// left every run recorded under the name of a model that had not answered
+/// it, and the load check compared the wrong id against itself and passed.
+///
+/// A file outside the catalogue keeps its own name, which is more honest than
+/// borrowing another model's.
+String modelIdForPath(String modelPath) {
+  final String fileName = modelPath.split(Platform.pathSeparator).last;
+  final int extension = fileName.lastIndexOf('.');
+  return extension <= 0 ? fileName : fileName.substring(0, extension);
+}
+
 /// Builds the inference for one model, paired with the way to release it.
 ///
 /// Called once at launch and again whenever the user chooses a different
@@ -267,7 +283,7 @@ OwnedInferenceService createInferenceService({
       desktopHostService: desktopHostService,
       agentContext: agentContext,
       config: LocalModelConfig(
-        modelId: 'gemma-4-E4B-it',
+        modelId: modelIdForPath(modelPath),
         modelPath: modelPath,
         contextSize: localModelContextSize,
         temperature: 0.7,
