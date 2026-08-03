@@ -55,4 +55,41 @@ final class RecordingConversationStorageService
     assistantTurns.add(SavedAssistantTurn(turn: turn, generation: generation));
     lifecycle.add('assistant-saved');
   }
+
+  /// Runs opened, in the order they were opened.
+  final List<RunRecord> begunRuns = <RunRecord>[];
+
+  /// Every checkpoint written, in order, as the text it was given.
+  final List<String> checkpoints = <String>[];
+
+  /// How each closed run ended, in the order they closed.
+  final List<TurnStatus> endedRuns = <TurnStatus>[];
+
+  /// What [loadUnfinishedRuns] should return.
+  List<RunRecord> unfinishedRuns = <RunRecord>[];
+
+  @override
+  Future<void> beginRun(RunRecord run) async {
+    begunRuns.add(run);
+    lifecycle.add('run-begun');
+  }
+
+  @override
+  Future<void> checkpointRun(
+    GenerationId generationId,
+    String partialText,
+  ) async {
+    checkpoints.add(partialText);
+    lifecycle.add('run-checkpointed');
+  }
+
+  @override
+  Future<void> endRun(GenerationId generationId, TurnStatus outcome) async {
+    endedRuns.add(outcome);
+    lifecycle.add('run-ended');
+  }
+
+  @override
+  Future<List<RunRecord>> loadUnfinishedRuns() async =>
+      List<RunRecord>.unmodifiable(unfinishedRuns);
 }

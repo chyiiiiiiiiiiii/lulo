@@ -14,6 +14,7 @@ final class InMemoryConversationStorageService
   final Map<ConversationId, List<Turn>> _turns = <ConversationId, List<Turn>>{};
   final Map<ConversationId, int> _lastTouch = <ConversationId, int>{};
   final Map<ConversationId, DateTime> _updatedAt = <ConversationId, DateTime>{};
+  final Map<GenerationId, RunRecord> _runs = <GenerationId, RunRecord>{};
   int _touches = 0;
 
   @override
@@ -62,6 +63,58 @@ final class InMemoryConversationStorageService
     _turns.remove(conversationId);
     _lastTouch.remove(conversationId);
     _updatedAt.remove(conversationId);
+    _runs.removeWhere(
+      (GenerationId _, RunRecord run) => run.conversationId == conversationId,
+    );
+  }
+
+  @override
+  Future<void> beginRun(RunRecord run) async {
+    _runs[run.id] = run;
+  }
+
+  @override
+  Future<void> checkpointRun(
+    GenerationId generationId,
+    String partialText,
+  ) async {
+    final RunRecord? run = _runs[generationId];
+    if (run == null || run.isFinished) {
+      return;
+    }
+    _runs[generationId] = RunRecord(
+      id: run.id,
+      conversationId: run.conversationId,
+      modelId: run.modelId,
+      startedAt: run.startedAt,
+      partialText: partialText,
+    );
+  }
+
+  @override
+  Future<void> endRun(GenerationId generationId, TurnStatus outcome) async {
+    final RunRecord? run = _runs[generationId];
+    if (run == null || run.isFinished) {
+      return;
+    }
+    _runs[generationId] = RunRecord(
+      id: run.id,
+      conversationId: run.conversationId,
+      modelId: run.modelId,
+      startedAt: run.startedAt,
+      endedAt: DateTime.now(),
+      outcome: outcome,
+      partialText: run.partialText,
+    );
+  }
+
+  @override
+  Future<List<RunRecord>> loadUnfinishedRuns() async {
+    final List<RunRecord> unfinished =
+        _runs.values.where((RunRecord run) => !run.isFinished).toList()..sort(
+          (RunRecord a, RunRecord b) => a.startedAt.compareTo(b.startedAt),
+        );
+    return List<RunRecord>.unmodifiable(unfinished);
   }
 
   void _save(ConversationId conversationId, Turn turn) {
@@ -75,6 +128,7 @@ final class InMemoryConversationStorageService
     _turns.clear();
     _lastTouch.clear();
     _updatedAt.clear();
+    _runs.clear();
   }
 }
 

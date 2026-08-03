@@ -146,4 +146,95 @@ void runConversationStorageContract({
     await store.deleteConversation(const ConversationId('never-existed'));
     expect(await store.listConversations(), isEmpty);
   });
+
+  // Run records exist for the moment the process does not survive to write a
+  // terminal turn. Until now the answer lived only in memory until it
+  // finished, so a crash or a force-quit lost every word of it and left no
+  // trace that a generation had ever run.
+
+  RunRecord runFor(ConversationId id, [int n = 1]) => RunRecord(
+    id: GenerationId('generation-$n'),
+    conversationId: id,
+    modelId: 'gemma-4-E2B-it',
+    startedAt: DateTime.fromMillisecondsSinceEpoch(1000 * n),
+  );
+
+  test('a run that begins and ends is not left unfinished', () async {
+    final RunRecord run = runFor(conversation);
+    await store.beginRun(run);
+    await store.checkpointRun(run.id, 'half an answer');
+    await store.endRun(run.id, TurnStatus.completed);
+
+    expect(await store.loadUnfinishedRuns(), isEmpty);
+  });
+
+  test('a run that never ended comes back with its last checkpoint', () async {
+    final RunRecord run = runFor(conversation);
+    await store.beginRun(run);
+    await store.checkpointRun(run.id, 'the answer so');
+    await store.checkpointRun(run.id, 'the answer so far');
+
+    final List<RunRecord> unfinished = await store.loadUnfinishedRuns();
+
+    expect(unfinished.single.id, run.id);
+    expect(unfinished.single.conversationId, conversation);
+    expect(unfinished.single.modelId, 'gemma-4-E2B-it');
+    expect(unfinished.single.startedAt, run.startedAt);
+    expect(unfinished.single.endedAt, isNull);
+    expect(unfinished.single.outcome, isNull);
+    // Checkpoints overwrite. Appending would double every word, because
+    // what is checkpointed is the whole answer so far, not the last delta.
+    expect(unfinished.single.partialText, 'the answer so far');
+  });
+
+  test('a run that began and never streamed is still unfinished', () async {
+    // Dying between the first token request and the first delta is the
+    // fastest way to crash, and the run must still be visible afterwards.
+    final RunRecord run = runFor(conversation);
+    await store.beginRun(run);
+
+    expect((await store.loadUnfinishedRuns()).single.partialText, isEmpty);
+  });
+
+  test('unfinished runs name the conversation they belong to', () async {
+    await store.beginRun(runFor(conversation, 1));
+    await store.beginRun(runFor(other, 2));
+
+    final List<RunRecord> unfinished = await store.loadUnfinishedRuns();
+
+    expect(
+      unfinished.map((RunRecord run) => run.conversationId).toSet(),
+      <ConversationId>{conversation, other},
+    );
+  });
+
+  test('an ended run remembers how it ended', () async {
+    final RunRecord run = runFor(conversation);
+    await store.beginRun(run);
+    await store.endRun(run.id, TurnStatus.failed);
+    // Ending twice is what a terminal event arriving after a recovery pass
+    // looks like, and must not resurrect the run.
+    await store.endRun(run.id, TurnStatus.completed);
+
+    expect(await store.loadUnfinishedRuns(), isEmpty);
+  });
+
+  test('checkpointing a run that was never begun is not an error', () async {
+    // The repository writes checkpoints on a timer; one can land after the
+    // run has been cleaned up, and a store that threw here would take the
+    // whole generation down with it.
+    await store.checkpointRun(const GenerationId('never-begun'), 'text');
+    await store.endRun(const GenerationId('never-begun'), TurnStatus.completed);
+
+    expect(await store.loadUnfinishedRuns(), isEmpty);
+  });
+
+  test('deleting a conversation forgets its unfinished runs', () async {
+    await store.beginRun(runFor(conversation, 1));
+    await store.beginRun(runFor(other, 2));
+
+    await store.deleteConversation(conversation);
+
+    expect((await store.loadUnfinishedRuns()).single.conversationId, other);
+  });
 }

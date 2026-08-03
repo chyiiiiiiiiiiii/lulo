@@ -770,16 +770,518 @@ class TurnRowsCompanion extends UpdateCompanion<TurnRow> {
   }
 }
 
+class $RunRowsTable extends RunRows with TableInfo<$RunRowsTable, RunRow> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $RunRowsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _generationIdMeta = const VerificationMeta(
+    'generationId',
+  );
+  @override
+  late final GeneratedColumn<String> generationId = GeneratedColumn<String>(
+    'generation_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _conversationIdMeta = const VerificationMeta(
+    'conversationId',
+  );
+  @override
+  late final GeneratedColumn<String> conversationId = GeneratedColumn<String>(
+    'conversation_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _modelIdMeta = const VerificationMeta(
+    'modelId',
+  );
+  @override
+  late final GeneratedColumn<String> modelId = GeneratedColumn<String>(
+    'model_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _startedAtMsMeta = const VerificationMeta(
+    'startedAtMs',
+  );
+  @override
+  late final GeneratedColumn<int> startedAtMs = GeneratedColumn<int>(
+    'started_at_ms',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _endedAtMsMeta = const VerificationMeta(
+    'endedAtMs',
+  );
+  @override
+  late final GeneratedColumn<int> endedAtMs = GeneratedColumn<int>(
+    'ended_at_ms',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _outcomeMeta = const VerificationMeta(
+    'outcome',
+  );
+  @override
+  late final GeneratedColumn<String> outcome = GeneratedColumn<String>(
+    'outcome',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _partialTextMeta = const VerificationMeta(
+    'partialText',
+  );
+  @override
+  late final GeneratedColumn<String> partialText = GeneratedColumn<String>(
+    'partial_text',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant<String>(''),
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    generationId,
+    conversationId,
+    modelId,
+    startedAtMs,
+    endedAtMs,
+    outcome,
+    partialText,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'run_rows';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<RunRow> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('generation_id')) {
+      context.handle(
+        _generationIdMeta,
+        generationId.isAcceptableOrUnknown(
+          data['generation_id']!,
+          _generationIdMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_generationIdMeta);
+    }
+    if (data.containsKey('conversation_id')) {
+      context.handle(
+        _conversationIdMeta,
+        conversationId.isAcceptableOrUnknown(
+          data['conversation_id']!,
+          _conversationIdMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_conversationIdMeta);
+    }
+    if (data.containsKey('model_id')) {
+      context.handle(
+        _modelIdMeta,
+        modelId.isAcceptableOrUnknown(data['model_id']!, _modelIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_modelIdMeta);
+    }
+    if (data.containsKey('started_at_ms')) {
+      context.handle(
+        _startedAtMsMeta,
+        startedAtMs.isAcceptableOrUnknown(
+          data['started_at_ms']!,
+          _startedAtMsMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_startedAtMsMeta);
+    }
+    if (data.containsKey('ended_at_ms')) {
+      context.handle(
+        _endedAtMsMeta,
+        endedAtMs.isAcceptableOrUnknown(data['ended_at_ms']!, _endedAtMsMeta),
+      );
+    }
+    if (data.containsKey('outcome')) {
+      context.handle(
+        _outcomeMeta,
+        outcome.isAcceptableOrUnknown(data['outcome']!, _outcomeMeta),
+      );
+    }
+    if (data.containsKey('partial_text')) {
+      context.handle(
+        _partialTextMeta,
+        partialText.isAcceptableOrUnknown(
+          data['partial_text']!,
+          _partialTextMeta,
+        ),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {generationId};
+  @override
+  RunRow map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return RunRow(
+      generationId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}generation_id'],
+      )!,
+      conversationId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}conversation_id'],
+      )!,
+      modelId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}model_id'],
+      )!,
+      startedAtMs: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}started_at_ms'],
+      )!,
+      endedAtMs: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}ended_at_ms'],
+      ),
+      outcome: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}outcome'],
+      ),
+      partialText: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}partial_text'],
+      )!,
+    );
+  }
+
+  @override
+  $RunRowsTable createAlias(String alias) {
+    return $RunRowsTable(attachedDatabase, alias);
+  }
+}
+
+class RunRow extends DataClass implements Insertable<RunRow> {
+  /// The generation identifier, which is the run's identity.
+  final String generationId;
+
+  /// The conversation the generation belongs to.
+  final String conversationId;
+
+  /// What produced the answer.
+  final String modelId;
+
+  /// When generation started, in milliseconds since the epoch.
+  final int startedAtMs;
+
+  /// When it reached a terminal state; null while it is still running.
+  final int? endedAtMs;
+
+  /// [TurnStatus.name]; null while it is still running.
+  final String? outcome;
+
+  /// The whole answer as of the last checkpoint, not the last delta.
+  final String partialText;
+  const RunRow({
+    required this.generationId,
+    required this.conversationId,
+    required this.modelId,
+    required this.startedAtMs,
+    this.endedAtMs,
+    this.outcome,
+    required this.partialText,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['generation_id'] = Variable<String>(generationId);
+    map['conversation_id'] = Variable<String>(conversationId);
+    map['model_id'] = Variable<String>(modelId);
+    map['started_at_ms'] = Variable<int>(startedAtMs);
+    if (!nullToAbsent || endedAtMs != null) {
+      map['ended_at_ms'] = Variable<int>(endedAtMs);
+    }
+    if (!nullToAbsent || outcome != null) {
+      map['outcome'] = Variable<String>(outcome);
+    }
+    map['partial_text'] = Variable<String>(partialText);
+    return map;
+  }
+
+  RunRowsCompanion toCompanion(bool nullToAbsent) {
+    return RunRowsCompanion(
+      generationId: Value(generationId),
+      conversationId: Value(conversationId),
+      modelId: Value(modelId),
+      startedAtMs: Value(startedAtMs),
+      endedAtMs: endedAtMs == null && nullToAbsent
+          ? const Value.absent()
+          : Value(endedAtMs),
+      outcome: outcome == null && nullToAbsent
+          ? const Value.absent()
+          : Value(outcome),
+      partialText: Value(partialText),
+    );
+  }
+
+  factory RunRow.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return RunRow(
+      generationId: serializer.fromJson<String>(json['generationId']),
+      conversationId: serializer.fromJson<String>(json['conversationId']),
+      modelId: serializer.fromJson<String>(json['modelId']),
+      startedAtMs: serializer.fromJson<int>(json['startedAtMs']),
+      endedAtMs: serializer.fromJson<int?>(json['endedAtMs']),
+      outcome: serializer.fromJson<String?>(json['outcome']),
+      partialText: serializer.fromJson<String>(json['partialText']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'generationId': serializer.toJson<String>(generationId),
+      'conversationId': serializer.toJson<String>(conversationId),
+      'modelId': serializer.toJson<String>(modelId),
+      'startedAtMs': serializer.toJson<int>(startedAtMs),
+      'endedAtMs': serializer.toJson<int?>(endedAtMs),
+      'outcome': serializer.toJson<String?>(outcome),
+      'partialText': serializer.toJson<String>(partialText),
+    };
+  }
+
+  RunRow copyWith({
+    String? generationId,
+    String? conversationId,
+    String? modelId,
+    int? startedAtMs,
+    Value<int?> endedAtMs = const Value.absent(),
+    Value<String?> outcome = const Value.absent(),
+    String? partialText,
+  }) => RunRow(
+    generationId: generationId ?? this.generationId,
+    conversationId: conversationId ?? this.conversationId,
+    modelId: modelId ?? this.modelId,
+    startedAtMs: startedAtMs ?? this.startedAtMs,
+    endedAtMs: endedAtMs.present ? endedAtMs.value : this.endedAtMs,
+    outcome: outcome.present ? outcome.value : this.outcome,
+    partialText: partialText ?? this.partialText,
+  );
+  RunRow copyWithCompanion(RunRowsCompanion data) {
+    return RunRow(
+      generationId: data.generationId.present
+          ? data.generationId.value
+          : this.generationId,
+      conversationId: data.conversationId.present
+          ? data.conversationId.value
+          : this.conversationId,
+      modelId: data.modelId.present ? data.modelId.value : this.modelId,
+      startedAtMs: data.startedAtMs.present
+          ? data.startedAtMs.value
+          : this.startedAtMs,
+      endedAtMs: data.endedAtMs.present ? data.endedAtMs.value : this.endedAtMs,
+      outcome: data.outcome.present ? data.outcome.value : this.outcome,
+      partialText: data.partialText.present
+          ? data.partialText.value
+          : this.partialText,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('RunRow(')
+          ..write('generationId: $generationId, ')
+          ..write('conversationId: $conversationId, ')
+          ..write('modelId: $modelId, ')
+          ..write('startedAtMs: $startedAtMs, ')
+          ..write('endedAtMs: $endedAtMs, ')
+          ..write('outcome: $outcome, ')
+          ..write('partialText: $partialText')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    generationId,
+    conversationId,
+    modelId,
+    startedAtMs,
+    endedAtMs,
+    outcome,
+    partialText,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is RunRow &&
+          other.generationId == this.generationId &&
+          other.conversationId == this.conversationId &&
+          other.modelId == this.modelId &&
+          other.startedAtMs == this.startedAtMs &&
+          other.endedAtMs == this.endedAtMs &&
+          other.outcome == this.outcome &&
+          other.partialText == this.partialText);
+}
+
+class RunRowsCompanion extends UpdateCompanion<RunRow> {
+  final Value<String> generationId;
+  final Value<String> conversationId;
+  final Value<String> modelId;
+  final Value<int> startedAtMs;
+  final Value<int?> endedAtMs;
+  final Value<String?> outcome;
+  final Value<String> partialText;
+  final Value<int> rowid;
+  const RunRowsCompanion({
+    this.generationId = const Value.absent(),
+    this.conversationId = const Value.absent(),
+    this.modelId = const Value.absent(),
+    this.startedAtMs = const Value.absent(),
+    this.endedAtMs = const Value.absent(),
+    this.outcome = const Value.absent(),
+    this.partialText = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  RunRowsCompanion.insert({
+    required String generationId,
+    required String conversationId,
+    required String modelId,
+    required int startedAtMs,
+    this.endedAtMs = const Value.absent(),
+    this.outcome = const Value.absent(),
+    this.partialText = const Value.absent(),
+    this.rowid = const Value.absent(),
+  }) : generationId = Value(generationId),
+       conversationId = Value(conversationId),
+       modelId = Value(modelId),
+       startedAtMs = Value(startedAtMs);
+  static Insertable<RunRow> custom({
+    Expression<String>? generationId,
+    Expression<String>? conversationId,
+    Expression<String>? modelId,
+    Expression<int>? startedAtMs,
+    Expression<int>? endedAtMs,
+    Expression<String>? outcome,
+    Expression<String>? partialText,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (generationId != null) 'generation_id': generationId,
+      if (conversationId != null) 'conversation_id': conversationId,
+      if (modelId != null) 'model_id': modelId,
+      if (startedAtMs != null) 'started_at_ms': startedAtMs,
+      if (endedAtMs != null) 'ended_at_ms': endedAtMs,
+      if (outcome != null) 'outcome': outcome,
+      if (partialText != null) 'partial_text': partialText,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  RunRowsCompanion copyWith({
+    Value<String>? generationId,
+    Value<String>? conversationId,
+    Value<String>? modelId,
+    Value<int>? startedAtMs,
+    Value<int?>? endedAtMs,
+    Value<String?>? outcome,
+    Value<String>? partialText,
+    Value<int>? rowid,
+  }) {
+    return RunRowsCompanion(
+      generationId: generationId ?? this.generationId,
+      conversationId: conversationId ?? this.conversationId,
+      modelId: modelId ?? this.modelId,
+      startedAtMs: startedAtMs ?? this.startedAtMs,
+      endedAtMs: endedAtMs ?? this.endedAtMs,
+      outcome: outcome ?? this.outcome,
+      partialText: partialText ?? this.partialText,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (generationId.present) {
+      map['generation_id'] = Variable<String>(generationId.value);
+    }
+    if (conversationId.present) {
+      map['conversation_id'] = Variable<String>(conversationId.value);
+    }
+    if (modelId.present) {
+      map['model_id'] = Variable<String>(modelId.value);
+    }
+    if (startedAtMs.present) {
+      map['started_at_ms'] = Variable<int>(startedAtMs.value);
+    }
+    if (endedAtMs.present) {
+      map['ended_at_ms'] = Variable<int>(endedAtMs.value);
+    }
+    if (outcome.present) {
+      map['outcome'] = Variable<String>(outcome.value);
+    }
+    if (partialText.present) {
+      map['partial_text'] = Variable<String>(partialText.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('RunRowsCompanion(')
+          ..write('generationId: $generationId, ')
+          ..write('conversationId: $conversationId, ')
+          ..write('modelId: $modelId, ')
+          ..write('startedAtMs: $startedAtMs, ')
+          ..write('endedAtMs: $endedAtMs, ')
+          ..write('outcome: $outcome, ')
+          ..write('partialText: $partialText, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$ConversationDatabase extends GeneratedDatabase {
   _$ConversationDatabase(QueryExecutor e) : super(e);
   $ConversationDatabaseManager get managers =>
       $ConversationDatabaseManager(this);
   late final $TurnRowsTable turnRows = $TurnRowsTable(this);
+  late final $RunRowsTable runRows = $RunRowsTable(this);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
   @override
-  List<DatabaseSchemaEntity> get allSchemaEntities => [turnRows];
+  List<DatabaseSchemaEntity> get allSchemaEntities => [turnRows, runRows];
 }
 
 typedef $$TurnRowsTableCreateCompanionBuilder =
@@ -1121,10 +1623,255 @@ typedef $$TurnRowsTableProcessedTableManager =
       TurnRow,
       PrefetchHooks Function()
     >;
+typedef $$RunRowsTableCreateCompanionBuilder =
+    RunRowsCompanion Function({
+      required String generationId,
+      required String conversationId,
+      required String modelId,
+      required int startedAtMs,
+      Value<int?> endedAtMs,
+      Value<String?> outcome,
+      Value<String> partialText,
+      Value<int> rowid,
+    });
+typedef $$RunRowsTableUpdateCompanionBuilder =
+    RunRowsCompanion Function({
+      Value<String> generationId,
+      Value<String> conversationId,
+      Value<String> modelId,
+      Value<int> startedAtMs,
+      Value<int?> endedAtMs,
+      Value<String?> outcome,
+      Value<String> partialText,
+      Value<int> rowid,
+    });
+
+class $$RunRowsTableFilterComposer
+    extends Composer<_$ConversationDatabase, $RunRowsTable> {
+  $$RunRowsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get generationId => $composableBuilder(
+    column: $table.generationId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get conversationId => $composableBuilder(
+    column: $table.conversationId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get modelId => $composableBuilder(
+    column: $table.modelId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get startedAtMs => $composableBuilder(
+    column: $table.startedAtMs,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get endedAtMs => $composableBuilder(
+    column: $table.endedAtMs,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get outcome => $composableBuilder(
+    column: $table.outcome,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get partialText => $composableBuilder(
+    column: $table.partialText,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$RunRowsTableOrderingComposer
+    extends Composer<_$ConversationDatabase, $RunRowsTable> {
+  $$RunRowsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get generationId => $composableBuilder(
+    column: $table.generationId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get conversationId => $composableBuilder(
+    column: $table.conversationId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get modelId => $composableBuilder(
+    column: $table.modelId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get startedAtMs => $composableBuilder(
+    column: $table.startedAtMs,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get endedAtMs => $composableBuilder(
+    column: $table.endedAtMs,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get outcome => $composableBuilder(
+    column: $table.outcome,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get partialText => $composableBuilder(
+    column: $table.partialText,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$RunRowsTableAnnotationComposer
+    extends Composer<_$ConversationDatabase, $RunRowsTable> {
+  $$RunRowsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get generationId => $composableBuilder(
+    column: $table.generationId,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get conversationId => $composableBuilder(
+    column: $table.conversationId,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get modelId =>
+      $composableBuilder(column: $table.modelId, builder: (column) => column);
+
+  GeneratedColumn<int> get startedAtMs => $composableBuilder(
+    column: $table.startedAtMs,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get endedAtMs =>
+      $composableBuilder(column: $table.endedAtMs, builder: (column) => column);
+
+  GeneratedColumn<String> get outcome =>
+      $composableBuilder(column: $table.outcome, builder: (column) => column);
+
+  GeneratedColumn<String> get partialText => $composableBuilder(
+    column: $table.partialText,
+    builder: (column) => column,
+  );
+}
+
+class $$RunRowsTableTableManager
+    extends
+        RootTableManager<
+          _$ConversationDatabase,
+          $RunRowsTable,
+          RunRow,
+          $$RunRowsTableFilterComposer,
+          $$RunRowsTableOrderingComposer,
+          $$RunRowsTableAnnotationComposer,
+          $$RunRowsTableCreateCompanionBuilder,
+          $$RunRowsTableUpdateCompanionBuilder,
+          (
+            RunRow,
+            BaseReferences<_$ConversationDatabase, $RunRowsTable, RunRow>,
+          ),
+          RunRow,
+          PrefetchHooks Function()
+        > {
+  $$RunRowsTableTableManager(_$ConversationDatabase db, $RunRowsTable table)
+    : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$RunRowsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$RunRowsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$RunRowsTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<String> generationId = const Value.absent(),
+                Value<String> conversationId = const Value.absent(),
+                Value<String> modelId = const Value.absent(),
+                Value<int> startedAtMs = const Value.absent(),
+                Value<int?> endedAtMs = const Value.absent(),
+                Value<String?> outcome = const Value.absent(),
+                Value<String> partialText = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => RunRowsCompanion(
+                generationId: generationId,
+                conversationId: conversationId,
+                modelId: modelId,
+                startedAtMs: startedAtMs,
+                endedAtMs: endedAtMs,
+                outcome: outcome,
+                partialText: partialText,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String generationId,
+                required String conversationId,
+                required String modelId,
+                required int startedAtMs,
+                Value<int?> endedAtMs = const Value.absent(),
+                Value<String?> outcome = const Value.absent(),
+                Value<String> partialText = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => RunRowsCompanion.insert(
+                generationId: generationId,
+                conversationId: conversationId,
+                modelId: modelId,
+                startedAtMs: startedAtMs,
+                endedAtMs: endedAtMs,
+                outcome: outcome,
+                partialText: partialText,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$RunRowsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$ConversationDatabase,
+      $RunRowsTable,
+      RunRow,
+      $$RunRowsTableFilterComposer,
+      $$RunRowsTableOrderingComposer,
+      $$RunRowsTableAnnotationComposer,
+      $$RunRowsTableCreateCompanionBuilder,
+      $$RunRowsTableUpdateCompanionBuilder,
+      (RunRow, BaseReferences<_$ConversationDatabase, $RunRowsTable, RunRow>),
+      RunRow,
+      PrefetchHooks Function()
+    >;
 
 class $ConversationDatabaseManager {
   final _$ConversationDatabase _db;
   $ConversationDatabaseManager(this._db);
   $$TurnRowsTableTableManager get turnRows =>
       $$TurnRowsTableTableManager(_db, _db.turnRows);
+  $$RunRowsTableTableManager get runRows =>
+      $$RunRowsTableTableManager(_db, _db.runRows);
 }

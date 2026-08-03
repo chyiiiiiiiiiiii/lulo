@@ -5,6 +5,7 @@ import 'package:drift/drift.dart' show driftRuntimeOptions;
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:local_agent_macos/app/fake_runtime.dart';
+import 'package:local_agent_macos/features/conversation/conversation_storage_service.dart';
 import 'package:local_agent_macos/features/conversation/drift_conversation_storage_service.dart';
 
 import '../../support/conversation_storage_contract.dart';
@@ -77,6 +78,77 @@ void main() {
             'refiner_version',
             'refinement_edits_json',
           ]),
+        );
+      } finally {
+        await store.dispose();
+        temporaryDirectory.deleteSync(recursive: true);
+        driftRuntimeOptions.dontWarnAboutMultipleDatabases = false;
+      }
+    });
+
+    test('schema 2 gains run records without losing its turns', () async {
+      // Every existing install is on schema 2. Adding a table is the easy
+      // migration to get wrong quietly: the app opens, the turns are all
+      // there, and the first crash discovers that runs were never written
+      // because the table the writes go to does not exist.
+      driftRuntimeOptions.dontWarnAboutMultipleDatabases = true;
+      final Directory temporaryDirectory = Directory.systemTemp.createTempSync(
+        'lulo-run-migration-',
+      );
+      final NativeDatabase executor = NativeDatabase(
+        File('${temporaryDirectory.path}/conversations.db'),
+        setup: (database) {
+          database.execute('''
+            CREATE TABLE turn_rows (
+              id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+              conversation_id TEXT NOT NULL,
+              role TEXT NOT NULL,
+              status TEXT NOT NULL,
+              content TEXT NOT NULL,
+              saved_at_ms INTEGER NOT NULL,
+              raw_transcript TEXT,
+              refined_transcript TEXT,
+              refinement_status TEXT,
+              refiner_id TEXT,
+              refiner_version TEXT,
+              refinement_edits_json TEXT
+            )
+          ''');
+          database.execute(
+            'INSERT INTO turn_rows '
+            '(conversation_id, role, status, content, saved_at_ms) '
+            "VALUES ('existing', 'user', 'completed', '既有對話', 1)",
+          );
+          database.userVersion = 2;
+        },
+      );
+      final ConversationDatabase database = ConversationDatabase(executor);
+      final DriftConversationStorageService store =
+          DriftConversationStorageService(database: database);
+      try {
+        final List<Turn> turns = await store.loadTurns(
+          const ConversationId('existing'),
+        );
+        expect(turns.single.text, '既有對話');
+
+        // The table is not merely present: it takes a write and gives it
+        // back, which is what the crash path will need of it.
+        expect(await store.loadUnfinishedRuns(), isEmpty);
+        await store.beginRun(
+          RunRecord(
+            id: const GenerationId('after-migration'),
+            conversationId: const ConversationId('existing'),
+            modelId: 'gemma-4-E2B-it',
+            startedAt: DateTime.fromMillisecondsSinceEpoch(2),
+          ),
+        );
+        await store.checkpointRun(
+          const GenerationId('after-migration'),
+          'survived',
+        );
+        expect(
+          (await store.loadUnfinishedRuns()).single.partialText,
+          'survived',
         );
       } finally {
         await store.dispose();

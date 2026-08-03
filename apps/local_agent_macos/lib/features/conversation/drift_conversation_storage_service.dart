@@ -54,8 +54,41 @@ class TurnRows extends Table {
   TextColumn get refinementEditsJson => text().nullable()();
 }
 
+/// One generation, written while it runs rather than after it ends.
+///
+/// Separate from [TurnRows] on purpose. A turn is what was said and is
+/// written once; a run is the act of saying it, overwritten as it streams,
+/// and only some runs ever become turns. Merging them would put a row that
+/// changes every half second into the table every conversation read scans.
+class RunRows extends Table {
+  /// The generation identifier, which is the run's identity.
+  TextColumn get generationId => text()();
+
+  /// The conversation the generation belongs to.
+  TextColumn get conversationId => text()();
+
+  /// What produced the answer.
+  TextColumn get modelId => text()();
+
+  /// When generation started, in milliseconds since the epoch.
+  IntColumn get startedAtMs => integer()();
+
+  /// When it reached a terminal state; null while it is still running.
+  IntColumn get endedAtMs => integer().nullable()();
+
+  /// [TurnStatus.name]; null while it is still running.
+  TextColumn get outcome => text().nullable()();
+
+  /// The whole answer as of the last checkpoint, not the last delta.
+  TextColumn get partialText =>
+      text().withDefault(const Constant<String>(''))();
+
+  @override
+  Set<Column<Object>> get primaryKey => <Column<Object>>{generationId};
+}
+
 /// The SQLite database holding every conversation.
-@DriftDatabase(tables: <Type>[TurnRows])
+@DriftDatabase(tables: <Type>[TurnRows, RunRows])
 final class ConversationDatabase extends _$ConversationDatabase {
   /// Opens the database on [executor].
   ConversationDatabase(super.executor);
@@ -73,7 +106,7 @@ final class ConversationDatabase extends _$ConversationDatabase {
   ConversationDatabase.atFile(File file) : super(NativeDatabase(file));
 
   @override
-  int get schemaVersion => 2;
+  int get schemaVersion => 3;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -85,6 +118,9 @@ final class ConversationDatabase extends _$ConversationDatabase {
         await migrator.addColumn(turnRows, turnRows.refinerId);
         await migrator.addColumn(turnRows, turnRows.refinerVersion);
         await migrator.addColumn(turnRows, turnRows.refinementEditsJson);
+      }
+      if (from < 3) {
+        await migrator.createTable(runRows);
       }
     },
     beforeOpen: (OpeningDetails details) async {
@@ -182,6 +218,75 @@ final class DriftConversationStorageService
           ($TurnRowsTable t) => t.conversationId.equals(conversationId.value),
         ))
         .go();
+    await (_database.delete(_database.runRows)..where(
+          ($RunRowsTable r) => r.conversationId.equals(conversationId.value),
+        ))
+        .go();
+  }
+
+  @override
+  Future<void> beginRun(RunRecord run) async {
+    await _database
+        .into(_database.runRows)
+        .insertOnConflictUpdate(
+          RunRowsCompanion.insert(
+            generationId: run.id.value,
+            conversationId: run.conversationId.value,
+            modelId: run.modelId,
+            startedAtMs: run.startedAt.millisecondsSinceEpoch,
+            partialText: Value<String>(run.partialText),
+          ),
+        );
+  }
+
+  @override
+  Future<void> checkpointRun(
+    GenerationId generationId,
+    String partialText,
+  ) async {
+    // Scoped to rows that have not ended, so a checkpoint arriving after the
+    // terminal event cannot rewrite a closed run's answer.
+    await (_database.update(_database.runRows)..where(
+          ($RunRowsTable r) =>
+              r.generationId.equals(generationId.value) & r.endedAtMs.isNull(),
+        ))
+        .write(RunRowsCompanion(partialText: Value<String>(partialText)));
+  }
+
+  @override
+  Future<void> endRun(GenerationId generationId, TurnStatus outcome) async {
+    await (_database.update(_database.runRows)..where(
+          ($RunRowsTable r) =>
+              r.generationId.equals(generationId.value) & r.endedAtMs.isNull(),
+        ))
+        .write(
+          RunRowsCompanion(
+            endedAtMs: Value<int?>(_clock().millisecondsSinceEpoch),
+            outcome: Value<String?>(outcome.name),
+          ),
+        );
+  }
+
+  @override
+  Future<List<RunRecord>> loadUnfinishedRuns() async {
+    final List<RunRow> rows =
+        await (_database.select(_database.runRows)
+              ..where(($RunRowsTable r) => r.endedAtMs.isNull())
+              ..orderBy(<OrderClauseGenerator<$RunRowsTable>>[
+                ($RunRowsTable r) => OrderingTerm.asc(r.startedAtMs),
+              ]))
+            .get();
+    return List<RunRecord>.unmodifiable(
+      rows.map(
+        (RunRow row) => RunRecord(
+          id: GenerationId(row.generationId),
+          conversationId: ConversationId(row.conversationId),
+          modelId: row.modelId,
+          startedAt: DateTime.fromMillisecondsSinceEpoch(row.startedAtMs),
+          partialText: row.partialText,
+        ),
+      ),
+    );
   }
 
   /// Closes the database this service owns.
