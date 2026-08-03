@@ -55,6 +55,29 @@ The probe figures are pessimistic because a six-character utterance is
 mostly fixed overhead; the real-sentence column is the one that decides,
 measured on a 10-second answer of the kind the agent actually gives.
 
+## Tone, separately
+
+"Did the word survive" is binary and hides how it failed. Reading the
+transcript back as pinyin scores every syllable twice — once for the sound
+and once for the tone on it:
+
+| Candidate | Syllable sound | Tone | Right sound, wrong tone |
+|---|---|---|---|
+| Qwen3-TTS (resident) | 79% | 73% | 4 |
+| VoxCPM2, 10 steps | 95% | 91% | 3 |
+| VoxCPM2, 4 steps | 90% | 87% | 2 |
+| IndexTTS-1.5 | — | — | 36 of 37 unalignable |
+
+The last column is the surprise. The complaint was about tone, and tone
+alone accounts for four errors out of thirty-seven words. The rest are not
+a tone slipping — they are a different syllable entirely, which is why
+Whisper writes 奇幼 and not 企業. What is heard as "slightly wrong tone" is
+mostly the voice saying another word and the listener's ear repairing it
+far enough to notice something is off without noticing what.
+
+That matters for the fix: better tone modelling would not have helped. A
+model that gets the syllable right is what was needed.
+
 ## The trade
 
 VoxCPM2's `inference_timesteps` buys accuracy with time, and the two
@@ -84,23 +107,65 @@ Worth revisiting only if the pinyin route becomes the strategy.
 The resident Qwen3-TTS does **not** accept pinyin. `qi1業` renders as
 七一一 — it reads the digits.
 
+## Then the probes were checked against real sentences, and the case collapsed
+
+Eight sentences of the kind this agent actually speaks — forty characters
+each, carrying the same failing words — rendered by both and transcribed
+back:
+
+| Candidate | Mean CER | RTF over the set |
+|---|---|---|
+| Qwen3-TTS (resident) | 0.093 | 0.52 |
+| VoxCPM2, 4 steps | 0.087 | 1.02 |
+
+Six tenths of a point apart. Nothing like 73% against 89%.
+
+The probes overstate the difference, and it is worth being precise about
+why, because the same trap is waiting for the next measurement. A probe is
+one word inside a seven-character carrier. That is a short, contextless
+utterance, and a model that predicts sound from surrounding text has
+almost nothing to predict from. Given a real sentence, the resident voice
+says 企業 correctly — the very word it destroys in the carrier.
+
+So the probe measures a real weakness under the least favourable
+conditions, and real speech is more favourable than that. It remains the
+right instrument for ranking pronunciation, and a bad instrument for
+estimating how much better a voice will sound.
+
+The failures also differ in kind, which an average hides. The resident
+voice is consistently a little wrong: 確認 as 誇引, 編譯 as 偏系, 品質 as
+品級, 危險 as 一會兒. VoxCPM2 is usually cleaner and occasionally
+catastrophic — one sentence in eight came back as 斜周賽開抵抗試試 where
+成長最快 was asked for, a CER of 0.32 in a set averaging 0.087, and
+編譯 rendered as the English "Penid". A voice that is reliably slightly
+wrong may well be preferable to one that is usually right and sometimes
+unintelligible, and that is a judgement about the product, not a number.
+
 ## Recommendation
 
-Move to VoxCPM2 at 4 steps, keeping ryan's reference recording so the voice
-stays the same person. It is a 16-point improvement in whether the agent
-says the word it meant, at a real-time factor that still keeps ahead of
-playback.
+**Do not swap yet.** The evidence that justified a swap does not survive
+contact with real sentences: a six-tenths-of-a-point CER improvement does
+not pay for doubling the time to speak, and this machine also has Gemma on
+it. Every RTF here was measured with the TTS alone; in use it shares an M1
+Pro with the model generating the words it is about to say, so 1.02 is
+optimistic and 0.52 is the margin that makes the current voice feel
+immediate.
 
-Two things to settle before it ships, neither of which should be decided at
-three in the morning:
+What the evidence does support:
 
-1. **The controls at 4 steps.** 媽媽 → 爸爸 is the kind of failure that a
-   pronunciation score averages away and a listener does not. Either 6
-   steps with a streaming change to cover the latency, or evidence that
-   the control failures are an artefact of the two-character words.
-2. **Sample rate and streaming.** VoxCPM2 emits 48 kHz against the
-   resident 24 kHz, and the sidecar's chunked playback path is built
-   around the current model's behaviour.
+1. **Try the unquantised resident model first.** We run
+   `Qwen3-TTS-12Hz-0.6B-Base-8bit`; `-bf16` is the same model, the same
+   voice and the same integration. If the mispronunciation is partly a
+   quantisation artefact in a model this small, that is the cheapest fix
+   available and carries no product risk at all.
+2. **Then listen.** Thirty A/B word pairs and sixteen sentence pairs are
+   waiting. Naturalness and whether it still sounds like the same person
+   are not in any of these numbers, and they are most of what the
+   complaint was about.
+
+If a swap does happen later, two things are unresolved: VoxCPM2 emits
+48 kHz against the resident 24 kHz, and its occasional catastrophic
+sentence needs a bound before it is allowed to speak to a user.
 
 ## What is not known
 
