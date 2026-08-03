@@ -8,7 +8,11 @@ Local, macOS-first conversation agent ("Lulo"). Text and voice conversation agai
 
 The verification gates are closed: `verify_litert_app_bundle.dart` runs inside `verify.dart` against the profile build, so an app bundle that has lost the LiteRT-LM dylib, its `@rpath`, or its signature fails the gate. The one path still outside the gate is real-model coverage, which stays opt-in via `--dart-define=LOCAL_MODEL_PATH` because it puts a live, focus-stealing window on the desktop for minutes.
 
-Next up, in this order: a real context budget to replace the char-count truncation in `LiteRTLMRuntimeBackend.historyFitting`; then durable run events; then tool calling with a permission layer. There is no tool calling today.
+The context budget is real: `LiteRTLMRuntimeBackend.historyFitting` estimates tokens in UTF-8 bytes and subtracts the prompt and the reserved answer from the window, rather than spending a fixed third of it at one token per character. `estimatedTokenCount` deliberately errs high — an overflow does not degrade, it fails as an empty answer.
+
+Runs are durable. A generation opens a row in `RunRows` before its first token, overwrites `partialText` at most once per `ConversationRepository`'s checkpoint interval, and closes behind its terminal turn; `recoverInterruptedRuns` settles whatever the last process left open, at startup before `runApp`. An answer the app died in the middle of comes back as a `TurnStatus.interrupted` turn instead of vanishing.
+
+Next up: tool calling with a permission layer. There is no tool calling today.
 
 Toolchain is pinned by CI: Flutter **3.44.1** stable, Dart SDK `^3.12.0`.
 
