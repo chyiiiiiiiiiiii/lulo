@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 import 'package:local_agent_macos/app/app.dart';
 import 'package:local_agent_macos/app/bootstrap.dart';
+import 'package:local_agent_macos/platform/desktop_host_service.dart';
 
 /// Absolute path to the installed Gemma 4 E4B model.
 ///
@@ -41,11 +42,22 @@ void main() {
         ),
       );
       await tester.pump();
-      // The injected loader rejects on a microtask, so the setState that moves
-      // the orb into its fallback lands after this first frame; the fallback
-      // subtree only exists from the next one. Asserting on one pump was a
-      // race that nothing noticed, because nothing ran this test.
-      await tester.pump(const Duration(milliseconds: 32));
+
+      // The app rests on the desktop as an orb, so the conversation is not on
+      // screen until it is summoned. Driving the real host also resizes the
+      // real window, which is what gives the conversation room to lay out.
+      // Without this the composer is in the tree but offstage: enterText never
+      // lands, the send button stays disabled for want of text, and the tap
+      // misses it.
+      await composition.presentationHost!.setPresentation(
+        DesktopPresentation.expanded,
+      );
+      // Not pumpAndSettle: the presence animates continuously on the display's
+      // cadence, so there is never a frame with nothing scheduled to settle on.
+      // This also carries past the injected shader loader's rejection, which
+      // lands on a microtask and moves the orb into its fallback a frame later.
+      await tester.pump(const Duration(milliseconds: 400));
+      await tester.pump();
 
       expect(find.text('Start a conversation'), findsOneWidget);
       expect(find.byKey(const Key('agent-presence-fallback')), findsOneWidget);
@@ -214,13 +226,35 @@ String? _widgetText(Widget widget) {
 /// The widget renders a `Thinking…` placeholder before the first delta, so
 /// that placeholder is deliberately reported as empty. Treating it as content
 /// would let the test pass before Gemma produced anything.
+/// The placeholder the streaming bubble shows until the first token lands.
+const String _streamingPlaceholder = '思考中…';
+
 String _streamingText(WidgetTester tester) {
-  final Finder finder = find.byKey(const Key('active-streaming-plain-text'));
+  // Keyed `active-streaming-markdown`, not `active-streaming-plain-text`, and
+  // the text is inside a TerminalMarkdown rather than one SelectableText:
+  // streaming and completed turns were moved onto the same renderer so the
+  // hand-off between them stops visibly reflowing. This helper still looked
+  // for the old key, so it could only ever report an empty stream — the wait
+  // for a first token could not succeed no matter what the model did. Walk
+  // the subtree the way _terminalTexts does, which survives that kind of
+  // change.
+  final Finder finder = find.byKey(const Key('active-streaming-markdown'));
   if (finder.evaluate().isEmpty) {
     return '';
   }
-  final String text = tester.widget<SelectableText>(finder).data ?? '';
-  return text == 'Thinking…' ? '' : text;
+  final StringBuffer buffer = StringBuffer();
+  void visit(Element element) {
+    final String? text = _widgetText(element.widget);
+    if (text != null) {
+      buffer.write(text);
+      return;
+    }
+    element.visitChildren(visit);
+  }
+
+  finder.evaluate().single.visitChildren(visit);
+  final String text = buffer.toString();
+  return text == _streamingPlaceholder ? '' : text;
 }
 
 /// Every string currently rendered, so a failure reports what the user saw
