@@ -4705,10 +4705,14 @@ final class LocalModelRuntimeTests: XCTestCase {
     let long = (1...40).map {
       RuntimeConversationTurn(role: .user, text: String(repeating: "字", count: 100) + "\($0)")
     }
-    let kept = LiteRTLMRuntimeBackend.historyFitting(long, contextSize: 4096)
+    let kept = LiteRTLMRuntimeBackend.historyFitting(
+      long,
+      prompt: "接下來呢",
+      maxOutputTokens: 512,
+      contextSize: 4096
+    )
 
     XCTAssertLessThan(kept.count, long.count)
-    XCTAssertLessThanOrEqual(kept.reduce(0) { $0 + $1.text.count }, 4096 / 3)
     // What survives is the end of the conversation, in order.
     XCTAssertEqual(kept.last?.text, long.last?.text)
     XCTAssertEqual(kept.map(\.text), Array(long.suffix(kept.count)).map(\.text))
@@ -4720,8 +4724,153 @@ final class LocalModelRuntimeTests: XCTestCase {
       RuntimeConversationTurn(role: .assistant, text: "answered"),
     ]
     XCTAssertEqual(
-      LiteRTLMRuntimeBackend.historyFitting(short, contextSize: 4096).map(\.text),
+      LiteRTLMRuntimeBackend.historyFitting(
+        short,
+        prompt: "and then?",
+        maxOutputTokens: 512,
+        contextSize: 4096
+      ).map(\.text),
       short.map(\.text)
+    )
+  }
+
+  // MARK: - The context budget
+
+  func testTheTokenEstimateNeverFallsBelowOneTokenPerThreeUTF8Bytes() {
+    // The estimate exists to stop an overflow, so it may sit above the
+    // tokenizer but never below it. Han is three UTF-8 bytes per character
+    // and Gemma holds the common characters whole, so one token per three
+    // bytes is what Han actually costs — anything looser prices Chinese
+    // below the truth and lets the window overflow again.
+    for sample in [
+      "hello world",
+      "字字字字字",
+      "混合 mixed 文字 text 123",
+      "😀🚀",
+      "",
+    ] {
+      let estimate = LiteRTLMRuntimeBackend.estimatedTokenCount(sample)
+      XCTAssertGreaterThanOrEqual(
+        estimate * 3,
+        sample.utf8.count,
+        "\(sample.debugDescription) was estimated below the byte floor."
+      )
+    }
+  }
+
+  func testTheTokenEstimateChargesHanAtLeastOneTokenPerCharacter() {
+    // The specific regression a byte divisor invites: dividing by four
+    // prices a Chinese character at 0.75 tokens, and a window's worth of
+    // Chinese then looks like three quarters of a window.
+    let han = String(repeating: "字", count: 4096)
+    XCTAssertGreaterThanOrEqual(
+      LiteRTLMRuntimeBackend.estimatedTokenCount(han),
+      4096,
+      "Han must never be estimated below one token per character."
+    )
+  }
+
+  func testLatinHistoryIsNotTruncatedAsThoughEveryCharacterWereAToken() {
+    // The old budget charged one token per character, which is close enough
+    // for Han and roughly four times too expensive for English: a history
+    // that fits the window comfortably was thrown away to fit a limit that
+    // did not exist. Sixty turns of this are about 2,600 UTF-8 bytes, well
+    // inside a 4,096-token window once the answer has its room.
+    let english = (1...60).map { index in
+      RuntimeConversationTurn(
+        role: index.isMultiple(of: 2) ? .assistant : .user,
+        text: "This is turn number \(index) of an ordinary English conversation."
+      )
+    }
+    let kept = LiteRTLMRuntimeBackend.historyFitting(
+      english,
+      prompt: "What did we say at the start?",
+      maxOutputTokens: 512,
+      contextSize: 4096
+    )
+
+    XCTAssertEqual(
+      kept.count,
+      english.count,
+      "An English history this short must survive a 4,096-token window whole."
+    )
+  }
+
+  func testTheHistoryBudgetReservesRoomForTheAnswerAndThePrompt() {
+    // A third of the window was a stand-in for arithmetic nobody did: the
+    // answer the model is about to write, and the prompt that provokes it,
+    // both occupy the same window as the history. Reserving nearly all of
+    // it for output must leave the history nothing.
+    let history = (1...40).map {
+      RuntimeConversationTurn(role: .user, text: String(repeating: "字", count: 100) + "\($0)")
+    }
+    let starved = LiteRTLMRuntimeBackend.historyFitting(
+      history,
+      prompt: "接下來呢",
+      maxOutputTokens: 4000,
+      contextSize: 4096
+    )
+    XCTAssertTrue(
+      starved.isEmpty,
+      "An answer reserving almost the whole window leaves no room to seed."
+    )
+
+    // And the same history, with the answer asking for little, keeps more
+    // than the fixed third ever allowed.
+    let roomy = LiteRTLMRuntimeBackend.historyFitting(
+      history,
+      prompt: "接下來呢",
+      maxOutputTokens: 128,
+      contextSize: 4096
+    )
+    XCTAssertGreaterThan(roomy.count, starved.count)
+  }
+
+  func testAPromptThatFillsTheWindowLeavesNoRoomForHistory() {
+    // The prompt is not free either. One that alone exceeds the window must
+    // not be handed a history on top of it.
+    let history = [
+      RuntimeConversationTurn(role: .user, text: "what was asked"),
+      RuntimeConversationTurn(role: .assistant, text: "answered"),
+    ]
+    XCTAssertTrue(
+      LiteRTLMRuntimeBackend.historyFitting(
+        history,
+        prompt: String(repeating: "字", count: 4096),
+        maxOutputTokens: 128,
+        contextSize: 4096
+      ).isEmpty
+    )
+  }
+
+  func testTheSeededHistoryAndPromptStayInsideTheWindowTheyWereGiven() {
+    // The property the whole budget exists for: whatever survives, plus the
+    // prompt, plus the reserved answer, must fit what the model was loaded
+    // with. Checked against the estimator rather than a magic fraction.
+    let history = (1...80).map { index in
+      RuntimeConversationTurn(
+        role: index.isMultiple(of: 2) ? .assistant : .user,
+        text: index.isMultiple(of: 3)
+          ? String(repeating: "字", count: 60)
+          : "An ordinary English turn, number \(index), of moderate length."
+      )
+    }
+    let prompt = "So what did we conclude?"
+    let maxOutputTokens = 512
+    let contextSize: Int64 = 4096
+    let kept = LiteRTLMRuntimeBackend.historyFitting(
+      history,
+      prompt: prompt,
+      maxOutputTokens: maxOutputTokens,
+      contextSize: contextSize
+    )
+
+    let seeded = kept.reduce(0) {
+      $0 + LiteRTLMRuntimeBackend.estimatedTokenCount($1.text)
+    }
+    XCTAssertLessThanOrEqual(
+      seeded + LiteRTLMRuntimeBackend.estimatedTokenCount(prompt) + maxOutputTokens,
+      Int(contextSize)
     )
   }
 }

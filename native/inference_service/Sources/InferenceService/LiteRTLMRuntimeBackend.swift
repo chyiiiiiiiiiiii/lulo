@@ -720,8 +720,50 @@ public actor LiteRTLMRuntimeBackend: RuntimeBackend {
     }
   }
 
-  /// As much of the tail of [history] as the context can be expected to
-  /// hold, oldest kept first.
+  /// Tokens the chat template spends on one turn's role markers.
+  ///
+  /// Gemma wraps every turn in `<start_of_turn>role\n` and
+  /// `<end_of_turn>\n`. Six covers it with a little to spare, which is the
+  /// direction this whole budget errs in.
+  static let turnMarkerTokens = 6
+
+  /// A conservative token count for [text], at or above what the tokenizer
+  /// will actually produce.
+  ///
+  /// LiteRT-LM exposes no way to tokenize a string: `getTokenCount()` reads
+  /// the KV cache of a conversation that has already been prefilled, which
+  /// is the answer arriving after the question. So the budget estimates,
+  /// and an estimate that guards against overflow has to sit above the
+  /// truth rather than near it.
+  ///
+  /// Counted in UTF-8 bytes rather than characters, because that is what
+  /// the tokenizer's byte fallback is denominated in and it is the one
+  /// measure that does not change meaning between scripts.
+  ///
+  /// One token per three bytes. Han sits at three bytes per character and
+  /// Gemma's vocabulary holds the common ones whole, so this charges Han
+  /// about one token per character — which is what it costs. English is
+  /// one byte per character against a real four or so characters per
+  /// token, so it is charged around a third more than it costs. Erring
+  /// upward is the point; erring downward reintroduces the overflow.
+  ///
+  /// A quarter per byte was tried first and is wrong: it prices Han at
+  /// 0.75 tokens per character, *below* the real cost, which is the one
+  /// direction this estimate must never take. Three unit tests caught it.
+  ///
+  /// The estimate this replaces charged one token per *character*, which
+  /// left Han about right and English overcharged four times over: a
+  /// conversation that fits the window whole was cut to a quarter of
+  /// itself for a limit that did not exist.
+  static func estimatedTokenCount(_ text: String) -> Int {
+    let bytes = text.utf8.count
+    // Divide rounding up, so no non-empty text is ever free.
+    return (bytes + 2) / 3
+  }
+
+  /// As much of the tail of [history] as the window can hold once [prompt]
+  /// and the reserved [maxOutputTokens] have taken their room, oldest kept
+  /// first.
   ///
   /// Seeding a conversation with more than fits does not degrade — it
   /// fails, and the failure arrives as an empty answer, because the turn
@@ -730,19 +772,27 @@ public actor LiteRTLMRuntimeBackend: RuntimeBackend {
   /// stored turn with status failed and no text at all, where the same
   /// prompt without history answered normally.
   ///
-  /// One token per character is the pessimistic reading and the right one
-  /// here — Chinese runs close to it, and this budget is a floor under a
-  /// silent failure, not an estimate anyone should tune for accuracy. A
-  /// third of the window leaves the prompt and the answer their room.
+  /// The history is not alone in the window. The answer the model is about
+  /// to write occupies it, and so does the prompt that provokes it; the
+  /// previous fixed third of the window stood in for that arithmetic
+  /// without doing it, and was simultaneously too generous when a long
+  /// answer was asked for and far too mean for anything written in Latin
+  /// script.
   static func historyFitting(
     _ history: [RuntimeConversationTurn],
+    prompt: String,
+    maxOutputTokens: Int,
     contextSize: Int64
   ) -> [RuntimeConversationTurn] {
-    let budget = max(0, Int(contextSize) / 3)
+    let reserved =
+      max(0, maxOutputTokens)
+      + estimatedTokenCount(prompt)
+      + turnMarkerTokens
+    let budget = max(0, Int(contextSize) - reserved)
     var kept: [RuntimeConversationTurn] = []
     var used = 0
     for turn in history.reversed() {
-      let cost = turn.text.count
+      let cost = estimatedTokenCount(turn.text) + turnMarkerTokens
       guard used + cost <= budget else { break }
       used += cost
       kept.append(turn)
@@ -777,7 +827,12 @@ public actor LiteRTLMRuntimeBackend: RuntimeBackend {
     return LiteRTLMDriverGenerationRequest(
       sessionId: generation.sessionId,
       prompt: generation.prompt,
-      history: Self.historyFitting(generation.history, contextSize: contextSize),
+      history: Self.historyFitting(
+        generation.history,
+        prompt: generation.prompt,
+        maxOutputTokens: maxTokens,
+        contextSize: contextSize
+      ),
       extraContext: ["context": generation.context],
       sampler: LiteRTLMSamplerFingerprint(
         topK: configuration.topK,
