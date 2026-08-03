@@ -4697,6 +4697,131 @@ final class LocalModelRuntimeTests: XCTestCase {
     _ = try await backend.unloadModel()
   }
 
+  /// Opt-in: what the budget says fits must actually fit.
+  ///
+  /// The estimate this budget rests on cannot be checked against a
+  /// tokenizer, because LiteRT-LM does not expose one. It can be checked
+  /// against the model: seed a conversation with exactly as much history as
+  /// `historyFitting` allows and require a real answer back. Overflow does
+  /// not degrade here, it fails, and the failure arrives as an empty
+  /// terminal turn — so an answer with text in it is the evidence.
+  ///
+  /// Run in Latin script deliberately. Han was priced about right before
+  /// and is priced about right now; English is where the budget became four
+  /// times more generous, so English is where a new overflow would appear.
+  ///
+  /// Set REAL_GEMMA_MODEL_PATH to run it.
+  func testRealGemmaAnswersWithAHistoryFilledToTheBudget() async throws {
+    let environment = ProcessInfo.processInfo.environment
+    guard let modelPath = environment["REAL_GEMMA_MODEL_PATH"] else {
+      throw XCTSkip("Set REAL_GEMMA_MODEL_PATH to run the real-model smoke.")
+    }
+
+    let contextSize: Int64 = 4096
+    let maxOutputTokens = 64
+    let passphrase = "thimble-ferret"
+    let prompt = "What was the passphrase I gave you? Reply with just the word."
+
+    // Far more history than can fit, so the budget is what decides, not the
+    // supply.
+    //
+    // One turn near the end carries a passphrase nothing else could supply.
+    // Without it this test passes whether or not the history reached the
+    // model at all — a short prompt on its own completes perfectly well, so
+    // "it answered" would have proved only that nothing crashed. Recalling
+    // the passphrase is what distinguishes a history that was seeded from
+    // one that was silently dropped.
+    var history = (1...400).map { index in
+      RuntimeConversationTurn(
+        role: index.isMultiple(of: 2) ? .assistant : .user,
+        text: "Turn number \(index) of a long and ordinary English conversation."
+      )
+    }
+    let passphraseTurn = 390
+    history[passphraseTurn - 1] = RuntimeConversationTurn(
+      role: .user,
+      text: "Remember this for later: the passphrase is \(passphrase)."
+    )
+    let seeded = LiteRTLMRuntimeBackend.historyFitting(
+      history,
+      prompt: prompt,
+      maxOutputTokens: maxOutputTokens,
+      contextSize: contextSize
+    )
+    let estimate = seeded.reduce(0) {
+      $0 + LiteRTLMRuntimeBackend.estimatedTokenCount($1.text)
+        + LiteRTLMRuntimeBackend.turnMarkerTokens
+    }
+    print(
+      "BUDGET seeded_turns=\(seeded.count) of \(history.count) "
+        + "estimated_history_tokens=\(estimate) "
+        + "context=\(contextSize) reserved_output=\(maxOutputTokens)"
+    )
+    XCTAssertGreaterThan(
+      seeded.count,
+      0,
+      "A budget that seeds nothing would make this prove nothing."
+    )
+    XCTAssertLessThan(seeded.count, history.count, "The supply must not be the limit.")
+    XCTAssertTrue(
+      seeded.contains { $0.text.contains(passphrase) },
+      "The trimming must keep the tail, and the passphrase lives in it."
+    )
+
+    let collector = RealModelEventCollector()
+    let relay = RuntimeGenerationEventRelay()
+    await relay.attach { event in await collector.record(event) }
+    let backend = LiteRTLMRuntimeBackend(eventRelay: relay)
+    _ = try await backend.loadModel(
+      RuntimeModelRequest(
+        modelId: "gemma-4-E4B-it",
+        modelPath: modelPath,
+        contextSize: contextSize
+      )
+    )
+
+    _ = try await backend.startGeneration(
+      RuntimeGenerationRequest(
+        generationId: "budget-1",
+        sessionId: "budget-1",
+        prompt: prompt,
+        context: [],
+        history: history,
+        temperature: 0.7,
+        topP: 0.95,
+        maxTokens: Int64(maxOutputTokens),
+        seed: 7
+      )
+    )
+    let deadline = Date().addingTimeInterval(600)
+    while Date() < deadline, await !collector.isTerminal {
+      try await Task.sleep(nanoseconds: 50_000_000)
+    }
+
+    let kinds = await collector.kinds
+    let text = await collector.text
+    let failure = await collector.failureDescription
+    print("BUDGET kinds=\(kinds.last.map(String.init(describing:)) ?? "none")")
+    print("BUDGET answer=\(text)")
+    if let failure {
+      print("BUDGET failure=\(failure)")
+    }
+
+    XCTAssertNil(failure, "A history sized to the budget must not overflow.")
+    XCTAssertEqual(kinds.last, .completed)
+    XCTAssertFalse(
+      text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+      "An empty terminal turn is what overflow looks like from here."
+    )
+    XCTAssertTrue(
+      text.lowercased().contains(passphrase),
+      "The model must recall a passphrase from turn \(passphraseTurn), which "
+        + "proves the seeded history reached it rather than being dropped. "
+        + "It answered: \(text)"
+    )
+
+    _ = try await backend.unloadModel()
+  }
 
   func testHistoryIsTrimmedToWhatTheContextCanHold() {
     // A conversation longer than the window must not be seeded whole: it
