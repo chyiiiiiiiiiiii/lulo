@@ -27,10 +27,19 @@ final class PartialTranscript extends VoiceEvent {
 /// One finished utterance, as the transcriber settled it.
 final class FinalTranscript extends VoiceEvent {
   /// Creates the event with the settled utterance.
-  const FinalTranscript(this.text);
+  const FinalTranscript(this.text, {this.confidence});
 
   /// The finalized transcription.
   final String text;
+
+  /// How sure the recogniser was of the weakest span it wrote, or null
+  /// where it scored nothing.
+  ///
+  /// Carried rather than merely logged so the sentence can be shown with a
+  /// caveat: see [HeardConfidence]. The weakest span rather than the
+  /// average, because one wrong word is enough to make the whole thing
+  /// wrong.
+  final double? confidence;
 }
 
 /// The synthesizer has started speaking.

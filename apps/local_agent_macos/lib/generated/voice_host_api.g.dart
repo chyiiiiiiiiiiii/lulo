@@ -150,7 +150,7 @@ enum HostVoiceEventType {
 
 /// One event from the native voice pipeline.
 class HostVoiceEvent {
-  HostVoiceEvent({required this.type, this.text});
+  HostVoiceEvent({required this.type, this.text, this.confidence});
 
   /// What happened.
   HostVoiceEventType type;
@@ -158,8 +158,15 @@ class HostVoiceEvent {
   /// The transcript for transcript events, the message for failures.
   String? text;
 
+  /// How sure the recogniser was of the weakest span it wrote, on settled
+  /// transcripts only, and null wherever it scored nothing.
+  ///
+  /// The weakest span rather than the average: one wrong word makes the
+  /// sentence wrong, and an average buries it.
+  double? confidence;
+
   List<Object?> _toList() {
-    return <Object?>[type, text];
+    return <Object?>[type, text, confidence];
   }
 
   Object encode() {
@@ -171,6 +178,7 @@ class HostVoiceEvent {
     return HostVoiceEvent(
       type: result[0]! as HostVoiceEventType,
       text: result[1] as String?,
+      confidence: result[2] as double?,
     );
   }
 
@@ -183,7 +191,9 @@ class HostVoiceEvent {
     if (identical(this, other)) {
       return true;
     }
-    return _deepEquals(type, other.type) && _deepEquals(text, other.text);
+    return _deepEquals(type, other.type) &&
+        _deepEquals(text, other.text) &&
+        _deepEquals(confidence, other.confidence);
   }
 
   @override

@@ -441,6 +441,41 @@ void main() {
     );
   });
 
+  test('a doubted sentence reaches the turn carrying its doubt', () async {
+    // The recogniser scores every span it writes and nothing but the log
+    // had ever read it. A sentence the recogniser was unsure of looks
+    // exactly like one it was certain of, which is why "the bubble shows a
+    // word I did not say" reads as the agent being stupid.
+    await controller.enable();
+    voice.hear(const FinalTranscript('計算怎麼吃', confidence: 0.48));
+    await pump();
+    await generationStarted();
+
+    final Turn asked = vm.completedTurnsListenable.value.firstWhere(
+      (Turn turn) => turn.role == TurnRole.user,
+    );
+    expect(asked.voiceInput?.heardConfidence, 0.48);
+    expect(
+      HeardConfidence.isDoubtful(asked.voiceInput?.heardConfidence),
+      isTrue,
+    );
+  });
+
+  test('a sentence the recogniser was sure of carries no caveat', () async {
+    await controller.enable();
+    voice.hear(const FinalTranscript('介紹台北。', confidence: 0.97));
+    await pump();
+    await generationStarted();
+
+    final Turn asked = vm.completedTurnsListenable.value.firstWhere(
+      (Turn turn) => turn.role == TurnRole.user,
+    );
+    expect(
+      HeardConfidence.isDoubtful(asked.voiceInput?.heardConfidence),
+      isFalse,
+    );
+  });
+
   test('an interruption that asks nothing resumes the answer', () async {
     // 53 interruptions in one real session stopped the speech; 5 of them
     // replaced the question. The other 48 left the answer written on screen

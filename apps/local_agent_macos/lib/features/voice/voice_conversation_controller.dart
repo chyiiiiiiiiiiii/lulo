@@ -107,6 +107,12 @@ final class VoiceConversationController extends ChangeNotifier {
   /// first sound of its answer. Null until a transcript settles.
   VoiceTurnLatency? _latency;
 
+  /// How sure the recogniser was of the last settled utterance.
+  ///
+  /// Held here rather than threaded through the refiner: the refiner never
+  /// sees the audio and has nothing to say about how well it was heard.
+  double? _lastHeardConfidence;
+
   /// Kept under the shared test clock's 600ms step: widening this past
   /// that step flips the pre-existing barge-in tests into exercising the
   /// cooldown branch instead (loudly — they fail, not silently pass).
@@ -418,8 +424,9 @@ final class VoiceConversationController extends ChangeNotifier {
             _settleUtterance,
           );
         }
-      case FinalTranscript(:final String text):
+      case FinalTranscript(:final String text, :final double? confidence):
         _lastFinalAt = _now();
+        _lastHeardConfidence = confidence;
         // The transcript exists, so the wait the user is about to sit
         // through starts here rather than where the sentence did.
         _latency = VoiceTurnLatency(heardAt: _lastFinalAt!);
@@ -819,6 +826,12 @@ final class VoiceConversationController extends ChangeNotifier {
     if (_disposed || !_enabled || epoch != _refinementEpoch) {
       return;
     }
+    // What the refiner selected, plus how well the recogniser heard it —
+    // two facts from two components, joined here because this is the only
+    // place that holds both.
+    final TranscriptRefinement heard = refinement.withHeardConfidence(
+      _lastHeardConfidence,
+    );
     if (_conversation.canSubmit) {
       _cancelPendingResume();
       if (_speaking || _speechRequested) {
@@ -826,13 +839,10 @@ final class VoiceConversationController extends ChangeNotifier {
       }
       _latency?.markSubmitted(_now());
       unawaited(
-        _conversation.submit(
-          refinement.selectedTranscript,
-          voiceInput: refinement,
-        ),
+        _conversation.submit(heard.selectedTranscript, voiceInput: heard),
       );
     } else {
-      _pendingUtterance = refinement;
+      _pendingUtterance = heard;
     }
   }
 

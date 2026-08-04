@@ -49,13 +49,20 @@ enum HostVoiceEventType {
 /// One event from the native voice pipeline.
 class HostVoiceEvent {
   /// Creates the event.
-  HostVoiceEvent({required this.type, this.text});
+  HostVoiceEvent({required this.type, this.text, this.confidence});
 
   /// What happened.
   final HostVoiceEventType type;
 
   /// The transcript for transcript events, the message for failures.
   final String? text;
+
+  /// How sure the recogniser was of the weakest span it wrote, on settled
+  /// transcripts only, and null wherever it scored nothing.
+  ///
+  /// The weakest span rather than the average: one wrong word makes the
+  /// sentence wrong, and an average buries it.
+  final double? confidence;
 }
 
 /// Dart-to-native: driving the ears and the mouth.

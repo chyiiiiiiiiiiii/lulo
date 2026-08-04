@@ -12,3 +12,4 @@ export 'src/transcript_refiner/transcript_proposal.dart';
 export 'src/transcript_refiner/transcript_proposal_gate.dart';
 export 'src/transcript_refiner/transcript_refinement.dart';
 export 'src/voice/floor_control.dart';
+export 'src/voice/heard_confidence.dart';

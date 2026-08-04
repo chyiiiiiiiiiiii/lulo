@@ -111,6 +111,7 @@ final class TranscriptRefinement {
     required String refinerId,
     required String refinerVersion,
     required Duration elapsed,
+    double? heardConfidence,
   }) {
     final bool applied = status == TranscriptRefinementStatus.applied;
     if ((applied && proposedTranscript != selectedTranscript) ||
@@ -129,6 +130,7 @@ final class TranscriptRefinement {
       refinerId: refinerId,
       refinerVersion: refinerVersion,
       elapsed: elapsed,
+      heardConfidence: heardConfidence,
     );
   }
 
@@ -142,6 +144,7 @@ final class TranscriptRefinement {
     required this.refinerId,
     required this.refinerVersion,
     required this.elapsed,
+    this.heardConfidence,
   });
 
   /// Exact final recognizer output.
@@ -170,6 +173,38 @@ final class TranscriptRefinement {
 
   /// Time spent producing this result.
   final Duration elapsed;
+
+  /// How sure the recogniser was of the weakest span of [rawTranscript],
+  /// or null where it scored nothing.
+  ///
+  /// Provenance of the hearing rather than of the refinement, which is why
+  /// it sits here: the turn keeps this object precisely so the sentence can
+  /// be shown with everything known about where it came from. Deliberately
+  /// not persisted — a caveat is worth reading in the moment and worth
+  /// nothing a day later, and storing it would cost a schema migration for
+  /// a mark nobody would go back and look at. Restored turns carry null.
+  final double? heardConfidence;
+
+  /// This result with [heardConfidence] attached.
+  ///
+  /// A separate step because the two facts are produced by different things
+  /// at different times: the recogniser scores the sentence, and the refiner
+  /// — which never sees the audio — decides what to submit. Making every
+  /// refiner thread a score it cannot know would be asking the wrong
+  /// component for it.
+  TranscriptRefinement withHeardConfidence(double? heardConfidence) =>
+      TranscriptRefinement._(
+        rawTranscript: rawTranscript,
+        proposedTranscript: proposedTranscript,
+        selectedTranscript: selectedTranscript,
+        status: status,
+        edits: edits,
+        rejectionReasons: rejectionReasons,
+        refinerId: refinerId,
+        refinerVersion: refinerVersion,
+        elapsed: elapsed,
+        heardConfidence: heardConfidence,
+      );
 }
 
 /// Refines one finalized transcript without changing partial transcription.

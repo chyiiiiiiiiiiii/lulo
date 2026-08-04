@@ -196,35 +196,45 @@ struct HostVoiceEvent: Hashable {
   var type: HostVoiceEventType
   /// The transcript for transcript events, the message for failures.
   var text: String? = nil
+  /// How sure the recogniser was of the weakest span it wrote, on settled
+  /// transcripts only, and null wherever it scored nothing.
+  ///
+  /// The weakest span rather than the average: one wrong word makes the
+  /// sentence wrong, and an average buries it.
+  var confidence: Double? = nil
 
 
   // swift-format-ignore: AlwaysUseLowerCamelCase
   static func fromList(_ pigeonVar_list: [Any?]) -> HostVoiceEvent? {
     let type = pigeonVar_list[0] as! HostVoiceEventType
     let text: String? = nilOrValue(pigeonVar_list[1])
+    let confidence: Double? = nilOrValue(pigeonVar_list[2])
 
     return HostVoiceEvent(
       type: type,
-      text: text
+      text: text,
+      confidence: confidence
     )
   }
   func toList() -> [Any?] {
     return [
       type,
       text,
+      confidence,
     ]
   }
   static func == (lhs: HostVoiceEvent, rhs: HostVoiceEvent) -> Bool {
     if Swift.type(of: lhs) != Swift.type(of: rhs) {
       return false
     }
-    return deepEqualsGeneratedVoiceHostApi(lhs.type, rhs.type) && deepEqualsGeneratedVoiceHostApi(lhs.text, rhs.text)
+    return deepEqualsGeneratedVoiceHostApi(lhs.type, rhs.type) && deepEqualsGeneratedVoiceHostApi(lhs.text, rhs.text) && deepEqualsGeneratedVoiceHostApi(lhs.confidence, rhs.confidence)
   }
 
   func hash(into hasher: inout Hasher) {
     hasher.combine("HostVoiceEvent")
     deepHashGeneratedVoiceHostApi(value: type, hasher: &hasher)
     deepHashGeneratedVoiceHostApi(value: text, hasher: &hasher)
+    deepHashGeneratedVoiceHostApi(value: confidence, hasher: &hasher)
   }
 }
 

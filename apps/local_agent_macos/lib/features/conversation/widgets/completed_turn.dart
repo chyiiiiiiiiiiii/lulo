@@ -39,6 +39,8 @@ final class CompletedTurn extends StatelessWidget {
                 SelectableText(turn.text)
               else
                 TerminalMarkdown(turn.text),
+              if (HeardConfidence.isDoubtful(turn.voiceInput?.heardConfidence))
+                _HeardDoubt(score: turn.voiceInput!.heardConfidence!),
               if (statusLabel != null) ...<Widget>[
                 const SizedBox(height: 8),
                 Text(
@@ -52,6 +54,47 @@ final class CompletedTurn extends StatelessWidget {
               ],
             ],
           ),
+        ),
+      ),
+    );
+  }
+}
+
+/// The caveat on a sentence the recogniser was not sure it heard.
+///
+/// Small and quiet on purpose. It is not an error — the sentence may well
+/// be right — it is the one piece of information that turns "the agent is
+/// stupid" into "it misheard that word", which is a thing the user can
+/// actually do something about.
+final class _HeardDoubt extends StatelessWidget {
+  const _HeardDoubt({required this.score});
+
+  /// The weakest span's confidence, shown so the user can calibrate the
+  /// threshold against their own voice rather than take it on trust.
+  final double score;
+
+  @override
+  Widget build(BuildContext context) {
+    final Color colour = Theme.of(context).colorScheme.onSurfaceVariant;
+    return Tooltip(
+      message:
+          'The weakest word scored ${score.toStringAsFixed(2)}; anything '
+          'under ${HeardConfidence.trusted.toStringAsFixed(2)} is marked.',
+      child: Padding(
+        key: const Key('heard-doubt'),
+        padding: const EdgeInsets.only(top: 6),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            Icon(Icons.graphic_eq, size: 13, color: colour),
+            const SizedBox(width: 5),
+            Text(
+              'Not sure it heard this right',
+              style: Theme.of(
+                context,
+              ).textTheme.labelSmall?.copyWith(color: colour),
+            ),
+          ],
         ),
       ),
     );

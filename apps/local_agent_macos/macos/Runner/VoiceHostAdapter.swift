@@ -913,6 +913,11 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
         try await analyzer.start(inputSequence: inputSequence)
         for try await result in transcriber.results {
           let text = String(result.text.characters)
+          // Read once, outside the bookkeeping branch: the score is what
+          // the app shows the user, not only what the log records.
+          let weakest =
+            result.isFinal
+            ? lowestTranscriptionConfidence(in: result.text) : nil
           await MainActor.run {
             // Bookkeeping belongs to the current session only: a stale
             // session's trailing results still reach the other side, but
@@ -934,7 +939,6 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
                   ? ProcessInfo.processInfo.systemUptime - asked
                   : -1
                 self.turn.settled()
-                let weakest = lowestTranscriptionConfidence(in: result.text)
                 NSLog(
                   "Lulo voice: final (%d chars) %.2fs after the ask, "
                     + "weakest span %@",
@@ -969,7 +973,8 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
             guard !text.isEmpty else { return }
             self?.emit(
               result.isFinal ? .finalTranscript : .partialTranscript,
-              text: text
+              text: text,
+              confidence: weakest
             )
           }
         }
@@ -1265,9 +1270,13 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
     return conversionError == nil ? converted : nil
   }
 
-  private func emit(_ type: HostVoiceEventType, text: String? = nil) {
+  private func emit(
+    _ type: HostVoiceEventType,
+    text: String? = nil,
+    confidence: Double? = nil
+  ) {
     events.onVoiceEvent(
-      event: HostVoiceEvent(type: type, text: text),
+      event: HostVoiceEvent(type: type, text: text, confidence: confidence),
       completion: { _ in }
     )
   }
