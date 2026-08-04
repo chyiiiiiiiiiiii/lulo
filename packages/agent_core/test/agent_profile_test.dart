@@ -2,6 +2,18 @@ import 'package:agent_core/agent_core.dart';
 import 'package:test/test.dart';
 
 void main() {
+  test('the built-in profile knows the words this app is about', () {
+    // These reach two places that both need them and neither of which can
+    // invent them: the recogniser biases towards them, and the transcript
+    // refiner refuses to edit them away. Left empty, they came only from a
+    // profile file on one developer's disk — so the check for them passed
+    // there and could never pass anywhere else.
+    expect(
+      AgentProfile.builtIn().vocabulary,
+      containsAll(<String>['Lulo', 'Flutter', 'Gemma', 'Qwen']),
+    );
+  });
+
   test(
     'the built-in profile speaks as Lulo in Taiwanese Traditional Chinese',
     () {

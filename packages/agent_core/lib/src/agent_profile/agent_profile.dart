@@ -113,6 +113,31 @@ final class VoiceResponseBehavior {
   );
 }
 
+/// The words this app is about, which nothing downstream can invent.
+///
+/// Two places need them and neither can derive them: the recogniser biases
+/// towards them so a product name is not transcribed as whatever ordinary
+/// words it sounds like, and the transcript refiner refuses to edit them
+/// away. Left to a profile file, they existed only on the machine of whoever
+/// had written one — which is how a check for them passed on one developer's
+/// disk and could never pass anywhere else.
+///
+/// Deliberately short. Contextual biasing trades general accuracy for the
+/// terms listed, so this is the vocabulary of the product, not a dictionary;
+/// anything about the user belongs in their own profile.
+const List<String> builtInVocabulary = <String>[
+  'Lulo',
+  'Flutter',
+  'Dart',
+  'Gemma',
+  'LiteRT',
+  'Qwen',
+  'MLX',
+  'Swift',
+  'Xcode',
+  'Claude',
+];
+
 /// The narrow product categories a durable memory may belong to.
 enum AgentMemoryKind {
   /// A stable fact about the user, such as their chosen name.
@@ -186,7 +211,7 @@ final class AgentProfile {
     this.personality = const AgentPersonality(),
     this.voiceBehavior = const VoiceResponseBehavior(),
     List<AgentMemory> memories = const <AgentMemory>[],
-    List<String> vocabulary = const <String>[],
+    List<String> vocabulary = builtInVocabulary,
     List<String> additionalInstructions = const <String>[],
   }) : memories = List<AgentMemory>.unmodifiable(memories),
        vocabulary = List<String>.unmodifiable(vocabulary),
