@@ -75,7 +75,7 @@ twice:
 ```text
 systemInstruction — prefilled once per conversation
   core identity
-  spoken-response behavior
+  spoken-response behavior, including the sentence budget
   user preferences
   additional developer instructions
 
@@ -99,6 +99,30 @@ place every turn. See
 
 The 1,200-character cap still bounds both halves together, so a profile full
 of memories cannot grow the prompt by moving text across the seam.
+
+## The spoken length is a number, not an adjective
+
+`responseLength` renders as a sentence budget inside the spoken-response
+section rather than as a word in the preferences. Spelled out only as 簡潔 /
+`concise`, gemma-4-E4B answered five conversational questions in 172
+characters on average — twenty-seven seconds of Mandarin speech, for a
+question nobody would spend twenty-seven seconds answering out loud. The same
+profile with `回答控制在三句話以內` answered in 91, and shortened every one of the
+five. Three of the five ended by asking a question back, which the long
+answers never did.
+
+| `responseLength` | Budget |
+|---|---|
+| `concise` | three sentences |
+| `balanced` | five sentences |
+| `detailed` | no count — "still talking, not writing" |
+
+The budget carries a second clause — 講完核心就停，細節等使用者追問再說 — because
+telling a model to stop is not the same as telling it where the rest of the
+answer went. With it, stopping reads as leaving room rather than running out.
+
+It is gated on `voiceBehavior.preferNaturalShortSentences`: a profile that
+has turned spoken-sentence shaping off does not get a budget either.
 
 A profile the user edits changes the system message, and a prefilled KV
 cache cannot be amended in place. The runtime driver notices and rebuilds

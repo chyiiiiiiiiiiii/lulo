@@ -69,6 +69,61 @@ void main() {
     expect(second.systemInstruction, first.systemInstruction);
   });
 
+  test('the spoken length is a sentence budget, not an adjective', () {
+    // "Concise" produced answers averaging 172 characters — 27 seconds of
+    // Mandarin speech for a conversational question. The same profile with a
+    // sentence budget produced 64. The word was not the instruction; the
+    // number is.
+    final AgentPromptContext concise = composeAgentPrompt(
+      profile: AgentProfile(),
+      prompt: '幫我想一個週末可以做的活動。',
+    );
+    expect(concise.systemInstruction, contains('三句話以內'));
+    expect(concise.systemInstruction, contains('這是用說的'));
+
+    final AgentPromptContext detailed = composeAgentPrompt(
+      profile: AgentProfile(
+        personality: const AgentPersonality(
+          responseLength: AgentResponseLength.detailed,
+        ),
+      ),
+      prompt: '幫我想一個週末可以做的活動。',
+    );
+    expect(detailed.systemInstruction, isNot(contains('三句話以內')));
+
+    // The budget belongs to the section about speaking, because that is what
+    // it is a constraint on.
+    final int spoken = concise.systemInstruction.indexOf('[語音回答方式]');
+    final int preferences = concise.systemInstruction.indexOf('[使用者偏好]');
+    final int budget = concise.systemInstruction.indexOf('三句話以內');
+    expect(budget, greaterThan(spoken));
+    expect(budget, lessThan(preferences));
+  });
+
+  test('the English spoken length carries the same budget', () {
+    final AgentPromptContext result = composeAgentPrompt(
+      profile: AgentProfile(),
+      prompt: 'Suggest something to do this weekend.',
+    );
+    expect(result.systemInstruction, contains('three sentences'));
+    expect(result.systemInstruction, contains('being spoken aloud'));
+  });
+
+  test(
+    'a profile that does not want short spoken sentences gets no budget',
+    () {
+      final AgentPromptContext result = composeAgentPrompt(
+        profile: AgentProfile(
+          voiceBehavior: const VoiceResponseBehavior(
+            preferNaturalShortSentences: false,
+          ),
+        ),
+        prompt: '幫我想一個週末可以做的活動。',
+      );
+      expect(result.systemInstruction, isNot(contains('三句話以內')));
+    },
+  );
+
   test('Chinese context keeps sections ordered and asks the question once', () {
     final AgentProfile profile = AgentProfile(
       identity: const AgentIdentity(userName: 'Yii'),

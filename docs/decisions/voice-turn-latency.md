@@ -222,10 +222,19 @@ full duplex uses `/render`, which returns when generation ends and lets the
 app's own player node append gaplessly. It would return with the
 half-duplex fallback.
 
-**Answer length.** Answers measure 50–100 characters, which at the
-synthesiser's 0.156 s/char is 8–16 seconds of speech for a conversational
-question. That is a taste decision about the profile, not a latency defect,
-and it is the user's to make.
+**Answer length** — which turned out to be the largest number in this whole
+document, and not a latency at all. Measured across five conversational
+questions, answers averaged 172 characters: at the synthesiser's 0.156 s per
+character, **twenty-seven seconds of speech**. Every second of that is a
+second the user is not talking, and it dwarfs the 1.3s of first-token latency
+this document opens with.
+
+`回答長度：簡潔` was not an instruction. Replacing it with a sentence budget in
+the spoken-response section — `回答控制在三句話以內；講完核心就停，細節等使用者追問再說` —
+brought the average to 91 characters, about fourteen seconds, and shortened
+every one of the five. Three of the five then ended by asking a question
+back, which none of the long answers did. See
+[../features/agent-profile.md](../features/agent-profile.md).
 
 **`STREAM_INTERVAL = 0.8`.** The synthesiser's 0.48s first chunk is that
 interval times its 0.6 real-time factor, so 0.5s would put the first sound

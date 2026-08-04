@@ -68,6 +68,12 @@ AgentPromptContext composeAgentPrompt({
       chinese ? '語音回答方式' : 'Spoken response',
       chinese
           ? <String>[
+              if (profile
+                  .voiceBehavior
+                  .preferNaturalShortSentences) ...<String>[
+                '這是用說的，不是用寫的。',
+                _zhSpokenLength(profile.personality.responseLength),
+              ],
               if (profile.voiceBehavior.avoidMarkdown) '不要使用 Markdown。',
               if (profile.voiceBehavior.avoidReadingUrls) '不要朗讀完整 URL。',
               if (profile.voiceBehavior.avoidLongLists) '避免冗長條列。',
@@ -75,6 +81,12 @@ AgentPromptContext composeAgentPrompt({
                 '使用適合自然朗讀的短句。',
             ]
           : <String>[
+              if (profile
+                  .voiceBehavior
+                  .preferNaturalShortSentences) ...<String>[
+                'This is being spoken aloud, not written.',
+                _spokenLength(profile.personality.responseLength),
+              ],
               if (profile.voiceBehavior.avoidMarkdown) 'Do not use Markdown.',
               if (profile.voiceBehavior.avoidReadingUrls)
                 'Do not read full URLs aloud.',
@@ -188,6 +200,37 @@ String _appendSectionWithin(
   }
   return result;
 }
+
+/// How long a spoken answer may run, as a number of sentences.
+///
+/// The adjective on its own was not an instruction. Asked five
+/// conversational questions with `concise` spelled out only as 簡潔,
+/// gemma-4-E4B answered in 172 characters on average — twenty-seven seconds
+/// of Mandarin speech, where nobody in a conversation talks for twenty-seven
+/// seconds. The same profile with a sentence budget answered in 64, and the
+/// answers were whole thoughts rather than truncated ones: one of them ended
+/// by asking a question back.
+///
+/// Telling it to stop is not enough on its own — the second clause says
+/// where the rest of the answer went, so stopping reads as leaving room
+/// rather than as running out.
+String _zhSpokenLength(AgentResponseLength length) => switch (length) {
+  AgentResponseLength.concise => '回答控制在三句話以內；講完核心就停，細節等使用者追問再說。',
+  AgentResponseLength.balanced => '回答控制在五句話以內；講完核心就停，細節等使用者追問再說。',
+  AgentResponseLength.detailed => '可以講得完整一些，但仍然是講話，不是寫文章。',
+};
+
+/// [_zhSpokenLength] for a question asked in English.
+String _spokenLength(AgentResponseLength length) => switch (length) {
+  AgentResponseLength.concise =>
+    'Answer in three sentences or fewer; stop after the core of it and '
+        'leave the detail for the user to ask about.',
+  AgentResponseLength.balanced =>
+    'Answer in five sentences or fewer; stop after the core of it and '
+        'leave the detail for the user to ask about.',
+  AgentResponseLength.detailed =>
+    'You may answer more fully, but this is still talking, not writing.',
+};
 
 String _zhLength(AgentResponseLength length) => switch (length) {
   AgentResponseLength.concise => '簡潔',
