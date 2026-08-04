@@ -917,8 +917,23 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
             // path stays latched off for the rest of the session.
             if let self, id == self.sessionCounter {
               if result.isFinal {
+                // How long the transcriber took to answer the endpointer.
+                // It sits between "the room went quiet" and "the question
+                // exists", and nothing else on either side can see it: the
+                // endpointer only knows it asked, and Dart only knows the
+                // answer arrived. Infinite means this final settled on the
+                // transcriber's own schedule, with nobody asking.
+                let asked = self.turn.finalizeAskedAt
+                let waited =
+                  asked.isFinite
+                  ? ProcessInfo.processInfo.systemUptime - asked
+                  : -1
                 self.turn.settled()
-                NSLog("Lulo voice: final (%d chars)", text.count)
+                NSLog(
+                  "Lulo voice: final (%d chars) %.2fs after the ask",
+                  text.count,
+                  waited
+                )
               } else if !text.isEmpty {
                 // Who is talking, and how loudly, at the moment a partial
                 // arrives. Full duplex made every partial a barge-in
@@ -965,10 +980,18 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
     let endpointTask = Task { @MainActor [weak self] in
       var ticks = 0
       while !Task.isCancelled {
-        try? await Task.sleep(for: .milliseconds(150))
+        // The silence threshold is 0.8s, but the endpointer only notices it
+        // at a tick, so the tick interval is added to every turn as jitter.
+        // At 150ms that was up to a seventh of a second of pure waiting on
+        // top of a wait that is already the largest item in the budget; at
+        // 50ms it is a twentieth. Nothing else changes — checkEndpoint's
+        // guards are all thresholds, so asking more often only finds the
+        // crossing sooner, and endpointFinalizeRequested still means the
+        // transcriber is asked exactly once per utterance.
+        try? await Task.sleep(for: .milliseconds(50))
         self?.checkEndpoint(id: id, vad: vad, analyzer: analyzer)
         ticks += 1
-        if ticks % 20 == 0 {
+        if ticks % 60 == 0 {
           // Calibration heartbeat: what the room sounds like, every ~3s.
           // "(utterance pending)" persisting here is the endpointer
           // declining to fire — the VAD never heard this utterance, and
