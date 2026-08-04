@@ -6,3 +6,48 @@ String normalizeLiteral(String text) =>
 String normalizeSpoken(String text) => normalizeLiteral(
   text,
 ).replaceAll(RegExp(r'[\p{P}\p{S}\s]+', unicode: true), '').toLowerCase();
+
+/// Every character that is unambiguously part of a number.
+///
+/// Both scripts, because a recogniser writes `12,000` where the corpus
+/// spells 一萬二 and the two have to fold onto each other.
+const String _numerals = '0123456789０１２３４５６７８９零〇一二三四五六七八九十百千萬万億亿兩两';
+
+/// Characters that join or qualify a number but are ordinary words alone.
+///
+/// 點 is half of 三點半 and all of 重點; 半 is half of 三點半 and all of 一半.
+/// They are folded only inside a run that also holds a real numeral, so a
+/// word the recogniser did hear is never quietly deleted.
+const String _numeralJoiners = '點半.．,，:：';
+
+/// A maximal run of numeral and joining characters.
+final RegExp _numberRun = RegExp('[$_numerals$_numeralJoiners]+');
+
+/// Whether [run] holds anything that is definitely a number.
+bool _isANumber(String run) =>
+    run.runes.any((int rune) => _numerals.contains(String.fromCharCode(rune)));
+
+/// Normalizes text for comparing what was *heard*, folding how numbers are
+/// written on top of everything [normalizeSpoken] folds.
+///
+/// Spoken CER folds punctuation, whitespace and Latin case but not numerals,
+/// so a recogniser that heard 一萬二 perfectly and wrote `12,000` is charged
+/// for every character of the difference — 61.5% and 41.7% on the two corpus
+/// cases that contain numbers, against a 14.6% mean over twelve. That is a
+/// disagreement about writing, not about hearing, and it made the aggregate
+/// a floor on quality rather than a measure of it.
+///
+/// The fold is removal rather than conversion. Converting 一萬二 to 12000
+/// needs a Chinese number parser and a way to know that 三點五 is 3.5 while
+/// 三點半 is half past three — a real piece of work, and one whose bugs would
+/// be invisible inside an aggregate. Removing both sides' numbers instead
+/// measures exactly what is left, and says plainly that it is not measuring
+/// the numbers at all. Read it beside [normalizeSpoken], never instead of
+/// it: a recogniser that hears every word and every number wrongly scores
+/// perfectly here.
+String normalizeHeard(String text) => normalizeSpoken(
+  normalizeLiteral(text).replaceAllMapped(
+    _numberRun,
+    (Match match) => _isANumber(match[0]!) ? ' ' : match[0]!,
+  ),
+);

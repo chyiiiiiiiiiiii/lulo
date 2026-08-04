@@ -2,6 +2,7 @@ import 'package:lulo_voice_eval/voice_eval.dart';
 import 'package:test/test.dart';
 
 void main() {
+  _heardNumeralsGroup();
   group('transcript normalization', () {
     test(
       'literal normalization collapses whitespace but keeps punctuation',
@@ -82,5 +83,60 @@ void main() {
     expect(comparison.raw.literal.distance, 1);
     expect(comparison.raw.spoken.distance, 0);
     expect(comparison.refined!.literal.distance, 0);
+  });
+}
+
+void _heardNumeralsGroup() {
+  group('normalizeHeard', () {
+    test('a number written two ways is not a hearing error', () {
+      // Measured on Apple SpeechAnalyzer against corpus/zh-TW-v1.json: both
+      // of these were heard perfectly and scored 61.5% and 41.7% spoken CER,
+      // because the recogniser writes digits where the corpus spells them.
+      expect(
+        normalizeHeard('預算是一萬二，版本先用三點五。'),
+        normalizeHeard('預算是12,000，版本先用3.5。'),
+      );
+      expect(
+        normalizeHeard('八月二日下午三點半提醒我。'),
+        normalizeHeard('8月 2日下午 3:30提醒我。'),
+      );
+    });
+
+    test('a real mishearing is still charged for', () {
+      expect(normalizeHeard('細節我等等再補'), isNot(normalizeHeard('細節我的忍在補')));
+    });
+
+    test('a word that merely contains a numeral character survives', () {
+      // 點 is half of 三點半 and all of 重點. Stripping it wherever it
+      // appears would quietly delete words the recogniser did hear.
+      expect(normalizeHeard('這是重點'), contains('重點'));
+      expect(normalizeHeard('十分鐘'), contains('分鐘'));
+    });
+
+    test('everything spoken normalization folds is still folded', () {
+      expect(normalizeHeard('Hello, World!'), normalizeHeard('hello world'));
+    });
+  });
+
+  group('the heard score sits beside the spoken one', () {
+    test('a numeral disagreement costs spoken CER and not heard CER', () {
+      final TranscriptComparison result = compareTranscripts(
+        reference: '預算是一萬二。',
+        rawTranscript: '預算是12,000。',
+      );
+
+      expect(result.raw.spoken.cer, greaterThan(0));
+      expect(result.raw.heard.cer, 0);
+    });
+
+    test('a mishearing costs both', () {
+      final TranscriptComparison result = compareTranscripts(
+        reference: '細節我等等再補',
+        rawTranscript: '細節我的忍在補',
+      );
+
+      expect(result.raw.spoken.cer, greaterThan(0));
+      expect(result.raw.heard.cer, greaterThan(0));
+    });
   });
 }

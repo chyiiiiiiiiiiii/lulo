@@ -9,6 +9,7 @@ audio or text off the machine.
 - literal character error rate, including punctuation and Latin case;
 - spoken character error rate, ignoring punctuation, whitespace and Latin
   case;
+- heard character error rate, ignoring how numbers are written as well;
 - raw and refined transcripts independently;
 - early, expected-window, late and missing shadow endpoint decisions;
 - TTS first-audio latency, completion latency and real-time factor;
@@ -18,15 +19,26 @@ audio or text off the machine.
 Timing does not measure naturalness. CER does not prove that a transcript
 preserved intent. Use the machine report and blind listening review together.
 
-### A known defect in `spokenCer`
+### `spokenCer` and `heardCer`
 
 Spoken CER folds punctuation, whitespace and Latin case. It does **not** fold
-numerals. Recognisers write `12,000` and `3:30` where `corpus/zh-TW-v1.json`
-spells out 一萬二 and 三點半, and the scorer charges every character of the
-difference: measured on Apple's `SpeechAnalyzer`, those two cases alone score
-61.5% and 41.7% against a 14.6% mean over twelve, while six of the twelve are
-character-perfect. Until the normaliser folds numerals, read the aggregate as
-a floor on quality rather than a measure of it, and read the per-case numbers.
+numerals, and that is a real cost rather than an oversight: recognisers write
+`12,000` and `3:30` where `corpus/zh-TW-v1.json` spells out 一萬二 and 三點半,
+and the scorer charges every character of the difference. Measured on Apple's
+`SpeechAnalyzer`, those two cases alone score 61.5% and 41.7% against a 14.6%
+mean over twelve, while six of the twelve are character-perfect. Both were
+heard correctly.
+
+`heardCer` is the same score with every number removed from both sides. It
+answers "did it hear the words", where `spokenCer` answers "did it write the
+sentence". Neither replaces the other, and `heardCer` is blind by
+construction: a recogniser that gets every number wrong scores perfectly on
+it. Read the pair.
+
+The fold is removal rather than conversion. Converting 一萬二 to `12000` needs
+a Chinese number parser and a way to know that 三點五 is 3.5 while 三點半 is
+half past three; that is a real piece of work whose bugs would be invisible
+inside an aggregate, and it has not been done.
 
 Bias also matters when comparing candidates. The app hands the transcriber
 `contextualStrings` from the conversation's vocabulary, which is what keeps

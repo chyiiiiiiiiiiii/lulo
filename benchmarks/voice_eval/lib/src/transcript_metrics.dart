@@ -38,10 +38,11 @@ final class TranscriptScore {
 
 /// Literal and spoken-content scores for one candidate transcript.
 final class NormalizedTranscriptScore {
-  /// Creates both normalization views.
+  /// Creates all three normalization views.
   const NormalizedTranscriptScore({
     required this.literal,
     required this.spoken,
+    required this.heard,
   });
 
   /// Score with punctuation and Latin case retained.
@@ -49,6 +50,12 @@ final class NormalizedTranscriptScore {
 
   /// Score with punctuation, whitespace, and Latin case ignored.
   final TranscriptScore spoken;
+
+  /// Score with how numbers are written ignored as well.
+  ///
+  /// Read beside [spoken], never instead of it — see [normalizeHeard] for
+  /// what it deliberately stops measuring.
+  final TranscriptScore heard;
 }
 
 /// Keeps raw evidence beside an optional independently scored refinement.
@@ -149,6 +156,10 @@ NormalizedTranscriptScore _scoreBoth(String reference, String candidate) =>
       spoken: scoreTranscript(
         reference: normalizeSpoken(reference),
         candidate: normalizeSpoken(candidate),
+      ),
+      heard: scoreTranscript(
+        reference: normalizeHeard(reference),
+        candidate: normalizeHeard(candidate),
       ),
     );
 

@@ -154,6 +154,9 @@ Map<String, Object?> _summarizeRun(
         'meanRawSpokenCer': _mean(
           comparisons.map((TranscriptComparison value) => value.raw.spoken.cer),
         ),
+        'meanRawHeardCer': _mean(
+          comparisons.map((TranscriptComparison value) => value.raw.heard.cer),
+        ),
         'meanRefinedLiteralCer': _mean(
           comparisons
               .where((TranscriptComparison value) => value.refined != null)
@@ -163,6 +166,11 @@ Map<String, Object?> _summarizeRun(
           comparisons
               .where((TranscriptComparison value) => value.refined != null)
               .map((TranscriptComparison value) => value.refined!.spoken.cer),
+        ),
+        'meanRefinedHeardCer': _mean(
+          comparisons
+              .where((TranscriptComparison value) => value.refined != null)
+              .map((TranscriptComparison value) => value.refined!.heard.cer),
         ),
       };
     case CandidateKind.turn:
@@ -228,7 +236,8 @@ String _summaryResult(Map<String, Object?> summary) {
         'late ${summary['late']}, missing ${summary['missing']}';
   }
   if (summary.containsKey('meanRawSpokenCer')) {
-    return 'spoken CER ${summary['meanRawSpokenCer']}';
+    return 'spoken CER ${summary['meanRawSpokenCer']}, '
+        'heard CER ${summary['meanRawHeardCer']}';
   }
   return 'first audio ${summary['meanFirstAudioLatencyMs']} ms';
 }
