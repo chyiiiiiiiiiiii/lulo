@@ -212,6 +212,74 @@ and transcribes a Taiwanese speaker into Simplified. The adapter gets this
 right; the probe got it wrong first and the difference was visible in one
 glance at the output.
 
+## Making it right rather than fast, and what that costs
+
+The complaint that outlives the latency work is that the bubble shows a word
+the user did not say. It is not a display bug: the recogniser writes 計算 for
+肌酸, and the model's answer then says 肌酸, because the model has the
+conversation and the recogniser does not.
+
+### Hints do not help — measured
+
+The obvious remedy is to tell the recogniser the words. `contextualStrings`
+already carries a thirty-two term list, refreshed from every answer the agent
+speaks. Run over the private corpus with the list and without it, **through
+both the file path and the streaming path the app actually uses, the
+transcript was identical to the character.** `Flater` stayed `Flater`, `NLX`
+stayed `NLX`.
+
+That is not proof the API does nothing — twelve clean recordings is a small
+test, and a bias can only pick a term the acoustics already make plausible.
+It is enough to say that nothing in the vocabulary book has ever been shown
+to change a transcript, and that building further on it without measuring
+first would be building on an assumption.
+
+Two terms the agent talks about constantly were missing from the list
+regardless: MLX and Codex. They are in it now.
+
+### The recogniser already says which words it doubts
+
+What does separate cleanly is the score the recogniser attaches to every span
+and which nothing had ever read — `attributeOptions` was empty:
+
+| Span | Confidence |
+|---|---|
+| Every correctly heard word in the corpus | 0.88–1.00 |
+| `codex` (right, but unsure of the case) | 0.79 |
+| `NLX` for MLX | 0.78 |
+| `忍` in a misheard Mandarin clause | 0.69 |
+| `Flater` for Flutter | 0.48 |
+| `的` in the same misheard clause | 0.31 |
+
+The signal is not language-specific and it is not subtle. A transcript is
+reported as its weakest span rather than its average, because one bad word is
+enough to make the sentence wrong and an average buries a 0.31 under a dozen
+1.00s.
+
+Requested and logged, nothing more. What to do about a low score is a
+decision that needs its own evidence, and this is how it gets collected.
+
+### What repair would cost, if it is wanted
+
+Given the conversation, `gemma-4-E4B` repairs both real cases — 計算 and 記中
+both back to 肌酸 — and leaves a correct sentence alone. On a scratch
+conversation, so the real one never learns it was asked to proofread, that
+costs 1.5–2.1s cold and an estimated 0.7–1.0s warm.
+
+Smaller models do not substitute. Qwen3-0.6B and Qwen3-1.7B, both already on
+the machine, returned the raw text unchanged for both cases. Given a few-shot
+prompt they became worse rather than better: 1.7B rewrote 計算 into 乳清蛋白,
+a different supplement from the same conversation, and 0.6B rewrote the
+control — a sentence with nothing wrong with it — into Simplified. A
+hallucinated correction is worse than a visible mishearing, so the cheap
+model is not a cheaper version of this; it is a different, worse thing.
+
+The choice this leaves is where the second is spent. Before the bubble, every
+turn is correct and every turn is a second slower. After it, the turn is free
+and the text corrects itself while the agent is already speaking. Gating on
+the confidence above makes the expensive path rare, which is why the meter
+went in first.
+
 ## What was looked at and left alone
 
 **The synthesiser serialising behind playback.** `/speak` ends in

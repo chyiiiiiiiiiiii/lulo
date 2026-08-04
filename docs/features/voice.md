@@ -627,7 +627,7 @@ The adapter is chatty on purpose. `Console.app`, or `log stream`, filtered on
 | `vad floor 0.0021 peak 0.0480` | Calibration heartbeat, ~every 3s |
 | `… (utterance pending)` persisting | The endpointer is declining; the Dart settle is doing the work |
 | `endpointing after 0.87s of silence` | The fast path fired |
-| `final (23 chars) 0.31s after the ask` | The transcriber settled an utterance, and how long it took to answer the endpointer. `-1.00s` means nobody asked — it settled on its own schedule |
+| `final (23 chars) 0.31s after the ask, weakest span 0.94` | The transcriber settled an utterance, how long it took to answer the endpointer, and the lowest confidence in it. `-1.00s` means nobody asked — it settled on its own schedule. Correct words measure 0.88–1.00; a misheard one measured 0.31 |
 | `sidecar declined a sentence (41 chars)` | TTS unreachable or failing — check `~/dev/lulo-tts/server.log` |
 
 The sidecar's own log gives the latency that matters:

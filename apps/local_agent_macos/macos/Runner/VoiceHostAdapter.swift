@@ -436,7 +436,7 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
   static let spokenVocabulary: [String] = [
     "Flutter", "Dart", "Swift", "SwiftUI", "Xcode", "Kotlin",
     "React Native", "Blogger", "GitHub", "Google", "Apple", "Android",
-    "iOS", "macOS", "Gemma", "LiteRT", "Lulo",
+    "iOS", "macOS", "Gemma", "LiteRT", "Lulo", "MLX", "Codex",
     "cross-platform", "framework", "widget", "repository", "commit",
     "Claude", "Anthropic", "AI", "API", "LLM", "MCP", "TTS", "app",
   ]
@@ -701,7 +701,12 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
       // spelling afterwards. Without it the first partial could trail the
       // speech by many seconds, and the endpointer starved.
       reportingOptions: [.volatileResults, .fastResults],
-      attributeOptions: []
+      // Asked for, and so far only reported. Measured over the private
+      // corpus the score separates the words the recogniser got right from
+      // the ones it did not, and nothing in the app had ever looked at it.
+      // What to do about a low one is a decision that needs its own
+      // evidence; knowing it is low costs nothing.
+      attributeOptions: [.transcriptionConfidence]
     )
     // The transcription model is a system asset; the first run downloads
     // it, which can take minutes.
@@ -929,10 +934,13 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
                   ? ProcessInfo.processInfo.systemUptime - asked
                   : -1
                 self.turn.settled()
+                let weakest = lowestTranscriptionConfidence(in: result.text)
                 NSLog(
-                  "Lulo voice: final (%d chars) %.2fs after the ask",
+                  "Lulo voice: final (%d chars) %.2fs after the ask, "
+                    + "weakest span %@",
                   text.count,
-                  waited
+                  waited,
+                  weakest.map { String(format: "%.2f", $0) } ?? "unscored"
                 )
               } else if !text.isEmpty {
                 // Who is talking, and how loudly, at the moment a partial
@@ -1325,6 +1333,13 @@ final class HeldSpeechCaptureBox: @unchecked Sendable {
 ///
 /// Bounded, oldest-out: contextual biasing trades general accuracy for the
 /// listed terms, so the book holds the current conversation, not a career.
+///
+/// Measured against the private corpus, through both the file path and the
+/// streaming one the app actually uses, a thirty-two term list changed the
+/// transcript by not one character. That is not proof the API does nothing —
+/// twelve clean recordings is a small test and the terms have to be
+/// acoustically plausible before a bias can pick them — but nothing here has
+/// ever been shown to work, so do not build on it without measuring first.
 struct SpokenVocabularyBook {
   static let capacity = 40
 
@@ -1374,6 +1389,22 @@ struct SpokenVocabularyBook {
       return term.count >= 2 ? term : nil
     }
   }
+}
+
+/// The weakest span's confidence in a settled transcript, or nil when the
+/// recogniser scored none of it.
+///
+/// The sentence is worth its weakest span rather than its average: one bad
+/// word is enough to make the whole thing wrong, and averaging buries a 0.31
+/// under a dozen 1.00s — which is exactly the case worth catching.
+@available(macOS 26.0, *)
+func lowestTranscriptionConfidence(in text: AttributedString) -> Double? {
+  var lowest: Double?
+  for run in text.runs {
+    guard let confidence = run.transcriptionConfidence else { continue }
+    lowest = min(lowest ?? confidence, confidence)
+  }
+  return lowest
 }
 
 /// Which microphone the listening engine should actually use.
