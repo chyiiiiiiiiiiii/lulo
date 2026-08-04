@@ -220,11 +220,14 @@ void main() {
       final payload = host.generationRequests.single;
       expect(payload.generationId, 'litert-generation-1');
       expect(payload.sessionId, 'conversation-42');
-      // The question is carried verbatim, behind an instruction to answer
-      // in prose. Without it the model wrote Markdown, which shows its own
-      // asterisks on screen and has to be stripped again before speech.
+      // The question is carried verbatim; the instruction to answer in
+      // prose rides alongside it rather than in front of it. Without that
+      // instruction the model wrote Markdown, which shows its own asterisks
+      // on screen and has to be stripped again before speech — and in front
+      // of it, it was re-read on every turn.
       expect(payload.prompt, endsWith('Exact private prompt'));
-      expect(payload.prompt, contains('Do not use Markdown'));
+      expect(payload.systemInstruction, contains('Do not use Markdown'));
+      expect(payload.systemInstruction, isNot(contains('Exact private')));
       expect(payload.context, isEmpty);
       expect(payload.temperature, 0.25);
       expect(payload.topP, 0.9);
@@ -713,7 +716,8 @@ void main() {
       await Future<void>.delayed(Duration.zero);
 
       final DesktopGenerationRequest request = host.generationRequests.single;
-      expect(request.prompt, contains('稱呼使用者：Yii'));
+      expect(request.systemInstruction, contains('稱呼使用者：Yii'));
+      // A memory is chosen against this question, so it travels with it.
       expect(request.prompt, contains('Yii 正在開發 Lulo'));
       expect(request.prompt, isNot(contains('這次不相關的 Moniit')));
       expect('Lulo 下一步怎麼做？'.allMatches(request.prompt), hasLength(1));
@@ -755,23 +759,26 @@ void main() {
 
     expect(host.generationRequests, hasLength(2));
     // "Markdown" is the term in both, so the tell is the surrounding prose.
-    expect(host.generationRequests[0].prompt, contains('臺灣繁體中文'));
+    expect(host.generationRequests[0].systemInstruction, contains('臺灣繁體中文'));
     // Traditional, not Simplified: the model answered 咱们/东西/开发 to a
     // Traditional question because nothing said which script to use.
-    expect(host.generationRequests[0].prompt, contains('繁體'));
+    expect(host.generationRequests[0].systemInstruction, contains('繁體'));
     // The question arrives from a speech recogniser, so it can be misheard.
     // Saying so costs nothing and lets the answer interpret rather than take
     // "Frant" literally and explain a thing that does not exist.
-    expect(host.generationRequests[0].prompt, contains('不確定時坦白說明'));
+    expect(host.generationRequests[0].systemInstruction, contains('不確定時坦白說明'));
     expect(
-      host.generationRequests[0].prompt,
+      host.generationRequests[0].systemInstruction,
       isNot(contains('natural spoken English')),
     );
     expect(
-      host.generationRequests[1].prompt,
+      host.generationRequests[1].systemInstruction,
       contains('natural spoken English'),
     );
-    expect(host.generationRequests[1].prompt, isNot(contains('臺灣繁體中文')));
+    expect(
+      host.generationRequests[1].systemInstruction,
+      isNot(contains('臺灣繁體中文')),
+    );
 
     await chinese.cancel();
     await english.cancel();

@@ -89,6 +89,7 @@ final class LocalRuntimeDesktopHostApi: DesktopHostApi {
     let generationRequest = RuntimeGenerationRequest(
       generationId: generation.generationId,
       sessionId: generation.sessionId,
+      systemInstruction: generation.systemInstruction,
       prompt: generation.prompt,
       context: generation.context,
       history: generation.history.map {

@@ -281,7 +281,8 @@ final class _PigeonGenerationOperation {
         DesktopGenerationRequest(
           generationId: generationId.value,
           sessionId: request.conversationId.value,
-          prompt: context.instruction,
+          systemInstruction: context.systemInstruction,
+          prompt: context.turnInstruction,
           context: const <String>[],
           history: <DesktopConversationTurn>[
             for (final Turn turn in request.history)

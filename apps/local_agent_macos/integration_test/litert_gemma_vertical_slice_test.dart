@@ -119,7 +119,61 @@ void main() {
         reason: 'A warm turn must not pay the cold model-load cost again.',
       );
 
-      // Turn three is stopped mid-stream and must not grow afterwards.
+      // Turn three is asked in Taiwanese Mandarin, which is the language
+      // this agent is actually for and the one its prompt costs the most in.
+      // Han is charged several tokens a character where English is charged a
+      // fraction of one, so a prompt shape that is free to re-read in English
+      // is not free here — measured, the same profile re-sent inside every
+      // question costs 1.4s a turn in Chinese and nothing at all in English.
+      // An English-only slice cannot see that regression coming back.
+      final Stopwatch chinese = Stopwatch()..start();
+      await _submit(tester, '用一句話說說你是誰。');
+      await _pumpUntil(
+        tester,
+        'the Chinese turn to produce output',
+        () =>
+            _streamingText(tester).isNotEmpty ||
+            _terminalTexts(tester).length >= 3,
+        timeout: const Duration(minutes: 4),
+      );
+      final int chineseFirstTokenMillis = chinese.elapsedMilliseconds;
+      await _pumpUntil(
+        tester,
+        'the Chinese turn to reach a terminal state',
+        () => _terminalTexts(tester).length >= 3,
+        timeout: const Duration(minutes: 8),
+      );
+      expect(
+        _terminalTexts(tester)[2].trim(),
+        isNotEmpty,
+        reason: 'The Chinese turn must also produce real text.',
+      );
+
+      // And a second Chinese turn, because the first one is not the steady
+      // state. The agent's language is chosen from the question, so the turn
+      // that switches language also changes the system instruction, and a
+      // prefilled cache cannot be amended — that turn rebuilds the
+      // conversation and pays for the whole history again. This one measures
+      // what an ordinary Chinese turn costs once the switch is behind it.
+      final Stopwatch settled = Stopwatch()..start();
+      await _submit(tester, '再用一句話說說你會什麼。');
+      await _pumpUntil(
+        tester,
+        'the settled Chinese turn to produce output',
+        () =>
+            _streamingText(tester).isNotEmpty ||
+            _terminalTexts(tester).length >= 4,
+        timeout: const Duration(minutes: 4),
+      );
+      final int settledChineseFirstTokenMillis = settled.elapsedMilliseconds;
+      await _pumpUntil(
+        tester,
+        'the settled Chinese turn to reach a terminal state',
+        () => _terminalTexts(tester).length >= 4,
+        timeout: const Duration(minutes: 8),
+      );
+
+      // Turn five is stopped mid-stream and must not grow afterwards.
       await _submit(tester, 'Now count slowly from one to two hundred.');
       await _pumpUntil(
         tester,
@@ -153,6 +207,8 @@ void main() {
       final Map<String, Object?> measurements = <String, Object?>{
         'cold_first_token_millis': coldFirstTokenMillis,
         'warm_first_token_millis': warmFirstTokenMillis,
+        'chinese_after_language_switch_millis': chineseFirstTokenMillis,
+        'chinese_settled_first_token_millis': settledChineseFirstTokenMillis,
         'first_answer_characters': firstAnswer.trim().length,
         'terminal_turn_count': _terminalTexts(tester).length,
       };

@@ -168,6 +168,7 @@ final class DesktopGenerationRequest {
   const DesktopGenerationRequest({
     required this.generationId,
     required this.sessionId,
+    required this.systemInstruction,
     required this.prompt,
     required this.context,
     required this.temperature,
@@ -189,6 +190,12 @@ final class DesktopGenerationRequest {
 
   /// Session whose native context should be used.
   final String sessionId;
+
+  /// Who the agent is, identical for every turn of [sessionId].
+  ///
+  /// Held apart from [prompt] so the runtime can prefill it once instead of
+  /// re-reading it with every question.
+  final String systemInstruction;
 
   /// User prompt passed without logging.
   final String prompt;

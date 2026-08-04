@@ -82,6 +82,7 @@ final class PigeonDesktopHostService extends DesktopHostEventApi
         HostGenerationRequest(
           generationId: generation.generationId,
           sessionId: generation.sessionId,
+          systemInstruction: generation.systemInstruction,
           prompt: generation.prompt,
           context: generation.context,
           history: <HostConversationTurn>[

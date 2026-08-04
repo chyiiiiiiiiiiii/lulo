@@ -2,16 +2,37 @@ import 'agent_memory_selector.dart';
 import 'agent_profile.dart';
 
 /// The model-facing instruction and non-sensitive composition diagnostics.
+///
+/// The instruction arrives in two parts because they cost different amounts
+/// to say twice. [systemInstruction] is the same text for every turn of a
+/// conversation, so a runtime that can hold it in a prefilled KV cache pays
+/// for it once; [turnInstruction] is what this particular question dragged
+/// in with it and has to be read every time. Sending the whole thing as one
+/// user message re-prefills the stable half on every turn — measured on
+/// gemma-4-E4B at 1.7s to the first token against 0.3s when the profile is
+/// prefilled once.
 final class AgentPromptContext {
   /// Creates the result of composing one user turn.
   AgentPromptContext({
-    required this.instruction,
+    required this.systemInstruction,
+    required this.turnInstruction,
     required List<String> selectedMemoryIds,
     required this.profileCharacterCount,
   }) : selectedMemoryIds = List<String>.unmodifiable(selectedMemoryIds);
 
+  /// Who the agent is and how it answers: identical for every turn of a
+  /// conversation in one language, and never contains the question.
+  final String systemInstruction;
+
+  /// What this question brought with it: the memories it made relevant, and
+  /// the question itself, exactly once.
+  final String turnInstruction;
+
   /// Complete model input, including the current question exactly once.
-  final String instruction;
+  ///
+  /// The two halves joined, for a runtime with nowhere to put a system
+  /// instruction of its own.
+  String get instruction => '$systemInstruction\n\n$turnInstruction';
 
   /// IDs of memories that survived relevance and prompt-size bounds.
   final List<String> selectedMemoryIds;
@@ -89,6 +110,21 @@ AgentPromptContext composeAgentPrompt({
     limit: effectiveLimit,
   );
 
+  // Developer instructions are as stable as the personality they qualify, so
+  // they join it ahead of the memories rather than after them. That is a
+  // change of order from when everything was one block: the stable half has
+  // to end somewhere, and it has to end at the same place every turn.
+  profileText = _appendSectionWithin(
+    profileText,
+    title: chinese ? '開發者額外指示' : 'Additional instructions',
+    lines: profile.additionalInstructions,
+    limit: effectiveLimit,
+  );
+  final String systemInstruction = profileText;
+
+  // Memories are chosen against this question, so they belong to the turn —
+  // but they still spend from the one profile budget, appended to the stable
+  // text so the limit sees everything that will be sent.
   final AgentMemorySelection selection = selectAgentMemories(
     profile: profile,
     prompt: question,
@@ -108,16 +144,19 @@ AgentPromptContext composeAgentPrompt({
     selectedIds.add(memory.id);
   }
 
-  profileText = _appendSectionWithin(
-    profileText,
-    title: chinese ? '開發者額外指示' : 'Additional instructions',
-    lines: profile.additionalInstructions,
-    limit: effectiveLimit,
-  );
+  // Everything appended past the stable text, without the blank line that
+  // joins the two halves back together.
+  final String memories = profileText.length == systemInstruction.length
+      ? ''
+      : profileText.substring(systemInstruction.length + 2);
+  final String questionSection =
+      '${chinese ? '[問題]' : '[Question]'}\n$question';
 
   return AgentPromptContext(
-    instruction:
-        '$profileText\n\n${chinese ? '[問題]' : '[Question]'}\n$question',
+    systemInstruction: systemInstruction,
+    turnInstruction: memories.isEmpty
+        ? questionSection
+        : '$memories\n\n$questionSection',
     selectedMemoryIds: selectedIds,
     profileCharacterCount: profileText.length,
   );

@@ -30,6 +30,7 @@ void main() {
             const DesktopGenerationRequest(
               generationId: 'generation-1',
               sessionId: 'session-1',
+              systemInstruction: 'who the agent is',
               prompt: 'private prompt',
               context: <String>['private context'],
               history: <DesktopConversationTurn>[
@@ -108,6 +109,7 @@ void main() {
         HostGenerationRequest(
           generationId: 'generation-1',
           sessionId: 'session-1',
+          systemInstruction: 'who the agent is',
           prompt: 'private prompt',
           context: <String>['private context'],
           history: <HostConversationTurn>[

@@ -99,6 +99,7 @@ struct LiteRTLMSamplerFingerprint: Equatable, Sendable {
 
 struct LiteRTLMDriverGenerationRequest: Equatable, Sendable {
   let sessionId: String
+  let systemInstruction: String
   let prompt: String
   let history: [RuntimeConversationTurn]
   let extraContext: [String: [String]]
@@ -136,6 +137,9 @@ struct SystemLiteRTLMRuntimeDriverFactory:
 actor SystemLiteRTLMRuntimeDriver: LiteRTLMRuntimeDriving {
   private var engine: Engine?
   private var conversations: [String: Conversation] = [:]
+  /// The system message each live conversation was built with, so a profile
+  /// the user has since edited can be noticed rather than silently ignored.
+  private var systemInstructions: [String: String] = [:]
 
   func load(_ request: LiteRTLMDriverLoadRequest) async throws {
     try FileManager.default.createDirectory(
@@ -158,6 +162,7 @@ actor SystemLiteRTLMRuntimeDriver: LiteRTLMRuntimeDriving {
     try await engine.initialize()
     self.engine = engine
     conversations.removeAll()
+    systemInstructions.removeAll()
   }
 
   func generate(
@@ -169,9 +174,19 @@ actor SystemLiteRTLMRuntimeDriver: LiteRTLMRuntimeDriving {
     }
     try Task.checkCancellation()
     let conversation: Conversation
-    if let existing = conversations[request.sessionId] {
+    // A profile the user has edited is a different system message, and the
+    // KV cache holding the old one cannot be amended in place. Rebuilding
+    // the conversation is the only honest answer, and it costs one prefill
+    // of the history — which is what every turn used to cost anyway.
+    let stale =
+      systemInstructions[request.sessionId] != nil
+      && systemInstructions[request.sessionId] != request.systemInstruction
+    if let existing = conversations[request.sessionId], !stale {
       conversation = existing
     } else {
+      if stale {
+        try? conversations.removeValue(forKey: request.sessionId)?.cancel()
+      }
       let sampler = try SamplerConfig(
         topK: request.sampler.topK,
         topP: Float(request.sampler.topP),
@@ -184,6 +199,9 @@ actor SystemLiteRTLMRuntimeDriver: LiteRTLMRuntimeDriving {
       // memory and is left alone.
       conversation = try await engine.createConversation(
         with: ConversationConfig(
+          systemMessage: request.systemInstruction.isEmpty
+            ? nil
+            : Message(request.systemInstruction),
           initialMessages: request.history.map {
             Message($0.text, role: $0.role == .user ? .user : .model)
           },
@@ -191,6 +209,7 @@ actor SystemLiteRTLMRuntimeDriver: LiteRTLMRuntimeDriving {
         )
       )
       conversations[request.sessionId] = conversation
+      systemInstructions[request.sessionId] = request.systemInstruction
     }
     try Task.checkCancellation()
     let context: [String: Any] = request.extraContext
@@ -209,6 +228,7 @@ actor SystemLiteRTLMRuntimeDriver: LiteRTLMRuntimeDriving {
   }
 
   func resetSession(sessionId: String) async throws {
+    systemInstructions.removeValue(forKey: sessionId)
     if let conversation = conversations.removeValue(forKey: sessionId) {
       try conversation.cancel()
     }
@@ -219,6 +239,7 @@ actor SystemLiteRTLMRuntimeDriver: LiteRTLMRuntimeDriving {
       try? conversation.cancel()
     }
     conversations.removeAll()
+    systemInstructions.removeAll()
     engine = nil
   }
 }
@@ -780,6 +801,7 @@ public actor LiteRTLMRuntimeBackend: RuntimeBackend {
   /// script.
   static func historyFitting(
     _ history: [RuntimeConversationTurn],
+    systemInstruction: String,
     prompt: String,
     maxOutputTokens: Int,
     contextSize: Int64
@@ -787,6 +809,7 @@ public actor LiteRTLMRuntimeBackend: RuntimeBackend {
     let reserved =
       max(0, maxOutputTokens)
       + estimatedTokenCount(prompt)
+      + estimatedTokenCount(systemInstruction)
       + turnMarkerTokens
     let budget = max(0, Int(contextSize) - reserved)
     var kept: [RuntimeConversationTurn] = []
@@ -826,9 +849,11 @@ public actor LiteRTLMRuntimeBackend: RuntimeBackend {
     }
     return LiteRTLMDriverGenerationRequest(
       sessionId: generation.sessionId,
+      systemInstruction: generation.systemInstruction,
       prompt: generation.prompt,
       history: Self.historyFitting(
         generation.history,
+        systemInstruction: generation.systemInstruction,
         prompt: generation.prompt,
         maxOutputTokens: maxTokens,
         contextSize: contextSize

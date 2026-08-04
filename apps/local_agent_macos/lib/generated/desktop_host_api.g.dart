@@ -379,6 +379,7 @@ class HostGenerationRequest {
   HostGenerationRequest({
     required this.generationId,
     required this.sessionId,
+    required this.systemInstruction,
     required this.prompt,
     required this.context,
     required this.history,
@@ -391,6 +392,13 @@ class HostGenerationRequest {
   String generationId;
 
   String sessionId;
+
+  /// Who the agent is, identical for every turn of [sessionId].
+  ///
+  /// Kept apart from [prompt] so the runtime can prefill it once. Sent inside
+  /// every question instead, it was measured costing 1.4 seconds of extra
+  /// time to the first token on every turn.
+  String systemInstruction;
 
   String prompt;
 
@@ -415,6 +423,7 @@ class HostGenerationRequest {
     return <Object?>[
       generationId,
       sessionId,
+      systemInstruction,
       prompt,
       context,
       history,
@@ -434,13 +443,14 @@ class HostGenerationRequest {
     return HostGenerationRequest(
       generationId: result[0]! as String,
       sessionId: result[1]! as String,
-      prompt: result[2]! as String,
-      context: (result[3]! as List<Object?>).cast<String>(),
-      history: (result[4]! as List<Object?>).cast<HostConversationTurn>(),
-      temperature: result[5]! as double,
-      topP: result[6]! as double,
-      maxTokens: result[7]! as int,
-      seed: result[8]! as int,
+      systemInstruction: result[2]! as String,
+      prompt: result[3]! as String,
+      context: (result[4]! as List<Object?>).cast<String>(),
+      history: (result[5]! as List<Object?>).cast<HostConversationTurn>(),
+      temperature: result[6]! as double,
+      topP: result[7]! as double,
+      maxTokens: result[8]! as int,
+      seed: result[9]! as int,
     );
   }
 
@@ -455,6 +465,7 @@ class HostGenerationRequest {
     }
     return _deepEquals(generationId, other.generationId) &&
         _deepEquals(sessionId, other.sessionId) &&
+        _deepEquals(systemInstruction, other.systemInstruction) &&
         _deepEquals(prompt, other.prompt) &&
         _deepEquals(context, other.context) &&
         _deepEquals(history, other.history) &&

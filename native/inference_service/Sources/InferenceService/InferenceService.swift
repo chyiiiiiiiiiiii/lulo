@@ -95,6 +95,7 @@ public struct RuntimeGenerationRequest: Equatable, Sendable {
   public init(
     generationId: String,
     sessionId: String,
+    systemInstruction: String = "",
     prompt: String,
     context: [String],
     history: [RuntimeConversationTurn] = [],
@@ -105,6 +106,7 @@ public struct RuntimeGenerationRequest: Equatable, Sendable {
   ) {
     self.generationId = generationId
     self.sessionId = sessionId
+    self.systemInstruction = systemInstruction
     self.prompt = prompt
     self.context = context
     self.history = history
@@ -116,6 +118,13 @@ public struct RuntimeGenerationRequest: Equatable, Sendable {
 
   public let generationId: String
   public let sessionId: String
+
+  /// Who the agent is, identical for every turn of this session.
+  ///
+  /// Held in the conversation's own system message so it is prefilled once
+  /// rather than re-read with every question. Empty is allowed and means the
+  /// caller has nothing stable to say.
+  public let systemInstruction: String
   public let prompt: String
   public let context: [String]
 

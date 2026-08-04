@@ -79,6 +79,7 @@ void main() {
           const DesktopGenerationRequest(
             generationId: 'generation-integration',
             sessionId: 'session-integration',
+            systemInstruction: 'who the agent is',
             prompt: 'private prompt',
             context: <String>['private context'],
             temperature: 0.25,

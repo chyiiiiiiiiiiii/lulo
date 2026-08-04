@@ -141,6 +141,7 @@ final class LocalModelRuntimeTests: XCTestCase {
       [
         LiteRTLMDriverGenerationRequest(
           sessionId: "session-7",
+          systemInstruction: "",
           prompt: "Hello",
           history: [
             RuntimeConversationTurn(role: .user, text: "asked"),
@@ -190,6 +191,59 @@ final class LocalModelRuntimeTests: XCTestCase {
         kind: .completed
       ),
     ])
+  }
+
+  func testLiteRTLMBackendCarriesTheSystemInstructionToTheDriver()
+    async throws {
+    let harness = try await makeLiteRTLMBackendHarness()
+    defer { try? FileManager.default.removeItem(at: harness.modelDirectory) }
+
+    _ = try await harness.backend.startGeneration(
+      RuntimeGenerationRequest(
+        generationId: "generation-1",
+        sessionId: "session-7",
+        systemInstruction: "You are Lulo.",
+        prompt: "Hello",
+        context: [],
+        temperature: 0.25,
+        topP: 0.9,
+        maxTokens: 16,
+        seed: 7
+      )
+    )
+    await harness.driver.waitForGenerationCall()
+
+    let requests = await harness.driver.generationRequests
+    XCTAssertEqual(requests.first?.systemInstruction, "You are Lulo.")
+  }
+
+  func testSystemInstructionTakesRoomFromTheHistoryBudget() {
+    let history = [
+      RuntimeConversationTurn(role: .user, text: "0123456789"),
+      RuntimeConversationTurn(role: .assistant, text: "0123456789"),
+    ]
+    // Ten ASCII characters cost four tokens plus six turn markers, so two
+    // turns need twenty. A window with exactly that much free keeps both.
+    let roomForBoth = LiteRTLMRuntimeBackend.historyFitting(
+      history,
+      systemInstruction: "",
+      prompt: "",
+      maxOutputTokens: 0,
+      contextSize: 26
+    )
+    XCTAssertEqual(roomForBoth.count, 2)
+
+    // The system instruction is prefilled into the same window, so it has to
+    // be charged for; thirty bytes is ten tokens and one turn's worth of
+    // history has to go.
+    let roomForOne = LiteRTLMRuntimeBackend.historyFitting(
+      history,
+      systemInstruction: String(repeating: "a", count: 30),
+      prompt: "",
+      maxOutputTokens: 0,
+      contextSize: 26
+    )
+    XCTAssertEqual(roomForOne.count, 1)
   }
 
   func testLiteRTLMBackendDrainsCancelledGenerationBeforeTheNext()
@@ -4744,6 +4798,7 @@ final class LocalModelRuntimeTests: XCTestCase {
     )
     let seeded = LiteRTLMRuntimeBackend.historyFitting(
       history,
+      systemInstruction: "",
       prompt: prompt,
       maxOutputTokens: maxOutputTokens,
       contextSize: contextSize
@@ -4832,6 +4887,7 @@ final class LocalModelRuntimeTests: XCTestCase {
     }
     let kept = LiteRTLMRuntimeBackend.historyFitting(
       long,
+      systemInstruction: "",
       prompt: "接下來呢",
       maxOutputTokens: 512,
       contextSize: 4096
@@ -4851,6 +4907,7 @@ final class LocalModelRuntimeTests: XCTestCase {
     XCTAssertEqual(
       LiteRTLMRuntimeBackend.historyFitting(
         short,
+        systemInstruction: "",
         prompt: "and then?",
         maxOutputTokens: 512,
         contextSize: 4096
@@ -4909,6 +4966,7 @@ final class LocalModelRuntimeTests: XCTestCase {
     }
     let kept = LiteRTLMRuntimeBackend.historyFitting(
       english,
+      systemInstruction: "",
       prompt: "What did we say at the start?",
       maxOutputTokens: 512,
       contextSize: 4096
@@ -4931,6 +4989,7 @@ final class LocalModelRuntimeTests: XCTestCase {
     }
     let starved = LiteRTLMRuntimeBackend.historyFitting(
       history,
+      systemInstruction: "",
       prompt: "接下來呢",
       maxOutputTokens: 4000,
       contextSize: 4096
@@ -4944,6 +5003,7 @@ final class LocalModelRuntimeTests: XCTestCase {
     // than the fixed third ever allowed.
     let roomy = LiteRTLMRuntimeBackend.historyFitting(
       history,
+      systemInstruction: "",
       prompt: "接下來呢",
       maxOutputTokens: 128,
       contextSize: 4096
@@ -4961,6 +5021,7 @@ final class LocalModelRuntimeTests: XCTestCase {
     XCTAssertTrue(
       LiteRTLMRuntimeBackend.historyFitting(
         history,
+        systemInstruction: "",
         prompt: String(repeating: "字", count: 4096),
         maxOutputTokens: 128,
         contextSize: 4096
@@ -4985,6 +5046,7 @@ final class LocalModelRuntimeTests: XCTestCase {
     let contextSize: Int64 = 4096
     let kept = LiteRTLMRuntimeBackend.historyFitting(
       history,
+      systemInstruction: "",
       prompt: prompt,
       maxOutputTokens: maxOutputTokens,
       contextSize: contextSize

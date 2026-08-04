@@ -2,6 +2,73 @@ import 'package:agent_core/agent_core.dart';
 import 'package:test/test.dart';
 
 void main() {
+  test('the stable profile separates from what this turn contributes', () {
+    final AgentProfile profile = AgentProfile(
+      identity: const AgentIdentity(userName: 'Yii'),
+      additionalInstructions: <String>['回答時可以更有個性。'],
+      memories: <AgentMemory>[
+        AgentMemory(
+          id: 'lulo',
+          kind: AgentMemoryKind.project,
+          content: 'Yii 正在開發 Lulo。',
+          triggers: const <String>['Lulo'],
+        ),
+      ],
+    );
+
+    final AgentPromptContext result = composeAgentPrompt(
+      profile: profile,
+      prompt: 'Lulo 下一步怎麼做？',
+    );
+
+    // What the model is told about who it is does not change between turns,
+    // so it can be prefilled once instead of re-read with every question.
+    expect(result.systemInstruction, contains('[核心人格]'));
+    expect(result.systemInstruction, contains('[語音回答方式]'));
+    expect(result.systemInstruction, contains('[使用者偏好]'));
+    expect(result.systemInstruction, contains('[開發者額外指示]'));
+    expect(result.systemInstruction, isNot(contains('Lulo 下一步怎麼做？')));
+    expect(result.systemInstruction, isNot(contains('[問題]')));
+
+    // What this question drags in with it does change, and stays with it.
+    expect(result.turnInstruction, contains('[與這次問題相關的記憶]'));
+    expect(result.turnInstruction, contains('Yii 正在開發 Lulo。'));
+    expect(result.turnInstruction, endsWith('[問題]\nLulo 下一步怎麼做？'));
+
+    expect(
+      result.instruction,
+      '${result.systemInstruction}\n\n${result.turnInstruction}',
+    );
+  });
+
+  test('a turn with no relevant memory contributes only its question', () {
+    final AgentPromptContext result = composeAgentPrompt(
+      profile: AgentProfile.builtIn(),
+      prompt: '你好',
+    );
+
+    expect(result.turnInstruction, '[問題]\n你好');
+  });
+
+  test('the stable profile is identical for two questions in one language', () {
+    final AgentProfile profile = AgentProfile(
+      identity: const AgentIdentity(userName: 'Yii'),
+    );
+
+    final AgentPromptContext first = composeAgentPrompt(
+      profile: profile,
+      prompt: '今天天氣如何？',
+    );
+    final AgentPromptContext second = composeAgentPrompt(
+      profile: profile,
+      prompt: '那明天呢？',
+    );
+
+    // The whole point: an unchanged system instruction is a KV cache the
+    // next turn does not have to pay for again.
+    expect(second.systemInstruction, first.systemInstruction);
+  });
+
   test('Chinese context keeps sections ordered and asks the question once', () {
     final AgentProfile profile = AgentProfile(
       identity: const AgentIdentity(userName: 'Yii'),

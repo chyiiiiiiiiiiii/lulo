@@ -421,6 +421,12 @@ struct HostConversationTurn: Hashable {
 struct HostGenerationRequest: Hashable {
   var generationId: String
   var sessionId: String
+  /// Who the agent is, identical for every turn of [sessionId].
+  ///
+  /// Kept apart from [prompt] so the runtime can prefill it once. Sent inside
+  /// every question instead, it was measured costing 1.4 seconds of extra
+  /// time to the first token on every turn.
+  var systemInstruction: String
   var prompt: String
   var context: [String]
   /// What was already said, oldest first, excluding [prompt].
@@ -439,17 +445,19 @@ struct HostGenerationRequest: Hashable {
   static func fromList(_ pigeonVar_list: [Any?]) -> HostGenerationRequest? {
     let generationId = pigeonVar_list[0] as! String
     let sessionId = pigeonVar_list[1] as! String
-    let prompt = pigeonVar_list[2] as! String
-    let context = pigeonVar_list[3] as! [String]
-    let history = pigeonVar_list[4] as! [HostConversationTurn]
-    let temperature = pigeonVar_list[5] as! Double
-    let topP = pigeonVar_list[6] as! Double
-    let maxTokens = pigeonVar_list[7] as! Int64
-    let seed = pigeonVar_list[8] as! Int64
+    let systemInstruction = pigeonVar_list[2] as! String
+    let prompt = pigeonVar_list[3] as! String
+    let context = pigeonVar_list[4] as! [String]
+    let history = pigeonVar_list[5] as! [HostConversationTurn]
+    let temperature = pigeonVar_list[6] as! Double
+    let topP = pigeonVar_list[7] as! Double
+    let maxTokens = pigeonVar_list[8] as! Int64
+    let seed = pigeonVar_list[9] as! Int64
 
     return HostGenerationRequest(
       generationId: generationId,
       sessionId: sessionId,
+      systemInstruction: systemInstruction,
       prompt: prompt,
       context: context,
       history: history,
@@ -463,6 +471,7 @@ struct HostGenerationRequest: Hashable {
     return [
       generationId,
       sessionId,
+      systemInstruction,
       prompt,
       context,
       history,
@@ -476,13 +485,14 @@ struct HostGenerationRequest: Hashable {
     if Swift.type(of: lhs) != Swift.type(of: rhs) {
       return false
     }
-    return deepEqualsGeneratedDesktopHostApi(lhs.generationId, rhs.generationId) && deepEqualsGeneratedDesktopHostApi(lhs.sessionId, rhs.sessionId) && deepEqualsGeneratedDesktopHostApi(lhs.prompt, rhs.prompt) && deepEqualsGeneratedDesktopHostApi(lhs.context, rhs.context) && deepEqualsGeneratedDesktopHostApi(lhs.history, rhs.history) && deepEqualsGeneratedDesktopHostApi(lhs.temperature, rhs.temperature) && deepEqualsGeneratedDesktopHostApi(lhs.topP, rhs.topP) && deepEqualsGeneratedDesktopHostApi(lhs.maxTokens, rhs.maxTokens) && deepEqualsGeneratedDesktopHostApi(lhs.seed, rhs.seed)
+    return deepEqualsGeneratedDesktopHostApi(lhs.generationId, rhs.generationId) && deepEqualsGeneratedDesktopHostApi(lhs.sessionId, rhs.sessionId) && deepEqualsGeneratedDesktopHostApi(lhs.systemInstruction, rhs.systemInstruction) && deepEqualsGeneratedDesktopHostApi(lhs.prompt, rhs.prompt) && deepEqualsGeneratedDesktopHostApi(lhs.context, rhs.context) && deepEqualsGeneratedDesktopHostApi(lhs.history, rhs.history) && deepEqualsGeneratedDesktopHostApi(lhs.temperature, rhs.temperature) && deepEqualsGeneratedDesktopHostApi(lhs.topP, rhs.topP) && deepEqualsGeneratedDesktopHostApi(lhs.maxTokens, rhs.maxTokens) && deepEqualsGeneratedDesktopHostApi(lhs.seed, rhs.seed)
   }
 
   func hash(into hasher: inout Hasher) {
     hasher.combine("HostGenerationRequest")
     deepHashGeneratedDesktopHostApi(value: generationId, hasher: &hasher)
     deepHashGeneratedDesktopHostApi(value: sessionId, hasher: &hasher)
+    deepHashGeneratedDesktopHostApi(value: systemInstruction, hasher: &hasher)
     deepHashGeneratedDesktopHostApi(value: prompt, hasher: &hasher)
     deepHashGeneratedDesktopHostApi(value: context, hasher: &hasher)
     deepHashGeneratedDesktopHostApi(value: history, hasher: &hasher)
