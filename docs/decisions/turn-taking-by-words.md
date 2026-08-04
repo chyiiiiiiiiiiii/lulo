@@ -110,6 +110,16 @@ threshold, and reads as `unknown` — the ordinary 0.8s, unchanged.
 `testNoCorpusSentenceIsHeldOpenAfterItEnds` guards the expensive mistake in
 the other direction: no finished sentence is given the extra 0.6s.
 
+## The Dart settle cannot pre-empt the grace
+
+`_settleUtterance` is the 1.5s fallback for when the VAD declines, and a
+grace that the fallback fires through would not be a grace. It cannot: the
+Dart timer is armed from the last *partial*, and recognition trails the voice
+it heard, so the fallback fires at `lastVoice + lag + 1.5s` where the
+endpointer fires at `lastVoice + 1.4s`. With `lag ≥ 0` the fallback is always
+the later of the two. Shortening it, or lengthening `continuingGrace` past
+1.5s, would break that ordering.
+
 ## What this does not claim
 
 **`settled` will rarely fire in practice.** Apple's volatile results
