@@ -47,6 +47,12 @@ cost, quality, or the recogniser, the Chinese case is the one that decides.
 - Measurements that changed a decision belong in `docs/decisions/`, with the
   numbers and the machine they came from, so the next person argues with the
   evidence rather than re-running it.
+- **A green gate on the developer's machine is not a green gate.** Every CI
+  failure found so far was state that existed here and not there: a
+  gitignored package config, a profile file on one disk, a larger display. If
+  a check passes locally, ask what local state it is standing on before
+  believing it — and never write a test against something the repository does
+  not contain.
 
 ## Window architecture (measured — do not re-litigate without new measurements)
 

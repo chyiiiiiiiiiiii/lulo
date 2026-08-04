@@ -280,6 +280,24 @@ and the text corrects itself while the agent is already speaking. Gating on
 the confidence above makes the expensive path rare, which is why the meter
 went in first.
 
+## The gate was green here and red everywhere else
+
+Five steps had been failing in CI since before any of this work, and the
+whole of the gate passed locally throughout. The causes were the same shape
+every time — state that existed on this machine and not in the repository:
+
+| Step | Standing on |
+|---|---|
+| workspace analysis, voice eval analysis | `benchmarks/voice_eval` was outside the pub workspace, so its package config existed only where someone had once run `dart pub get` there — and it is gitignored |
+| Flutter tests | A check for Lulo, Flutter, Gemma and Qwen in the protected vocabulary, which lived only in a profile file on one developer's disk |
+| macOS window tests | A resize asserted at 900x700; AppKit constrains a titled window to its screen, and the runner's is smaller |
+| tone probe tests | numpy, installed here and nowhere in the workflow |
+
+All four are fixed at the source rather than in the workflow: the package
+joined the workspace, the vocabulary belongs to the product, the test asserts
+the invariant instead of a number, and the dependency is declared. The gate
+is green in CI now for the first time in the recent history of the branch.
+
 ## What was looked at and left alone
 
 **The synthesiser serialising behind playback.** `/speak` ends in
