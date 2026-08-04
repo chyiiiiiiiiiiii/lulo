@@ -28,7 +28,17 @@ jobs:
       # The other sidecars' tests are import-light on purpose and need
       # nothing installed; this one genuinely needs numpy, and without it the
       # gate reported a missing module as a failing measurement tool.
+      # Into a virtual environment, and onto PATH ahead of the runner's own
+      # python3, which is Homebrew's and refuses to be installed into (PEP
+      # 668). The gate invokes `python3` by name, so this is what it finds —
+      # and it is the same shape the sidecar READMEs tell a developer to set
+      # up locally.
       - name: Resolve sidecar dependencies
-        run: python3 -m pip install --disable-pip-version-check -r sidecars/tone_probe/requirements.txt
+        run: |
+          python3 -m venv "$RUNNER_TEMP/sidecar-venv"
+          "$RUNNER_TEMP/sidecar-venv/bin/python" -m pip install \
+            --disable-pip-version-check \
+            -r sidecars/tone_probe/requirements.txt
+          echo "$RUNNER_TEMP/sidecar-venv/bin" >> "$GITHUB_PATH"
       - name: Run quality gate
         run: dart tool/verify.dart
