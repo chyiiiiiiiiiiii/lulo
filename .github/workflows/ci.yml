@@ -24,5 +24,11 @@ jobs:
           cache: false
       - name: Resolve workspace
         run: flutter pub get
+      # The gate runs the tone-probe tests, and they measure real waveforms.
+      # The other sidecars' tests are import-light on purpose and need
+      # nothing installed; this one genuinely needs numpy, and without it the
+      # gate reported a missing module as a failing measurement tool.
+      - name: Resolve sidecar dependencies
+        run: python3 -m pip install --disable-pip-version-check -r sidecars/tone_probe/requirements.txt
       - name: Run quality gate
         run: dart tool/verify.dart

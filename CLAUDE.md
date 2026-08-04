@@ -54,6 +54,8 @@ Before the first step it deletes the previously built app bundle, because `flutt
 9. `dart test` in `benchmarks/voice_eval`
 10. `python3 -m unittest discover` in `sidecars/qwen_transcript_refiner`
 11. `python3 -m unittest discover` in `sidecars/smart_turn_shadow`
+11a. `python3 -m unittest discover` in `sidecars/tone_probe` — needs `numpy`; CI installs it from that directory's `requirements.txt`
+11b. `python3 -m unittest discover` in `sidecars/pronunciation`
 12. `flutter test test/features/presence/agent_presence_frame_metrics_test.dart`
 13. `flutter test` in `apps/local_agent_macos`
 14. `flutter test integration_test/conversation_vertical_slice_test.dart -d macos` — launches a real window; hangs if the **current Space is another app's full-screen Space** (switch to a normal desktop first)
