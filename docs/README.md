@@ -26,7 +26,7 @@ flowchart TD
     arch --> model["features/model.md<br/>catalog, download, load, swap"]
     voice -. "the text pipeline it coordinates" .-> conv["features/conversation.md<br/>turns, generation, drift storage"]
 
-    voice -. "who speaks" .-> set["features/settings.md<br/>five choices, and who acts on each"]
+    voice -. "who speaks" .-> set["features/settings.md<br/>six choices, and who acts on each"]
     conv -. "who answers and what it remembers" .-> profile["features/agent-profile.md<br/>personality, relevant structured memory"]
     pres -. "window behaviour" .-> set
     model -. "modelPath, the expensive one" .-> set
@@ -69,6 +69,7 @@ explanation.
 | Document | State |
 |---|---|
 | [decisions/voice-turn-latency.md](decisions/voice-turn-latency.md) | Written — read before tuning the endpointer or the prompt |
+| [decisions/turn-taking-by-words.md](decisions/turn-taking-by-words.md) | Adopted — read before changing either interruption or endpointing thresholds |
 | [decisions/full-duplex-voice.md](decisions/full-duplex-voice.md) | Written |
 | [decisions/taiwan-mandarin-voice-candidates.md](decisions/taiwan-mandarin-voice-candidates.md) | Measured, not yet adopted |
 | [decisions/no-dart-audio-engine.md](decisions/no-dart-audio-engine.md) | Written — read before adding any audio package |

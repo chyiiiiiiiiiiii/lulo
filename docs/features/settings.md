@@ -33,7 +33,7 @@ the user their preferences and failing to start costs them their agent.
 than requiring a whole valid object, so a field written by a later version, or
 one that has since been removed, does not stop the rest from being read.
 
-## The five, and who acts on them
+## The six, and who acts on them
 
 | Setting | Default | Read live by |
 |---|---|---|
@@ -42,6 +42,7 @@ one that has since been removed, does not stop the rest from being read.
 | `openConversationOnLaunch` | false | `_loadSettings`, once, after the stored choices arrive |
 | `modelPath` | `''` | `AppComposition.useModel` → `SwappableInferenceService.replaceWith`; and `main.dart` before the graph is built |
 | `ttsVoice` | `'ryan'` | `AppComposition.ttsVoice`, a `ValueNotifier` read by `PigeonVoiceService` at the moment of each `speak` |
+| `showVoiceEvidence` | false | `ConversationView`, which draws `VoiceTurnHud` under the conversation. An instrument for tuning turn-taking, not a feature — see [voice.md](voice.md) |
 
 The first two travel through `setWindowBehaviour` on the pigeon boundary;
 see [presence.md](presence.md) for what they mean to AppKit. `modelPath` is

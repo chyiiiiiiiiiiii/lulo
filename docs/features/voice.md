@@ -197,9 +197,19 @@ Three mechanisms decide that the user has stopped talking, in order of speed:
 
 | Mechanism | Where | Latency | Role |
 |---|---|---|---|
-| RMS VAD + `finalize(through: nil)` | Swift, `checkEndpoint` | ~0.8s of silence | The one that makes it feel like a reply |
+| RMS VAD + `finalize(through: nil)` | Swift, `checkEndpoint` | 0.55–1.4s of silence | The one that makes it feel like a reply |
 | Dart settle | `_settleUtterance` | 1.5s of an unchanged partial | Fallback when the VAD declines |
 | The transcriber's own endpointing | SpeechAnalyzer | several seconds | Last resort |
+
+How much silence the first of those needs is not a constant. `TurnCompletion`
+reads the volatile transcript and moves it: a sentence that stops on a
+connective (然後, 因為, 的話, 我想問的是, …) waits 1.4s, a visibly finished
+question of four syllables or more (ends on 嗎/呢/嘛 or on terminal
+punctuation) waits 0.55s, and anything else waits the ordinary 0.8s. The
+corpus's two mid-utterance pauses run to 1.02s and 1.10s and are past the
+0.8s that submits a turn; nothing in the audio separates them from a real
+ending, and Smart Turn v3.2 was measured and cannot either. See
+[../decisions/turn-taking-by-words.md](../decisions/turn-taking-by-words.md).
 
 ### The VAD: RMS over an adaptive floor
 
@@ -441,8 +451,21 @@ if (_speaking || _speechRequested) { _voice.stopSpeaking(); }
 if (!_conversation.canSubmit) { _stopRequestedForActive = true; _conversation.stop(); }
 ```
 
-It fires from a non-empty `PartialTranscript` — the user has started talking,
-so the agent stops, the way a friend does. Two subtleties:
+It fires from a `PartialTranscript` that `FloorControl` says takes the floor —
+the user has started talking, so the agent stops, the way a friend does.
+
+**What counts as taking it** is decided by the words, not their length.
+`FloorControl.classify` sorts the utterance into `backchannel` (嗯嗯, 對對對,
+OK, 原來如此 — never interrupts, at any length), `correction` (不對, 等等, 停,
+wait, stop — always interrupts, at any length), or `substance`, which needs
+three syllables, counting a whole run of Latin letters as one. A length
+threshold got both ends wrong at once: 「對對對對對」 is five characters of
+agreement and used to end the answer, and 「不對」 is two characters that used
+to be ignored. See
+[../decisions/turn-taking-by-words.md](../decisions/turn-taking-by-words.md).
+
+While nothing is being said, anything at all takes the floor: there is
+nothing to take away. Two further subtleties:
 
 - **`_speechRequested`**, not just `_speaking`. `SpeakingStarted` takes a whole
   pigeon round trip to come back, and the user can start talking inside that
@@ -654,6 +677,41 @@ holds no transcript and no answer text, only lengths and instants, so the
 line is safe in a log that keeps private conversations out of it. It
 describes a turn **once** — only the answer's first chunk is a latency, and
 every chunk after it is the answer merely continuing.
+
+## Watching it decide, without a console
+
+Every ruling above is a judgement call with a reason, and a rule nobody can
+see fire is indistinguishable from a bug. **Settings › Taking turns › Show
+why it took the floor** puts `VoiceTurnHud` under the conversation, fed by
+`VoiceTurnLog`:
+
+| Label | What it means |
+|---|---|
+| `asked` | An utterance was submitted, with the recogniser's weakest-span score |
+| `ignored` | Something was heard and deliberately not acted on, and why |
+| `cut in` | The user took the floor back, and on what grounds |
+| `cost` | What that turn cost, the same breakdown as the `Lulo latency` line |
+
+The log is kept whether or not the panel is showing — a user who switches it
+on has just watched the thing they want explained — and is bounded at forty
+notes, because a partial arrives every few hundred milliseconds for as long
+as the microphone is open.
+
+## When it says it may have misheard
+
+The user turn carries a small `Not sure it heard this right` caption when
+`SpeechTranscriber` scored its weakest span below `HeardConfidence.trusted`
+(0.85). Over the corpus, everything heard correctly scored 0.88–1.00 and
+every error 0.78 or below; the threshold sits in that gap. The score reaches
+Dart on `FinalTranscript.confidence`, is joined to the refiner's selection in
+`_refineFinalUtterance`, and rides on `Turn.voiceInput.heardConfidence`.
+
+Deliberately **not persisted**: a caveat is worth reading in the moment and
+would otherwise cost a schema migration for a mark nobody revisits, so
+restored turns carry null and show nothing. Marking is all this does —
+repairing a misheard sentence against the full model was measured at
+0.7–1.0s warm and is a separate decision that still needs its own evidence.
+See [../decisions/voice-turn-latency.md](../decisions/voice-turn-latency.md).
 
 The three stages are the refinement (`FinalTranscript` → `submit`), the
 model's first token, and how much answer had to exist before any of it was
