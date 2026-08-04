@@ -383,6 +383,64 @@ void main() {
     );
   });
 
+  test(
+    'a long acknowledgement while the agent speaks is not an interruption',
+    () async {
+      // Length was the only signal until FloorControl: four characters took
+      // the floor, so "對對對對對" — five characters of pure agreement — ended
+      // the answer, while "不對" sat two characters under the bar and could
+      // not stop it. Both are now decided by what the words are.
+      await controller.enable();
+      voice.hear(const FinalTranscript('Tell me a long story.'));
+      await pump();
+      final Generation generation = await generationStarted();
+      inference.emit(
+        GenerationDelta(
+          generationId: generation.id,
+          delta: 'Once upon a time, at very great length indeed. ',
+        ),
+      );
+      await pump();
+      await pump();
+      expect(voice.spoken, isNotEmpty);
+
+      voice.hear(const PartialTranscript('對對對對對'));
+      await pump();
+
+      expect(
+        inference.cancellations,
+        isNot(contains(generation.id)),
+        reason: 'Five characters of agreement is still agreement.',
+      );
+      expect(voice.calls, isNot(contains('stopSpeaking')));
+    },
+  );
+
+  test('a short correction stops an agent that is speaking', () async {
+    await controller.enable();
+    voice.hear(const FinalTranscript('Tell me a long story.'));
+    await pump();
+    final Generation generation = await generationStarted();
+    inference.emit(
+      GenerationDelta(
+        generationId: generation.id,
+        delta: 'Once upon a time, at very great length indeed. ',
+      ),
+    );
+    await pump();
+    await pump();
+    expect(voice.spoken, isNotEmpty);
+
+    voice.hear(const PartialTranscript('不對'));
+    await pump();
+
+    expect(
+      inference.cancellations,
+      contains(generation.id),
+      reason: 'A correction must land as fast as it is spoken.',
+    );
+  });
+
   test('an interruption that asks nothing resumes the answer', () async {
     // 53 interruptions in one real session stopped the speech; 5 of them
     // replaced the question. The other 48 left the answer written on screen

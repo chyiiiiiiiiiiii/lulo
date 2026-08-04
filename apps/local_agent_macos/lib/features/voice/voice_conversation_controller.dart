@@ -112,20 +112,6 @@ final class VoiceConversationController extends ChangeNotifier {
   /// cooldown branch instead (loudly — they fail, not silently pass).
   static const Duration _postFinalCooldown = Duration(milliseconds: 500);
 
-  /// How much the user must say to take the floor back mid-sentence.
-  ///
-  /// Applies only while the agent is actually speaking. Until this existed,
-  /// one character was enough: "OK" ended an answer 571 characters into
-  /// being read aloud, and a single misheard syllable could do the same. "OK"
-  /// and "嗯嗯" are how people show they are still listening, not requests to
-  /// stop. Four characters is roughly a second of Chinese speech, which is
-  /// about where acknowledging stops and interrupting starts.
-  ///
-  /// While nothing is being said, one character still takes the floor —
-  /// there is nothing to take away, and a correction like "不對" must land
-  /// as fast as it is spoken.
-  static const int _charactersToInterruptSpeech = 4;
-
   /// How long an interrupted sentence waits to see if it was replaced.
   ///
   /// Longer than [_utteranceSettleDelay] on purpose: if what the user said
@@ -932,14 +918,10 @@ final class VoiceConversationController extends ChangeNotifier {
 
   /// Whether [text] is enough to take the floor from the agent.
   ///
-  /// The threshold exists only for speech in progress; see
-  /// [_charactersToInterruptSpeech].
-  bool _takesTheFloor(String text) {
-    if (!_deliveringAnswer) {
-      return true;
-    }
-    return text.trim().runes.length >= _charactersToInterruptSpeech;
-  }
+  /// Decided by what the words are rather than how many of them there are;
+  /// see [FloorControl].
+  bool _takesTheFloor(String text) =>
+      FloorControl.takesTheFloor(text, agentIsSpeaking: _deliveringAnswer);
 
   /// Whether an answer is in the middle of being delivered aloud.
   ///
