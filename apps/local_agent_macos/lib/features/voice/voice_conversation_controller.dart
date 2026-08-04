@@ -7,6 +7,7 @@ import '../conversation/conversation_view_model.dart';
 import '../conversation/token_batcher.dart';
 import '../transcript_refiner/transcript_shadow_coordinator.dart';
 import 'voice_service.dart';
+import 'voice_turn_latency.dart';
 
 /// What the agent is doing, as far as the user should be able to tell.
 ///
@@ -101,6 +102,10 @@ final class VoiceConversationController extends ChangeNotifier {
   /// A partial inside [_postFinalCooldown] of the final is that breath,
   /// not an interruption — it must not cancel the answer just asked for.
   DateTime? _lastFinalAt;
+
+  /// What this turn has cost so far, from the settled transcript to the
+  /// first sound of its answer. Null until a transcript settles.
+  VoiceTurnLatency? _latency;
 
   /// Kept under the shared test clock's 600ms step: widening this past
   /// that step flips the pre-existing barge-in tests into exercising the
@@ -429,6 +434,9 @@ final class VoiceConversationController extends ChangeNotifier {
         }
       case FinalTranscript(:final String text):
         _lastFinalAt = _now();
+        // The transcript exists, so the wait the user is about to sit
+        // through starts here rather than where the sentence did.
+        _latency = VoiceTurnLatency(heardAt: _lastFinalAt!);
         _pendingSettle?.cancel();
         _pendingSettle = null;
         _settleAttempts = 0;
@@ -529,6 +537,9 @@ final class VoiceConversationController extends ChangeNotifier {
       return;
     }
     final String text = active.text;
+    if (text.isNotEmpty) {
+      _latency?.markFirstToken(_now());
+    }
     if (text.length <= _dispatchedOfActive) {
       return;
     }
@@ -676,6 +687,13 @@ final class VoiceConversationController extends ChangeNotifier {
       return;
     }
     debugPrint('Lulo speak: dispatching ${spoken.length} chars');
+    final String? measured = _latency?.describeFirstSpeech(
+      _now(),
+      characters: spoken.length,
+    );
+    if (measured != null) {
+      debugPrint(measured);
+    }
     _activeLang ??= _cjk.hasMatch(decidedBy ?? text) ? 'zh' : 'en';
     _speechRequested = true;
     // Held so an interruption can put it back. The dispatch counters record
@@ -820,6 +838,7 @@ final class VoiceConversationController extends ChangeNotifier {
       if (_speaking || _speechRequested) {
         unawaited(_voice.stopSpeaking());
       }
+      _latency?.markSubmitted(_now());
       unawaited(
         _conversation.submit(
           refinement.selectedTranscript,
@@ -905,6 +924,7 @@ final class VoiceConversationController extends ChangeNotifier {
     }
     _pendingUtterance = null;
     _cancelPendingResume();
+    _latency?.markSubmitted(_now());
     unawaited(
       _conversation.submit(pending.selectedTranscript, voiceInput: pending),
     );

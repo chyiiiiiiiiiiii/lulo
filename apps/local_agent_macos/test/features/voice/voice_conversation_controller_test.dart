@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:agent_core/agent_core.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:local_agent_macos/app/fake_runtime.dart';
 import 'package:local_agent_macos/features/conversation/conversation_repository.dart';
@@ -167,6 +168,57 @@ void main() {
       ),
     );
   });
+
+  test(
+    'one turn reports its latency once, at the first thing spoken',
+    () async {
+      // The formatting is unit-tested; what this pins is the wiring — that the
+      // three marks are taken at the three places a turn actually passes
+      // through, and that an answer arriving in two chunks still describes one
+      // latency rather than two.
+      final List<String> logged = <String>[];
+      final DebugPrintCallback original = debugPrint;
+      debugPrint = (String? message, {int? wrapWidth}) {
+        if (message != null) {
+          logged.add(message);
+        }
+      };
+      addTearDown(() => debugPrint = original);
+
+      await controller.enable();
+      voice.hear(const FinalTranscript('今天天氣如何？'));
+      await pump();
+      // Streamed a sentence at a time, the way the model delivers it, so the
+      // answer really is dispatched to the voice more than once.
+      final Generation generation = await generationStarted();
+      inference.emit(
+        GenerationDelta(generationId: generation.id, delta: '今天天氣不錯。'),
+      );
+      await pump();
+      inference.emit(
+        GenerationDelta(generationId: generation.id, delta: '要不要出門走走？'),
+      );
+      inference.emit(GenerationCompleted(generation.id));
+      await pump();
+      await pump();
+
+      final List<String> measured = logged
+          .where((String line) => line.startsWith('Lulo latency:'))
+          .toList();
+      expect(measured, hasLength(1));
+      expect(
+        measured.single,
+        matches(
+          RegExp(
+            r'^Lulo latency: refine \d+\.\d\ds \+ think \d+\.\d\ds '
+            r'\+ write \d+\.\d\ds = \d+\.\d\ds '
+            r'to the first \d+ characters spoken$',
+          ),
+        ),
+      );
+      expect(voice.spoken.length, greaterThan(1));
+    },
+  );
 
   test('a completed answer is spoken aloud', () async {
     await controller.enable();
