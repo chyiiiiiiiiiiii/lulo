@@ -1,7 +1,9 @@
 # Where the wait between speaking and being answered actually goes
 
-Status: measured; the prompt split is adopted, the endpointer is not moved.
-2026-08-04. Measured on an M1 Pro (32 GB) against `gemma-4-E4B-it` on the
+Status: measured; the prompt split is adopted. The endpointer's *base* is
+still 0.8s, but it is no longer the only number — see
+[turn-taking-by-words.md](turn-taking-by-words.md), which builds on the pause
+measurements below. 2026-08-04. Measured on an M1 Pro (32 GB) against `gemma-4-E4B-it` on the
 GPU backend and the resident Qwen3-TTS sidecar.
 
 ## The complaint, made falsifiable
@@ -109,6 +111,13 @@ Mid-sentence pauses run *past* the 0.8s that submits the turn. The
 distributions overlap, so no threshold on silence alone separates them —
 which is what `needsContinuationGrace` and its hardcoded list of
 「等一下」「我想問的是」「我想說的是」 have been quietly patching.
+
+> **Superseded in part, 2026-08-05.** That hardcoded list is now
+> `TurnCompletion`, a lexicon that moves the required silence to 1.4s after a
+> connective and 0.55s after a visibly finished question. The conclusion in
+> this section is unchanged and is what made it necessary: *no threshold on
+> silence alone separates them*, so the separation has to come from the
+> words. See [turn-taking-by-words.md](turn-taking-by-words.md).
 
 ### Smart Turn v3.2 does not separate them either
 
@@ -329,7 +338,27 @@ into a babble loop; the values between are untested. The failure mode is
 intermittent and destroys the answer, so it needs a stability run rather than
 a guess, and it lives in another repository.
 
-**A warm first turn.** Turn one costs 1.87s where later turns cost 0.29s,
-because the system message and the restored history are prefilled then. The
-model is already loaded at startup rather than on first prompt; prefilling
-the conversation as well would move that cost off the first answer.
+**A warm first turn, and preemptive generation.** Turn one costs 1.87s where
+later turns cost 0.29s, because the system message and the restored history
+are prefilled then. The model is already loaded at startup rather than on
+first prompt; prefilling the conversation as well would move that cost off
+the first answer. Separately, the largest item still in the budget is the
+0.8s the endpointer waits, and the standard remedy — LiveKit enables it by
+default — is to start generating from the transcript before the turn is
+confirmed and throw the answer away if the final differs. Locally that
+wasted work costs nothing but electricity, so it is more attractive here
+than in the cloud.
+
+Both are blocked by the same thing, and it is worth writing down so neither
+is attempted again from scratch. **LiteRT-LM's conversation KV cache only
+extends by appending.** `createConversation` stores the system message and
+the initial messages; the prefill happens on the first `sendMessageStream`.
+So warming it means sending a message, and that message stays in the cache.
+And a speculative message that turns out to be wrong cannot be rolled back —
+it has already poisoned the conversation. The one escape, a scratch
+conversation, re-prefills the system message and the whole history, which is
+exactly the 1.6s being saved: the trade is negative in both directions.
+
+What would unblock them is a prefill-only call, or a way to fork a
+conversation cheaply. Until one of those exists, neither idea is a matter of
+effort.
