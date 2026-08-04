@@ -1,0 +1,440 @@
+{
+  "whisper": "mlx-community/whisper-large-v3-turbo",
+  "runs": [
+    {
+      "label": "voxcpm2-fast",
+      "backend": "mlx",
+      "repo": "mlx-community/VoxCPM2-4bit",
+      "pinyinControl": false,
+      "realTimeFactor": 1.088,
+      "audioSeconds": 70.41,
+      "overall": {
+        "total": 37,
+        "heard": 33,
+        "lost": 4,
+        "intelligibility": 0.8918918918918919,
+        "lostIds": [
+          "ctl-tone1",
+          "ctl-tone2",
+          "tech-bushu",
+          "tech-bianyi"
+        ]
+      },
+      "byCategory": {
+        "control": {
+          "total": 4,
+          "heard": 2,
+          "lost": 2,
+          "intelligibility": 0.5,
+          "lostIds": [
+            "ctl-tone1",
+            "ctl-tone2"
+          ]
+        },
+        "taiwan-reading": {
+          "total": 9,
+          "heard": 9,
+          "lost": 0,
+          "intelligibility": 1.0,
+          "lostIds": []
+        },
+        "polyphone": {
+          "total": 10,
+          "heard": 10,
+          "lost": 0,
+          "intelligibility": 1.0,
+          "lostIds": []
+        },
+        "sandhi": {
+          "total": 6,
+          "heard": 6,
+          "lost": 0,
+          "intelligibility": 1.0,
+          "lostIds": []
+        },
+        "tech-noun": {
+          "total": 8,
+          "heard": 6,
+          "lost": 2,
+          "intelligibility": 0.75,
+          "lostIds": [
+            "tech-bushu",
+            "tech-bianyi"
+          ]
+        }
+      },
+      "probes": [
+        {
+          "id": "ctl-tone1",
+          "category": "control",
+          "word": "媽媽",
+          "expected": "ma1",
+          "transcript": "这个词是爸爸",
+          "heard": false,
+          "heardInstead": "爸爸",
+          "seconds": 1.28
+        },
+        {
+          "id": "ctl-tone2",
+          "category": "control",
+          "word": "檸檬",
+          "expected": "ning2",
+          "transcript": "是是你们嘛",
+          "heard": false,
+          "heardInstead": "是是你們嘛",
+          "seconds": 7.36
+        },
+        {
+          "id": "ctl-tone3",
+          "category": "control",
+          "word": "水果",
+          "expected": "shui3",
+          "transcript": "这个词是水果",
+          "heard": true,
+          "heardInstead": null,
+          "seconds": 2.08
+        },
+        {
+          "id": "ctl-tone4",
+          "category": "control",
+          "word": "電話",
+          "expected": "dian4",
+          "transcript": "这个词是电话",
+          "heard": true,
+          "heardInstead": null,
+          "seconds": 1.28
+        },
+        {
+          "id": "tw-qiye",
+          "category": "taiwan-reading",
+          "word": "企業",
+          "expected": "qi4",
+          "transcript": "这个词是企业",
+          "heard": true,
+          "heardInstead": null,
+          "seconds": 1.76
+        },
+        {
+          "id": "tw-weixian",
+          "category": "taiwan-reading",
+          "word": "危險",
+          "expected": "wei2",
+          "transcript": "这个词是危险",
+          "heard": true,
+          "heardInstead": null,
+          "seconds": 1.92
+        },
+        {
+          "id": "tw-xiedai",
+          "category": "taiwan-reading",
+          "word": "攜帶",
+          "expected": "xi1",
+          "transcript": "这个词是携带",
+          "heard": true,
+          "heardInstead": null,
+          "seconds": 1.76
+        },
+        {
+          "id": "tw-yeti",
+          "category": "taiwan-reading",
+          "word": "液體",
+          "expected": "yi4",
+          "transcript": "这个词是液体",
+          "heard": true,
+          "heardInstead": null,
+          "seconds": 2.24
+        },
+        {
+          "id": "tw-puguang",
+          "category": "taiwan-reading",
+          "word": "曝光",
+          "expected": "pu4",
+          "transcript": "这个词是曝光",
+          "heard": true,
+          "heardInstead": null,
+          "seconds": 1.76
+        },
+        {
+          "id": "tw-lese",
+          "category": "taiwan-reading",
+          "word": "垃圾",
+          "expected": "le4",
+          "transcript": "這個詞是垃圾",
+          "heard": true,
+          "heardInstead": null,
+          "seconds": 1.92
+        },
+        {
+          "id": "tw-xingqi",
+          "category": "taiwan-reading",
+          "word": "星期",
+          "expected": "qi2",
+          "transcript": "这个词是星期",
+          "heard": true,
+          "heardInstead": null,
+          "seconds": 1.44
+        },
+        {
+          "id": "tw-pinzhi",
+          "category": "taiwan-reading",
+          "word": "品質",
+          "expected": "zhi2",
+          "transcript": "这个词是品质",
+          "heard": true,
+          "heardInstead": null,
+          "seconds": 2.24
+        },
+        {
+          "id": "tw-woniu",
+          "category": "taiwan-reading",
+          "word": "蝸牛",
+          "expected": "gua1",
+          "transcript": "這個詞是蜗牛",
+          "heard": true,
+          "heardInstead": null,
+          "seconds": 2.4
+        },
+        {
+          "id": "poly-yinhang",
+          "category": "polyphone",
+          "word": "銀行",
+          "expected": "hang2",
+          "transcript": "这个词是银行。",
+          "heard": true,
+          "heardInstead": null,
+          "seconds": 1.6
+        },
+        {
+          "id": "poly-xingdong",
+          "category": "polyphone",
+          "word": "行動",
+          "expected": "xing2",
+          "transcript": "这个词是行动",
+          "heard": true,
+          "heardInstead": null,
+          "seconds": 1.44
+        },
+        {
+          "id": "poly-yinyue",
+          "category": "polyphone",
+          "word": "音樂",
+          "expected": "yue4",
+          "transcript": "这个词是音乐。",
+          "heard": true,
+          "heardInstead": null,
+          "seconds": 1.92
+        },
+        {
+          "id": "poly-kuaile",
+          "category": "polyphone",
+          "word": "快樂",
+          "expected": "le4",
+          "transcript": "这个词是快乐",
+          "heard": true,
+          "heardInstead": null,
+          "seconds": 1.92
+        },
+        {
+          "id": "poly-zhongyao",
+          "category": "polyphone",
+          "word": "重要",
+          "expected": "zhong4",
+          "transcript": "这个词是重要",
+          "heard": true,
+          "heardInstead": null,
+          "seconds": 1.6
+        },
+        {
+          "id": "poly-chongfu",
+          "category": "polyphone",
+          "word": "重複",
+          "expected": "chong2",
+          "transcript": "这个词是重复",
+          "heard": true,
+          "heardInstead": null,
+          "seconds": 1.12
+        },
+        {
+          "id": "poly-changdu",
+          "category": "polyphone",
+          "word": "長度",
+          "expected": "chang2",
+          "transcript": "这个词是长度",
+          "heard": true,
+          "heardInstead": null,
+          "seconds": 2.08
+        },
+        {
+          "id": "poly-chengzhang",
+          "category": "polyphone",
+          "word": "成長",
+          "expected": "zhang3",
+          "transcript": "这个词是成长",
+          "heard": true,
+          "heardInstead": null,
+          "seconds": 1.76
+        },
+        {
+          "id": "poly-weile",
+          "category": "polyphone",
+          "word": "為了",
+          "expected": "wei4",
+          "transcript": "这个词是为了",
+          "heard": true,
+          "heardInstead": null,
+          "seconds": 1.6
+        },
+        {
+          "id": "poly-renwei",
+          "category": "polyphone",
+          "word": "認為",
+          "expected": "wei2",
+          "transcript": "这个词是认为",
+          "heard": true,
+          "heardInstead": null,
+          "seconds": 1.28
+        },
+        {
+          "id": "sandhi-yige",
+          "category": "sandhi",
+          "word": "一個",
+          "expected": "yi2",
+          "transcript": "這個詞是一個",
+          "heard": true,
+          "heardInstead": null,
+          "seconds": 1.92
+        },
+        {
+          "id": "sandhi-yiqi",
+          "category": "sandhi",
+          "word": "一起",
+          "expected": "yi4",
+          "transcript": "這個詞是一起",
+          "heard": true,
+          "heardInstead": null,
+          "seconds": 1.6
+        },
+        {
+          "id": "sandhi-yitian",
+          "category": "sandhi",
+          "word": "一天",
+          "expected": "yi4",
+          "transcript": "这个词是一天",
+          "heard": true,
+          "heardInstead": null,
+          "seconds": 1.12
+        },
+        {
+          "id": "sandhi-budui",
+          "category": "sandhi",
+          "word": "不對",
+          "expected": "bu2",
+          "transcript": "这个词是不对",
+          "heard": true,
+          "heardInstead": null,
+          "seconds": 1.12
+        },
+        {
+          "id": "sandhi-buhao",
+          "category": "sandhi",
+          "word": "不好",
+          "expected": "bu4",
+          "transcript": "这个字不好",
+          "heard": true,
+          "heardInstead": null,
+          "seconds": 1.12
+        },
+        {
+          "id": "sandhi-nihao",
+          "category": "sandhi",
+          "word": "你好",
+          "expected": "ni2",
+          "transcript": "這個詞是你好",
+          "heard": true,
+          "heardInstead": null,
+          "seconds": 1.12
+        },
+        {
+          "id": "tech-moxing",
+          "category": "tech-noun",
+          "word": "模型",
+          "expected": "mo2",
+          "transcript": "这个词是模型",
+          "heard": true,
+          "heardInstead": null,
+          "seconds": 1.44
+        },
+        {
+          "id": "tech-kuangjia",
+          "category": "tech-noun",
+          "word": "框架",
+          "expected": "kuang4",
+          "transcript": "这个词是框架",
+          "heard": true,
+          "heardInstead": null,
+          "seconds": 1.28
+        },
+        {
+          "id": "tech-bushu",
+          "category": "tech-noun",
+          "word": "部署",
+          "expected": "shu3",
+          "transcript": "这则是不熟",
+          "heard": false,
+          "heardInstead": "這則是不熟",
+          "seconds": 1.76
+        },
+        {
+          "id": "tech-bianyi",
+          "category": "tech-noun",
+          "word": "編譯",
+          "expected": "yi4",
+          "transcript": "这个词是偏译",
+          "heard": false,
+          "heardInstead": "偏譯",
+          "seconds": 2.4
+        },
+        {
+          "id": "tech-yansuanfa",
+          "category": "tech-noun",
+          "word": "演算法",
+          "expected": "yan3",
+          "transcript": "这个词是演算法",
+          "heard": true,
+          "heardInstead": null,
+          "seconds": 1.92
+        },
+        {
+          "id": "tech-shuju",
+          "category": "tech-noun",
+          "word": "數據",
+          "expected": "shu4",
+          "transcript": "這個詞是數據",
+          "heard": true,
+          "heardInstead": null,
+          "seconds": 3.36
+        },
+        {
+          "id": "tech-zhixing",
+          "category": "tech-noun",
+          "word": "執行",
+          "expected": "xing2",
+          "transcript": "这个词是执行",
+          "heard": true,
+          "heardInstead": null,
+          "seconds": 2.72
+        },
+        {
+          "id": "tech-jiegou",
+          "category": "tech-noun",
+          "word": "結構",
+          "expected": "jie2",
+          "transcript": "这个词是结构",
+          "heard": true,
+          "heardInstead": null,
+          "seconds": 1.76
+        }
+      ]
+    }
+  ]
+}

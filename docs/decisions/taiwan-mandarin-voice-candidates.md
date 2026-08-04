@@ -200,11 +200,13 @@ future model no longer needs it.
 
 ### What the evidence does support
 
-**Listen before deciding anything else.** Thirty A/B word pairs and sixteen
-sentence pairs are waiting in `~/Desktop/lulo-voice-ab`. Naturalness,
-pacing, and whether it still sounds like the same person are in none of
-these numbers, and they are most of what the complaint was about. The
-measurements have gone as far as they usefully can without an ear.
+**Listen before deciding anything else.** Naturalness, pacing, and whether
+it still sounds like the same person are in none of these numbers, and they
+are most of what the complaint was about. The measurements have gone as far
+as they usefully can without an ear. Thirty A/B word pairs and sixteen
+sentence pairs were rendered for that and have since been deleted;
+`~/dev/lulo-tts/render_probes.py` and `sentence_run.py` make them again
+while the candidate models stay cached.
 
 The respelling table makes a swap less urgent rather than unnecessary: it
 fixes the words it was measured against, and does nothing for the next word
@@ -220,17 +222,29 @@ sentence needs a bound before it is allowed to speak to a user.
   not whether it was said the Taiwan way. 企業 said as qǐ yè is still 企業
   to Whisper. The tone classifier in `sidecars/tone_probe` exists for that
   and is not yet trustworthy enough to quote — its controls scored 2/4.
-- **Nobody has listened.** Thirty A/B pairs are in `~/Desktop/lulo-voice-ab`,
-  named `word__candidate.wav`. Naturalness, pacing and whether it still
-  sounds like the same person are not in any of these numbers.
-- **Taiwanese Hokkien is rendered but unjudged.** VoxCPM2 lists nine
-  Chinese dialects including 閩南話, and four Taiwanese sentences written
-  in Han characters are in `~/Desktop/lulo-voice-ab/taiwanese/`. Whether
-  they are Taiwanese or Mandarin read off Taiwanese spelling cannot be
-  decided here: a Mandarin recogniser is no help, and none of the
-  measurements in this document apply. It needs a speaker. If it does work
-  it is the only candidate with a route to Hokkien at all, which may
-  matter more than the Mandarin difference.
+- **Nobody has listened to the Mandarin pairs.** Naturalness, pacing and
+  whether it still sounds like the same person are not in any of these
+  numbers, and the thirty A/B renders they would be judged from have been
+  deleted. They are reproducible from `~/dev/lulo-tts/render_probes.py`
+  while the candidate models stay cached; the raw per-probe results are
+  kept in
+  [`../../benchmarks/voice_eval/evidence/taiwan-mandarin-voice-candidates/`](../../benchmarks/voice_eval/evidence/taiwan-mandarin-voice-candidates/).
+
+### Taiwanese Hokkien: judged, and it does not work
+
+VoxCPM2 lists nine Chinese dialects including 閩南話, and four Taiwanese
+sentences written in Han characters were rendered to find out whether that
+was real. A Mandarin recogniser is no help here and none of the measurements
+in this document apply, so it needed a speaker.
+
+**2026-08-04, judged by ear: bad.** That closes the one open question that
+could have outweighed the Mandarin result — VoxCPM2 being the only candidate
+with any route to Hokkien was worth more than 0.6 percentage points of CER,
+and it turns out not to have the route.
+
+Not measured further, because there is nothing to measure: a listener who
+speaks the language said it does not work, and no CER over a Mandarin
+recogniser would have been able to say otherwise.
 
 ## Rejected without testing
 
