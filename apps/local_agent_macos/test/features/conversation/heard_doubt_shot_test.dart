@@ -7,6 +7,8 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:local_agent_macos/features/conversation/widgets/completed_turn.dart';
+import 'package:local_agent_macos/features/voice/voice_turn_hud.dart';
+import 'package:local_agent_macos/features/voice/voice_turn_log.dart';
 
 /// Draws the doubt mark to `build/shots/heard-doubt.png` so a change to it
 /// can be looked at rather than only asserted.
@@ -69,20 +71,74 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    final ui.Image image = (await tester.runAsync<ui.Image>(() async {
-      final RenderRepaintBoundary boundary =
-          tester.renderObject(find.byKey(const Key('shot')))
-              as RenderRepaintBoundary;
-      return boundary.toImage(pixelRatio: 3);
-    }))!;
-    final ByteData bytes = (await tester.runAsync<ByteData?>(
-      () => image.toByteData(format: ui.ImageByteFormat.png),
-    ))!;
-    final Directory out = Directory('build/shots')..createSync(recursive: true);
-    File(
-      '${out.path}/heard-doubt.png',
-    ).writeAsBytesSync(bytes.buffer.asUint8List());
+    await _shoot(tester, 'heard-doubt');
   });
+
+  testWidgets('the turn-taking panel, as it looks', (
+    WidgetTester tester,
+  ) async {
+    final VoiceTurnLog log = VoiceTurnLog()
+      ..note(
+        VoiceNoteKind.heard,
+        '肌酸怎麼吃比較好',
+        detail: 'weakest word 0.48 — under 0.85, so marked',
+      )
+      ..note(
+        VoiceNoteKind.cost,
+        '肌酸建議在訓練後',
+        detail: 'refine 0.01s + think 0.29s + write 0.24s = 0.54s',
+      )
+      ..note(
+        VoiceNoteKind.ignored,
+        '嗯嗯',
+        detail: 'backchannel — this means carry on',
+      )
+      ..note(
+        VoiceNoteKind.ignored,
+        '對對對對對',
+        detail: 'backchannel — this means carry on',
+      )
+      ..note(
+        VoiceNoteKind.tookTheFloor,
+        '不對',
+        detail: 'a correction stops the agent at once',
+      );
+    addTearDown(log.dispose);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: ThemeData(
+          fontFamily: 'Arial Unicode',
+          colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF6B7CFF)),
+        ),
+        home: Scaffold(
+          body: Center(
+            child: RepaintBoundary(
+              key: const Key('shot'),
+              child: SizedBox(width: 620, child: VoiceTurnHud(log: log)),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await _shoot(tester, 'voice-turn-hud');
+  });
+}
+
+Future<void> _shoot(WidgetTester tester, String name) async {
+  final ui.Image image = (await tester.runAsync<ui.Image>(() async {
+    final RenderRepaintBoundary boundary =
+        tester.renderObject(find.byKey(const Key('shot')))
+            as RenderRepaintBoundary;
+    return boundary.toImage(pixelRatio: 3);
+  }))!;
+  final ByteData bytes = (await tester.runAsync<ByteData?>(
+    () => image.toByteData(format: ui.ImageByteFormat.png),
+  ))!;
+  final Directory out = Directory('build/shots')..createSync(recursive: true);
+  File('${out.path}/$name.png').writeAsBytesSync(bytes.buffer.asUint8List());
 }
 
 Future<void> _loadFont(String family, File file) async {

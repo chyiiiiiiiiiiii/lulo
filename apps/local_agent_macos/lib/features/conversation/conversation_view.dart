@@ -8,6 +8,8 @@ import '../presence/agent_presence_orb.dart';
 import '../transcript_refiner/transcript_shadow_coordinator.dart';
 import '../voice/voice_conversation_controller.dart';
 import '../voice/voice_service.dart';
+import '../voice/voice_turn_hud.dart';
+import '../voice/voice_turn_log.dart';
 import 'conversation_view_model.dart';
 import 'widgets/conversation_composer.dart';
 import 'widgets/conversation_content_column.dart';
@@ -71,8 +73,16 @@ final class ConversationView extends StatefulWidget {
     this.presenceController,
     this.presenceOrb,
     this.presenceAnchorKey,
+    this.showVoiceEvidence = false,
     super.key,
   });
+
+  /// Whether to show why the agent took or yielded the floor.
+  ///
+  /// An instrument for tuning turn-taking rather than a feature: the rules
+  /// are judgement calls, and one that cannot be seen firing is
+  /// indistinguishable from a bug.
+  final bool showVoiceEvidence;
 
   /// Presence to project conversation state into, or null to own one.
   final AgentPresenceController? presenceController;
@@ -131,6 +141,14 @@ final class _ConversationViewState extends State<ConversationView> {
   late final ConversationViewModel _viewModel;
   VoiceConversationController? _voice;
 
+  /// Why the agent took or yielded the floor, recorded whether or not the
+  /// panel is showing.
+  ///
+  /// Always kept, because a user who turns the panel on has just watched
+  /// the thing they wanted explained — showing them an empty list would be
+  /// answering "why did it do that?" with "ask it again".
+  final VoiceTurnLog _turnLog = VoiceTurnLog();
+
   /// Whether the user is holding to talk, narrowed for the presence: the
   /// orb leans into listening while this is true, in either form.
   final ValueNotifier<bool> _holdingToTalk = ValueNotifier<bool>(false);
@@ -154,6 +172,7 @@ final class _ConversationViewState extends State<ConversationView> {
         transcriptShadow: widget.transcriptShadow,
         protectedVocabulary:
             widget.protectedVocabulary ?? _emptyProtectedVocabulary,
+        turnLog: _turnLog,
       );
       _voice = voice;
       voice.addListener(_reflectVoice);
@@ -169,6 +188,7 @@ final class _ConversationViewState extends State<ConversationView> {
   void dispose() {
     _voice?.removeListener(_reflectVoice);
     _voice?.dispose();
+    _turnLog.dispose();
     _holdingToTalk.dispose();
     _agentSpeaking.dispose();
     _viewModel.dispose();
@@ -230,6 +250,7 @@ final class _ConversationViewState extends State<ConversationView> {
               ),
             ),
             if (_voice != null) _HeardSoFar(voice: _voice!),
+            if (widget.showVoiceEvidence) VoiceTurnHud(log: _turnLog),
             ConversationComposer(
               canSubmit: _viewModel.canSubmitListenable,
               onSubmit: _viewModel.submit,

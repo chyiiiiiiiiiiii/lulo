@@ -8,6 +8,7 @@ import '../conversation/token_batcher.dart';
 import '../transcript_refiner/transcript_shadow_coordinator.dart';
 import 'voice_service.dart';
 import 'voice_turn_latency.dart';
+import 'voice_turn_log.dart';
 
 /// What the agent is doing, as far as the user should be able to tell.
 ///
@@ -56,6 +57,7 @@ final class VoiceConversationController extends ChangeNotifier {
     List<String> Function() protectedVocabulary = _noProtectedVocabulary,
     BatchScheduler utteranceScheduler = const TimerBatchScheduler(),
     DateTime Function() now = DateTime.now,
+    VoiceTurnLog? turnLog,
   }) : this._(
          voice,
          conversation,
@@ -64,6 +66,7 @@ final class VoiceConversationController extends ChangeNotifier {
          protectedVocabulary,
          utteranceScheduler,
          now,
+         turnLog,
        );
 
   VoiceConversationController._(
@@ -74,6 +77,7 @@ final class VoiceConversationController extends ChangeNotifier {
     this._protectedVocabulary,
     this._utteranceScheduler,
     this._now,
+    this._turnLog,
   ) {
     _events = _voice.events.listen(_onVoiceEvent);
     _conversation.completedTurnsListenable.addListener(_onTurnsChanged);
@@ -93,6 +97,14 @@ final class VoiceConversationController extends ChangeNotifier {
   final List<String> Function() _protectedVocabulary;
   final BatchScheduler _utteranceScheduler;
   final DateTime Function() _now;
+
+  /// Where the turn-taking rulings are written for the user to read, or
+  /// null on a surface that does not want them.
+  ///
+  /// The rules here are deliberate and invisible: an acknowledgement is
+  /// ignored, a correction is obeyed, a half-finished sentence is given
+  /// longer. A rule nobody can see firing is indistinguishable from a bug.
+  final VoiceTurnLog? _turnLog;
   StreamSubscription<VoiceEvent>? _events;
 
   /// When the last utterance settled.
@@ -408,7 +420,13 @@ final class VoiceConversationController extends ChangeNotifier {
               _now().difference(lastFinal) >= _postFinalCooldown) {
             debugPrint('Lulo partial: ${text.length} chars "$text"');
             if (_takesTheFloor(text)) {
-              _yieldToTheUser(from: 'partial');
+              _yieldToTheUser(from: 'partial', heard: text);
+            } else if (_deliveringAnswer) {
+              _turnLog?.note(
+                VoiceNoteKind.ignored,
+                text,
+                detail: _whyItDidNotTakeTheFloor(text),
+              );
             }
           } else {
             debugPrint(
@@ -462,7 +480,7 @@ final class VoiceConversationController extends ChangeNotifier {
           // acknowledgements are held to the same threshold here as in the
           // partials, or "OK" would simply cancel a moment later instead.
           if (_takesTheFloor(text)) {
-            _yieldToTheUser(from: 'final');
+            _yieldToTheUser(from: 'final', heard: text);
           }
         }
         unawaited(_refineFinalUtterance(text));
@@ -686,6 +704,11 @@ final class VoiceConversationController extends ChangeNotifier {
     );
     if (measured != null) {
       debugPrint(measured);
+      _turnLog?.note(
+        VoiceNoteKind.cost,
+        spoken,
+        detail: measured.replaceFirst('Lulo latency: ', ''),
+      );
     }
     _activeLang ??= _cjk.hasMatch(decidedBy ?? text) ? 'zh' : 'en';
     _speechRequested = true;
@@ -838,6 +861,7 @@ final class VoiceConversationController extends ChangeNotifier {
         unawaited(_voice.stopSpeaking());
       }
       _latency?.markSubmitted(_now());
+      _noteHeard(heard);
       unawaited(
         _conversation.submit(heard.selectedTranscript, voiceInput: heard),
       );
@@ -921,10 +945,37 @@ final class VoiceConversationController extends ChangeNotifier {
     _pendingUtterance = null;
     _cancelPendingResume();
     _latency?.markSubmitted(_now());
+    _noteHeard(pending);
     unawaited(
       _conversation.submit(pending.selectedTranscript, voiceInput: pending),
     );
   }
+
+  /// Records the question that was submitted, and how well it was heard.
+  void _noteHeard(TranscriptRefinement refinement) {
+    final double? score = refinement.heardConfidence;
+    _turnLog?.note(
+      VoiceNoteKind.heard,
+      refinement.selectedTranscript,
+      detail: score == null
+          ? 'unscored'
+          : HeardConfidence.isDoubtful(score)
+          ? 'weakest word ${score.toStringAsFixed(2)} — under '
+                '${HeardConfidence.trusted.toStringAsFixed(2)}, so marked'
+          : 'weakest word ${score.toStringAsFixed(2)}',
+    );
+  }
+
+  /// Why [text] was heard and deliberately not acted on.
+  static String _whyItDidNotTakeTheFloor(String text) =>
+      switch (FloorControl.classify(text)) {
+        FloorClaim.backchannel => 'backchannel — this means carry on',
+        FloorClaim.substance =>
+          '${FloorControl.syllablesOf(text)} syllables, under '
+              '${FloorControl.charactersOfSubstance} — too little to be sure',
+        FloorClaim.silence => 'nothing sayable',
+        FloorClaim.correction => 'a correction',
+      };
 
   /// Whether [text] is enough to take the floor from the agent.
   ///
@@ -948,7 +999,7 @@ final class VoiceConversationController extends ChangeNotifier {
 
   /// The user started talking: whatever the agent was saying or still
   /// generating gives way.
-  void _yieldToTheUser({required String from}) {
+  void _yieldToTheUser({required String from, String heard = ''}) {
     if (_pttHeld || _pttSettling || _pttProtected) {
       // Push-to-talk owns the floor: the press already silenced the
       // agent, and its answer yields to nothing but the next press.
@@ -959,6 +1010,20 @@ final class VoiceConversationController extends ChangeNotifier {
       'Lulo yield: from=$from speaking=$_speaking '
       'requested=$_speechRequested cancelsGeneration=$cancelling',
     );
+    if (heard.isNotEmpty) {
+      _turnLog?.note(
+        VoiceNoteKind.tookTheFloor,
+        heard,
+        detail: switch (FloorControl.classify(heard)) {
+          FloorClaim.correction => 'a correction stops the agent at once',
+          FloorClaim.substance =>
+            '${FloorControl.syllablesOf(heard)} syllables is enough to '
+                'interrupt',
+          FloorClaim.backchannel || FloorClaim.silence =>
+            'nothing was being said, so anything takes the floor',
+        },
+      );
+    }
     if (_deliveringAnswer) {
       // What is being cut off is held for [_resumeDelay]: if the user turns
       // out to be asking something, that wins and this is dropped; if they

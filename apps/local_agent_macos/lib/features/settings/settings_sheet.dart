@@ -238,6 +238,24 @@ final class SettingsSheet extends StatelessWidget {
                         ],
                       ),
                       _Section(
+                        title: 'Taking turns',
+                        children: <Widget>[
+                          SwitchListTile(
+                            key: const Key('setting-show-voice-evidence'),
+                            value: settings.showVoiceEvidence,
+                            title: const Text('Show why it took the floor'),
+                            subtitle: const Text(
+                              'A running account under the conversation: what '
+                              'was ignored as an acknowledgement, what cut in, '
+                              'and what each turn cost.',
+                            ),
+                            onChanged: (bool value) => onChanged(
+                              settings.copyWith(showVoiceEvidence: value),
+                            ),
+                          ),
+                        ],
+                      ),
+                      _Section(
                         title: 'Summoning',
                         children: const <Widget>[
                           ListTile(

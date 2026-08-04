@@ -11,6 +11,7 @@ import 'package:local_agent_macos/features/conversation/token_batcher.dart';
 import 'package:local_agent_macos/features/transcript_refiner/transcript_shadow_coordinator.dart';
 import 'package:local_agent_macos/features/voice/voice_conversation_controller.dart';
 import 'package:local_agent_macos/features/voice/voice_service.dart';
+import 'package:local_agent_macos/features/voice/voice_turn_log.dart';
 
 import '../../support/controlled_inference_service.dart';
 import '../../support/fake_voice_service.dart';
@@ -474,6 +475,77 @@ void main() {
       HeardConfidence.isDoubtful(asked.voiceInput?.heardConfidence),
       isFalse,
     );
+  });
+
+  test('the log says why the agent did or did not stop', () async {
+    // These rulings already went to debugPrint, which is the wrong place:
+    // the person who needs to know why the agent kept talking is the one
+    // talking to it, and they are looking at the window.
+    final VoiceTurnLog log = VoiceTurnLog();
+    DateTime clock = DateTime(2026, 9);
+    final VoiceConversationController logged = VoiceConversationController(
+      voice: voice,
+      conversation: vm,
+      turnLog: log,
+      now: () {
+        clock = clock.add(const Duration(milliseconds: 600));
+        return clock;
+      },
+    );
+    addTearDown(logged.dispose);
+    await logged.enable();
+    voice.hear(const FinalTranscript('Tell me a long story.'));
+    await pump();
+    final Generation generation = await generationStarted();
+    inference.emit(
+      GenerationDelta(
+        generationId: generation.id,
+        delta: 'Once upon a time, at very great length indeed. ',
+      ),
+    );
+    await pump();
+    await pump();
+
+    voice.hear(const PartialTranscript('嗯嗯'));
+    await pump();
+    voice.hear(const PartialTranscript('不對'));
+    await pump();
+
+    final List<VoiceTurnNote> notes = log.notes;
+    expect(
+      notes.where((VoiceTurnNote n) => n.kind == VoiceNoteKind.ignored).single,
+      isA<VoiceTurnNote>()
+          .having((VoiceTurnNote n) => n.text, 'text', '嗯嗯')
+          .having(
+            (VoiceTurnNote n) => n.detail,
+            'why',
+            contains('backchannel'),
+          ),
+    );
+    expect(
+      notes
+          .where((VoiceTurnNote n) => n.kind == VoiceNoteKind.tookTheFloor)
+          .single
+          .text,
+      '不對',
+    );
+    expect(
+      notes
+          .where((VoiceTurnNote n) => n.kind == VoiceNoteKind.heard)
+          .single
+          .text,
+      'Tell me a long story.',
+    );
+  });
+
+  test('a controller with no log given does not try to write one', () async {
+    // The log is optional so a surface that does not want the evidence
+    // passes nothing; the controller must not assume it is there.
+    await controller.enable();
+    voice.hear(const FinalTranscript('介紹台北。'));
+    await pump();
+
+    await expectLater(generationStarted(), completes);
   });
 
   test('an interruption that asks nothing resumes the answer', () async {

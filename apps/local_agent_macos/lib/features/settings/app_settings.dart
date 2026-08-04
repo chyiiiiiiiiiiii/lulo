@@ -16,6 +16,7 @@ final class AppSettings {
     this.openConversationOnLaunch = false,
     this.modelPath = '',
     this.ttsVoice = 'ryan',
+    this.showVoiceEvidence = false,
   });
 
   /// Reads settings written by [toJson], ignoring anything unrecognised.
@@ -40,6 +41,10 @@ final class AppSettings {
       ttsVoice: json['ttsVoice'] is String
           ? json['ttsVoice']! as String
           : defaults.ttsVoice,
+      showVoiceEvidence: _boolOr(
+        json['showVoiceEvidence'],
+        defaults.showVoiceEvidence,
+      ),
     );
   }
 
@@ -61,6 +66,12 @@ final class AppSettings {
   /// Who speaks the answers aloud, by the resident synthesizer's voice name.
   final String ttsVoice;
 
+  /// Whether the conversation shows why the agent took or yielded the floor.
+  ///
+  /// Off by default: it is an instrument for tuning turn-taking, not
+  /// something to read while having a conversation.
+  final bool showVoiceEvidence;
+
   /// Returns a copy with the named choices replaced.
   AppSettings copyWith({
     bool? keepOrbOnTop,
@@ -68,6 +79,7 @@ final class AppSettings {
     bool? openConversationOnLaunch,
     String? modelPath,
     String? ttsVoice,
+    bool? showVoiceEvidence,
   }) {
     return AppSettings(
       keepOrbOnTop: keepOrbOnTop ?? this.keepOrbOnTop,
@@ -76,6 +88,7 @@ final class AppSettings {
           openConversationOnLaunch ?? this.openConversationOnLaunch,
       modelPath: modelPath ?? this.modelPath,
       ttsVoice: ttsVoice ?? this.ttsVoice,
+      showVoiceEvidence: showVoiceEvidence ?? this.showVoiceEvidence,
     );
   }
 
@@ -86,6 +99,7 @@ final class AppSettings {
     'openConversationOnLaunch': openConversationOnLaunch,
     'modelPath': modelPath,
     'ttsVoice': ttsVoice,
+    'showVoiceEvidence': showVoiceEvidence,
   };
 
   @override
@@ -95,7 +109,8 @@ final class AppSettings {
       other.followAcrossSpaces == followAcrossSpaces &&
       other.openConversationOnLaunch == openConversationOnLaunch &&
       other.modelPath == modelPath &&
-      other.ttsVoice == ttsVoice;
+      other.ttsVoice == ttsVoice &&
+      other.showVoiceEvidence == showVoiceEvidence;
 
   @override
   int get hashCode => Object.hash(
@@ -104,6 +119,7 @@ final class AppSettings {
     openConversationOnLaunch,
     modelPath,
     ttsVoice,
+    showVoiceEvidence,
   );
 
   @override
