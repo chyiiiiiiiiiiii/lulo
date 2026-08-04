@@ -353,14 +353,26 @@ final class DesktopPanelControllerTests: XCTestCase {
     // The user makes the window larger; the forms are laid out against its
     // frame, so the app has to hear about the new one or the conversation
     // keeps drawing at the size the window no longer is.
+    //
+    // Asked for 900x700 and asserted against those numbers, this passed on a
+    // large display and failed on a small one: AppKit constrains a titled
+    // window to the screen it is on, so what the window becomes is not always
+    // what it was told. The invariant is not the size — it is that what the
+    // app is told matches what the window actually is.
     var frame = controller.retainedPanel.frame
     frame.size = NSSize(width: 900, height: 700)
     controller.retainedPanel.setFrame(frame, display: true)
+    let became = controller.retainedPanel.frame.size
 
-    XCTAssertEqual(reported.last?.size, CGSize(width: 900, height: 700))
+    XCTAssertNotEqual(
+      became,
+      NSSize(width: 480, height: 640),
+      "The window did not resize at all, so nothing was under test"
+    )
+    XCTAssertEqual(reported.last?.size, became)
     XCTAssertEqual(
       reported.last?.conversation,
-      CGRect(x: 0, y: 0, width: 900, height: 700),
+      CGRect(origin: .zero, size: became),
       "The conversation does not fill the resized window"
     )
   }
