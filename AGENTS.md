@@ -6,6 +6,48 @@
 - Do not add globals, static singletons, or a service locator.
 - Run `dart run tool/verify.dart` before a checkpoint commit.
 
+## What this agent is for
+
+**Taiwanese Mandarin.** Anything measured only in English has not been
+measured. Han costs several tokens a character where English costs a
+fraction of one, so the two are not the same workload and a result from one
+does not carry to the other: re-sending the profile inside every question
+cost 1.4s a turn in Chinese and nothing at all in English, and an
+English-only real-model slice sat green over it. When a change could touch
+cost, quality, or the recogniser, the Chinese case is the one that decides.
+
+## Building
+
+- **Grow the system in layers.** Start from the smallest version that works
+  end to end and add each capability on top of a product that already works.
+  Never trade a working product for unfinished complexity.
+- **Choose the simplest implementation that fully meets the current
+  requirement.** No speculative abstractions, configuration, or indirection.
+- **Lean on what the project already depends on** before writing your own
+  implementation or adding a package. Do not assume a library lacks a
+  capability without reading its documentation and types.
+- Custom implementations here are usually deliberate and measured — the VAD,
+  the endpointer, the token batcher, the chunker. Read
+  `docs/decisions/no-dart-audio-engine.md` before reaching for a package to
+  replace one.
+- Fallbacks and migrations are not clutter to be removed. The half-duplex
+  path exists because hardware varies; the storage migrations exist so a
+  conversation survives an upgrade.
+
+## Measuring
+
+- **A number from a harness is not a number from the product.** Reproduce it
+  in the app, through the real model and the whole path, before believing
+  it. A standalone benchmark said 1.4s and the app said nothing, and both
+  were right — about different languages.
+- **Check the instrument before believing a negative result.** Feed it a case
+  whose answer is not in doubt. Smart Turn v3.2 was rejected only after a
+  recording cut in the middle of a word also scored 0.98, which is what
+  distinguishes a saturated model from an undecided one.
+- Measurements that changed a decision belong in `docs/decisions/`, with the
+  numbers and the machine they came from, so the next person argues with the
+  evidence rather than re-running it.
+
 ## Window architecture (measured — do not re-litigate without new measurements)
 
 - The desktop window is **one stage** shared by both forms (orb / conversation),
