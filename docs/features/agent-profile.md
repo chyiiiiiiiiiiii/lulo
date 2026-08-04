@@ -68,19 +68,41 @@ logs profile or memory content. Diagnostics may use stable memory IDs.
 
 ## Prompt order
 
-Each local-model request is composed immediately before native generation:
+Each local-model request is composed immediately before native generation,
+and arrives in **two halves** because they cost different amounts to say
+twice:
 
 ```text
-core identity
-spoken-response behavior
-user preferences
-relevant structured memories
-additional developer instructions
-current question
+systemInstruction — prefilled once per conversation
+  core identity
+  spoken-response behavior
+  user preferences
+  additional developer instructions
+
+turnInstruction — read again with every question
+  relevant structured memories
+  current question
 ```
 
 The bounded recent conversation remains on the native history field. The
 question appears exactly once.
+
+The split is the whole point. Sent as one block inside every user message,
+the stable half was re-prefilled on every turn: measured on `gemma-4-E4B-it`
+at **1.7s to the first token against 0.3s** when it sits in the
+conversation's own system message. Memories stay with the question because
+they are chosen against it — `selectAgentMemories` reads the prompt — so
+they are not stable and cannot be cached. Developer instructions moved ahead
+of memories for the same reason: the stable half has to end at the same
+place every turn. See
+[../decisions/voice-turn-latency.md](../decisions/voice-turn-latency.md).
+
+The 1,200-character cap still bounds both halves together, so a profile full
+of memories cannot grow the prompt by moving text across the seam.
+
+A profile the user edits changes the system message, and a prefilled KV
+cache cannot be amended in place. The runtime driver notices and rebuilds
+the conversation from stored history.
 
 ## Privacy boundary
 

@@ -12,6 +12,8 @@ The context budget is real: `LiteRTLMRuntimeBackend.historyFitting` estimates to
 
 Runs are durable. A generation opens a row in `RunRows` before its first token, overwrites `partialText` at most once per `ConversationRepository`'s checkpoint interval, and closes behind its terminal turn; `recoverInterruptedRuns` settles whatever the last process left open, at startup before `runApp`. An answer the app died in the middle of comes back as a `TurnStatus.interrupted` turn instead of vanishing.
 
+The turn latency is measured, not guessed. `AgentPromptContext` splits into a `systemInstruction` prefilled once per conversation and a `turnInstruction` read again with every question: sending the stable half inside every user message re-prefilled it every turn, measured in the app at 1648ms to the first token against 362ms for a settled Chinese turn, and at nothing at all in English — Han costs several tokens a character where English costs a fraction of one, so prompt cost measured in English says nothing about prompt cost in Chinese. `VoiceTurnLatency` and two adapter log lines now account for one turn end to end. Before changing the endpointer's 0.8s or the prompt's shape, read `docs/decisions/voice-turn-latency.md` — the corpus has mid-sentence pauses of 1.02s, and Smart Turn v3.2 was measured and does not separate them.
+
 Next up: tool calling with a permission layer. There is no tool calling today.
 
 Toolchain is pinned by CI: Flutter **3.44.1** stable, Dart SDK `^3.12.0`.

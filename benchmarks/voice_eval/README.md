@@ -18,6 +18,21 @@ audio or text off the machine.
 Timing does not measure naturalness. CER does not prove that a transcript
 preserved intent. Use the machine report and blind listening review together.
 
+### A known defect in `spokenCer`
+
+Spoken CER folds punctuation, whitespace and Latin case. It does **not** fold
+numerals. Recognisers write `12,000` and `3:30` where `corpus/zh-TW-v1.json`
+spells out 一萬二 and 三點半, and the scorer charges every character of the
+difference: measured on Apple's `SpeechAnalyzer`, those two cases alone score
+61.5% and 41.7% against a 14.6% mean over twelve, while six of the twelve are
+character-perfect. Until the normaliser folds numerals, read the aggregate as
+a floor on quality rather than a measure of it, and read the per-case numbers.
+
+Bias also matters when comparing candidates. The app hands the transcriber
+`contextualStrings` from the conversation's vocabulary, which is what keeps
+Flutter from coming back as Flater. A candidate produced without that bias is
+not measuring the same pipeline.
+
 ## Private golden WAV files
 
 The scripts live in `corpus/zh-TW-v1.json`. Record mono WAV files using the

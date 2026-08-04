@@ -68,7 +68,9 @@ explanation.
 
 | Document | State |
 |---|---|
+| [decisions/voice-turn-latency.md](decisions/voice-turn-latency.md) | Written — read before tuning the endpointer or the prompt |
 | [decisions/full-duplex-voice.md](decisions/full-duplex-voice.md) | Written |
+| [decisions/taiwan-mandarin-voice-candidates.md](decisions/taiwan-mandarin-voice-candidates.md) | Measured, not yet adopted |
 | [decisions/no-dart-audio-engine.md](decisions/no-dart-audio-engine.md) | Written — read before adding any audio package |
 | [decisions/half-duplex-voice.md](decisions/half-duplex-voice.md) | Superseded, kept for the method error |
 

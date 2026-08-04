@@ -238,7 +238,7 @@ endpointer declines in favour of the slower Dart settle. That is a deliberate
 trade: declining is a beat of extra latency, firing wrongly cuts the user off
 mid-sentence.
 
-Every ~3 seconds (`ticks % 20`, at 150ms per tick) the adapter logs a
+Every ~3 seconds (`ticks % 60`, at 50ms per tick) the adapter logs a
 calibration heartbeat:
 
 ```
@@ -251,7 +251,7 @@ settle is carrying the turn.
 
 ### `checkEndpoint` — the four guards and the two clocks
 
-The endpoint task ticks every 150ms and calls `checkEndpoint`, which does
+The endpoint task ticks every 50ms and calls `checkEndpoint`, which does
 nothing unless **all** of:
 
 ```swift
@@ -275,7 +275,7 @@ Every tick runs the whole cascade, and each rung refuses for its own reason:
 
 ```mermaid
 flowchart TD
-    tick["endpointTask ticks — Task.sleep(150ms), main actor"] --> g1["id == sessionCounter"]
+    tick["endpointTask ticks — Task.sleep(50ms), main actor"] --> g1["id == sessionCounter"]
     g1 -->|"a session that has been replaced"| out(["return, silently"])
     g1 --> g2["utteranceInProgress"]
     g2 -->|"nothing volatile on screen yet"| out
@@ -627,7 +627,7 @@ The adapter is chatty on purpose. `Console.app`, or `log stream`, filtered on
 | `vad floor 0.0021 peak 0.0480` | Calibration heartbeat, ~every 3s |
 | `… (utterance pending)` persisting | The endpointer is declining; the Dart settle is doing the work |
 | `endpointing after 0.87s of silence` | The fast path fired |
-| `final (23 chars)` | The transcriber settled an utterance |
+| `final (23 chars) 0.31s after the ask` | The transcriber settled an utterance, and how long it took to answer the endpointer. `-1.00s` means nobody asked — it settled on its own schedule |
 | `sidecar declined a sentence (41 chars)` | TTS unreachable or failing — check `~/dev/lulo-tts/server.log` |
 
 The sidecar's own log gives the latency that matters:
@@ -635,3 +635,34 @@ The sidecar's own log gives the latency that matters:
 ```
 14:26:03 lulo-tts: first-chunk 0.42s, 3.1s audio for 47 chars
 ```
+
+## What one turn costs
+
+Four logs, written by whoever can see the thing, account for one turn end to
+end without attaching a profiler. In order:
+
+```
+Lulo voice: endpointing after 0.87s of silence          # the room went quiet
+Lulo voice: final (23 chars) 0.31s after the ask        # the question exists
+Lulo latency: refine 0.01s + think 0.29s + write 0.24s  # …to something sayable
+              = 0.54s to the first 12 characters spoken
+14:26:03 lulo-tts: render first-chunk 0.48s             # …to a sound
+```
+
+`VoiceTurnLatency` owns the third. It is a measurement and nothing else: it
+holds no transcript and no answer text, only lengths and instants, so the
+line is safe in a log that keeps private conversations out of it. It
+describes a turn **once** — only the answer's first chunk is a latency, and
+every chunk after it is the answer merely continuing.
+
+The three stages are the refinement (`FinalTranscript` → `submit`), the
+model's first token, and how much answer had to exist before any of it was
+worth saying. A stage measured backwards reports zero rather than a negative:
+the marks come from separate callbacks, and a turn already streaming when its
+transcript settles genuinely orders them the other way round. The total stays
+measured end to end, so a clamped stage makes the parts add up to slightly
+more than the whole.
+
+Where the time goes, and why the endpointer's 0.8s is not the obvious thing
+to cut, is measured in
+[../decisions/voice-turn-latency.md](../decisions/voice-turn-latency.md).
