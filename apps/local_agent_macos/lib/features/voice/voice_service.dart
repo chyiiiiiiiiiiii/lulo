@@ -114,4 +114,11 @@ abstract interface class VoiceService {
 
   /// Stops speaking mid-sentence, if speaking at all.
   Future<void> stopSpeaking();
+
+  /// Tells the endpointer the user's own ways of leaving a sentence
+  /// unfinished, so a pause after one of them is given longer to finish.
+  ///
+  /// The decision itself is native — the endpointer runs on a 50ms tick in
+  /// the audio path — so this is the only way the profile reaches it.
+  Future<void> useUnfinishedEndings(List<String> endings);
 }

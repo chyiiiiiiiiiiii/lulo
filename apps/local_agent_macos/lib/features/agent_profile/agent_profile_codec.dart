@@ -38,6 +38,7 @@ AgentProfileDecodeResult decodeAgentProfile(Object? json) {
   final Map<String, Object?> identity = _map(json['identity']);
   final Map<String, Object?> personality = _map(json['personality']);
   final Map<String, Object?> voice = _map(json['voiceBehavior']);
+  final Map<String, Object?> turns = _map(json['turnTaking']);
   final List<String> skipped = <String>[];
   final List<AgentMemory> memories = <AgentMemory>[];
   final Object? rawMemories = json['memories'];
@@ -96,6 +97,11 @@ AgentProfileDecodeResult decodeAgentProfile(Object? json) {
           voice['preferNaturalShortSentences'],
           defaults.voiceBehavior.preferNaturalShortSentences,
         ),
+      ),
+      turnTaking: TurnTakingWords(
+        acknowledgements: _strings(turns['acknowledgements']),
+        corrections: _strings(turns['corrections']),
+        unfinished: _strings(turns['unfinished']),
       ),
       memories: memories,
       vocabulary: _strings(json['vocabulary']),

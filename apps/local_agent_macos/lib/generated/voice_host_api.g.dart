@@ -352,6 +352,33 @@ class VoiceHostApi {
       isNullValid: true,
     );
   }
+
+  /// Tells the endpointer the user's own ways of leaving a sentence
+  /// unfinished, so a pause after one of them is given longer to finish.
+  ///
+  /// Sent from Dart because the agent profile lives there and is watched;
+  /// applied natively because the endpointer runs on a 50ms tick in the
+  /// audio path, where a hop across this channel per tick would cost more
+  /// than the decision saves. Replaces the previous list wholesale.
+  Future<void> useUnfinishedEndings(List<String> endings) async {
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.local_agent_macos.VoiceHostApi.useUnfinishedEndings$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channel = BasicMessageChannel<Object?>(
+      pigeonVar_channelName,
+      pigeonChannelCodec,
+      binaryMessenger: pigeonVar_binaryMessenger,
+    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(
+      <Object?>[endings],
+    );
+    final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
+
+    _extractReplyValueOrThrow(
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: true,
+    );
+  }
 }
 
 /// Native-to-Dart: everything the pipeline reports, in order.

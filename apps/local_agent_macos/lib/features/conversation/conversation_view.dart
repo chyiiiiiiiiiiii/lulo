@@ -67,6 +67,8 @@ final class ConversationView extends StatefulWidget {
     this.transcriptRefiner,
     this.transcriptShadow,
     this.protectedVocabulary,
+    this.floorControl,
+    this.unfinishedEndings,
     this.buildObserver,
     this.presenceShaderLoader = loadAgentPresenceShader,
     this.onPresenceController,
@@ -119,6 +121,12 @@ final class ConversationView extends StatefulWidget {
 
   /// Latest vocabulary tokens protected during refinement.
   final List<String> Function()? protectedVocabulary;
+
+  /// Who has the floor, or null to use the built-in policy.
+  final FloorControl Function()? floorControl;
+
+  /// The user's own ways of leaving a sentence unfinished, or null for none.
+  final List<String> Function()? unfinishedEndings;
 
   /// Optional render instrumentation used by tests.
   final ConversationBuildObserver? buildObserver;
@@ -173,6 +181,9 @@ final class _ConversationViewState extends State<ConversationView> {
         protectedVocabulary:
             widget.protectedVocabulary ?? _emptyProtectedVocabulary,
         turnLog: _turnLog,
+        floorControl: widget.floorControl ?? _builtInFloorControl,
+        unfinishedEndings:
+            widget.unfinishedEndings ?? _emptyProtectedVocabulary,
       );
       _voice = voice;
       voice.addListener(_reflectVoice);
@@ -266,6 +277,8 @@ final class _ConversationViewState extends State<ConversationView> {
 }
 
 List<String> _emptyProtectedVocabulary() => const <String>[];
+
+FloorControl _builtInFloorControl() => FloorControl.standard;
 
 final class _ConversationChrome extends StatelessWidget {
   const _ConversationChrome({

@@ -624,6 +624,8 @@ final class _PresentationSwitchState extends State<_PresentationSwitch>
         transcriptRefiner: widget.composition.transcriptRefiner,
         transcriptShadow: widget.composition.transcriptShadow,
         protectedVocabulary: widget.composition.protectedVocabulary,
+        floorControl: widget.composition.floorControl,
+        unfinishedEndings: widget.composition.unfinishedEndings,
         presenceShaderLoader: widget.presenceShaderLoader,
         showVoiceEvidence: _settings.showVoiceEvidence,
         presenceController: _presence,

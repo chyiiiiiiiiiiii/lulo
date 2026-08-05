@@ -46,6 +46,11 @@ restores the built-in profile.
       "enabled": true
     }
   ],
+  "turnTaking": {
+    "acknowledgements": ["蛤", "真的假的喔"],
+    "corrections": ["先停"],
+    "unfinished": ["我的意思是說"]
+  },
   "vocabulary": ["Lulo", "Flutter", "MLX", "Codex"],
   "additionalInstructions": ["不要空泛稱讚；有不同判斷時直接說明。"]
 }
@@ -54,6 +59,42 @@ restores the built-in profile.
 `responseLength` accepts `concise`, `balanced` or `detailed`. A memory
 `kind` is `personal`, `preference`, `project` or `vocabulary`.
 Unknown fields are ignored. Invalid memories are skipped independently.
+
+## The words you take and yield the floor with
+
+`turnTaking` is the one section that changes how the agent *listens* rather
+than how it answers. Every list extends a built-in one rather than replacing
+it, and every built-in one is a guess at how people talk — which is exactly
+the kind of guess a user's own habits disprove.
+
+| Key | Said when | What it does | Where it is read |
+|---|---|---|---|
+| `acknowledgements` | while the agent is speaking | never interrupts, at any length | `FloorControl`, Dart |
+| `corrections` | while the agent is speaking | always interrupts, however short | `FloorControl`, Dart |
+| `unfinished` | at the end of your own sentence | the endpointer waits 1.4s instead of 0.8s | `TurnCompletion`, Swift |
+
+How each is matched, which is worth knowing before adding a short one:
+
+- An `acknowledgements` entry of **one character** joins the repeatable set,
+  so 「蛤」 also covers 「蛤蛤蛤」 the way 嗯 covers 嗯嗯. Anything longer is
+  matched **whole**, because a phrase with words after it is a question.
+- A `corrections` entry containing Han is a **prefix**, so 「先停」 also stops
+  the agent on 「先停一下我想想」. An entry in Latin contributes its **first
+  word**, so `"hang on"` matches "hang" and not "hanging".
+- An `unfinished` entry is a **suffix** of the partial transcript.
+- A word listed in both `acknowledgements` and `corrections` is a
+  correction. Being unable to stop the agent is the worse failure.
+
+The first two take effect on the next thing said, because the file is
+watched and the policy is read at every ruling. `unfinished` is pushed
+across to the native endpointer once per settled utterance, so it takes
+effect on the next turn — a beat later, and not something anyone edits
+mid-sentence.
+
+Watch them working with Settings › Taking turns › *Show why it took the
+floor*. See
+[../decisions/turn-taking-by-words.md](../decisions/turn-taking-by-words.md)
+for why these are lexicons rather than a model.
 
 ## Selection and bounds
 

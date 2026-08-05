@@ -29,7 +29,89 @@ enum FloorClaim {
 /// interruption handling that is pure: given the text and whether the agent
 /// is mid-sentence, the answer is the same every time and can be checked
 /// against a list of things people actually say.
-abstract final class FloorControl {
+///
+/// The built-in lists are a guess at how people say "carry on" and "stop".
+/// A user's own habits are not a guess, so [alsoAcknowledgements] and
+/// [alsoCorrections] extend them from the agent profile — which is watched
+/// and reloaded, so a word added while the app is running takes effect on
+/// the next thing said.
+final class FloorControl {
+  /// Creates a policy that adds the user's own words to the built-in ones.
+  ///
+  /// The entries are normalized and sorted into their matching kinds here,
+  /// once, rather than on every partial — this runs a few times a second for
+  /// as long as the microphone is open.
+  factory FloorControl({
+    List<String> alsoAcknowledgements = const <String>[],
+    List<String> alsoCorrections = const <String>[],
+  }) {
+    final StringBuffer repeatable = StringBuffer(_backchannelRunes);
+    final Set<String> phrases = <String>{};
+    for (final String entry in alsoAcknowledgements) {
+      final String written = _normalize(entry).replaceAll(' ', '');
+      if (written.isEmpty) {
+        continue;
+      }
+      if (written.runes.length == 1) {
+        repeatable.write(written);
+      } else {
+        phrases.add(written);
+      }
+    }
+    final Set<String> openings = <String>{};
+    final Set<String> words = <String>{};
+    for (final String entry in alsoCorrections) {
+      final String written = _normalize(entry);
+      if (written.isEmpty) {
+        continue;
+      }
+      if (_latinOnly.hasMatch(written)) {
+        words.add(written.split(' ').first);
+      } else {
+        openings.add(written.replaceAll(' ', ''));
+      }
+    }
+    return FloorControl._(
+      alsoAcknowledgements: List<String>.unmodifiable(alsoAcknowledgements),
+      alsoCorrections: List<String>.unmodifiable(alsoCorrections),
+      repeatableRunes: repeatable.toString(),
+      extraPhrases: Set<String>.unmodifiable(phrases),
+      extraOpenings: Set<String>.unmodifiable(openings),
+      extraWords: Set<String>.unmodifiable(words),
+    );
+  }
+
+  const FloorControl._({
+    required this.alsoAcknowledgements,
+    required this.alsoCorrections,
+    required this._repeatableRunes,
+    required this._extraPhrases,
+    required this._extraOpenings,
+    required this._extraWords,
+  });
+
+  /// The policy a profile that says nothing about turn-taking gets.
+  static final FloorControl standard = FloorControl();
+
+  final String _repeatableRunes;
+  final Set<String> _extraPhrases;
+  final Set<String> _extraOpenings;
+  final Set<String> _extraWords;
+
+  /// The user's own ways of saying "carry on".
+  ///
+  /// A single-character entry joins the repeatable set, so adding 「蛤」 also
+  /// covers 「蛤蛤蛤」 the way 嗯 covers 嗯嗯. Anything longer is matched whole,
+  /// because a phrase with words after it is no longer that phrase.
+  final List<String> alsoAcknowledgements;
+
+  /// The user's own ways of saying "stop".
+  ///
+  /// Matched the way the built-ins are: an entry containing Han is a prefix,
+  /// so 「先停一下我想想」 still stops the agent; an entry in Latin contributes
+  /// its first word, so "hang on" matches "hang" and not "hanging".
+  final List<String> alsoCorrections;
+
   /// How much substance it takes to interrupt an agent that is speaking.
   ///
   /// Measured in syllables rather than characters: a CJK character is one,
@@ -125,17 +207,22 @@ abstract final class FloorControl {
   /// counting purposes, however long the word is.
   static final RegExp _latinRun = RegExp(r'[A-Za-z0-9]+');
 
+  /// Whether a normalized entry is written wholly in Latin script.
+  static final RegExp _latinOnly = RegExp(r'^[a-z0-9 ]+$');
+
   /// What [heard] is doing to a conversation already in progress.
-  static FloorClaim classify(String heard) {
+  FloorClaim classify(String heard) {
     final String normalized = _normalize(heard);
     if (normalized.isEmpty) {
       return FloorClaim.silence;
     }
     final String compact = normalized.replaceAll(' ', '');
+    // Corrections first: being unable to stop the agent is the worse of the
+    // two failures, so a word the user listed as both wins here.
     if (_isCorrection(normalized, compact)) {
       return FloorClaim.correction;
     }
-    if (_isBackchannel(normalized, compact)) {
+    if (_isBackchannel(compact)) {
       return FloorClaim.backchannel;
     }
     return FloorClaim.substance;
@@ -146,7 +233,7 @@ abstract final class FloorControl {
   /// With nothing being said there is nothing to take away, so any word at
   /// all claims a free floor — a correction has to land as fast as it is
   /// spoken. The thresholds exist only for speech in progress.
-  static bool takesTheFloor(String heard, {required bool agentIsSpeaking}) {
+  bool takesTheFloor(String heard, {required bool agentIsSpeaking}) {
     final FloorClaim claim = classify(heard);
     if (claim == FloorClaim.silence) {
       return false;
@@ -187,22 +274,29 @@ abstract final class FloorControl {
   static String _normalize(String heard) =>
       heard.toLowerCase().replaceAll(_notWords, ' ').trim();
 
-  static bool _isCorrection(String normalized, String compact) {
+  bool _isCorrection(String normalized, String compact) {
     for (final String opening in _correctionOpenings) {
       if (compact.startsWith(opening)) {
         return true;
       }
     }
+    for (final String opening in _extraOpenings) {
+      if (compact.startsWith(opening)) {
+        return true;
+      }
+    }
     final String firstWord = normalized.split(' ').first;
-    return _correctionWords.contains(firstWord);
+    return _correctionWords.contains(firstWord) ||
+        _extraWords.contains(firstWord);
   }
 
-  static bool _isBackchannel(String normalized, String compact) {
-    if (_backchannelPhrases.contains(compact)) {
+  bool _isBackchannel(String compact) {
+    if (_backchannelPhrases.contains(compact) ||
+        _extraPhrases.contains(compact)) {
       return true;
     }
     for (final int rune in compact.runes) {
-      if (!_backchannelRunes.contains(String.fromCharCode(rune))) {
+      if (!_repeatableRunes.contains(String.fromCharCode(rune))) {
         return false;
       }
     }

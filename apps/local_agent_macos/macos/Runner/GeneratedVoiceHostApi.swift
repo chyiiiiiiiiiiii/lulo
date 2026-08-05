@@ -303,6 +303,14 @@ protocol VoiceHostApi {
   func speak(text: String, voice: String?, language: String?, completion: @escaping (Result<Void, Error>) -> Void)
   /// Stops speaking mid-sentence.
   func stopSpeaking(completion: @escaping (Result<Void, Error>) -> Void)
+  /// Tells the endpointer the user's own ways of leaving a sentence
+  /// unfinished, so a pause after one of them is given longer to finish.
+  ///
+  /// Sent from Dart because the agent profile lives there and is watched;
+  /// applied natively because the endpointer runs on a 50ms tick in the
+  /// audio path, where a hop across this channel per tick would cost more
+  /// than the decision saves. Replaces the previous list wholesale.
+  func useUnfinishedEndings(endings: [String], completion: @escaping (Result<Void, Error>) -> Void)
 }
 
 /// Generated setup class from Pigeon to handle messages through the `binaryMessenger`.
@@ -399,6 +407,30 @@ class VoiceHostApiSetup {
       }
     } else {
       stopSpeakingChannel.setMessageHandler(nil)
+    }
+    /// Tells the endpointer the user's own ways of leaving a sentence
+    /// unfinished, so a pause after one of them is given longer to finish.
+    ///
+    /// Sent from Dart because the agent profile lives there and is watched;
+    /// applied natively because the endpointer runs on a 50ms tick in the
+    /// audio path, where a hop across this channel per tick would cost more
+    /// than the decision saves. Replaces the previous list wholesale.
+    let useUnfinishedEndingsChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.local_agent_macos.VoiceHostApi.useUnfinishedEndings\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
+    if let api = api {
+      useUnfinishedEndingsChannel.setMessageHandler { message, reply in
+        let args = message as! [Any?]
+        let endingsArg = args[0] as! [String]
+        api.useUnfinishedEndings(endings: endingsArg) { result in
+          switch result {
+          case .success:
+            reply(wrapResult(nil))
+          case .failure(let error):
+            reply(wrapError(error))
+          }
+        }
+      }
+    } else {
+      useUnfinishedEndingsChannel.setMessageHandler(nil)
     }
   }
 }

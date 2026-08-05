@@ -303,6 +303,71 @@ final class SpeechTurnTests: XCTestCase {
     )
   }
 
+  // MARK: - The user's own way of trailing off
+
+  func testAWordTheUserTrailsOffOnBuysTheSameGrace() {
+    // The built-in list is a guess at how people pause mid-thought. The
+    // user's own filler is not a guess, and it is the one that decides
+    // whether being cut off in the middle of a sentence ever stops.
+    XCTAssertEqual(TurnCompletion.of("我的意思是說"), .unknown)
+    XCTAssertEqual(
+      TurnCompletion.of("我的意思是說", alsoUnfinished: ["我的意思是說"]),
+      .continuing
+    )
+    XCTAssertEqual(
+      TurnCompletion.of("欸那個我的意思是說", alsoUnfinished: ["我的意思是說"]),
+      .continuing,
+      "Matched as a suffix, the way the built-ins are."
+    )
+  }
+
+  func testTheUserWordsDoNotDisturbTheBuiltInOnes() {
+    XCTAssertEqual(
+      TurnCompletion.of("然後", alsoUnfinished: ["我的意思是說"]),
+      .continuing
+    )
+    XCTAssertEqual(
+      TurnCompletion.of("這樣可以嗎", alsoUnfinished: ["我的意思是說"]),
+      .settled
+    )
+  }
+
+  func testBlankEntriesDoNotMatchEverything() {
+    // An empty suffix matches every string, which would hold every turn
+    // open for an extra 0.6s and look exactly like the model being slow.
+    XCTAssertEqual(
+      TurnCompletion.of("介紹一下台北的天氣", alsoUnfinished: ["", "   "]),
+      .unknown
+    )
+  }
+
+  func testTheEndpointerReadsTheUsersWords() {
+    var turn = SpeechTurn()
+    turn.heardVolatile(text: "我的意思是說", at: 10)
+
+    XCTAssertTrue(
+      turn.shouldFinalize(
+        silence: 1.0, lastVoiceAt: 10, endpointSilence: 0.8, now: 11
+      ),
+      "Without the word, an ordinary 0.8s turn."
+    )
+
+    var mine = SpeechTurn(unfinishedEndings: ["我的意思是說"])
+    mine.heardVolatile(text: "我的意思是說", at: 10)
+
+    XCTAssertFalse(
+      mine.shouldFinalize(
+        silence: 1.0, lastVoiceAt: 10, endpointSilence: 0.8, now: 11
+      ),
+      "With it, the same grace the built-in connectives get."
+    )
+    XCTAssertTrue(
+      mine.shouldFinalize(
+        silence: 1.5, lastVoiceAt: 10, endpointSilence: 0.8, now: 12
+      )
+    )
+  }
+
   // MARK: - Read back over the corpus the endpointer was tuned on
 
   /// Every sentence in `benchmarks/voice_eval/corpus/zh-TW-v1.json`, cut at

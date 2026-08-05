@@ -1,3 +1,5 @@
+import '../voice/floor_control.dart';
+
 /// How much detail Lulo should provide unless the question requires more.
 enum AgentResponseLength {
   /// Lead with a short answer and offer to expand.
@@ -138,6 +140,57 @@ const List<String> builtInVocabulary = <String>[
   'Claude',
 ];
 
+/// The user's own ways of saying "carry on", "stop", and "I have not
+/// finished".
+///
+/// Every list here extends a built-in one rather than replacing it, and
+/// every built-in one is a guess at how people talk. A user's habits are not
+/// a guess — 「蛤」 or 「先停」 or a filler nobody else uses is exactly the thing
+/// that makes the agent feel like it is listening or like it is not, and it
+/// cannot be discovered from here.
+///
+/// The profile file is watched, so a word added while the app is running
+/// takes effect on the next thing said.
+final class TurnTakingWords {
+  /// Creates the three lists, all empty by default.
+  const TurnTakingWords({
+    this.acknowledgements = const <String>[],
+    this.corrections = const <String>[],
+    this.unfinished = const <String>[],
+  });
+
+  /// Said while the agent talks and meaning "carry on" — never interrupts.
+  ///
+  /// A single character joins the repeatable set, so 「蛤」 also covers
+  /// 「蛤蛤蛤」; anything longer is matched whole.
+  final List<String> acknowledgements;
+
+  /// Said while the agent talks and meaning "stop" — always interrupts,
+  /// however short. Han entries match as a prefix, Latin ones by first word.
+  final List<String> corrections;
+
+  /// Ends a sentence that is not finished, so the endpointer waits longer.
+  ///
+  /// Read by `TurnCompletion` on the native side rather than by
+  /// [FloorControl]: the endpointer runs on a 50ms tick in the audio path,
+  /// where a hop across the channel costs more than the decision saves.
+  final List<String> unfinished;
+
+  @override
+  bool operator ==(Object other) =>
+      other is TurnTakingWords &&
+      _listEquals(other.acknowledgements, acknowledgements) &&
+      _listEquals(other.corrections, corrections) &&
+      _listEquals(other.unfinished, unfinished);
+
+  @override
+  int get hashCode => Object.hash(
+    Object.hashAll(acknowledgements),
+    Object.hashAll(corrections),
+    Object.hashAll(unfinished),
+  );
+}
+
 /// The narrow product categories a durable memory may belong to.
 enum AgentMemoryKind {
   /// A stable fact about the user, such as their chosen name.
@@ -210,10 +263,15 @@ final class AgentProfile {
     this.identity = const AgentIdentity(),
     this.personality = const AgentPersonality(),
     this.voiceBehavior = const VoiceResponseBehavior(),
+    this.turnTaking = const TurnTakingWords(),
     List<AgentMemory> memories = const <AgentMemory>[],
     List<String> vocabulary = builtInVocabulary,
     List<String> additionalInstructions = const <String>[],
-  }) : memories = List<AgentMemory>.unmodifiable(memories),
+  }) : floorControl = FloorControl(
+         alsoAcknowledgements: turnTaking.acknowledgements,
+         alsoCorrections: turnTaking.corrections,
+       ),
+       memories = List<AgentMemory>.unmodifiable(memories),
        vocabulary = List<String>.unmodifiable(vocabulary),
        additionalInstructions = List<String>.unmodifiable(
          additionalInstructions,
@@ -234,6 +292,16 @@ final class AgentProfile {
   /// Constraints for prose that may be spoken aloud.
   final VoiceResponseBehavior voiceBehavior;
 
+  /// The user's own ways of taking and yielding the floor.
+  final TurnTakingWords turnTaking;
+
+  /// Who has the floor, as this profile decides it.
+  ///
+  /// Built here, once, rather than per utterance: `classify` runs on every
+  /// partial transcript, which arrives a few times a second for as long as
+  /// the microphone is open.
+  final FloorControl floorControl;
+
   /// Structured facts eligible for deterministic selection.
   final List<AgentMemory> memories;
 
@@ -250,6 +318,7 @@ final class AgentProfile {
       other.identity == identity &&
       other.personality == personality &&
       other.voiceBehavior == voiceBehavior &&
+      other.turnTaking == turnTaking &&
       _listEquals(other.memories, memories) &&
       _listEquals(other.vocabulary, vocabulary) &&
       _listEquals(other.additionalInstructions, additionalInstructions);
@@ -260,6 +329,7 @@ final class AgentProfile {
     identity,
     personality,
     voiceBehavior,
+    turnTaking,
     Object.hashAll(memories),
     Object.hashAll(vocabulary),
     Object.hashAll(additionalInstructions),

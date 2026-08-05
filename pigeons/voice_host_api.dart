@@ -92,6 +92,16 @@ abstract class VoiceHostApi {
   /// Stops speaking mid-sentence.
   @async
   void stopSpeaking();
+
+  /// Tells the endpointer the user's own ways of leaving a sentence
+  /// unfinished, so a pause after one of them is given longer to finish.
+  ///
+  /// Sent from Dart because the agent profile lives there and is watched;
+  /// applied natively because the endpointer runs on a 50ms tick in the
+  /// audio path, where a hop across this channel per tick would cost more
+  /// than the decision saves. Replaces the previous list wholesale.
+  @async
+  void useUnfinishedEndings(List<String> endings);
 }
 
 /// Native-to-Dart: everything the pipeline reports, in order.

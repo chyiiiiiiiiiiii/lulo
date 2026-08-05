@@ -110,6 +110,33 @@ threshold, and reads as `unknown` — the ordinary 0.8s, unchanged.
 `testNoCorpusSentenceIsHeldOpenAfterItEnds` guards the expensive mistake in
 the other direction: no finished sentence is given the extra 0.6s.
 
+## The built-in lists are a guess; the user's are not
+
+Every list here is an assertion about how people talk, made by someone who
+is not the person talking. `TurnTakingWords` in the agent profile extends
+all three from the file the user already edits — and that file is watched,
+so a word added after being cut off once takes effect without a rebuild:
+
+```json
+"turnTaking": {
+  "acknowledgements": ["蛤"],
+  "corrections": ["先停"],
+  "unfinished": ["我的意思是說"]
+}
+```
+
+The first two are read by `FloorControl` at the moment of each ruling, so
+they land on the next thing said. The third belongs to the native
+endpointer, which cannot read Dart state on its 50ms tick, so it is pushed
+across `VoiceHostApi.useUnfinishedEndings` — sent when the ears open and
+again whenever the list changes, checked once per settled utterance. That is
+a beat slower than the other two and appropriate: it is a setting somebody
+edits after being cut off, not one that changes inside a sentence.
+
+Matching follows whatever the built-in of the same kind does, so an addition
+behaves like the words it joins rather than like a special case. The full
+table is in [../features/agent-profile.md](../features/agent-profile.md).
+
 ## The Dart settle cannot pre-empt the grace
 
 `_settleUtterance` is the 1.5s fallback for when the VAD declines, and a

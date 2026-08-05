@@ -34,11 +34,15 @@ final class AppComposition {
     this.transcriptShadow,
     this.transcriptShadowEvidence,
     List<String> Function()? protectedVocabulary,
+    FloorControl Function()? floorControl,
+    List<String> Function()? unfinishedEndings,
     ValueNotifier<String>? ttsVoice,
   }) : ttsVoice = ttsVoice ?? ValueNotifier<String>('ryan'),
        transcriptRefiner =
            transcriptRefiner ?? const DeterministicTranscriptRefiner(),
        protectedVocabulary = protectedVocabulary ?? _emptyVocabulary,
+       floorControl = floorControl ?? _builtInFloorControl,
+       unfinishedEndings = unfinishedEndings ?? _emptyVocabulary,
        _changeModel = changeModel ?? _keepThePreview,
        settingsStore = settingsStore ?? InMemorySettingsStore(),
        modelDownloads = modelDownloads ?? _downloadsNowhere(),
@@ -78,6 +82,17 @@ final class AppComposition {
 
   /// Latest profile vocabulary, read at the moment an utterance settles.
   final List<String> Function() protectedVocabulary;
+
+  /// Who has the floor, read again at every ruling.
+  ///
+  /// A closure rather than a value because the profile is a watched file:
+  /// a word the user adds while the app is running has to take effect on
+  /// the next thing said.
+  final FloorControl Function() floorControl;
+
+  /// The user's own ways of leaving a sentence unfinished, pushed to the
+  /// native endpointer whenever they change.
+  final List<String> Function() unfinishedEndings;
 
   /// Who speaks the answers aloud right now; settings keep it current.
   final ValueNotifier<String> ttsVoice;
@@ -166,3 +181,5 @@ final class AppComposition {
 }
 
 List<String> _emptyVocabulary() => const <String>[];
+
+FloorControl _builtInFloorControl() => FloorControl.standard;

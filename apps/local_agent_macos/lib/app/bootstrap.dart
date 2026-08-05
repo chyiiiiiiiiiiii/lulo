@@ -217,6 +217,8 @@ AppComposition createAppComposition({
     transcriptShadow: transcriptShadow,
     transcriptShadowEvidence: transcriptShadowEvidence,
     protectedVocabulary: () => profileStore.current.vocabulary,
+    floorControl: () => profileStore.current.floorControl,
+    unfinishedEndings: () => profileStore.current.turnTaking.unfinished,
     // The model is chosen in settings, and the only part of the graph that has
     // to change when it does is what sits behind this one service.
     changeModel: (String modelPath) => inferenceService.replaceWith(

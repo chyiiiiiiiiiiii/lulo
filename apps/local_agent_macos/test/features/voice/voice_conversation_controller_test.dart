@@ -548,6 +548,104 @@ void main() {
     await expectLater(generationStarted(), completes);
   });
 
+  test("a word the user calls an acknowledgement stops interrupting", () async {
+    // The built-in list is a guess. Reading it from the profile — which is a
+    // watched file — is what lets the user fix a wrong guess about their own
+    // speech without a rebuild.
+    final VoiceConversationController mine = VoiceConversationController(
+      voice: voice,
+      conversation: vm,
+      floorControl: () => FloorControl(alsoAcknowledgements: <String>['蛤']),
+      now: () => DateTime(2026, 10),
+    );
+    addTearDown(mine.dispose);
+    await mine.enable();
+    voice.hear(const FinalTranscript('Tell me a long story.'));
+    await pump();
+    final Generation generation = await generationStarted();
+    inference.emit(
+      GenerationDelta(
+        generationId: generation.id,
+        delta: 'Once upon a time, at very great length indeed. ',
+      ),
+    );
+    await pump();
+    await pump();
+    expect(voice.spoken, isNotEmpty);
+
+    voice.hear(const PartialTranscript('蛤蛤蛤'));
+    await pump();
+
+    expect(
+      inference.cancellations,
+      isNot(contains(generation.id)),
+      reason: "The user's own acknowledgement must not end the answer.",
+    );
+  });
+
+  test('the policy is re-read, not captured once', () async {
+    // The profile file is watched, so a word added mid-session has to take
+    // effect on the next thing said rather than at the next launch.
+    FloorControl policy = FloorControl.standard;
+    final VoiceConversationController mine = VoiceConversationController(
+      voice: voice,
+      conversation: vm,
+      floorControl: () => policy,
+      now: () => DateTime(2026, 10),
+    );
+    addTearDown(mine.dispose);
+    await mine.enable();
+    voice.hear(const FinalTranscript('Tell me a long story.'));
+    await pump();
+    final Generation generation = await generationStarted();
+    inference.emit(
+      GenerationDelta(
+        generationId: generation.id,
+        delta: 'Once upon a time, at very great length indeed. ',
+      ),
+    );
+    await pump();
+    await pump();
+
+    policy = FloorControl(alsoAcknowledgements: <String>['蛤']);
+    voice.hear(const PartialTranscript('蛤蛤蛤'));
+    await pump();
+
+    expect(inference.cancellations, isNot(contains(generation.id)));
+  });
+
+  test("the endpointer is told the user's own way of trailing off", () async {
+    // The decision is native, so this push is the only way the profile
+    // reaches it. Sent when the ears open, and again whenever it changes.
+    List<String> endings = <String>['我的意思是說'];
+    final VoiceConversationController mine = VoiceConversationController(
+      voice: voice,
+      conversation: vm,
+      unfinishedEndings: () => endings,
+      now: () => DateTime(2026, 11),
+    );
+    addTearDown(mine.dispose);
+
+    await mine.enable();
+    expect(voice.unfinishedEndings, <List<String>>[
+      <String>['我的意思是說'],
+    ]);
+
+    // An utterance with the list unchanged must not re-send it.
+    voice.hear(const FinalTranscript('介紹台北。'));
+    await pump();
+    expect(voice.unfinishedEndings, hasLength(1));
+
+    endings = <String>['我的意思是說', '就是說'];
+    voice.hear(const FinalTranscript('再說一次。'));
+    await pump();
+    expect(
+      voice.unfinishedEndings.last,
+      <String>['我的意思是說', '就是說'],
+      reason: 'A word added mid-session lands on the next turn.',
+    );
+  });
+
   test('an interruption that asks nothing resumes the answer', () async {
     // 53 interruptions in one real session stopped the speech; 5 of them
     // replaced the question. The other 48 left the answer written on screen
@@ -2063,6 +2161,9 @@ final class _NeverStartsVoice implements VoiceService {
 
   @override
   Stream<VoiceEvent> get events => events_.stream;
+
+  @override
+  Future<void> useUnfinishedEndings(List<String> endings) async {}
 
   @override
   Future<void> startListening() => Completer<void>().future;

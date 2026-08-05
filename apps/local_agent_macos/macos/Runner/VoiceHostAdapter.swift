@@ -653,6 +653,15 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
     }
   }
 
+  func useUnfinishedEndings(
+    endings: [String],
+    completion: @escaping (Result<Void, Error>) -> Void
+  ) {
+    turn.unfinishedEndings = endings
+    NSLog("Lulo voice: %d unfinished endings from the profile", endings.count)
+    completion(.success(()))
+  }
+
   func stopSpeaking(completion: @escaping (Result<Void, Error>) -> Void) {
     speakEpoch += 1
     speakEpochBox.epoch = speakEpoch
@@ -1633,7 +1642,15 @@ enum TurnCompletion: Equatable {
   ]
 
   /// What [text] says about whether the speaker has finished.
-  static func of(_ text: String) -> TurnCompletion {
+  ///
+  /// [alsoUnfinished] is the user's own way of trailing off, from the agent
+  /// profile. The built-in list is a guess at how people pause mid-thought;
+  /// a filler nobody else uses is exactly what decides whether being cut off
+  /// mid-sentence ever stops happening, and it cannot be guessed from here.
+  static func of(
+    _ text: String,
+    alsoUnfinished: [String] = []
+  ) -> TurnCompletion {
     let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
     guard let last = trimmed.last else { return .unknown }
     let bare = trimmed.trimmingCharacters(
@@ -1642,7 +1659,7 @@ enum TurnCompletion: Equatable {
         .union(.symbols)
     )
     guard !bare.isEmpty else { return .unknown }
-    if isContinuing(bare) { return .continuing }
+    if isContinuing(bare, alsoUnfinished: alsoUnfinished) { return .continuing }
     guard syllables(bare) >= syllablesToBeFinished else { return .unknown }
     if terminalPunctuation.contains(last) { return .settled }
     if settledSuffixes.contains(where: { bare.hasSuffix($0) }) { return .settled }
@@ -1652,17 +1669,27 @@ enum TurnCompletion: Equatable {
   /// How much longer than [endpointSilence] this text has to stay quiet.
   static func requiredSilence(
     after text: String,
-    endpointSilence: TimeInterval
+    endpointSilence: TimeInterval,
+    alsoUnfinished: [String] = []
   ) -> TimeInterval {
-    switch of(text) {
+    switch of(text, alsoUnfinished: alsoUnfinished) {
     case .continuing: return endpointSilence + continuingGrace
     case .settled: return max(0, endpointSilence - settledSaving)
     case .unknown: return endpointSilence
     }
   }
 
-  private static func isContinuing(_ bare: String) -> Bool {
+  private static func isContinuing(
+    _ bare: String,
+    alsoUnfinished: [String]
+  ) -> Bool {
     if continuingSuffixes.contains(where: { bare.hasSuffix($0) }) { return true }
+    // An empty entry is a suffix of every string, which would hold every
+    // turn open for an extra 0.6s and read exactly like the model being slow.
+    for entry in alsoUnfinished {
+      let written = entry.trimmingCharacters(in: .whitespacesAndNewlines)
+      if !written.isEmpty, bare.hasSuffix(written) { return true }
+    }
     let lastWord = bare.lowercased().split(separator: " ").last.map(String.init)
     return lastWord.map(continuingWords.contains) ?? false
   }
@@ -1715,6 +1742,15 @@ enum TurnCompletion: Equatable {
 /// Every clock is in seconds on any steady monotonic source; the caller
 /// supplies it, so a test can run a conversation in a microsecond.
 struct SpeechTurn {
+  /// Creates the bookkeeping, optionally knowing the user's own fillers.
+  init(unfinishedEndings: [String] = []) {
+    self.unfinishedEndings = unfinishedEndings
+  }
+
+  /// The user's own ways of leaving a sentence unfinished, from the agent
+  /// profile. Replaced wholesale whenever Dart sends a new list.
+  var unfinishedEndings: [String]
+
   /// A volatile transcript is on screen and unsettled.
   private(set) var utteranceInProgress = false
 
@@ -1851,7 +1887,8 @@ struct SpeechTurn {
     }
     let requiredSilence = TurnCompletion.requiredSilence(
       after: volatileText,
-      endpointSilence: endpointSilence
+      endpointSilence: endpointSilence,
+      alsoUnfinished: unfinishedEndings
     )
     guard silence.isFinite, silence > requiredSilence else { return false }
     return lastVoiceAt >= max(heardAt - margin, muteLiftedAt)

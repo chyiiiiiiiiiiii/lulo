@@ -58,6 +58,8 @@ final class VoiceConversationController extends ChangeNotifier {
     BatchScheduler utteranceScheduler = const TimerBatchScheduler(),
     DateTime Function() now = DateTime.now,
     VoiceTurnLog? turnLog,
+    FloorControl Function() floorControl = _standardFloorControl,
+    List<String> Function() unfinishedEndings = _noUnfinishedEndings,
   }) : this._(
          voice,
          conversation,
@@ -67,6 +69,8 @@ final class VoiceConversationController extends ChangeNotifier {
          utteranceScheduler,
          now,
          turnLog,
+         floorControl,
+         unfinishedEndings,
        );
 
   VoiceConversationController._(
@@ -78,6 +82,8 @@ final class VoiceConversationController extends ChangeNotifier {
     this._utteranceScheduler,
     this._now,
     this._turnLog,
+    this._floorControl,
+    this._unfinishedEndings,
   ) {
     _events = _voice.events.listen(_onVoiceEvent);
     _conversation.completedTurnsListenable.addListener(_onTurnsChanged);
@@ -105,6 +111,25 @@ final class VoiceConversationController extends ChangeNotifier {
   /// ignored, a correction is obeyed, a half-finished sentence is given
   /// longer. A rule nobody can see firing is indistinguishable from a bug.
   final VoiceTurnLog? _turnLog;
+
+  /// Who has the floor, read again at every ruling rather than captured.
+  ///
+  /// The agent profile is a watched file, so a word the user adds while the
+  /// app is running has to take effect on the next thing said.
+  final FloorControl Function() _floorControl;
+
+  /// The user's own ways of leaving a sentence unfinished.
+  ///
+  /// The endpointer that acts on these is native, so unlike [_floorControl]
+  /// they cannot simply be read at the moment of the decision — they have to
+  /// be pushed across. Sent when the ears open and again whenever the list
+  /// changes, which is checked once per settled utterance rather than per
+  /// partial: this is a setting somebody edits after being cut off, not
+  /// something that changes inside a sentence.
+  final List<String> Function() _unfinishedEndings;
+
+  /// What was last pushed, so an unchanged profile costs no channel hop.
+  List<String>? _pushedEndings;
   StreamSubscription<VoiceEvent>? _events;
 
   /// When the last utterance settled.
@@ -358,6 +383,7 @@ final class VoiceConversationController extends ChangeNotifier {
     _enabling = false;
     _enabled = true;
     notifyListeners();
+    _pushUnfinishedEndings();
     await _voice.startListening();
   }
 
@@ -443,6 +469,7 @@ final class VoiceConversationController extends ChangeNotifier {
           );
         }
       case FinalTranscript(:final String text, :final double? confidence):
+        _pushUnfinishedEndings();
         _lastFinalAt = _now();
         _lastHeardConfidence = confidence;
         // The transcript exists, so the wait the user is about to sit
@@ -966,9 +993,20 @@ final class VoiceConversationController extends ChangeNotifier {
     );
   }
 
+  /// Sends the endpointer the user's fillers, if they have changed.
+  void _pushUnfinishedEndings() {
+    final List<String> endings = _unfinishedEndings();
+    final List<String>? pushed = _pushedEndings;
+    if (pushed != null && listEquals(pushed, endings)) {
+      return;
+    }
+    _pushedEndings = List<String>.unmodifiable(endings);
+    unawaited(_voice.useUnfinishedEndings(endings));
+  }
+
   /// Why [text] was heard and deliberately not acted on.
-  static String _whyItDidNotTakeTheFloor(String text) =>
-      switch (FloorControl.classify(text)) {
+  String _whyItDidNotTakeTheFloor(String text) =>
+      switch (_floorControl().classify(text)) {
         FloorClaim.backchannel => 'backchannel — this means carry on',
         FloorClaim.substance =>
           '${FloorControl.syllablesOf(text)} syllables, under '
@@ -982,7 +1020,7 @@ final class VoiceConversationController extends ChangeNotifier {
   /// Decided by what the words are rather than how many of them there are;
   /// see [FloorControl].
   bool _takesTheFloor(String text) =>
-      FloorControl.takesTheFloor(text, agentIsSpeaking: _deliveringAnswer);
+      _floorControl().takesTheFloor(text, agentIsSpeaking: _deliveringAnswer);
 
   /// Whether an answer is in the middle of being delivered aloud.
   ///
@@ -1014,7 +1052,7 @@ final class VoiceConversationController extends ChangeNotifier {
       _turnLog?.note(
         VoiceNoteKind.tookTheFloor,
         heard,
-        detail: switch (FloorControl.classify(heard)) {
+        detail: switch (_floorControl().classify(heard)) {
           FloorClaim.correction => 'a correction stops the agent at once',
           FloorClaim.substance =>
             '${FloorControl.syllablesOf(heard)} syllables is enough to '
@@ -1120,6 +1158,11 @@ final class VoiceConversationController extends ChangeNotifier {
 }
 
 List<String> _noProtectedVocabulary() => const <String>[];
+
+/// The built-in policy, for surfaces with no profile behind them.
+FloorControl _standardFloorControl() => FloorControl.standard;
+
+List<String> _noUnfinishedEndings() => const <String>[];
 
 final class _RawTranscriptRefiner implements TranscriptRefiner {
   const _RawTranscriptRefiner();
