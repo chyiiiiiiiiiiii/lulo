@@ -202,6 +202,13 @@ struct HostVoiceEvent: Hashable {
   /// The weakest span rather than the average: one wrong word makes the
   /// sentence wrong, and an average buries it.
   var confidence: Double? = nil
+  /// How long the burst of speech this transcript came from has run, in
+  /// milliseconds, or null where nothing measured it.
+  ///
+  /// The one turn-taking signal that needs no words: a backchannel is short
+  /// in every language studied. It is what keeps 「うんうん」 from ending an
+  /// answer in a language whose acknowledgements nobody has listed.
+  var speechMs: Int64? = nil
 
 
   // swift-format-ignore: AlwaysUseLowerCamelCase
@@ -209,11 +216,13 @@ struct HostVoiceEvent: Hashable {
     let type = pigeonVar_list[0] as! HostVoiceEventType
     let text: String? = nilOrValue(pigeonVar_list[1])
     let confidence: Double? = nilOrValue(pigeonVar_list[2])
+    let speechMs: Int64? = nilOrValue(pigeonVar_list[3])
 
     return HostVoiceEvent(
       type: type,
       text: text,
-      confidence: confidence
+      confidence: confidence,
+      speechMs: speechMs
     )
   }
   func toList() -> [Any?] {
@@ -221,13 +230,14 @@ struct HostVoiceEvent: Hashable {
       type,
       text,
       confidence,
+      speechMs,
     ]
   }
   static func == (lhs: HostVoiceEvent, rhs: HostVoiceEvent) -> Bool {
     if Swift.type(of: lhs) != Swift.type(of: rhs) {
       return false
     }
-    return deepEqualsGeneratedVoiceHostApi(lhs.type, rhs.type) && deepEqualsGeneratedVoiceHostApi(lhs.text, rhs.text) && deepEqualsGeneratedVoiceHostApi(lhs.confidence, rhs.confidence)
+    return deepEqualsGeneratedVoiceHostApi(lhs.type, rhs.type) && deepEqualsGeneratedVoiceHostApi(lhs.text, rhs.text) && deepEqualsGeneratedVoiceHostApi(lhs.confidence, rhs.confidence) && deepEqualsGeneratedVoiceHostApi(lhs.speechMs, rhs.speechMs)
   }
 
   func hash(into hasher: inout Hasher) {
@@ -235,6 +245,7 @@ struct HostVoiceEvent: Hashable {
     deepHashGeneratedVoiceHostApi(value: type, hasher: &hasher)
     deepHashGeneratedVoiceHostApi(value: text, hasher: &hasher)
     deepHashGeneratedVoiceHostApi(value: confidence, hasher: &hasher)
+    deepHashGeneratedVoiceHostApi(value: speechMs, hasher: &hasher)
   }
 }
 

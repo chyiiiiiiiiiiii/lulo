@@ -123,6 +123,22 @@ final class FloorControl {
   /// syllable used to be enough, and 計 for 肌 could end an answer.
   static const int charactersOfSubstance = 3;
 
+  /// How long unrecognised speech has to run before it takes the floor.
+  ///
+  /// Every lexicon in this class is an assertion about one language, and a
+  /// language nobody has written a list for gets none of them: 「うんうん」
+  /// is four syllables of Japanese agreement and clears
+  /// [charactersOfSubstance] comfortably. Length of *speech*, though, is not
+  /// a claim about any language — a backchannel is short in every one that
+  /// has been studied.
+  ///
+  /// Half a second, which is what LiveKit's `min_duration` defaults to for
+  /// the same reason. It is a floor under [FloorClaim.substance] only: a
+  /// word that means stop outranks the clock, because being unable to stop
+  /// the agent is the worse failure, and a word that means carry on is
+  /// ignored however long it ran.
+  static const Duration speechToInterrupt = Duration(milliseconds: 500);
+
   /// Every rune that can stand alone as agreement, and can be repeated.
   ///
   /// Repetition is the whole point: 嗯嗯, 對對對, 哈哈哈 are the same signal
@@ -233,7 +249,15 @@ final class FloorControl {
   /// With nothing being said there is nothing to take away, so any word at
   /// all claims a free floor — a correction has to land as fast as it is
   /// spoken. The thresholds exist only for speech in progress.
-  bool takesTheFloor(String heard, {required bool agentIsSpeaking}) {
+  ///
+  /// [spokenFor] is how long the burst of speech ran, where anything
+  /// measured it. Null means unmeasured, and behaves exactly as this did
+  /// before the measurement existed; see [speechToInterrupt].
+  bool takesTheFloor(
+    String heard, {
+    required bool agentIsSpeaking,
+    Duration? spokenFor,
+  }) {
     final FloorClaim claim = classify(heard);
     if (claim == FloorClaim.silence) {
       return false;
@@ -245,7 +269,9 @@ final class FloorControl {
       FloorClaim.silence => false,
       FloorClaim.backchannel => false,
       FloorClaim.correction => true,
-      FloorClaim.substance => syllablesOf(heard) >= charactersOfSubstance,
+      FloorClaim.substance =>
+        syllablesOf(heard) >= charactersOfSubstance &&
+            (spokenFor == null || spokenFor >= speechToInterrupt),
     };
   }
 

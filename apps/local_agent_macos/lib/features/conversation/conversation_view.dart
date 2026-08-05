@@ -157,6 +157,15 @@ final class _ConversationViewState extends State<ConversationView> {
   /// answering "why did it do that?" with "ask it again".
   final VoiceTurnLog _turnLog = VoiceTurnLog();
 
+  /// Where being cut off mid-thought is counted, so the words this speaker
+  /// trails off on can be suggested rather than guessed.
+  ///
+  /// Seeded with what the profile already lists, read live, so a suggestion
+  /// the user has just acted on stops being made.
+  late final CutOffLedger _cutOffs = CutOffLedger(
+    alreadyListed: widget.unfinishedEndings ?? _emptyProtectedVocabulary,
+  );
+
   /// Whether the user is holding to talk, narrowed for the presence: the
   /// orb leans into listening while this is true, in either form.
   final ValueNotifier<bool> _holdingToTalk = ValueNotifier<bool>(false);
@@ -184,6 +193,7 @@ final class _ConversationViewState extends State<ConversationView> {
         floorControl: widget.floorControl ?? _builtInFloorControl,
         unfinishedEndings:
             widget.unfinishedEndings ?? _emptyProtectedVocabulary,
+        cutOffs: _cutOffs,
       );
       _voice = voice;
       voice.addListener(_reflectVoice);

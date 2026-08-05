@@ -17,11 +17,21 @@ final class ListeningStopped extends VoiceEvent {
 
 /// Words heard so far in the current utterance, still subject to change.
 final class PartialTranscript extends VoiceEvent {
-  /// Creates the event with what has been heard so far.
-  const PartialTranscript(this.text);
+  /// Creates the event with what is being heard, and how long the burst of
+  /// speech it came from has run.
+  const PartialTranscript(this.text, {this.spokenFor});
 
-  /// The volatile transcription of the utterance in progress.
+  /// The words heard so far, still subject to change.
   final String text;
+
+  /// How long the current burst of speech has run, or null where nothing
+  /// measured it.
+  ///
+  /// The one turn-taking signal that needs no words: a backchannel is short
+  /// in every language studied, so this is what keeps 「うんうん」 from ending
+  /// an answer in a language whose acknowledgements nobody has listed. It
+  /// also arrives before the transcript does, since it needs no recognition.
+  final Duration? spokenFor;
 }
 
 /// One finished utterance, as the transcriber settled it.

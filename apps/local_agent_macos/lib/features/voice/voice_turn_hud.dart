@@ -79,6 +79,7 @@ final class _Note extends StatelessWidget {
       VoiceNoteKind.tookTheFloor => theme.colorScheme.error,
       VoiceNoteKind.spoke => theme.colorScheme.tertiary,
       VoiceNoteKind.cost => theme.colorScheme.secondary,
+      VoiceNoteKind.learned => theme.colorScheme.primary,
     };
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 2),
@@ -126,5 +127,6 @@ final class _Note extends StatelessWidget {
     VoiceNoteKind.tookTheFloor => 'cut in',
     VoiceNoteKind.spoke => 'said',
     VoiceNoteKind.cost => 'cost',
+    VoiceNoteKind.learned => 'learned',
   };
 }

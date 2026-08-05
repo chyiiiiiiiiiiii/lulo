@@ -646,6 +646,131 @@ void main() {
     );
   });
 
+  test(
+    'a brief noise does not stop the agent, whatever it transcribes',
+    () async {
+      // The gate that needs no words: 「うんうん」 is four syllables of Japanese
+      // agreement and clears the syllable floor, but 300ms of speech is not a
+      // request to stop in any language.
+      await controller.enable();
+      voice.hear(const FinalTranscript('Tell me a long story.'));
+      await pump();
+      final Generation generation = await generationStarted();
+      inference.emit(
+        GenerationDelta(
+          generationId: generation.id,
+          delta: 'Once upon a time, at very great length indeed. ',
+        ),
+      );
+      await pump();
+      await pump();
+      expect(voice.spoken, isNotEmpty);
+
+      voice.hear(
+        const PartialTranscript('うんうん', spokenFor: Duration(milliseconds: 300)),
+      );
+      await pump();
+
+      expect(
+        inference.cancellations,
+        isNot(contains(generation.id)),
+        reason: 'A short burst is agreement in every language studied.',
+      );
+    },
+  );
+
+  test('the same words said for longer do stop it', () async {
+    await controller.enable();
+    voice.hear(const FinalTranscript('Tell me a long story.'));
+    await pump();
+    final Generation generation = await generationStarted();
+    inference.emit(
+      GenerationDelta(
+        generationId: generation.id,
+        delta: 'Once upon a time, at very great length indeed. ',
+      ),
+    );
+    await pump();
+    await pump();
+
+    voice.hear(
+      const PartialTranscript('うんうん', spokenFor: Duration(milliseconds: 900)),
+    );
+    await pump();
+
+    expect(inference.cancellations, contains(generation.id));
+  });
+
+  test(
+    'being cut off on the same words repeatedly becomes a suggestion',
+    () async {
+      // The shape of having been cut off mid-thought: a turn submitted, its
+      // answer talked over, another turn straight after. Detection is loose
+      // on purpose — one occurrence proves nothing and counting is what makes
+      // it precise.
+      final CutOffLedger ledger = CutOffLedger(repeatsBeforeSuggesting: 2);
+      DateTime clock = DateTime(2026, 12);
+      final VoiceConversationController mine = VoiceConversationController(
+        voice: voice,
+        conversation: vm,
+        cutOffs: ledger,
+        now: () {
+          clock = clock.add(const Duration(milliseconds: 200));
+          return clock;
+        },
+      );
+      addTearDown(mine.dispose);
+      await mine.enable();
+
+      for (int round = 0; round < 2; round++) {
+        voice.hear(const FinalTranscript('欸我想說的是'));
+        await pump();
+        final Generation generation = await generationStarted();
+        inference.emit(
+          GenerationDelta(generationId: generation.id, delta: 'Well, '),
+        );
+        await pump();
+        voice.hear(const PartialTranscript('如果完全離線的話'));
+        await pump();
+        voice.hear(const FinalTranscript('如果完全離線的話記憶怎麼同步'));
+        await pump();
+        final Generation replacement = await generationStarted();
+        inference.emit(GenerationCompleted(replacement.id));
+        await pump();
+      }
+
+      expect(
+        ledger.suggestions,
+        contains('我想說的是'),
+        reason: 'The ending that keeps being cut off is the one to raise.',
+      );
+    },
+  );
+
+  test('an ordinary conversation suggests nothing', () async {
+    // Two unrelated questions in a row must not read as a cut-off, or the
+    // ledger would suggest the ending of every sentence ever asked.
+    final CutOffLedger ledger = CutOffLedger(repeatsBeforeSuggesting: 2);
+    final VoiceConversationController mine = VoiceConversationController(
+      voice: voice,
+      conversation: vm,
+      cutOffs: ledger,
+      now: () => DateTime(2026, 12),
+    );
+    addTearDown(mine.dispose);
+    await mine.enable();
+
+    for (int round = 0; round < 3; round++) {
+      voice.hear(const FinalTranscript('介紹一下台北的天氣'));
+      await pump();
+      final Generation generation = await generationStarted();
+      inference.emit(GenerationCompleted(generation.id));
+      await pump();
+    }
+
+    expect(ledger.suggestions, isEmpty);
+  });
+
   test('an interruption that asks nothing resumes the answer', () async {
     // 53 interruptions in one real session stopped the speech; 5 of them
     // replaced the question. The other 48 left the answer written on screen

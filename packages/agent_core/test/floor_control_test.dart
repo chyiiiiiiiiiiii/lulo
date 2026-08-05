@@ -2,6 +2,7 @@ import 'package:agent_core/agent_core.dart';
 import 'package:test/test.dart';
 
 void main() {
+  _spokenForGroup();
   _ownWordsGroup();
   group('FloorControl.classify', () {
     test('hears the listening noises as backchannel', () {
@@ -254,6 +255,85 @@ void _ownWordsGroup() {
       expect(
         FloorControl().classify('嗯嗯'),
         FloorControl(alsoAcknowledgements: <String>[]).classify('嗯嗯'),
+      );
+    });
+  });
+}
+
+void _spokenForGroup() {
+  group('FloorControl with how long the speech ran', () {
+    // The one signal that needs no words. Every lexicon above is an
+    // assertion about one language; this is not, so it is what a language
+    // nobody has written a list for falls back to.
+    final FloorControl standard = FloorControl.standard;
+
+    test('a brief noise does not take the floor however it transcribes', () {
+      // 「うんうん」 is four syllables of Japanese agreement and would pass
+      // the syllable floor. Half a second of speech is not a request to
+      // stop in any language.
+      expect(
+        standard.takesTheFloor(
+          'うんうん',
+          agentIsSpeaking: true,
+          spokenFor: const Duration(milliseconds: 300),
+        ),
+        isFalse,
+      );
+    });
+
+    test('the same words said for longer do take it', () {
+      expect(
+        standard.takesTheFloor(
+          'うんうん',
+          agentIsSpeaking: true,
+          spokenFor: const Duration(milliseconds: 900),
+        ),
+        isTrue,
+      );
+    });
+
+    test('a correction lands however short it was', () {
+      // 「不對」 is about 350ms. Being unable to stop the agent is the worse
+      // failure, so a word that means stop outranks the clock.
+      expect(
+        standard.takesTheFloor(
+          '不對',
+          agentIsSpeaking: true,
+          spokenFor: const Duration(milliseconds: 200),
+        ),
+        isTrue,
+      );
+    });
+
+    test('an acknowledgement is ignored however long it was', () {
+      expect(
+        standard.takesTheFloor(
+          '對對對對對',
+          agentIsSpeaking: true,
+          spokenFor: const Duration(seconds: 3),
+        ),
+        isFalse,
+      );
+    });
+
+    test('an unmeasured burst behaves exactly as before', () {
+      // Surfaces without a VAD behind them — tests, the preview — pass
+      // nothing, and must not silently lose the ability to interrupt.
+      expect(standard.takesTheFloor('你可以解釋', agentIsSpeaking: true), isTrue);
+      expect(
+        standard.takesTheFloor('你可以解釋', agentIsSpeaking: true, spokenFor: null),
+        isTrue,
+      );
+    });
+
+    test('the clock does not apply to a floor nobody is holding', () {
+      expect(
+        standard.takesTheFloor(
+          'うん',
+          agentIsSpeaking: false,
+          spokenFor: const Duration(milliseconds: 100),
+        ),
+        isTrue,
       );
     });
   });

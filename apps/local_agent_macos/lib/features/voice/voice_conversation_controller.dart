@@ -60,6 +60,7 @@ final class VoiceConversationController extends ChangeNotifier {
     VoiceTurnLog? turnLog,
     FloorControl Function() floorControl = _standardFloorControl,
     List<String> Function() unfinishedEndings = _noUnfinishedEndings,
+    CutOffLedger? cutOffs,
   }) : this._(
          voice,
          conversation,
@@ -71,6 +72,7 @@ final class VoiceConversationController extends ChangeNotifier {
          turnLog,
          floorControl,
          unfinishedEndings,
+         cutOffs,
        );
 
   VoiceConversationController._(
@@ -84,6 +86,7 @@ final class VoiceConversationController extends ChangeNotifier {
     this._turnLog,
     this._floorControl,
     this._unfinishedEndings,
+    this._cutOffs,
   ) {
     _events = _voice.events.listen(_onVoiceEvent);
     _conversation.completedTurnsListenable.addListener(_onTurnsChanged);
@@ -128,6 +131,29 @@ final class VoiceConversationController extends ChangeNotifier {
   /// something that changes inside a sentence.
   final List<String> Function() _unfinishedEndings;
 
+  /// Where being cut off mid-thought is counted, or null on a surface that
+  /// does not learn.
+  ///
+  /// The one part of turn-taking that needs no language knowledge: it learns
+  /// from the person talking rather than from a list somebody wrote about
+  /// their language.
+  final CutOffLedger? _cutOffs;
+
+  /// The question before the one being asked now, and when it was asked, so
+  /// a cut-off can be recognised by its shape after the fact.
+  String? _questionBefore;
+  DateTime? _questionBeforeAt;
+  bool _questionBeforeWasTalkedOver = false;
+
+  /// How soon after a question its replacement still counts as the same
+  /// thought, finished.
+  ///
+  /// Generous, because detection is meant to be loose: the agent needs about
+  /// a second to start answering, the user hears it, and then carries on.
+  /// What makes this precise is that a coincidence does not repeat three
+  /// times ending on the same words.
+  static const Duration _cutOffWindow = Duration(seconds: 6);
+
   /// What was last pushed, so an unchanged profile costs no channel hop.
   List<String>? _pushedEndings;
   StreamSubscription<VoiceEvent>? _events;
@@ -143,6 +169,14 @@ final class VoiceConversationController extends ChangeNotifier {
   /// What this turn has cost so far, from the settled transcript to the
   /// first sound of its answer. Null until a transcript settles.
   VoiceTurnLatency? _latency;
+
+  /// How long the burst of speech behind the newest partial has run, or
+  /// null where nothing measured it.
+  ///
+  /// The one turn-taking signal that needs no words, and the only reason a
+  /// language with no lexicon here is not defenceless against its own
+  /// acknowledgements.
+  Duration? _spokenFor;
 
   /// How sure the recogniser was of the last settled utterance.
   ///
@@ -428,7 +462,8 @@ final class VoiceConversationController extends ChangeNotifier {
       return;
     }
     switch (event) {
-      case PartialTranscript(:final String text):
+      case PartialTranscript(:final String text, :final Duration? spokenFor):
+        _spokenFor = spokenFor;
         _partialTranscript = text;
         notifyListeners();
         if (_pttHeld || _pttSettling) {
@@ -889,6 +924,7 @@ final class VoiceConversationController extends ChangeNotifier {
       }
       _latency?.markSubmitted(_now());
       _noteHeard(heard);
+      _rememberQuestion(heard.selectedTranscript);
       unawaited(
         _conversation.submit(heard.selectedTranscript, voiceInput: heard),
       );
@@ -973,6 +1009,7 @@ final class VoiceConversationController extends ChangeNotifier {
     _cancelPendingResume();
     _latency?.markSubmitted(_now());
     _noteHeard(pending);
+    _rememberQuestion(pending.selectedTranscript);
     unawaited(
       _conversation.submit(pending.selectedTranscript, voiceInput: pending),
     );
@@ -993,6 +1030,53 @@ final class VoiceConversationController extends ChangeNotifier {
     );
   }
 
+  /// Notes the question being asked, and whether the one before it looks
+  /// like a sentence this replaced rather than a question of its own.
+  void _rememberQuestion(String question) {
+    final DateTime now = _now();
+    final String? before = _questionBefore;
+    final DateTime? at = _questionBeforeAt;
+    if (before != null &&
+        at != null &&
+        _questionBeforeWasTalkedOver &&
+        now.difference(at) <= _cutOffWindow) {
+      _cutOffs?.noteCutOff(before);
+      _raiseWhatWasLearned();
+    }
+    _questionBefore = question;
+    _questionBeforeAt = now;
+    _questionBeforeWasTalkedOver = false;
+  }
+
+  /// Says once, in the panel, that an ending has been cut off often enough
+  /// to be worth adding to the profile.
+  ///
+  /// Said rather than applied: an app that silently rewrote how it listens
+  /// to somebody would be harder to trust than one that stays slightly
+  /// wrong until told otherwise.
+  void _raiseWhatWasLearned() {
+    final CutOffLedger? ledger = _cutOffs;
+    if (ledger == null) {
+      return;
+    }
+    for (final String ending in ledger.suggestions) {
+      if (!_alreadyRaised.add(ending)) {
+        continue;
+      }
+      _turnLog?.note(
+        VoiceNoteKind.learned,
+        ending,
+        detail:
+            'cut off ${ledger.timesCutOff(ending)} times — add it to '
+            'turnTaking.unfinished in agent_profile.json',
+      );
+    }
+  }
+
+  /// Endings already raised, so a suggestion is made once rather than after
+  /// every cut-off from then on.
+  final Set<String> _alreadyRaised = <String>{};
+
   /// Sends the endpointer the user's fillers, if they have changed.
   void _pushUnfinishedEndings() {
     final List<String> endings = _unfinishedEndings();
@@ -1005,22 +1089,32 @@ final class VoiceConversationController extends ChangeNotifier {
   }
 
   /// Why [text] was heard and deliberately not acted on.
-  String _whyItDidNotTakeTheFloor(String text) =>
-      switch (_floorControl().classify(text)) {
-        FloorClaim.backchannel => 'backchannel — this means carry on',
-        FloorClaim.substance =>
-          '${FloorControl.syllablesOf(text)} syllables, under '
-              '${FloorControl.charactersOfSubstance} — too little to be sure',
-        FloorClaim.silence => 'nothing sayable',
-        FloorClaim.correction => 'a correction',
-      };
+  String _whyItDidNotTakeTheFloor(String text) {
+    final Duration? ran = _spokenFor;
+    return switch (_floorControl().classify(text)) {
+      FloorClaim.backchannel => 'backchannel — this means carry on',
+      FloorClaim.substance =>
+        FloorControl.syllablesOf(text) < FloorControl.charactersOfSubstance
+            ? '${FloorControl.syllablesOf(text)} syllables, under '
+                  '${FloorControl.charactersOfSubstance} — too little to be '
+                  'sure'
+            : 'only ${ran?.inMilliseconds}ms of speech, under '
+                  '${FloorControl.speechToInterrupt.inMilliseconds}ms — short '
+                  'enough to be agreement in any language',
+      FloorClaim.silence => 'nothing sayable',
+      FloorClaim.correction => 'a correction',
+    };
+  }
 
   /// Whether [text] is enough to take the floor from the agent.
   ///
   /// Decided by what the words are rather than how many of them there are;
   /// see [FloorControl].
-  bool _takesTheFloor(String text) =>
-      _floorControl().takesTheFloor(text, agentIsSpeaking: _deliveringAnswer);
+  bool _takesTheFloor(String text) => _floorControl().takesTheFloor(
+    text,
+    agentIsSpeaking: _deliveringAnswer,
+    spokenFor: _spokenFor,
+  );
 
   /// Whether an answer is in the middle of being delivered aloud.
   ///
@@ -1043,6 +1137,7 @@ final class VoiceConversationController extends ChangeNotifier {
       // agent, and its answer yields to nothing but the next press.
       return;
     }
+    _questionBeforeWasTalkedOver = true;
     final bool cancelling = !_conversation.canSubmit;
     debugPrint(
       'Lulo yield: from=$from speaking=$_speaking '

@@ -16,6 +16,9 @@ enum VoiceNoteKind {
 
   /// What one turn cost, from the settled transcript to the first sound.
   cost,
+
+  /// An ending that has been cut off often enough to be worth listing.
+  learned,
 }
 
 /// One decision the voice pipeline made, in words.

@@ -68,7 +68,12 @@ final class PigeonVoiceService implements VoiceService, VoiceHostEvents {
     _events.add(switch (event.type) {
       HostVoiceEventType.listeningStarted => const ListeningStarted(),
       HostVoiceEventType.listeningStopped => const ListeningStopped(),
-      HostVoiceEventType.partialTranscript => PartialTranscript(text),
+      HostVoiceEventType.partialTranscript => PartialTranscript(
+        text,
+        spokenFor: event.speechMs == null
+            ? null
+            : Duration(milliseconds: event.speechMs!),
+      ),
       HostVoiceEventType.finalTranscript => FinalTranscript(
         text,
         confidence: event.confidence,

@@ -150,7 +150,12 @@ enum HostVoiceEventType {
 
 /// One event from the native voice pipeline.
 class HostVoiceEvent {
-  HostVoiceEvent({required this.type, this.text, this.confidence});
+  HostVoiceEvent({
+    required this.type,
+    this.text,
+    this.confidence,
+    this.speechMs,
+  });
 
   /// What happened.
   HostVoiceEventType type;
@@ -165,8 +170,16 @@ class HostVoiceEvent {
   /// sentence wrong, and an average buries it.
   double? confidence;
 
+  /// How long the burst of speech this transcript came from has run, in
+  /// milliseconds, or null where nothing measured it.
+  ///
+  /// The one turn-taking signal that needs no words: a backchannel is short
+  /// in every language studied. It is what keeps 「うんうん」 from ending an
+  /// answer in a language whose acknowledgements nobody has listed.
+  int? speechMs;
+
   List<Object?> _toList() {
-    return <Object?>[type, text, confidence];
+    return <Object?>[type, text, confidence, speechMs];
   }
 
   Object encode() {
@@ -179,6 +192,7 @@ class HostVoiceEvent {
       type: result[0]! as HostVoiceEventType,
       text: result[1] as String?,
       confidence: result[2] as double?,
+      speechMs: result[3] as int?,
     );
   }
 
@@ -193,7 +207,8 @@ class HostVoiceEvent {
     }
     return _deepEquals(type, other.type) &&
         _deepEquals(text, other.text) &&
-        _deepEquals(confidence, other.confidence);
+        _deepEquals(confidence, other.confidence) &&
+        _deepEquals(speechMs, other.speechMs);
   }
 
   @override

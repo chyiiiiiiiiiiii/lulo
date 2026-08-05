@@ -49,7 +49,12 @@ enum HostVoiceEventType {
 /// One event from the native voice pipeline.
 class HostVoiceEvent {
   /// Creates the event.
-  HostVoiceEvent({required this.type, this.text, this.confidence});
+  HostVoiceEvent({
+    required this.type,
+    this.text,
+    this.confidence,
+    this.speechMs,
+  });
 
   /// What happened.
   final HostVoiceEventType type;
@@ -63,6 +68,14 @@ class HostVoiceEvent {
   /// The weakest span rather than the average: one wrong word makes the
   /// sentence wrong, and an average buries it.
   final double? confidence;
+
+  /// How long the burst of speech this transcript came from has run, in
+  /// milliseconds, or null where nothing measured it.
+  ///
+  /// The one turn-taking signal that needs no words: a backchannel is short
+  /// in every language studied. It is what keeps 「うんうん」 from ending an
+  /// answer in a language whose acknowledgements nobody has listed.
+  final int? speechMs;
 }
 
 /// Dart-to-native: driving the ears and the mouth.

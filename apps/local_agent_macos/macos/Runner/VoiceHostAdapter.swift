@@ -983,7 +983,8 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
             self?.emit(
               result.isFinal ? .finalTranscript : .partialTranscript,
               text: text,
-              confidence: weakest
+              confidence: weakest,
+              speechMs: Int64((vad.speechRun() * 1000).rounded())
             )
           }
         }
@@ -1282,10 +1283,16 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
   private func emit(
     _ type: HostVoiceEventType,
     text: String? = nil,
-    confidence: Double? = nil
+    confidence: Double? = nil,
+    speechMs: Int64? = nil
   ) {
     events.onVoiceEvent(
-      event: HostVoiceEvent(type: type, text: text, confidence: confidence),
+      event: HostVoiceEvent(
+        type: type,
+        text: text,
+        confidence: confidence,
+        speechMs: speechMs
+      ),
       completion: { _ in }
     )
   }
@@ -1996,6 +2003,23 @@ final class VoiceActivityBox: @unchecked Sendable {
   private let lock = NSLock()
   private var lastVoice: TimeInterval = -.infinity
 
+  /// When the burst of speech being heard right now began.
+  ///
+  /// The one turn-taking signal that needs no words: a backchannel is short
+  /// in every language studied and a request to take the floor is not, so
+  /// this is what stops 「うんうん」 or 「네네」 from ending an answer in a
+  /// language whose acknowledgements nobody has listed. It is also earlier
+  /// than the transcript, which has to be recognised first.
+  private var speechStartedAt: TimeInterval = -.infinity
+
+  /// How much silence ends a burst rather than falling inside one.
+  ///
+  /// Deliberately far below the endpointer's 0.8s: this measures one run of
+  /// voice, not one turn. Ordinary inter-word gaps in read Mandarin sit
+  /// around 0.26s (see docs/decisions/voice-turn-latency.md), so 0.35s keeps
+  /// a sentence together while a real stop still starts a new burst.
+  private static let burstGap: TimeInterval = 0.35
+
   /// Per-second minima, newest last; the floor is the smallest of these.
   private var minima: [Float] = []
   private var windowMin: Float = .greatestFiniteMagnitude
@@ -2030,6 +2054,9 @@ final class VoiceActivityBox: @unchecked Sendable {
     }
     windowMin = min(windowMin, rms)
     if rms > max(Self.minimumVoice, currentFloor * Self.floorRatio) {
+      if now - lastVoice > Self.burstGap {
+        speechStartedAt = now
+      }
       lastVoice = now
     }
     if rms > peak {
@@ -2046,6 +2073,18 @@ final class VoiceActivityBox: @unchecked Sendable {
     lock.lock()
     defer { lock.unlock() }
     return now - lastVoice
+  }
+
+  /// How long the current burst of speech has run, or zero before the
+  /// first one.
+  ///
+  /// Measured to the last voice rather than to now, so it is the length of
+  /// speech actually heard and not speech plus the pause after it.
+  func speechRun() -> TimeInterval {
+    lock.lock()
+    defer { lock.unlock() }
+    guard lastVoice.isFinite, speechStartedAt.isFinite else { return 0 }
+    return max(0, lastVoice - speechStartedAt)
   }
 
   /// When a voice was last heard, on the clock [observe] was given.

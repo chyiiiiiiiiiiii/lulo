@@ -137,6 +137,79 @@ Matching follows whatever the built-in of the same kind does, so an addition
 behaves like the words it joins rather than like a special case. The full
 table is in [../features/agent-profile.md](../features/agent-profile.md).
 
+## What a language with no lexicon gets
+
+Every list above is an assertion about one language, so it is worth saying
+plainly what happens to a language nobody has written one for.
+
+| | Covered | Falls back to |
+|---|---|---|
+| Backchannel | Han, some English | speech shorter than 0.5s (below) |
+| Correction | Han prefixes, English first words | nothing — needs 3 syllables like anything else |
+| Continuing | Han, English final words | flat 0.8s, which is what it was before this document |
+| Settled | Han particles | **terminal punctuation**, which every locale's recogniser writes |
+
+Two things are already language-neutral: terminal punctuation, and the
+syllable count — which holds for CJK and Latin and would over-count Thai or
+Devanagari, where a character is not a syllable.
+
+Nothing regresses. An unlisted language endpoints at 0.8s, exactly as
+everything did before, and interrupts on three syllables, which is close to
+the four characters that preceded this. The gap is **backchannels**, the
+expensive one: 「うんうん」 and 「네네」 clear three syllables comfortably and
+would end an answer.
+
+### The one signal that needs no words: how long the burst ran
+
+A backchannel is short in every language that has been studied, and a
+request to take the floor is not. `VoiceActivityBox` now records where the
+current burst of voice began — the gap that ends a burst is 0.35s, well
+below the endpointer's, because this measures one run of speech and not one
+turn — and it rides on every partial as `speechMs`.
+
+`FloorControl.speechToInterrupt` is 0.5s, the same figure LiveKit's
+`min_duration` defaults to. It is a floor under `substance` **only**:
+
+- a **correction** lands however short it was, because being unable to stop
+  the agent is the worse failure and 「不對」 is about 350 ms;
+- an **acknowledgement** is ignored however long it ran;
+- **substance** now needs three syllables *and* half a second of speech.
+
+That is what stops 「うんうん」 without knowing any Japanese. It also improves
+Chinese, which was not the point but is the reason to keep it: a misheard
+blip that happens to transcribe as three characters no longer ends an
+answer, because it never lasted long enough to be three characters.
+
+Unmeasured is null and behaves exactly as this did before the measurement
+existed, so a surface with no VAD behind it — the preview, a widget test —
+loses nothing.
+
+### The other signal that needs no words: what the speaker does next
+
+A lexicon written by somebody else is a guess. A lexicon learned from the
+person talking is not, and learning needs no language knowledge at all —
+only the shape of having been cut off mid-thought: **a turn submitted, its
+answer talked over, another turn straight after.**
+
+`CutOffLedger` watches for that shape and counts what the cut-off sentence
+*ended on*, at every tail length from two units to five, where a unit is one
+Han character or one whole Latin word.
+
+Detection is deliberately loose and counting is what makes it precise. A
+question genuinely interrupted for a good reason looks exactly like a
+cut-off once; it does not look like one three times ending on the same
+words. Every shorter tail of a repeated phrase repeats with it, so they all
+cross the threshold together and the longest is the real phrase —
+「我想說的是」 is raised and 「的是」, which matches half the language, is
+not.
+
+It **suggests and nothing more**. The panel says `learned · 我想說的是 · cut
+off 3 times — add it to turnTaking.unfinished`, and the user adds it or does
+not. An app that silently rewrote how it listens to somebody would be harder
+to trust than one that stays slightly wrong until it is told; and a
+suggestion the user has already acted on stops being made, because the
+ledger reads the profile live.
+
 ## Prosody was the obvious way to make this language-neutral. It does not work here
 
 Every lexicon above is an assertion about one language. The standard escape

@@ -464,6 +464,16 @@ agreement and used to end the answer, and 「不對」 is two characters that us
 to be ignored. See
 [../decisions/turn-taking-by-words.md](../decisions/turn-taking-by-words.md).
 
+One part of that decision needs no words at all. Every partial carries
+`spokenFor` — how long the current burst of voice has run, measured by
+`VoiceActivityBox` and pushed across as `speechMs` — and `substance` needs
+half a second of it as well as three syllables. A backchannel is short in
+every language that has been studied, so this is what stops 「うんうん」 from
+ending an answer in a language whose acknowledgements nobody has listed. A
+correction still lands however short it was, and an acknowledgement is still
+ignored however long it ran; the clock only gates the case the lexicons have
+nothing to say about.
+
 While nothing is being said, anything at all takes the floor: there is
 nothing to take away. Two further subtleties:
 
@@ -691,6 +701,7 @@ why it took the floor** puts `VoiceTurnHud` under the conversation, fed by
 | `ignored` | Something was heard and deliberately not acted on, and why |
 | `cut in` | The user took the floor back, and on what grounds |
 | `cost` | What that turn cost, the same breakdown as the `Lulo latency` line |
+| `learned` | An ending cut off often enough to be worth adding to `turnTaking.unfinished` |
 
 The log is kept whether or not the panel is showing — a user who switches it
 on has just watched the thing they want explained — and is bounded at forty
