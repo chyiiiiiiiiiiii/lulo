@@ -70,6 +70,7 @@ explanation.
 |---|---|
 | [decisions/voice-turn-latency.md](decisions/voice-turn-latency.md) | Written — read before tuning the endpointer or the prompt |
 | [decisions/turn-taking-by-words.md](decisions/turn-taking-by-words.md) | Adopted — read before changing either interruption or endpointing thresholds |
+| [decisions/batch-asr-candidates.md](decisions/batch-asr-candidates.md) | Measured — which recogniser answers the hold key, and why the streaming one is a different question |
 | [decisions/full-duplex-voice.md](decisions/full-duplex-voice.md) | Written |
 | [decisions/taiwan-mandarin-voice-candidates.md](decisions/taiwan-mandarin-voice-candidates.md) | Measured, not yet adopted |
 | [decisions/no-dart-audio-engine.md](decisions/no-dart-audio-engine.md) | Written — read before adding any audio package |

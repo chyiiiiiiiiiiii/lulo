@@ -1,0 +1,96 @@
+{
+  "schemaVersion": 1,
+  "runId": "whisper-large-v3-turbo-1785934708",
+  "corpusId": "zh-TW-v1",
+  "kind": "transcript",
+  "adapter": {
+    "name": "whisper-large-v3-turbo",
+    "version": "mlx-community/whisper-large-v3-turbo"
+  },
+  "cases": [
+    {
+      "caseId": "short-answer-ready",
+      "rawTranscript": "好 可以開始了。",
+      "refinedTranscript": null,
+      "partialEvents": [],
+      "finalAtMs": 882
+    },
+    {
+      "caseId": "short-answer-not-yet",
+      "rawTranscript": "等一下還沒",
+      "refinedTranscript": null,
+      "partialEvents": [],
+      "finalAtMs": 939
+    },
+    {
+      "caseId": "code-switch-product-names",
+      "rawTranscript": "我剛剛把Flutter和MLX的版本都更新了。",
+      "refinedTranscript": null,
+      "partialEvents": [],
+      "finalAtMs": 956
+    },
+    {
+      "caseId": "code-switch-agent-tools",
+      "rawTranscript": "先用Codex檢查,再跑DartTest。",
+      "refinedTranscript": null,
+      "partialEvents": [],
+      "finalAtMs": 998
+    },
+    {
+      "caseId": "numbers-date-time",
+      "rawTranscript": "8月2日下午3點半提醒我。",
+      "refinedTranscript": null,
+      "partialEvents": [],
+      "finalAtMs": 1013
+    },
+    {
+      "caseId": "numbers-money-version",
+      "rawTranscript": "預算是12000,版本先用3.5",
+      "refinedTranscript": null,
+      "partialEvents": [],
+      "finalAtMs": 1004
+    },
+    {
+      "caseId": "disfluency-self-correction",
+      "rawTranscript": "我想看明天不是後天的天氣。",
+      "refinedTranscript": null,
+      "partialEvents": [],
+      "finalAtMs": 998
+    },
+    {
+      "caseId": "punctuation-natural-clauses",
+      "rawTranscript": "先回答核心,細節無論論再補。",
+      "refinedTranscript": null,
+      "partialEvents": [],
+      "finalAtMs": 881
+    },
+    {
+      "caseId": "long-form-project-request",
+      "rawTranscript": "幫我先確認目前專案在哪個分支,測試有沒有通過,再告訴我最值得先修的地方。",
+      "refinedTranscript": null,
+      "partialEvents": [],
+      "finalAtMs": 920
+    },
+    {
+      "caseId": "long-form-conversational",
+      "rawTranscript": "我不是要你全部重做。我只是想知道現在這個版本,哪一段聽起來最不像臺灣人平常講話。",
+      "refinedTranscript": null,
+      "partialEvents": [],
+      "finalAtMs": 963
+    },
+    {
+      "caseId": "barge-in-stop-answer",
+      "rawTranscript": "等一下,先不要念完。",
+      "refinedTranscript": null,
+      "partialEvents": [],
+      "finalAtMs": 909
+    },
+    {
+      "caseId": "endpoint-thinking-pause",
+      "rawTranscript": "我想問的是,如果完全離線的話,記憶要怎麼同步?",
+      "refinedTranscript": null,
+      "partialEvents": [],
+      "finalAtMs": 911
+    }
+  ]
+}

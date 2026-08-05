@@ -20,8 +20,14 @@ const String _numerals = '0123456789０１２３４５６７８９零〇一二�
 /// word the recogniser did hear is never quietly deleted.
 const String _numeralJoiners = '點半.．,，:：';
 
-/// A maximal run of numeral and joining characters.
-final RegExp _numberRun = RegExp('[$_numerals$_numeralJoiners]+');
+/// A maximal run of numeral and joining characters, spacing included.
+///
+/// Whitespace joins because recognisers disagree about it inside a number:
+/// Breeze-ASR-25 writes 「3 點半」 where the corpus writes 「三點半」, and
+/// without this the 點半 folded on one side and survived on the other,
+/// charging 28.6% to a model that heard the time perfectly. A run still has
+/// to contain a real numeral, so ordinary spaced words are untouched.
+final RegExp _numberRun = RegExp('[$_numerals$_numeralJoiners\\s]+');
 
 /// Whether [run] holds anything that is definitely a number.
 bool _isANumber(String run) =>

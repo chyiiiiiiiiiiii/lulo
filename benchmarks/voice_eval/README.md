@@ -45,6 +45,24 @@ Bias also matters when comparing candidates. The app hands the transcriber
 Flutter from coming back as Flater. A candidate produced without that bias is
 not measuring the same pipeline.
 
+## Producing an ASR candidate
+
+`tool/asr_probe.py` runs any MLX Whisper checkpoint over the corpus and
+writes `kind: transcript` candidate JSON, through the same post-processing
+and the same protected vocabulary the app applies — so what is compared is
+the path the app would take, not two raw model outputs. It needs the
+`mlx_whisper` environment that serves `~/dev/lulo-tts/ears.py`.
+
+```sh
+~/dev/lulo-tts/.venv-ears/bin/python tool/asr_probe.py \
+  MediaTek-Research/Breeze-ASR-25 breeze-asr-25 /tmp/breeze.json
+dart run tool/evaluate.dart --corpus corpus/zh-TW-v1.json \
+  --candidate /tmp/breeze.json --output /tmp/report
+```
+
+Two runs of it are checked in under `evidence/batch-asr-candidates/`; see
+[../../docs/decisions/batch-asr-candidates.md](../../docs/decisions/batch-asr-candidates.md).
+
 ## Private golden WAV files
 
 The scripts live in `corpus/zh-TW-v1.json`. Record mono WAV files using the

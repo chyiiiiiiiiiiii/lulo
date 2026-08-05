@@ -106,6 +106,21 @@ void _heardNumeralsGroup() {
       expect(normalizeHeard('細節我等等再補'), isNot(normalizeHeard('細節我的忍在補')));
     });
 
+    test('spacing inside a written number is not a hearing error', () {
+      // Breeze-ASR-25 writes 「3 點半」 with spaces where the corpus writes
+      // 「三點半」 without. Whitespace was not a joiner, so 點半 survived the
+      // fold on one side and not the other, and a model that heard the time
+      // perfectly was charged 28.6%.
+      expect(
+        normalizeHeard('八月二日下午三點半提醒我。'),
+        normalizeHeard('8 月 2 日下午 3 點半提醒我'),
+      );
+      expect(
+        normalizeHeard('預算是一萬二，版本先用三點五。'),
+        normalizeHeard('預算是 12000 版本先用 3.5'),
+      );
+    });
+
     test('a word that merely contains a numeral character survives', () {
       // 點 is half of 三點半 and all of 重點. Stripping it wherever it
       // appears would quietly delete words the recogniser did hear.
