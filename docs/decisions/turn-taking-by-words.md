@@ -137,6 +137,53 @@ Matching follows whatever the built-in of the same kind does, so an addition
 behaves like the words it joins rather than like a special case. The full
 table is in [../features/agent-profile.md](../features/agent-profile.md).
 
+## Prosody was the obvious way to make this language-neutral. It does not work here
+
+Every lexicon above is an assertion about one language. The standard escape
+is prosody: **final lowering** — the pitch falling to the bottom of the
+speaker's range as an utterance ends — is among the best-attested
+near-universal turn-end cues, and it would replace half of this with
+something that needs no words at all.
+
+Measured, over the same twelve recordings, with the autocorrelation pitch
+tracker already in `sidecars/tone_probe`. For every pause found by energy,
+the pitch across the 300 ms before it, normalised into that speaker's own
+5th-to-95th-percentile range so 0 is the bottom of their voice and 1 the
+top:
+
+| | n | Final position | Median | Slope across the window |
+|---|---:|---|---:|---|
+| Turn end | 12 | 0.00–0.34 | **0.06** | −5.8 … +1.2 st |
+| Mid-utterance pause | 19 | 0.00–0.44 | **0.10** | −5.1 … +3.0 st |
+
+The ranges nest, the medians are a rounding apart, and the mid-pauses sit
+*lower* than the endings — the opposite of the hypothesis. Energy does
+slightly better and still overlaps almost completely: 0.05–0.58 of peak at a
+turn end against 0.20–0.82 at a pause.
+
+There is a mechanism, and it is not an accident of this corpus. **Mandarin
+spends F0 on lexical tone.** The pitch at any moment is mostly determined by
+which of the four tones the syllable carries, and phrase-final intonation is
+a small perturbation on top of that. The one prosodic cue that is supposed
+to be universal is the one a tone language has already spent.
+
+The instrument was checked before the result was believed, the same way it
+was for Smart Turn. Given 300 ms from an utterance's *opening* — which is
+unambiguously not the end of anything — the same measurement reports a
+median position of 0.16 against 0.06 at a turn end. It sees the difference
+it is built to see; it is the two populations that are not distinct.
+
+Twelve read recordings from one speaker, and read speech is flatter than
+spontaneous speech, so this is not a claim about prosodic turn-taking in
+general. It is a claim about whether pitch can carry this decision here, and
+it cannot. `sidecars/tone_probe/endpoint_pitch.py` is the probe.
+
+What this leaves: the language-neutral signals worth having are not in the
+pitch. They are **how long the burst of speech lasted** — a backchannel is
+short in every language studied — and **what the speaker themselves does
+after being cut off**, which is a signal that needs no language knowledge at
+all because it comes from the person talking.
+
 ## The Dart settle cannot pre-empt the grace
 
 `_settleUtterance` is the 1.5s fallback for when the VAD declines, and a
