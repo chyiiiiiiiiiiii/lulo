@@ -166,8 +166,36 @@ final class PigeonDesktopHostService extends DesktopHostEventApi
 
   final StreamController<ConversationId> _menuConversationRequests =
       StreamController<ConversationId>.broadcast();
-  final StreamController<String> _serviceText =
-      StreamController<String>.broadcast();
+
+  /// Selections sent in before anything was listening.
+  ///
+  /// `NSApp.servicesProvider` is set in `applicationDidFinishLaunching`, so
+  /// the system can deliver a message on the next runloop turn — while the
+  /// Dart listener is only attached after `runApp`, which bootstrap reaches
+  /// after recovering interrupted runs. Invoking the service on an app that
+  /// was not running therefore launched it onto an empty composer. A
+  /// broadcast stream drops what arrives with nobody listening, so what
+  /// arrives early waits here.
+  final List<String> _serviceTextBeforeAnyone = <String>[];
+
+  late final StreamController<String> _serviceText =
+      StreamController<String>.broadcast(
+        onListen: () {
+          // Flushed after this turn, so the subscription that triggered it
+          // is established before anything is delivered to it.
+          final List<String> waiting = List<String>.of(
+            _serviceTextBeforeAnyone,
+          );
+          _serviceTextBeforeAnyone.clear();
+          for (final String text in waiting) {
+            scheduleMicrotask(() {
+              if (!_disposed && _serviceText.hasListener) {
+                _serviceText.add(text);
+              }
+            });
+          }
+        },
+      );
 
   final StreamController<void> _menuVoiceRequests =
       StreamController<void>.broadcast();
@@ -201,6 +229,12 @@ final class PigeonDesktopHostService extends DesktopHostEventApi
   @override
   void onServiceTextReceived(String text) {
     if (_disposed) {
+      return;
+    }
+    if (!_serviceText.hasListener) {
+      // Held rather than dropped: this is the cold-start case, where the
+      // system delivered the selection before the app finished starting.
+      _serviceTextBeforeAnyone.add(text);
       return;
     }
     _serviceText.add(text);

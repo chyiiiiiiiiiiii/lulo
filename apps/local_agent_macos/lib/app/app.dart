@@ -626,14 +626,14 @@ final class _PresentationSwitchState extends State<_PresentationSwitch>
   /// panel, or null when nothing came back — which most often means the
   /// batch recogniser is not running, and the section next to this one says
   /// so by name.
-  Future<String?> _transcribeRecording() async {
+  Future<(TranscribeOutcome, String?)> _transcribeRecording() async {
     if (_transcribing) {
       // The guard has to live here rather than in the section: the settings
       // sheet is unmounted whenever the window changes form, which destroyed
       // the widget's own flag and let a second job start against a
       // single-threaded sidecar — with a second open panel over the first
       // job's pending save panel.
-      return '';
+      return (TranscribeOutcome.backedOut, null);
     }
     _transcribing = true;
     try {
@@ -641,6 +641,48 @@ final class _PresentationSwitchState extends State<_PresentationSwitch>
     } finally {
       _transcribing = false;
     }
+  }
+
+  /// The last transcript the recogniser produced and nobody has saved.
+  ///
+  /// Held here rather than in the settings sheet, which is torn down every
+  /// time the window changes form — ten minutes of the recogniser's work
+  /// must not depend on a widget staying mounted.
+  String? _heldTranscript;
+
+  /// Offers the save panel again for a transcript already in hand.
+  Future<(TranscribeOutcome, String?)> _saveHeldTranscript() async {
+    final String? text = _heldTranscript;
+    final DesktopPresentationHost? host = widget.composition.presentationHost;
+    if (text == null || host == null) {
+      return (TranscribeOutcome.backedOut, null);
+    }
+    return _save(text, suggested: _heldName ?? 'transcript.txt', host: host);
+  }
+
+  /// What the held transcript should be called.
+  String? _heldName;
+
+  /// Writes [text] through the save panel and reports what happened.
+  Future<(TranscribeOutcome, String?)> _save(
+    String text, {
+    required String suggested,
+    required DesktopPresentationHost host,
+  }) async {
+    final String written = await host.saveTextFile(
+      suggestedName: suggested,
+      contents: text,
+    );
+    if (written.isEmpty) {
+      // Cancelled. The text stays in hand and the section offers to save it
+      // again rather than asking the recogniser to redo the work.
+      _heldTranscript = text;
+      _heldName = suggested;
+      return (TranscribeOutcome.heldUnsaved, null);
+    }
+    _heldTranscript = null;
+    _heldName = null;
+    return (TranscribeOutcome.saved, written.split('/').last);
   }
 
   /// True while a recording is being written out, whatever is on screen.
@@ -659,28 +701,23 @@ final class _PresentationSwitchState extends State<_PresentationSwitch>
     return dot > 0 ? file.substring(0, dot) : file;
   }
 
-  Future<String?> _runTranscription() async {
+  Future<(TranscribeOutcome, String?)> _runTranscription() async {
     final VoiceService? voice = widget.composition.voiceService;
     final DesktopPresentationHost? host = widget.composition.presentationHost;
     if (voice == null || host == null) {
-      return null;
+      return (TranscribeOutcome.failed, null);
     }
     final String path = await voice.chooseRecording();
     if (path.isEmpty) {
-      return '';
+      return (TranscribeOutcome.backedOut, null);
     }
     final String text = await voice.transcribeRecording(path);
     if (text.trim().isEmpty) {
-      return null;
+      return (TranscribeOutcome.failed, null);
     }
     // Written through the save panel for the same reason an export is: a
     // sandboxed app may write where the panel says and nowhere else.
-    final String suggested = '${_baseName(path)}.txt';
-    final String written = await host.saveTextFile(
-      suggestedName: suggested,
-      contents: text,
-    );
-    return written.isEmpty ? '' : written.split('/').last;
+    return _save(text, suggested: '${_baseName(path)}.txt', host: host);
   }
 
   /// Hands the choices to the window and writes them down.
@@ -1121,6 +1158,10 @@ final class _PresentationSwitchState extends State<_PresentationSwitch>
                                   widget.composition.presentationHost == null
                               ? null
                               : _transcribeRecording,
+                          saveHeldTranscript:
+                              widget.composition.presentationHost == null
+                              ? null
+                              : _saveHeldTranscript,
                         ),
                     ],
                   ),

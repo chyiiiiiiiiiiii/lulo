@@ -36,6 +36,7 @@ final class SettingsSheet extends StatelessWidget {
     this.setLaunchAtLogin,
     this.sidecarProbe,
     this.transcribeRecording,
+    this.saveHeldTranscript,
     this.catalog = modelCatalog,
     super.key,
   });
@@ -89,7 +90,10 @@ final class SettingsSheet extends StatelessWidget {
 
   /// Picks a recording, writes it out, and saves the text — or null on a
   /// surface with no recogniser behind it.
-  final Future<String?> Function()? transcribeRecording;
+  final Future<(TranscribeOutcome, String?)> Function()? transcribeRecording;
+
+  /// Offers the save panel again for a transcript already in hand.
+  final Future<(TranscribeOutcome, String?)> Function()? saveHeldTranscript;
 
   /// Called when the user is finished.
   final VoidCallback onClose;
@@ -172,8 +176,12 @@ final class SettingsSheet extends StatelessWidget {
                           ),
                         ],
                       ),
-                      if (transcribeRecording != null)
-                        _TranscribeSection(run: transcribeRecording!),
+                      if (transcribeRecording != null &&
+                          saveHeldTranscript != null)
+                        _TranscribeSection(
+                          run: transcribeRecording!,
+                          saveHeld: saveHeldTranscript!,
+                        ),
                       if (sidecarProbe != null)
                         SidecarSection(probe: sidecarProbe!),
                       SettingsSection(
@@ -698,6 +706,24 @@ final class _SidecarSectionState extends State<SidecarSection> {
   }
 }
 
+/// What one attempt to write a recording out produced.
+enum TranscribeOutcome {
+  /// The text is on disk where the user asked for it.
+  saved,
+
+  /// The recogniser answered and the user closed the save panel. The text is
+  /// held, not lost — ten minutes of work must not disappear because someone
+  /// changed their mind about a folder.
+  heldUnsaved,
+
+  /// The user closed one of the panels without choosing. Not a failure and
+  /// not worth reporting.
+  backedOut,
+
+  /// Nothing came back.
+  failed,
+}
+
 /// Writing a recording the user already has out as text.
 ///
 /// The batch recogniser is installed, tuned for this user's language, and
@@ -705,11 +731,14 @@ final class _SidecarSectionState extends State<SidecarSection> {
 /// reach it was to hold a key at a live microphone. A two-hour 課堂錄音 in
 /// Downloads could not use the best recogniser on the machine.
 final class _TranscribeSection extends StatefulWidget {
-  const _TranscribeSection({required this.run});
+  const _TranscribeSection({required this.run, required this.saveHeld});
 
-  /// Returns the name of the file written, empty when the user backed out,
-  /// or null when nothing came back.
-  final Future<String?> Function() run;
+  /// Picks a recording, writes it out, and saves the text.
+  final Future<(TranscribeOutcome, String?)> Function() run;
+
+  /// Offers the save panel again for a transcript already in hand, without
+  /// asking the recogniser to do the work twice.
+  final Future<(TranscribeOutcome, String?)> Function() saveHeld;
 
   @override
   State<_TranscribeSection> createState() => _TranscribeSectionState();
@@ -719,11 +748,18 @@ final class _TranscribeSectionState extends State<_TranscribeSection> {
   bool _working = false;
   String? _saved;
   bool _failed = false;
+  bool _held = false;
 
-  Future<void> _start() async {
+  Future<void> _start() => _run(widget.run);
+
+  Future<void> _run(
+    Future<(TranscribeOutcome, String?)> Function() attempt,
+  ) async {
     if (_working) {
       // One at a time. The recogniser is a single-threaded sidecar, so two
-      // at once is two that both take longer.
+      // at once is two that both take longer. The real guard lives in the
+      // app, which survives this sheet being torn down; this one only stops
+      // a second tap while the button is on screen.
       return;
     }
     setState(() {
@@ -731,22 +767,21 @@ final class _TranscribeSectionState extends State<_TranscribeSection> {
       _saved = null;
       _failed = false;
     });
+    TranscribeOutcome outcome = TranscribeOutcome.failed;
     String? name;
-    bool failed = false;
     try {
-      name = await widget.run();
+      (outcome, name) = await attempt();
     } on Object {
-      failed = true;
+      outcome = TranscribeOutcome.failed;
     }
     if (!mounted) {
       return;
     }
     setState(() {
       _working = false;
-      _failed = failed || name == null;
-      // An empty name is the user backing out of one of the two panels,
-      // which is not a failure and not worth reporting.
-      _saved = (name != null && name.isNotEmpty) ? name : null;
+      _failed = outcome == TranscribeOutcome.failed;
+      _held = outcome == TranscribeOutcome.heldUnsaved;
+      _saved = outcome == TranscribeOutcome.saved ? name : null;
     });
   }
 
@@ -767,6 +802,8 @@ final class _TranscribeSectionState extends State<_TranscribeSection> {
                   words.transcribeFailed,
                   style: TextStyle(color: Theme.of(context).colorScheme.error),
                 )
+              : _held
+              ? Text(words.transcribeHeld)
               : _saved != null
               ? Text(words.transcribeSaved(_saved!))
               : null,
@@ -775,6 +812,15 @@ final class _TranscribeSectionState extends State<_TranscribeSection> {
                   width: 18,
                   height: 18,
                   child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : _held
+              // Saving again rather than transcribing again: the text is in
+              // hand and the recogniser must not be asked to spend another
+              // ten minutes on work it has already done.
+              ? FilledButton(
+                  key: const Key('setting-transcribe-save-again'),
+                  onPressed: () => unawaited(_run(widget.saveHeld)),
+                  child: Text(words.transcribeSaveAgain),
                 )
               : FilledButton(
                   key: const Key('setting-transcribe-choose'),

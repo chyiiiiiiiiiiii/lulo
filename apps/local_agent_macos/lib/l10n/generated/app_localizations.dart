@@ -609,6 +609,18 @@ abstract class AppLocalizations {
   /// **'Saved as {name}'**
   String transcribeSaved(String name);
 
+  /// No description provided for @transcribeHeld.
+  ///
+  /// In en, this message translates to:
+  /// **'Written out but not saved — the text is still here, just pick somewhere.'**
+  String get transcribeHeld;
+
+  /// No description provided for @transcribeSaveAgain.
+  ///
+  /// In en, this message translates to:
+  /// **'Save it'**
+  String get transcribeSaveAgain;
+
   /// No description provided for @sectionModel.
   ///
   /// In en, this message translates to:

@@ -85,6 +85,8 @@
   "transcribeWorking": "寫字中 —— 長一點的錄音要等幾分鐘。",
   "transcribeFailed": "沒有寫出東西。可能是聽寫的程式沒在跑，也可能是它讀不到那個檔案 —— 它是另一個行程，第一次讀「下載」或「桌面」時 macOS 會另外要權限。",
   "transcribeSaved": "已存成 {name}",
+  "transcribeHeld": "寫好了，但還沒存 —— 文字還在，按「存檔」選個地方就好。",
+  "transcribeSaveAgain": "存檔",
   "sectionModel": "它用來思考的模型",
   "noModelChosen": "還沒選模型",
   "previewNote": "Lulo 現在是用內建的預覽回答，每次都講同一句。",

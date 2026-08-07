@@ -126,6 +126,8 @@
   "transcribeWorking": "Writing it out — a long recording takes a few minutes.",
   "transcribeFailed": "Nothing came back. Either the transcriber is not running, or it could not read that file — it is a separate process, and macOS asks it separately for Downloads and Desktop.",
   "transcribeSaved": "Saved as {name}",
+  "transcribeHeld": "Written out but not saved — the text is still here, just pick somewhere.",
+  "transcribeSaveAgain": "Save it",
   "@transcribeSaved": {"placeholders": {"name": {"type": "String"}}},
   "sectionModel": "The model it thinks with",
   "noModelChosen": "No model chosen",

@@ -613,6 +613,51 @@ void main() {
         ),
       );
     });
+
+    test(
+      'a selection sent before the app was listening still arrives',
+      () async {
+        // `NSApp.servicesProvider` is set in `applicationDidFinishLaunching`,
+        // so the system can deliver a selection on the next runloop turn —
+        // while the Dart listener attaches only after `runApp`. A broadcast
+        // stream drops what arrives with nobody listening, so invoking the
+        // service on an app that was not running opened it onto an empty
+        // composer.
+        final service = PigeonDesktopHostService(
+          hostApi: RecordingLifecycleDesktopHostApi(),
+          now: () => DateTime.utc(2026, 8, 7),
+          registerEventApi: false,
+        );
+        addTearDown(service.dispose);
+
+        service.onServiceTextReceived('選在別的 app 裡的那段話');
+
+        expect(
+          await service.serviceText.first,
+          '選在別的 app 裡的那段話',
+          reason: 'the cold-start case is the whole reason this path exists',
+        );
+      },
+    );
+
+    test('a selection sent while listening is not delivered twice', () async {
+      final service = PigeonDesktopHostService(
+        hostApi: RecordingLifecycleDesktopHostApi(),
+        now: () => DateTime.utc(2026, 8, 7),
+        registerEventApi: false,
+      );
+      addTearDown(service.dispose);
+
+      final List<String> seen = <String>[];
+      final sub = service.serviceText.listen(seen.add);
+      addTearDown(sub.cancel);
+      await Future<void>.delayed(Duration.zero);
+
+      service.onServiceTextReceived('一段話');
+      await Future<void>.delayed(Duration.zero);
+
+      expect(seen, <String>['一段話']);
+    });
   });
 }
 

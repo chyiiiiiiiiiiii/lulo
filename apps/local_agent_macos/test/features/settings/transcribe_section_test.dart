@@ -19,7 +19,10 @@ void main() {
   );
   tearDownAll(downloads.dispose);
 
-  Widget sheet(Future<String?> Function() run) => MaterialApp(
+  Widget sheet(
+    Future<(TranscribeOutcome, String?)> Function() run, {
+    Future<(TranscribeOutcome, String?)> Function()? saveHeld,
+  }) => MaterialApp(
     localizationsDelegates: AppLocalizations.localizationsDelegates,
     supportedLocales: AppLocalizations.supportedLocales,
     home: SettingsSheet(
@@ -32,6 +35,8 @@ void main() {
       onDownloadModel: (ModelCatalogEntry _) {},
       onUseModel: (ModelCatalogEntry _) {},
       transcribeRecording: run,
+      saveHeldTranscript:
+          saveHeld ?? () async => (TranscribeOutcome.backedOut, null),
     ),
   );
 
@@ -50,7 +55,9 @@ void main() {
     // The recogniser is installed and tuned for this user's language, and
     // until now the only way to reach it was to hold a key at a live
     // microphone — a recording they already had could not use it.
-    await tester.pumpWidget(sheet(() async => '課堂錄音.txt'));
+    await tester.pumpWidget(
+      sheet(() async => (TranscribeOutcome.saved, '課堂錄音.txt')),
+    );
     await tester.pump();
 
     await tapChoose(tester);
@@ -64,7 +71,9 @@ void main() {
   ) async {
     // The commonest cause by far is the sidecar not running, and the
     // section next to this one names it.
-    await tester.pumpWidget(sheet(() async => null));
+    await tester.pumpWidget(
+      sheet(() async => (TranscribeOutcome.failed, null)),
+    );
     await tester.pump();
 
     await tapChoose(tester);
@@ -76,7 +85,9 @@ void main() {
   testWidgets('backing out of the panel is not a failure', (
     WidgetTester tester,
   ) async {
-    await tester.pumpWidget(sheet(() async => ''));
+    await tester.pumpWidget(
+      sheet(() async => (TranscribeOutcome.backedOut, null)),
+    );
     await tester.pump();
 
     await tapChoose(tester);
@@ -122,5 +133,48 @@ void main() {
     await tester.pump();
 
     expect(find.byKey(const Key('setting-transcribe')), findsNothing);
+  });
+
+  testWidgets('a cancelled save keeps the transcript and offers it again', (
+    WidgetTester tester,
+  ) async {
+    // Ten minutes of the recogniser's work must not disappear because
+    // somebody changed their mind about a folder. Saving again rather than
+    // transcribing again: the text is already in hand.
+    int transcriptions = 0;
+    int saves = 0;
+    await tester.pumpWidget(
+      sheet(
+        () async {
+          transcriptions += 1;
+          return (TranscribeOutcome.heldUnsaved, null);
+        },
+        saveHeld: () async {
+          saves += 1;
+          return (TranscribeOutcome.saved, '課堂錄音.txt');
+        },
+      ),
+    );
+    await tester.pump();
+
+    await tester.ensureVisible(
+      find.byKey(const Key('setting-transcribe-choose')),
+    );
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('setting-transcribe-choose')));
+    await tester.pump();
+
+    expect(find.textContaining('not saved'), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('setting-transcribe-save-again')));
+    await tester.pump();
+
+    expect(saves, 1);
+    expect(
+      transcriptions,
+      1,
+      reason: 'saving again must not ask the recogniser to redo the work',
+    );
+    expect(find.textContaining('課堂錄音.txt'), findsOneWidget);
   });
 }

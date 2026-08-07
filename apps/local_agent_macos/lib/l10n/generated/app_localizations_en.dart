@@ -292,6 +292,13 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
+  String get transcribeHeld =>
+      'Written out but not saved — the text is still here, just pick somewhere.';
+
+  @override
+  String get transcribeSaveAgain => 'Save it';
+
+  @override
   String get sectionModel => 'The model it thinks with';
 
   @override

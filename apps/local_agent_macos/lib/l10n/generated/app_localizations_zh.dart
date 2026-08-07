@@ -281,6 +281,12 @@ class AppLocalizationsZh extends AppLocalizations {
   }
 
   @override
+  String get transcribeHeld => '寫好了，但還沒存 —— 文字還在，按「存檔」選個地方就好。';
+
+  @override
+  String get transcribeSaveAgain => '存檔';
+
+  @override
   String get sectionModel => '它用來思考的模型';
 
   @override
