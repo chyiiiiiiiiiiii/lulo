@@ -96,17 +96,56 @@ buffers. **Run it before writing anything else** — the whole recommendation
 above rests on two engines being able to coexist, and if they cannot, this
 plan is wrong and nobody should spend a day discovering that.
 
-It needs somebody at the machine. Opening the real microphone from a test
-host raises a TCC prompt, and an unattended `xcodebuild` sits on that dialog
-until it is killed — which is what happened when it was written.
-
 ```sh
-cd apps/local_agent_macos
+cd apps/local_agent_macos/macos
 TEST_RUNNER_LULO_AUDIO_DEVICE_TESTS=1 xcodebuild test \
-  -workspace macos/Runner.xcworkspace -scheme Runner \
+  -workspace Runner.xcworkspace -scheme Runner \
+  -configuration Debug -destination platform=macOS \
   -derivedDataPath ../build/macos_window_tests \
   -only-testing:RunnerTests/SecondAudioEngineTests
 ```
+
+### It still has not been run, and the reason first written here was wrong
+
+This section used to say the run needs somebody at the machine to dismiss a
+TCC prompt. That was a guess from watching an `xcodebuild` hang, and it does
+not survive being checked. Measured on 2026-08-07:
+
+- With the environment variable set, the run hangs **three times out of
+  three** — 19 minutes, 7 minutes, and a third killed at 4. It stops after
+  `RegisterWithLaunchServices`, with the test host launched and idle at 0.4%
+  CPU. `Testing started` never prints, so it is not hanging *inside* the test.
+- The same command **without** the variable, so the test takes its `XCTSkip`,
+  passes in **1.9s**. `-only-testing:RunnerTests/DesktopPanelControllerTests`
+  passes in **4.5s**. The test host and the workspace are fine.
+- There is **no dialog**. `log show --predicate 'process == "tccd"'` has no
+  microphone entry for the whole window, and the launched `Lulo` has zero
+  windows. Nobody at the machine could have clicked anything.
+- `AVCaptureDevice.authorizationStatus(for: .audio)` returns **authorized**,
+  and the built host carries both `com.apple.security.device.audio-input` and
+  `NSMicrophoneUsageDescription`. Permission is not what is missing.
+- The same experiment as a standalone `swift` script, outside XCTest
+  entirely, also hangs — killed at **600s** with no output. So this is not
+  something `xcodebuild` is doing.
+- Enumerating the devices returns instantly: four inputs, none
+  `isInUseByAnotherApplication`, the built-in microphone is the default and
+  is free.
+
+So: authorized, device free, enumeration instant — and any process that
+actually opens an input tap hangs. Enumeration goes through `AVCaptureDevice`
+and never builds the input graph; `AVAudioEngine.inputNode` does. The
+untested suspect is one of the virtual HAL drivers installed on this machine
+(`iShotAudioPlugin`, `MSLoopbackDriverDevice`, `Yii麥克風`) — a HAL plugin
+loads into every process that touches CoreAudio, and a wedged one hangs it
+there. Confirming that means disabling them, which is the machine owner's
+call, not a test's.
+
+**What this does and does not tell the next person.** It says nothing about
+whether two `AVAudioEngine`s can coexist — the question is still open and the
+plan below still rests on it. What it does say is that the answer cannot be
+got from an agent-spawned process on this machine, and that a hang here is
+not a permission prompt to be clicked through. Run it from Xcode or a
+Terminal you own, after ruling out the virtual drivers.
 
 If both engines run, the rest is mechanical and every piece already exists:
 
