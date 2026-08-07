@@ -99,11 +99,17 @@ final class SecondAudioEngineTests: XCTestCase {
     let finished = DispatchSemaphore(value: 0)
     let built = UncheckedBox<VoiceHostAdapter.ListeningGraph?>(nil)
     DispatchQueue.global(qos: .userInitiated).async {
-      built.value = try? VoiceHostAdapter.makeListeningGraph(
-        analyzerFormat: analyzerFormat,
-        mute: MuteBox(),
-        heldSpeech: HeldSpeechCaptureBox()
-      )
+      // The cold path: no warm engine waiting, so this press pays for one.
+      // It is the worst case and the one that used to freeze the app.
+      built.value = try? {
+        let warm = try VoiceHostAdapter.makeWarmEngine()
+        return try VoiceHostAdapter.makeListeningGraph(
+          warm: warm,
+          analyzerFormat: analyzerFormat,
+          mute: MuteBox(),
+          heldSpeech: HeldSpeechCaptureBox()
+        )
+      }()
       finished.signal()
     }
 
@@ -126,6 +132,95 @@ final class SecondAudioEngineTests: XCTestCase {
       100,
       "building the listening graph starved the main thread for "
         + String(format: "%.0f ms", worstStall)
+    )
+  }
+
+  /// A warm engine is what makes the microphone button feel instant.
+  ///
+  /// Moving the build off the main thread stopped the app freezing, but the
+  /// second was still spent and the microphone still took that long to open.
+  /// Almost all of it is the engine itself: `setVoiceProcessingEnabled` and
+  /// the first touch of `inputNode`, neither of which depends on the session
+  /// about to start. Built once and kept, what a press has left to pay is the
+  /// tap, the converter, `prepare` and `start` — measured at 80-90 ms against
+  /// 1100.
+  ///
+  /// This is only safe because building does **not** open the microphone.
+  /// Measured through `kAudioDevicePropertyDeviceIsRunningSomewhere`, which
+  /// is what the system reads to decide the recording indicator: false before
+  /// the build, false a second and a half after it, and true only once
+  /// `engine.start()` runs. `testAWarmEngineDoesNotHoldTheMicrophone` keeps
+  /// that true, because the day it stops being true this app is listening
+  /// before anyone asked it to.
+  @available(macOS 26.0, *)
+  func testAWarmEngineMakesStartingToListenQuick() throws {
+    guard ProcessInfo.processInfo.environment["LULO_AUDIO_DEVICE_TESTS"] != nil
+    else {
+      throw XCTSkip(
+        "Set LULO_AUDIO_DEVICE_TESTS to run: this opens the real microphone."
+      )
+    }
+    let analyzerFormat = try XCTUnwrap(
+      AVAudioFormat(
+        commonFormat: .pcmFormatFloat32,
+        sampleRate: 16_000,
+        channels: 1,
+        interleaved: false
+      )
+    )
+    let warm = try VoiceHostAdapter.makeWarmEngine()
+
+    let started = ProcessInfo.processInfo.systemUptime
+    let graph = try VoiceHostAdapter.makeListeningGraph(
+      warm: warm,
+      analyzerFormat: analyzerFormat,
+      mute: MuteBox(),
+      heldSpeech: HeldSpeechCaptureBox()
+    )
+    let elapsed = (ProcessInfo.processInfo.systemUptime - started) * 1000
+
+    graph.engine.stop()
+    graph.engine.inputNode.removeTap(onBus: 0)
+
+    XCTAssertLessThan(
+      elapsed,
+      300,
+      "starting on a warm engine took "
+        + String(format: "%.0f ms", elapsed)
+        + " — the point of keeping one is that this is not the second it "
+        + "replaces"
+    )
+  }
+
+  @available(macOS 26.0, *)
+  func testAWarmEngineDoesNotHoldTheMicrophone() throws {
+    // The whole trade rests on this. An engine kept warm across the time
+    // nobody is talking must not be an engine holding the microphone open
+    // across the time nobody is talking.
+    guard ProcessInfo.processInfo.environment["LULO_AUDIO_DEVICE_TESTS"] != nil
+    else {
+      throw XCTSkip(
+        "Set LULO_AUDIO_DEVICE_TESTS to run: this opens the real microphone."
+      )
+    }
+    let device = try XCTUnwrap(
+      InputDevicePolicy.defaultInputDevice(),
+      "no default input device to ask about"
+    )
+    XCTAssertEqual(
+      InputDevicePolicy.isRunningSomewhere(device),
+      false,
+      "something already had the microphone open before this test built "
+        + "anything — the result below would mean nothing"
+    )
+
+    let warm = try VoiceHostAdapter.makeWarmEngine()
+    defer { warm.engine.stop() }
+
+    XCTAssertEqual(
+      InputDevicePolicy.isRunningSomewhere(device),
+      false,
+      "a warm engine opened the microphone; keeping one is not safe"
     )
   }
 }

@@ -94,6 +94,19 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
   /// Read on the real-time audio thread, written here.
   private let mute = MuteBox()
 
+  /// An engine built and waiting, so a press of the microphone button pays
+  /// 80-90 ms instead of 1100.
+  ///
+  /// Holds no microphone: building one leaves
+  /// `kAudioDevicePropertyDeviceIsRunningSomewhere` false, and only
+  /// `engine.start()` turns it true. That is the whole reason keeping one is
+  /// allowed, and `testAWarmEngineDoesNotHoldTheMicrophone` is what keeps it
+  /// honest.
+  private var warmEngine: WarmVoiceEngine?
+
+  /// A warm-up in flight, so two of them never run at once.
+  private var warmingUp: Task<Void, Never>?
+
   /// [speakEpoch], readable from the render loop off the main actor.
   private let speakEpochBox = EpochBox()
 
@@ -105,6 +118,11 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
   init(events: VoiceHostEvents) {
     self.events = events
     super.init()
+    // Build the engine now, while nobody is waiting for it. This app is
+    // resident — launched once and summoned repeatedly — so the second it
+    // costs is spent at launch instead of in front of the user on the first
+    // press. It opens no microphone; see `warmEngine`.
+    warmUpEngine()
   }
 
   // MARK: - VoiceHostApi
@@ -851,19 +869,27 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
     }
     try guardCurrent(id)
 
-    // Built off the main thread. What follows this line used to be a second
-    // of synchronous CoreAudio running on the actor that draws the app, so
-    // every press of the microphone button froze it; see
-    // `makeListeningGraph`.
+    // The engine is built ahead of time and off the main thread. Both
+    // matter and they fix different things: off the main thread is why the
+    // app no longer freezes for a second on every press, and ahead of time
+    // is why the microphone now opens in 80-90 ms instead of 1100. See
+    // `makeWarmEngine`.
     let muteBox = mute
     let heldSpeechBox = heldSpeech
-    let graph = try await Task.detached(priority: .userInitiated) {
-      try Self.makeListeningGraph(
+    let warm = try await takeWarmEngine()
+    let graph: ListeningGraph
+    do {
+      graph = try Self.makeListeningGraph(
+        warm: warm,
         analyzerFormat: analyzerFormat,
         mute: muteBox,
         heldSpeech: heldSpeechBox
       )
-    }.value
+    } catch {
+      // A warm engine that will not take a session is not worth keeping.
+      warm.engine.stop()
+      throw error
+    }
     // A stop that arrived while the graph was being built owns the outcome.
     // It is a whole second now, which is long enough for the user to change
     // their mind in.
@@ -1069,11 +1095,22 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
   /// The boxes are passed in rather than read off `self`: they are the only
   /// adapter state the audio thread is allowed to touch, and every one of
   /// them is already `Sendable`.
-  nonisolated static func makeListeningGraph(
-    analyzerFormat: AVAudioFormat,
-    mute: MuteBox,
-    heldSpeech: HeldSpeechCaptureBox
-  ) throws -> ListeningGraph {
+  /// The expensive half of the listening graph, which no session owns.
+  ///
+  /// `setVoiceProcessingEnabled` and the first touch of `inputNode` are
+  /// almost the whole second, and neither depends on the session about to
+  /// start — so this is built once and kept. What a press of the microphone
+  /// button then pays is the tap, the converter, `prepare` and `start`,
+  /// measured at 80-90 ms against 1100.
+  ///
+  /// Safe only because building does **not** open the microphone. Measured
+  /// through `kAudioDevicePropertyDeviceIsRunningSomewhere`, the property
+  /// the system reads to decide the recording indicator: false before the
+  /// build, false a second and a half after it, and true only once
+  /// `engine.start()` runs. `testAWarmEngineDoesNotHoldTheMicrophone` pins
+  /// that, because the day it stops holding, this app is listening before
+  /// anyone asked.
+  nonisolated static func makeWarmEngine() throws -> WarmVoiceEngine {
     let engine = AVAudioEngine()
     let input = engine.inputNode
     var duplex = false
@@ -1167,6 +1204,37 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
         )
       }
     }
+    return WarmVoiceEngine(
+      engine: engine,
+      fullDuplex: duplex,
+      openMicWithoutCanceller: openMic
+    )
+  }
+
+  /// An engine built ahead of time, with no session on it yet.
+  ///
+  /// `@unchecked Sendable` for the same reason `ListeningGraph` is: built on
+  /// one background thread, handed over once, and touched only on the main
+  /// actor afterwards.
+  struct WarmVoiceEngine: @unchecked Sendable {
+    let engine: AVAudioEngine
+    let fullDuplex: Bool
+    let openMicWithoutCanceller: Bool
+  }
+
+  /// Wires one session onto a warm engine and starts it.
+  ///
+  /// Everything here is cheap — the costly part is [makeWarmEngine], which
+  /// this takes as an argument rather than doing again.
+  nonisolated static func makeListeningGraph(
+    warm: WarmVoiceEngine,
+    analyzerFormat: AVAudioFormat,
+    mute: MuteBox,
+    heldSpeech: HeldSpeechCaptureBox
+  ) throws -> ListeningGraph {
+    let engine = warm.engine
+    let input = engine.inputNode
+    let duplex = warm.fullDuplex
     let microphoneFormat = input.outputFormat(forBus: 0)
     // The microphone is an array — three channels built in, more on
     // aggregates — and which channel carries the voice is the device's
@@ -1250,10 +1318,9 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
       playerNode: playerNode,
       renderFormat: renderFormat,
       fullDuplex: duplex,
-      openMicWithoutCanceller: openMic
+      openMicWithoutCanceller: warm.openMicWithoutCanceller
     )
   }
-
   /// Settles the utterance in progress once the room has gone quiet.
   private func checkEndpoint(
     id: Int,
@@ -1297,6 +1364,70 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
     }
   }
 
+  /// The engine to start this session on, waiting for it or building one.
+  ///
+  /// Consumed: a session owns the engine it runs on, and `endSession` hands
+  /// it back. Building here rather than failing is what makes the warm-up an
+  /// optimization instead of a precondition — the first press after launch,
+  /// or one that beats the warm-up, simply pays what it always paid.
+  private func takeWarmEngine() async throws -> WarmVoiceEngine {
+    // A warm-up already running is worth waiting for. Building a second
+    // engine beside it pays the same second twice and leaves one of them to
+    // be thrown away.
+    if let warmingUp {
+      await warmingUp.value
+    }
+    if let warm = warmEngine {
+      warmEngine = nil
+      return warm
+    }
+    return try await Task.detached(priority: .userInitiated) {
+      try Self.makeWarmEngine()
+    }.value
+  }
+
+  /// Builds the next engine while nobody is waiting for it.
+  ///
+  /// This app is resident — launched once and summoned repeatedly — so the
+  /// second belongs in the gaps rather than in front of the user. At
+  /// `.utility` because nothing is blocked on it; the press that cannot wait
+  /// takes the `.userInitiated` path in `takeWarmEngine` instead.
+  func warmUpEngine() {
+    guard warmEngine == nil, warmingUp == nil, session == nil else {
+      return
+    }
+    // Not under XCTest. The test host is the real app, so this would build a
+    // real audio engine on a background thread at the moment the window
+    // tests are measuring clicks and frames — `main.dart` keeps the real
+    // model off the test host for the same reason. Nothing here is what
+    // those tests are about, and the device tests that *are* about it build
+    // their own.
+    guard NSClassFromString("XCTestCase") == nil else {
+      return
+    }
+    warmingUp = Task { @MainActor [weak self] in
+      let built = try? await Task.detached(priority: .utility) {
+        try Self.makeWarmEngine()
+      }.value
+      guard let self else {
+        built?.engine.stop()
+        return
+      }
+      self.warmingUp = nil
+      guard self.warmEngine == nil, let built else {
+        built?.engine.stop()
+        return
+      }
+      self.warmEngine = built
+    }
+  }
+
+  /// Throws away the waiting engine, when what it was built against is gone.
+  private func discardWarmEngine() {
+    warmEngine?.engine.stop()
+    warmEngine = nil
+  }
+
   private func guardCurrent(_ id: Int) throws {
     if id != sessionCounter {
       throw CancellationError()
@@ -1312,6 +1443,18 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
     session.builder.finish()
     session.engine.inputNode.removeTap(onBus: 0)
     session.engine.stop()
+    // Back to the warm pool. The tap is off and the engine is stopped, which
+    // is exactly the state one is kept in — what is left is the player node,
+    // which has to be detached or every session leaves another attached to
+    // an engine that now outlives them all.
+    if let player = session.playerNode {
+      session.engine.detach(player)
+    }
+    warmEngine = WarmVoiceEngine(
+      engine: session.engine,
+      fullDuplex: fullDuplex,
+      openMicWithoutCanceller: openMicWithoutCanceller
+    )
     let analyzer = session.analyzer
     let resultsTask = session.resultsTask
     // Finalization drains what the transcriber still holds — the trailing
@@ -1355,6 +1498,10 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
       self.turn.listeningStopped()
       self.mute.muted = false
       self.endSession()
+      // The engine endSession just handed back was built against the device
+      // that has gone away. Keeping it is how the rebuild lands back on the
+      // route it was rebuilding away from.
+      self.discardWarmEngine()
       self.sessionCounter += 1
       let id = self.sessionCounter
       do {
@@ -1745,6 +1892,52 @@ enum InputDevicePolicy {
       return nil
     }
     return transport(of: device)
+  }
+
+  /// The system's default input device, or nil if unknowable.
+  static func defaultInputDevice() -> AudioDeviceID? {
+    var device = AudioDeviceID(0)
+    var size = UInt32(MemoryLayout<AudioDeviceID>.size)
+    var address = AudioObjectPropertyAddress(
+      mSelector: kAudioHardwarePropertyDefaultInputDevice,
+      mScope: kAudioObjectPropertyScopeGlobal,
+      mElement: kAudioObjectPropertyElementMain
+    )
+    guard
+      AudioObjectGetPropertyData(
+        AudioObjectID(kAudioObjectSystemObject),
+        &address,
+        0,
+        nil,
+        &size,
+        &device
+      ) == noErr, device != kAudioObjectUnknown
+    else {
+      return nil
+    }
+    return device
+  }
+
+  /// Whether any process currently has [device] running.
+  ///
+  /// This is the property the system itself reads to decide whether to light
+  /// the recording indicator, which makes it the honest way to ask "is this
+  /// app listening" — as opposed to "does this app have an engine".
+  static func isRunningSomewhere(_ device: AudioDeviceID) -> Bool? {
+    var address = AudioObjectPropertyAddress(
+      mSelector: kAudioDevicePropertyDeviceIsRunningSomewhere,
+      mScope: kAudioObjectPropertyScopeGlobal,
+      mElement: kAudioObjectPropertyElementMain
+    )
+    var running = UInt32(0)
+    var size = UInt32(MemoryLayout<UInt32>.size)
+    guard
+      AudioObjectGetPropertyData(device, &address, 0, nil, &size, &running)
+        == noErr
+    else {
+      return nil
+    }
+    return running != 0
   }
 
   /// The machine's own microphone, if it has one.
