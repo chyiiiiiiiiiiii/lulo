@@ -152,6 +152,18 @@ a sandboxed app may write where the panel says and nowhere else. Nothing
 came back is reported rather than swallowed, and the section beside it names
 the sidecar that is most likely why.
 
+Text selected in another app reaches Lulo in one step. `NSServices` in
+`Info.plist` puts "Ask Lulo about this" in every app that handles text —
+which needs no Accessibility permission and works on the deployment target,
+unlike reading the screen. `SelectionService.text(from:)` is the testable
+half; a whitespace-only selection is refused, because the system offers the
+item whenever any string is on the pasteboard. It **seeds the composer and
+does not send**: a selection is not a question, the user still has to say
+what they want done with it, and what they were already typing is kept.
+Writing the answer back over the selection needs `NSReturnTypes` and a
+handler that blocks on the Dart isolate — a different and riskier shape,
+not built.
+
 Toolchain is pinned by CI: Flutter **3.44.1** stable, Dart SDK `^3.12.0`.
 
 ## Layout

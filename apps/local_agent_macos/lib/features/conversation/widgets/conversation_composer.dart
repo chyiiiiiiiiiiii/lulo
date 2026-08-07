@@ -17,11 +17,18 @@ final class ConversationComposer extends StatefulWidget {
     required this.onStop,
     this.voice,
     this.onBuild,
+    this.seed,
     super.key,
   });
 
   /// Whether a new prompt may be submitted.
   final ValueListenable<bool> canSubmit;
+
+  /// Text handed in from outside the window, or null where nothing does.
+  ///
+  /// A selection sent from another app's Services menu. It lands in the
+  /// field rather than being sent, because a selection is not a question.
+  final ValueListenable<String>? seed;
 
   /// Push-to-talk, when a voice is present and enabled: hold the button to
   /// speak, release to send, and the answer plays out uninterrupted.
@@ -48,12 +55,34 @@ final class _ConversationComposerState extends State<ConversationComposer> {
   void initState() {
     super.initState();
     _controller.addListener(_refresh);
+    widget.seed?.addListener(_takeSeed);
+    _takeSeed();
     WidgetsBinding.instance.addPostFrameCallback(
       (_) => _focusNode.requestFocus(),
     );
   }
 
   void _refresh() => setState(() {});
+
+  /// Puts text handed in from outside into the field, without sending it.
+  ///
+  /// Not submitted. What arrives from another app's Services menu is a
+  /// selection, and a selection is not a question — the user still has to
+  /// say what they want done with it. Appended rather than replacing, so a
+  /// second send does not silently discard what they were part-way through
+  /// typing.
+  void _takeSeed() {
+    final String? text = widget.seed?.value;
+    if (text == null || text.isEmpty) {
+      return;
+    }
+    final String existing = _controller.text;
+    _controller.text = existing.isEmpty ? text : '$existing\n\n$text';
+    _controller.selection = TextSelection.collapsed(
+      offset: _controller.text.length,
+    );
+    _focusNode.requestFocus();
+  }
 
   void _submit() {
     final String prompt = _controller.text.trim();
@@ -86,6 +115,7 @@ final class _ConversationComposerState extends State<ConversationComposer> {
 
   @override
   void dispose() {
+    widget.seed?.removeListener(_takeSeed);
     _controller.removeListener(_refresh);
     _controller.dispose();
     _focusNode.dispose();

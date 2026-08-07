@@ -16,6 +16,13 @@ final class FakePresentationHost implements DesktopPresentationHost {
     presentation.value = mode;
   }
 
+  /// Text a Services menu is pretending to have sent.
+  final StreamController<String> serviceTextController =
+      StreamController<String>.broadcast();
+
+  @override
+  Stream<String> get serviceText => serviceTextController.stream;
+
   /// What the system is pretending to say about starting at login.
   DesktopLoginItem loginItemValue = DesktopLoginItem.off;
 

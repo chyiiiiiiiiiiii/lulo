@@ -98,6 +98,11 @@ class AppDelegate: FlutterAppDelegate {
   }
 
   private var menuBarController: MenuBarController?
+
+  /// Held so the Services handler can reach them; the system calls it long
+  /// after `applicationDidFinishLaunching` has returned.
+  private var servicePanel: DesktopPanelControlling?
+  private var serviceEvents: DesktopHostEventApi?
   private var hotKeyController: GlobalHotKeyController?
   private var hotKeySplitter: HotKeyHoldSplitter?
   private var desktopHostApi: LocalRuntimeDesktopHostApi?
@@ -172,6 +177,11 @@ class AppDelegate: FlutterAppDelegate {
     menuBarController.onVoiceRequested = {
       eventApi.onMenuBarVoiceRequested(completion: { _ in })
     }
+    // The Services menu calls into this object directly, from any app, at
+    // any time — so what it needs is kept rather than captured.
+    self.servicePanel = panelController
+    self.serviceEvents = eventApi
+    NSApp.servicesProvider = self
     // The hotkey and the menu bar can both change the form, so the Flutter
     // surface is told about every change rather than only the ones it asked
     // for. Otherwise the orb and the conversation can disagree about which is
@@ -269,6 +279,26 @@ class AppDelegate: FlutterAppDelegate {
         adapter.hotKeyHold(began: began)
       }
     }
+  }
+
+  /// The Services menu handing over what the user had selected elsewhere.
+  ///
+  /// Named in `Info.plist` under `NSServices`; the selector is what the
+  /// system calls. It shows the window as well as sending the text, because
+  /// an answer arriving in a window the user cannot see is the same as no
+  /// answer.
+  @objc func askLuloAboutSelection(
+    _ pasteboard: NSPasteboard,
+    userData: String?,
+    error: AutoreleasingUnsafeMutablePointer<NSString>?
+  ) {
+    guard let text = SelectionService.text(from: pasteboard) else {
+      error?.pointee = "There was no text to send." as NSString
+      return
+    }
+    servicePanel?.show()
+    servicePanel?.setPresentationMode(.expanded)
+    serviceEvents?.onServiceTextReceived(text: text, completion: { _ in })
   }
 
   override func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {

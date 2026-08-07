@@ -526,6 +526,13 @@ abstract interface class DesktopPresentationHost {
   /// Requests to start talking, made from the status-bar menu.
   Stream<void> get menuVoiceRequests;
 
+  /// Text the user sent from another app's Services menu.
+  ///
+  /// Selecting a paragraph elsewhere and asking Lulo about it used to be six
+  /// steps: copy, switch, paste, type the request, wait, copy the answer
+  /// back. This is that in one, from where they already are.
+  Stream<String> get serviceText;
+
   /// Tells the status-bar menu what to show the next time it opens.
   ///
   /// Pushed rather than pulled: AppKit builds the menu at the moment it is

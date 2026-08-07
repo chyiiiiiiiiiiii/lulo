@@ -1538,6 +1538,17 @@ protocol DesktopHostEventApiProtocol {
   func onMenuBarConversationChosen(conversationId conversationIdArg: String, completion: @escaping (Result<Void, PigeonError>) -> Void)
   /// The user asked for voice from the menu bar.
   func onMenuBarVoiceRequested(completion: @escaping (Result<Void, PigeonError>) -> Void)
+  /// Text the user sent from another app's Services menu.
+  ///
+  /// Selecting a paragraph in Mail and asking Lulo about it used to mean
+  /// copy, switch, paste, type the request, wait, copy the answer, switch
+  /// back. This is the same thing in one step from where they already are.
+  ///
+  /// Send-only: the answer appears in Lulo rather than replacing what was
+  /// selected. Writing back needs `NSReturnTypes` and a Services handler
+  /// that blocks on an answer from the Dart isolate, which is a different
+  /// and riskier shape.
+  func onServiceTextReceived(text textArg: String, completion: @escaping (Result<Void, PigeonError>) -> Void)
   /// Asks the app to change form, rather than telling it that it already did.
   ///
   /// The hotkey and the menu bar live on the native side, so without this the
@@ -1625,6 +1636,34 @@ class DesktopHostEventApi: DesktopHostEventApiProtocol {
     let channelName: String = "dev.flutter.pigeon.local_agent_macos.DesktopHostEventApi.onMenuBarVoiceRequested\(messageChannelSuffix)"
     let channel = FlutterBasicMessageChannel(name: channelName, binaryMessenger: binaryMessenger, codec: codec)
     channel.sendMessage(nil) { response in
+      guard let listResponse = response as? [Any?] else {
+        completion(.failure(createConnectionError(withChannelName: channelName)))
+        return
+      }
+      if listResponse.count > 1 {
+        let code: String = listResponse[0] as! String
+        let message: String? = nilOrValue(listResponse[1])
+        let details: String? = nilOrValue(listResponse[2])
+        completion(.failure(PigeonError(code: code, message: message, details: details)))
+      } else {
+        completion(.success(()))
+      }
+    }
+  }
+  /// Text the user sent from another app's Services menu.
+  ///
+  /// Selecting a paragraph in Mail and asking Lulo about it used to mean
+  /// copy, switch, paste, type the request, wait, copy the answer, switch
+  /// back. This is the same thing in one step from where they already are.
+  ///
+  /// Send-only: the answer appears in Lulo rather than replacing what was
+  /// selected. Writing back needs `NSReturnTypes` and a Services handler
+  /// that blocks on an answer from the Dart isolate, which is a different
+  /// and riskier shape.
+  func onServiceTextReceived(text textArg: String, completion: @escaping (Result<Void, PigeonError>) -> Void) {
+    let channelName: String = "dev.flutter.pigeon.local_agent_macos.DesktopHostEventApi.onServiceTextReceived\(messageChannelSuffix)"
+    let channel = FlutterBasicMessageChannel(name: channelName, binaryMessenger: binaryMessenger, codec: codec)
+    channel.sendMessage([textArg] as [Any?]) { response in
       guard let listResponse = response as? [Any?] else {
         completion(.failure(createConnectionError(withChannelName: channelName)))
         return

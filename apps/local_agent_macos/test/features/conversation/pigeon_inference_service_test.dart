@@ -914,6 +914,9 @@ typedef CancelHandler =
 
 final class RecordingDesktopHostService implements DesktopHostService {
   @override
+  Stream<String> get serviceText => const Stream<String>.empty();
+
+  @override
   Future<DesktopLoginItem> loginItem() async => DesktopLoginItem.off;
 
   @override

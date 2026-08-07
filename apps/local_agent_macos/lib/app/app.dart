@@ -218,6 +218,14 @@ final class _PresentationSwitchState extends State<_PresentationSwitch>
     ) {
       unawaited(_openFromMenuBar(null, thenListen: true));
     });
+    // A selection sent from another app. The window is already being shown
+    // by the native side; this puts the text where the user can add what
+    // they want done with it.
+    _serviceText = widget.composition.presentationHost?.serviceText.listen((
+      String text,
+    ) {
+      _composerSeed.value = text;
+    });
     _settingsRequests = widget.composition.presentationHost?.settingsRequests
         .listen((void _) {
           // Not before the stored settings have arrived: the sheet applies
@@ -324,6 +332,10 @@ final class _PresentationSwitchState extends State<_PresentationSwitch>
 
   StreamSubscription<ConversationId>? _menuConversations;
   StreamSubscription<void>? _menuVoice;
+  StreamSubscription<String>? _serviceText;
+
+  /// The last selection sent in from another app, for the composer to take.
+  final ValueNotifier<String> _composerSeed = ValueNotifier<String>('');
 
   /// The conversations the menu bar was last given.
   ///
@@ -685,6 +697,8 @@ final class _PresentationSwitchState extends State<_PresentationSwitch>
     );
     unawaited(_menuConversations?.cancel());
     unawaited(_menuVoice?.cancel());
+    unawaited(_serviceText?.cancel());
+    _composerSeed.dispose();
     unawaited(_settingsRequests?.cancel());
     unawaited(_geometryChanges?.cancel());
     widget.composition.presentationHost?.presentation.removeListener(
@@ -912,6 +926,7 @@ final class _PresentationSwitchState extends State<_PresentationSwitch>
       child: ConversationView(
         key: _conversationKey,
         voiceRequests: widget.composition.voiceRequests,
+        composerSeed: _composerSeed,
         viewModelFactory: () => widget.composition.createConversationViewModel(
           conversationId: _openConversation,
           startFresh: _startFresh,

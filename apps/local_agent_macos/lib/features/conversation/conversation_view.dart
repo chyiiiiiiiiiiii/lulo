@@ -74,6 +74,7 @@ final class ConversationView extends StatefulWidget {
     this.floorControl,
     this.unfinishedEndings,
     this.buildObserver,
+    this.composerSeed,
     this.presenceShaderLoader = loadAgentPresenceShader,
     this.onPresenceController,
     this.presenceController,
@@ -136,6 +137,10 @@ final class ConversationView extends StatefulWidget {
   /// Corrections the user has taught the recogniser, or null on a surface
   /// with no profile behind it.
   final List<MisheardWord> Function()? misheard;
+
+  /// Text handed in from outside the window — a selection sent from another
+  /// app's Services menu — or null on a surface where nothing does.
+  final ValueListenable<String>? composerSeed;
 
   /// Who has the floor, or null to use the built-in policy.
   final FloorControl Function()? floorControl;
@@ -312,6 +317,7 @@ final class _ConversationViewState extends State<ConversationView> {
               onStop: _viewModel.stop,
               voice: _voice,
               onBuild: () => widget.buildObserver?.composerBuilds += 1,
+              seed: widget.composerSeed,
             ),
           ],
         ),

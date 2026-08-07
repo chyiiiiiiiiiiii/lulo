@@ -1640,6 +1640,18 @@ abstract class DesktopHostEventApi {
   /// The user asked for voice from the menu bar.
   void onMenuBarVoiceRequested();
 
+  /// Text the user sent from another app's Services menu.
+  ///
+  /// Selecting a paragraph in Mail and asking Lulo about it used to mean
+  /// copy, switch, paste, type the request, wait, copy the answer, switch
+  /// back. This is the same thing in one step from where they already are.
+  ///
+  /// Send-only: the answer appears in Lulo rather than replacing what was
+  /// selected. Writing back needs `NSReturnTypes` and a Services handler
+  /// that blocks on an answer from the Dart isolate, which is a different
+  /// and riskier shape.
+  void onServiceTextReceived(String text);
+
   /// Asks the app to change form, rather than telling it that it already did.
   ///
   /// The hotkey and the menu bar live on the native side, so without this the
@@ -1755,6 +1767,31 @@ abstract class DesktopHostEventApi {
         pigeonVar_channel.setMessageHandler((Object? message) async {
           try {
             api.onMenuBarVoiceRequested();
+            return wrapResponse(empty: true);
+          } on PlatformException catch (e) {
+            return wrapResponse(error: e);
+          } catch (e) {
+            return wrapResponse(
+              error: PlatformException(code: 'error', message: e.toString()),
+            );
+          }
+        });
+      }
+    }
+    {
+      final pigeonVar_channel = BasicMessageChannel<Object?>(
+        'dev.flutter.pigeon.local_agent_macos.DesktopHostEventApi.onServiceTextReceived$messageChannelSuffix',
+        pigeonChannelCodec,
+        binaryMessenger: binaryMessenger,
+      );
+      if (api == null) {
+        pigeonVar_channel.setMessageHandler(null);
+      } else {
+        pigeonVar_channel.setMessageHandler((Object? message) async {
+          final List<Object?> args = message! as List<Object?>;
+          final String arg_text = args[0]! as String;
+          try {
+            api.onServiceTextReceived(arg_text);
             return wrapResponse(empty: true);
           } on PlatformException catch (e) {
             return wrapResponse(error: e);

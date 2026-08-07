@@ -166,6 +166,9 @@ final class PigeonDesktopHostService extends DesktopHostEventApi
 
   final StreamController<ConversationId> _menuConversationRequests =
       StreamController<ConversationId>.broadcast();
+  final StreamController<String> _serviceText =
+      StreamController<String>.broadcast();
+
   final StreamController<void> _menuVoiceRequests =
       StreamController<void>.broadcast();
 
@@ -175,6 +178,9 @@ final class PigeonDesktopHostService extends DesktopHostEventApi
 
   @override
   Stream<void> get menuVoiceRequests => _menuVoiceRequests.stream;
+
+  @override
+  Stream<String> get serviceText => _serviceText.stream;
 
   @override
   void onMenuBarConversationChosen(String conversationId) {
@@ -190,6 +196,14 @@ final class PigeonDesktopHostService extends DesktopHostEventApi
       return;
     }
     _menuVoiceRequests.add(null);
+  }
+
+  @override
+  void onServiceTextReceived(String text) {
+    if (_disposed) {
+      return;
+    }
+    _serviceText.add(text);
   }
 
   @override
