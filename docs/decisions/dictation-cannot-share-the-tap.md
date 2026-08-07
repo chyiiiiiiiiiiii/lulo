@@ -88,6 +88,54 @@ Things the built version got right and worth keeping:
   long as Lulo runs. Neither hotkey being user-configurable is the real
   problem underneath that, and is still not solved.
 
+## The plan for the next attempt, and the one thing to check first
+
+`SecondAudioEngineTests` is checked in and skipped by default. It starts two
+`AVAudioEngine`s, taps the input on both, and asserts each one receives
+buffers. **Run it before writing anything else** — the whole recommendation
+above rests on two engines being able to coexist, and if they cannot, this
+plan is wrong and nobody should spend a day discovering that.
+
+It needs somebody at the machine. Opening the real microphone from a test
+host raises a TCC prompt, and an unattended `xcodebuild` sits on that dialog
+until it is killed — which is what happened when it was written.
+
+```sh
+cd apps/local_agent_macos
+TEST_RUNNER_LULO_AUDIO_DEVICE_TESTS=1 xcodebuild test \
+  -workspace macos/Runner.xcworkspace -scheme Runner \
+  -derivedDataPath ../build/macos_window_tests \
+  -only-testing:RunnerTests/SecondAudioEngineTests
+```
+
+If both engines run, the rest is mechanical and every piece already exists:
+
+1. **The key.** A second `GlobalHotKeyController` already works — its id
+   collision with ⌘⇧Space was found and fixed while the reverted version was
+   being built, and `testTwoControllersNeverMintTheSameIdentifier` pins it.
+   Not ⌘⇧D: Finder, Mail and most editors use it, and a Carbon hot key beats
+   the frontmost app's menu.
+2. **Its own engine, started on press and stopped on release.** Not the
+   conversation's session, and never touching `mute`, `VoiceActivityBox`,
+   `TurnCompletion` or `heldSpeech` — those are the four things that broke.
+   The conversation does not need to know a dictation is happening, which is
+   the entire point.
+3. **Its own `HeldSpeechCaptureBox`.** Note that `begin()` deliberately
+   resets unconditionally so push-to-talk can recover from a release Carbon
+   never delivered; a dictation key with no hold splitter needs its own
+   key-repeat guard at the call site rather than changing that.
+4. **`transcribeHeld`**, which already takes a timeout and already
+   distinguishes "no recogniser" from "heard nothing".
+5. **`NSPasteboard`**, which needs no entitlement to write.
+6. **The outcome shape**, which was written and reviewed before the revert:
+   copied / heard nothing / microphone closed / recogniser unreachable, four
+   states because they send the user to do four different things, and a
+   menu-bar signal because the user is by definition looking at another app.
+
+The first word is the known cost and is still unmeasured: an engine started
+on the keypress is not yet running when the first syllable arrives. Measure
+it before deciding whether the engine should idle warm.
+
 ## What was kept
 
 Three fixes that stand on their own and are unrelated to dictation:
