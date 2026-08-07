@@ -105,6 +105,13 @@ struct LiteRTLMDriverGenerationRequest: Equatable, Sendable {
   let extraContext: [String: [String]]
   let sampler: LiteRTLMSamplerFingerprint
   let maxOutputTokens: Int
+  /// The window the model was loaded with.
+  ///
+  /// Carried because the driver is the only place that holds live
+  /// conversations, so it is the only place that can notice one outgrowing
+  /// the window — and it cannot notice without knowing how big the window
+  /// is. The backend knows, from the model it loaded.
+  let contextSize: Int64
 }
 
 protocol LiteRTLMRuntimeDriving: Sendable {
@@ -195,7 +202,28 @@ actor SystemLiteRTLMRuntimeDriver: LiteRTLMRuntimeDriving {
     let staleSampler =
       conversationSamplers[request.sessionId] != nil
       && conversationSamplers[request.sessionId] != request.sampler
-    let stale = staleInstruction || staleSampler
+    // A conversation that has run out of window is rebuilt for the same
+    // reason an edited profile rebuilds one: a KV cache cannot be amended,
+    // and there is no way to drop a prefix of it. The rebuild seeds from the
+    // history, which `historyFitting` has already trimmed to fit — so it
+    // sheds the accumulated clocks and document passages and keeps what the
+    // conversation was about. `getTokenCount` reads the cache itself, which
+    // is exact where the seeding path can only estimate; a runtime that
+    // refuses to answer leaves the conversation alone rather than throwing
+    // it away on every turn.
+    let outgrewWindow =
+      conversations[request.sessionId].map { conversation in
+        guard let held = try? conversation.getTokenCount() else {
+          return false
+        }
+        return !LiteRTLMRuntimeBackend.liveConversationHasRoomForTurn(
+          heldTokens: held,
+          prompt: request.prompt,
+          maxOutputTokens: request.maxOutputTokens,
+          contextSize: request.contextSize
+        )
+      } ?? false
+    let stale = staleInstruction || staleSampler || outgrewWindow
     if let existing = conversations[request.sessionId], !stale {
       conversation = existing
     } else {
@@ -848,6 +876,47 @@ public actor LiteRTLMRuntimeBackend: RuntimeBackend {
     return kept.reversed()
   }
 
+  /// Whether a conversation the runtime already holds can take one more turn
+  /// without running past the window.
+  ///
+  /// [historyFitting] bounds the window only where a conversation is built.
+  /// Every turn after the first goes to one the runtime already has, and its
+  /// KV cache is never re-seeded — so nothing measured it. What accumulates
+  /// there is not the user's question either: it is the whole turn
+  /// instruction, which carries the memories this question selected, the
+  /// clock, and up to `maxDocumentCharacters` of the open document, and then
+  /// the answer joins it. Measured with this app's own default profile
+  /// against a 4,096-token window: 103 tokens a turn in Chinese with nothing
+  /// open, and 224 with a document open — 38 turns and 17 turns before the
+  /// cache is gone. Overflow does not degrade; it arrives as an empty
+  /// answer, which is what `historyFitting` above exists to prevent on the
+  /// one path it covers.
+  ///
+  /// A conversation with no room is rebuilt from the trimmed history rather
+  /// than trimmed in place, because a KV cache cannot be trimmed: the
+  /// runtime exposes no way to drop a prefix of one. The rebuild costs a
+  /// prefill and sheds every accumulated clock and document passage, keeping
+  /// what the conversation was actually about.
+  ///
+  /// [heldTokens] is what the conversation reports it is holding, which is
+  /// an exact count read back from the cache rather than the estimate the
+  /// seeding path is forced to use. Everything else is charged the same way
+  /// [historyFitting] charges it, so the two paths cannot disagree about how
+  /// much room a turn needs.
+  static func liveConversationHasRoomForTurn(
+    heldTokens: Int,
+    prompt: String,
+    maxOutputTokens: Int,
+    contextSize: Int64
+  ) -> Bool {
+    let needed =
+      heldTokens
+      + estimatedTokenCount(prompt)
+      + turnMarkerTokens
+      + max(0, maxOutputTokens)
+    return needed <= Int(contextSize)
+  }
+
   private func validateGeneration(
     _ generation: RuntimeGenerationRequest,
     contextSize: Int64
@@ -890,7 +959,8 @@ public actor LiteRTLMRuntimeBackend: RuntimeBackend {
         temperature: generation.temperature,
         seed: seed
       ),
-      maxOutputTokens: maxTokens
+      maxOutputTokens: maxTokens,
+      contextSize: contextSize
     )
   }
 }

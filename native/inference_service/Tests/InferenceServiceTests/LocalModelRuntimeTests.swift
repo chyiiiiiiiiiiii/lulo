@@ -222,7 +222,8 @@ final class LocalModelRuntimeTests: XCTestCase {
             temperature: 0.25,
             seed: 7
           ),
-          maxOutputTokens: 16
+          maxOutputTokens: 16,
+          contextSize: 64
         )
       ]
     )
@@ -283,6 +284,33 @@ final class LocalModelRuntimeTests: XCTestCase {
 
     let requests = await harness.driver.generationRequests
     XCTAssertEqual(requests.first?.systemInstruction, "You are Lulo.")
+  }
+
+  func testLiteRTLMBackendCarriesTheWindowSizeToTheDriver() async throws {
+    // The driver holds the live conversations, so it is the only place that
+    // can notice one outgrowing the window — and it cannot notice without
+    // being told how big the window is. The backend knows, from the model it
+    // loaded; before this the driver never heard.
+    let harness = try await makeLiteRTLMBackendHarness()
+    defer { try? FileManager.default.removeItem(at: harness.modelDirectory) }
+
+    _ = try await harness.backend.startGeneration(
+      RuntimeGenerationRequest(
+        generationId: "generation-1",
+        sessionId: "session-7",
+        systemInstruction: "",
+        prompt: "Hello",
+        context: [],
+        temperature: 0.25,
+        topP: 0.9,
+        maxTokens: 16,
+        seed: 7
+      )
+    )
+    await harness.driver.waitForGenerationCall()
+
+    let requests = await harness.driver.generationRequests
+    XCTAssertEqual(requests.first?.contextSize, 64)
   }
 
   func testSystemInstructionTakesRoomFromTheHistoryBudget() {
@@ -5126,6 +5154,83 @@ final class LocalModelRuntimeTests: XCTestCase {
     XCTAssertLessThanOrEqual(
       seeded + LiteRTLMRuntimeBackend.estimatedTokenCount(prompt) + maxOutputTokens,
       Int(contextSize)
+    )
+  }
+
+  func testALiveConversationWithRoomLeftTakesTheNextTurn() {
+    // The ordinary case: a conversation a few turns old has most of the
+    // window left, and rebuilding it would throw away a prefilled cache for
+    // nothing.
+    XCTAssertTrue(
+      LiteRTLMRuntimeBackend.liveConversationHasRoomForTurn(
+        heldTokens: 300,
+        prompt: "接下來呢",
+        maxOutputTokens: 2048,
+        contextSize: 4096
+      )
+    )
+  }
+
+  func testALiveConversationThatOutgrewTheWindowIsRebuiltInstead() {
+    // `historyFitting` bounds the window only where a conversation is
+    // created. Every turn after the first goes to a conversation the runtime
+    // already holds, and its KV cache grows with the whole turn instruction —
+    // memories, the clock, and up to `maxDocumentCharacters` of document —
+    // plus the answer. Nothing measured that, so a long conversation walked
+    // past the window and the overflow arrived as an empty answer.
+    XCTAssertFalse(
+      LiteRTLMRuntimeBackend.liveConversationHasRoomForTurn(
+        heldTokens: 3000,
+        prompt: "接下來呢",
+        maxOutputTokens: 2048,
+        contextSize: 4096
+      )
+    )
+  }
+
+  func testTheLiveCheckReservesTheSameRoomAsTheSeedingBudget() {
+    // The two paths have to agree, or a conversation is refused room it
+    // would have been seeded with — or worse, kept past what seeding would
+    // have allowed. Held exactly to the boundary fits; one token more does
+    // not.
+    let prompt = "接下來呢"
+    let maxOutputTokens = 512
+    let contextSize: Int64 = 4096
+    let boundary =
+      Int(contextSize) - maxOutputTokens
+      - LiteRTLMRuntimeBackend.estimatedTokenCount(prompt)
+      - LiteRTLMRuntimeBackend.turnMarkerTokens
+
+    XCTAssertTrue(
+      LiteRTLMRuntimeBackend.liveConversationHasRoomForTurn(
+        heldTokens: boundary,
+        prompt: prompt,
+        maxOutputTokens: maxOutputTokens,
+        contextSize: contextSize
+      )
+    )
+    XCTAssertFalse(
+      LiteRTLMRuntimeBackend.liveConversationHasRoomForTurn(
+        heldTokens: boundary + 1,
+        prompt: prompt,
+        maxOutputTokens: maxOutputTokens,
+        contextSize: contextSize
+      )
+    )
+  }
+
+  func testAConversationHoldingNothingYetIsNeverRebuilt() {
+    // A token count the runtime could not produce reads as zero, and zero
+    // must not be the thing that throws away a live conversation on every
+    // turn. Refusing to rebuild is the safe reading: the seeding budget
+    // still bounds whatever gets rebuilt later.
+    XCTAssertTrue(
+      LiteRTLMRuntimeBackend.liveConversationHasRoomForTurn(
+        heldTokens: 0,
+        prompt: "接下來呢",
+        maxOutputTokens: 2048,
+        contextSize: 4096
+      )
     )
   }
 }
