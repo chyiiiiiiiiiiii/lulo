@@ -12,6 +12,7 @@ final class ProfileAgentContextProvider implements AgentContextProvider {
   const ProfileAgentContextProvider(
     this.profileOf, {
     this.clock = DateTime.now,
+    this.documentOf = _noDocument,
   });
 
   /// Returns the latest valid profile for a new turn.
@@ -24,7 +25,24 @@ final class ProfileAgentContextProvider implements AgentContextProvider {
   /// Injected so a test can state a time instead of racing the machine's.
   final DateTime Function() clock;
 
+  /// The document the user is asking about, or empty when there is none.
+  ///
+  /// Read at the moment a question is composed rather than captured, the
+  /// same way the profile is: what is open now is what the question is
+  /// about. Only the passages this question turns out to be about are sent,
+  /// so an open document a question has nothing to do with costs nothing.
+  final String Function() documentOf;
+
   @override
-  AgentPromptContext compose(String prompt) =>
-      composeAgentPrompt(profile: profileOf(), prompt: prompt, now: clock());
+  AgentPromptContext compose(String prompt) {
+    final String document = documentOf();
+    return composeAgentPrompt(
+      profile: profileOf(),
+      prompt: prompt,
+      now: clock(),
+      document: document.isEmpty ? null : document,
+    );
+  }
 }
+
+String _noDocument() => '';

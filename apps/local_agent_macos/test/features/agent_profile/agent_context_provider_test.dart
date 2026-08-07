@@ -38,4 +38,31 @@ void main() {
     expect(provider.compose('現在幾點？').turnInstruction, contains('8 月 7 日'));
     expect(provider.compose('現在幾點？').turnInstruction, contains('8 月 8 日'));
   });
+
+  // 40 pages do not fit a 4096-token window. Only the passages this
+  // question turns out to be about are sent, so a document that is open and
+  // irrelevant costs nothing — which is what makes keeping one open safe.
+  test('a question about an open document carries the relevant part', () {
+    final ProfileAgentContextProvider provider = ProfileAgentContextProvider(
+      AgentProfile.builtIn,
+      clock: () => DateTime(2026, 8, 7, 2, 53),
+      documentOf: () => '第三條 期間\n本租約為期一年。\n\n第九條 保固\n提供五年保固。',
+    );
+
+    final AgentPromptContext asked = provider.compose('保固幾年');
+    expect(asked.turnInstruction, contains('五年保固'));
+    expect(asked.documentCharacters, greaterThan(0));
+
+    final AgentPromptContext unrelated = provider.compose('今天天氣如何');
+    expect(unrelated.documentCharacters, 0);
+  });
+
+  test('no document open sends none of one', () {
+    final ProfileAgentContextProvider provider = ProfileAgentContextProvider(
+      AgentProfile.builtIn,
+      clock: () => DateTime(2026, 8, 7, 2, 53),
+    );
+
+    expect(provider.compose('保固幾年').documentCharacters, 0);
+  });
 }

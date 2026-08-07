@@ -1,5 +1,6 @@
 import 'agent_memory_selector.dart';
 import 'agent_profile.dart';
+import 'document_passages.dart';
 
 /// The model-facing instruction and non-sensitive composition diagnostics.
 ///
@@ -18,6 +19,7 @@ final class AgentPromptContext {
     required this.turnInstruction,
     required List<String> selectedMemoryIds,
     required this.profileCharacterCount,
+    this.documentCharacters = 0,
   }) : selectedMemoryIds = List<String>.unmodifiable(selectedMemoryIds);
 
   /// Who the agent is and how it answers: identical for every turn of a
@@ -36,6 +38,13 @@ final class AgentPromptContext {
 
   /// IDs of memories that survived relevance and prompt-size bounds.
   final List<String> selectedMemoryIds;
+
+  /// How much of the document went in, so the app can say it used some.
+  ///
+  /// Zero when no document was offered or when the question turned out not
+  /// to be about it. Reported because an answer drawn from a file the user
+  /// can read for themselves has to be checkable against it.
+  final int documentCharacters;
 
   /// Characters of profile text: the stable half plus whatever memories
   /// this question pulled in.
@@ -63,6 +72,12 @@ final class AgentPromptContext {
 /// prompt, the same conditions answer 5/5 in Chinese and 3/5 in English.
 /// `docs/decisions/tool-calling-readiness.md` has both tables.
 ///
+/// [document] is one file the user has asked about. The passages of it that
+/// this question is about join the turn half — the whole file does not fit
+/// and was never going to, so what goes in is chosen against the question
+/// and bounded by [maxDocumentCharacters]. A question the document says
+/// nothing about contributes nothing, rather than the first paragraph.
+///
 /// It joins the turn half rather than the stable one. The system
 /// instruction is prefilled once per conversation, so a clock inside it
 /// would expire between every question and rebuild the prompt each turn —
@@ -73,6 +88,8 @@ AgentPromptContext composeAgentPrompt({
   required AgentProfile profile,
   required String prompt,
   DateTime? now,
+  String? document,
+  int maxDocumentCharacters = 1400,
   int maxProfileCharacters = 1200,
 }) {
   assert(
@@ -217,17 +234,30 @@ AgentPromptContext composeAgentPrompt({
   final String clockSection = now == null
       ? ''
       : '${chinese ? '[現在]' : '[Now]'}\n${_clock(now, chinese: chinese)}';
+  final DocumentPassages passages = document == null
+      ? DocumentPassages(const <String>[])
+      : passagesFor(
+          question: question,
+          document: document,
+          maxCharacters: maxDocumentCharacters,
+        );
+  final String documentSection = passages.passages.isEmpty
+      ? ''
+      : '${chinese ? '[文件裡相關的段落]' : '[From the document]'}\n'
+            '${passages.passages.join('\n\n')}';
 
   // The question stays last, so it is the most recent thing the model read.
   final String turnInstruction = <String>[
     if (memories.isNotEmpty) memories,
     if (clockSection.isNotEmpty) clockSection,
+    if (documentSection.isNotEmpty) documentSection,
     questionSection,
   ].join('\n\n');
 
   return AgentPromptContext(
     systemInstruction: systemInstruction,
     turnInstruction: turnInstruction,
+    documentCharacters: passages.usedCharacters,
     selectedMemoryIds: selectedIds,
     profileCharacterCount: profileText.length,
   );

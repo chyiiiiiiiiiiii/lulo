@@ -1,6 +1,7 @@
 export 'src/agent_profile/agent_memory_selector.dart';
 export 'src/agent_profile/agent_profile.dart';
 export 'src/agent_profile/agent_prompt_composer.dart';
+export 'src/agent_profile/document_passages.dart';
 export 'src/agent_profile/misheard_word.dart';
 export 'src/conversation/answer_style.dart';
 export 'src/conversation/conversation.dart';

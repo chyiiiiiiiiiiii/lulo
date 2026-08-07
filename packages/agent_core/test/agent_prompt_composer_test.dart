@@ -372,4 +372,40 @@ void main() {
       reason: 'said twice is one instruction competing with itself',
     );
   });
+
+  // 40 pages do not fit in a 4096-token window and never were going to. What
+  // goes in is chosen against the question, bounded, and reported — so the
+  // user can check the answer against the file they can read themselves.
+  test('a question about a document brings the relevant part with it', () {
+    final AgentPromptContext result = composeAgentPrompt(
+      profile: AgentProfile(),
+      prompt: '他們保固幾年',
+      document:
+          '第三條 租賃期間\n本租約為期一年。\n\n'
+          '第九條 保固\n出租人對房屋結構提供五年保固。',
+    );
+
+    expect(result.turnInstruction, contains('[文件裡相關的段落]'));
+    expect(result.turnInstruction, contains('五年保固'));
+    expect(result.documentCharacters, greaterThan(0));
+    // The stable half stays prefillable: a document is this question's, not
+    // the conversation's.
+    expect(result.systemInstruction, isNot(contains('保固')));
+    // And the question is still the last thing read.
+    expect(result.turnInstruction, endsWith('[問題]\n他們保固幾年'));
+  });
+
+  test('a question the document says nothing about carries none of it', () {
+    // The first paragraph is not an answer, and an answer built on an
+    // irrelevant passage is worse than one that admits it does not know —
+    // in an app whose core instruction is 不捏造資訊.
+    final AgentPromptContext result = composeAgentPrompt(
+      profile: AgentProfile(),
+      prompt: '今天台北的天氣如何',
+      document: '第九條 保固\n出租人對房屋結構提供五年保固。',
+    );
+
+    expect(result.turnInstruction, isNot(contains('[文件裡相關的段落]')));
+    expect(result.documentCharacters, 0);
+  });
 }
