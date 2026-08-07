@@ -202,6 +202,36 @@ This is separate from the language Lulo *answers* in, which is
 `AgentIdentity.locale` in the profile and defaults to `zh-TW`. A Mac in English
 with an agent answering in Chinese is a real configuration, not a mistake.
 
+## Text selected in another app
+
+`NSServices` in `Info.plist` puts "Ask Lulo about this" into every app that
+handles text. It needs no Accessibility permission and works on the
+deployment target — neither of which is true of reading the screen, which is
+how the comparable products do it. `SelectionService.text(from:)` is the
+testable half and refuses a whitespace-only selection, because the system
+offers the item whenever any string is on the pasteboard.
+
+It seeds the composer and does not submit. A selection is not a question: you
+select a paragraph *because* you want something done to it, and only you know
+what. What was already being typed is appended to rather than replaced.
+
+**Replacing the selection with the answer is not available, and this is why**
+rather than a thing nobody got to. A Services handler is synchronous — the
+signature is `(NSPasteboard, userData, error)` returning `void`, with no
+completion handler and no async variant, and anything it returns must be on
+the pasteboard *before it returns*. Writing the answer back therefore means
+blocking the calling app's main thread across a Pigeon round trip and a whole
+generation: seconds to tens of seconds of beachball inside somebody else's
+editor. The other route is what the comparable products take — Accessibility
+permission and synthetic keystrokes into the focused element — which is a
+permission this app should not ask for to save two steps.
+
+The cheap improvement that *is* available, and is not built: copy the answer
+to the clipboard automatically when the question came from a Services
+invocation, so the result is one ⌘V away instead of a switch-and-copy. The
+cost is clobbering whatever the user had copied, which is why it wants to be
+scoped to Services-originated turns rather than applied to every answer.
+
 ## The profile, in the same sheet
 
 `AgentProfileSettings` puts the typed profile behind human controls rather

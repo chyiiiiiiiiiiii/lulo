@@ -160,9 +160,14 @@ half; a whitespace-only selection is refused, because the system offers the
 item whenever any string is on the pasteboard. It **seeds the composer and
 does not send**: a selection is not a question, the user still has to say
 what they want done with it, and what they were already typing is kept.
-Writing the answer back over the selection needs `NSReturnTypes` and a
-handler that blocks on the Dart isolate — a different and riskier shape,
-not built.
+Writing the answer back over the selection is **not available**, and that is
+checked rather than assumed: a Services handler is synchronous — `(pasteboard,
+userData, error)` returning `void`, no completion handler, no async variant —
+so anything returned must be on the pasteboard before it returns, which means
+blocking the calling app's main thread across a Pigeon hop and a whole
+generation. The alternative is Accessibility permission and synthetic
+keystrokes, which is what the comparable products do and is not a permission
+this app should ask for to save two steps. See `docs/features/settings.md`.
 
 Questions can be answered out of one file the user picked. Not retrieval-
 augmented generation, which needs an embedding model, chunking and a vector
