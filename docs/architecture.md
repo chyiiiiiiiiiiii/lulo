@@ -86,6 +86,15 @@ If the sidecar is not running, the agent still hears, thinks, and writes; it
 simply does not speak. `speakThroughSidecar` returns false and the sentence
 is skipped — there is deliberately no system-synthesizer fallback.
 
+That is a defensible failure and it used to be an invisible one. Settings now
+opens a socket against both sidecar ports and says which is down:
+`SidecarHealthProbe` in `lib/features/sidecar/`. It reports and does not
+offer to fix, because the sandbox forbids spawning a subprocess and a button
+that cannot work is worse than a sentence that tells the truth. A connection
+rather than a `GET /health`, because neither sidecar is in this repository or
+under its control — assuming a route would report a running process as
+stopped the day that route is renamed.
+
 ## The seam: pigeon
 
 `pigeons/desktop_host_api.dart` and `pigeons/voice_host_api.dart` are the

@@ -537,6 +537,36 @@ abstract class AppLocalizations {
   /// **'Could not ask macOS about this.'**
   String get launchAtLoginFailed;
 
+  /// No description provided for @sidecarSection.
+  ///
+  /// In en, this message translates to:
+  /// **'The two helpers running behind this'**
+  String get sidecarSection;
+
+  /// No description provided for @sidecarAllRunning.
+  ///
+  /// In en, this message translates to:
+  /// **'Both are running.'**
+  String get sidecarAllRunning;
+
+  /// No description provided for @sidecarVoiceStopped.
+  ///
+  /// In en, this message translates to:
+  /// **'The voice is not running — Lulo will hear you and think, and stay silent.'**
+  String get sidecarVoiceStopped;
+
+  /// No description provided for @sidecarEarsStopped.
+  ///
+  /// In en, this message translates to:
+  /// **'The transcriber is not running — holding the key still works, on the less accurate one.'**
+  String get sidecarEarsStopped;
+
+  /// No description provided for @sidecarCannotStart.
+  ///
+  /// In en, this message translates to:
+  /// **'Lulo is sandboxed and cannot start them for you. Start them from a terminal.'**
+  String get sidecarCannotStart;
+
   /// No description provided for @sectionModel.
   ///
   /// In en, this message translates to:

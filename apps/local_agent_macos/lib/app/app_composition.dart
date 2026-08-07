@@ -13,6 +13,7 @@ import '../features/model/model_catalog.dart';
 import '../features/model/model_download_manager.dart';
 import '../features/model/model_file_service.dart';
 import '../features/settings/app_settings.dart';
+import '../features/sidecar/sidecar_health.dart';
 import '../features/transcript_refiner/transcript_shadow_coordinator.dart';
 import '../features/transcript_refiner/transcript_shadow_evidence.dart';
 import '../features/voice/voice_service.dart';
@@ -36,6 +37,7 @@ final class AppComposition {
     this.transcriptShadowEvidence,
     List<String> Function()? protectedVocabulary,
     List<MisheardWord> Function()? misheard,
+    this.sidecarProbe,
     FloorControl Function()? floorControl,
     List<String> Function()? unfinishedEndings,
     ValueNotifier<String>? ttsVoice,
@@ -120,6 +122,14 @@ final class AppComposition {
   /// Corrections the user has taught, read at the moment an utterance
   /// settles rather than captured — the profile is a watched file.
   final List<MisheardWord> Function() misheard;
+
+  /// How to ask whether the two helper processes are running, or null on a
+  /// surface that should not ask.
+  ///
+  /// Null in tests by default: the real probe opens a socket with a real
+  /// timeout, and a widget test that merely builds the app must not be left
+  /// holding a pending timer for a question it never asked.
+  final SidecarHealthProbe? sidecarProbe;
 
   /// Who has the floor, read again at every ruling.
   ///

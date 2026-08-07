@@ -10,6 +10,7 @@ import '../agent_profile/agent_profile_store.dart';
 import '../conversation/widgets/conversation_content_column.dart';
 import '../model/model_catalog.dart';
 import '../model/model_download_manager.dart';
+import '../sidecar/sidecar_health.dart';
 import '../voice/tts_voices.dart';
 import 'agent_profile_settings.dart';
 import 'app_settings.dart';
@@ -33,6 +34,7 @@ final class SettingsSheet extends StatelessWidget {
     required this.onUseModel,
     this.loginItem,
     this.setLaunchAtLogin,
+    this.sidecarProbe,
     this.catalog = modelCatalog,
     super.key,
   });
@@ -74,6 +76,15 @@ final class SettingsSheet extends StatelessWidget {
   /// actually resulted.
   final Future<DesktopLoginItem> Function({required bool enabled})?
   setLaunchAtLogin;
+
+  /// How to ask whether the two helper processes are running, or null on a
+  /// surface that should not ask.
+  ///
+  /// Nullable for the same reason [loginItem] is, and for one more: the
+  /// probe opens a real socket with a real timeout, and a widget test that
+  /// merely renders this sheet must not be left holding a pending timer for
+  /// a question it never asked.
+  final SidecarHealthProbe? sidecarProbe;
 
   /// Called when the user is finished.
   final VoidCallback onClose;
@@ -156,6 +167,8 @@ final class SettingsSheet extends StatelessWidget {
                           ),
                         ],
                       ),
+                      if (sidecarProbe != null)
+                        SidecarSection(probe: sidecarProbe!),
                       SettingsSection(
                         title: words.sectionStart,
                         children: <Widget>[
@@ -578,6 +591,91 @@ final class _LaunchAtLoginSwitchState extends State<_LaunchAtLoginSwitch>
       // Asked for by what it would become rather than by the switch's own
       // position, so the two can never disagree about a pending state.
       onChanged: settable ? (bool _) => unawaited(_set(enabled: !asked)) : null,
+    );
+  }
+}
+
+/// Whether the two helper processes the voice path needs are running.
+///
+/// Neither is in this repository, both are started by hand, and both fail
+/// silently — without the voice the agent hears, thinks, writes, and stays
+/// quiet, with nothing on screen saying why. This is the one place that
+/// says so.
+///
+/// It reports and does not offer to fix. Lulo is sandboxed and cannot spawn
+/// a subprocess, so a button here would be a button that does nothing, which
+/// is worse than a sentence that tells the truth.
+final class SidecarSection extends StatefulWidget {
+  /// Creates the section over [probe].
+  const SidecarSection({required this.probe, super.key});
+
+  /// How to ask. Injected so a test can state what is listening rather than
+  /// opening a socket.
+  final SidecarHealthProbe probe;
+
+  @override
+  State<SidecarSection> createState() => _SidecarSectionState();
+}
+
+final class _SidecarSectionState extends State<SidecarSection> {
+  SidecarHealth? _health;
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(_refresh());
+  }
+
+  Future<void> _refresh() async {
+    try {
+      final SidecarHealth health = await widget.probe.check();
+      if (mounted) {
+        setState(() => _health = health);
+      }
+    } on Object {
+      // A probe that itself failed says nothing rather than accusing a
+      // process that may be perfectly fine.
+      return;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final AppLocalizations words = AppLocalizations.of(context);
+    final SidecarHealth? health = _health;
+    if (health == null) {
+      // Nothing until the answer is in. Guessing would show a warning and
+      // then take it back, which reads worse than a beat of nothing.
+      return const SizedBox.shrink();
+    }
+    return SettingsSection(
+      key: const Key('setting-sidecars'),
+      title: words.sidecarSection,
+      children: <Widget>[
+        ListTile(
+          contentPadding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+          leading: Icon(
+            health.allRunning
+                ? Icons.check_circle_outline
+                : Icons.error_outline,
+            color: health.allRunning
+                ? Theme.of(context).colorScheme.primary
+                : Theme.of(context).colorScheme.error,
+          ),
+          title: Text(
+            health.allRunning
+                ? words.sidecarAllRunning
+                : <String>[
+                    for (final Sidecar stopped in health.stopped)
+                      switch (stopped) {
+                        Sidecar.voice => words.sidecarVoiceStopped,
+                        Sidecar.ears => words.sidecarEarsStopped,
+                      },
+                  ].join('\n'),
+          ),
+          subtitle: health.allRunning ? null : Text(words.sidecarCannotStart),
+        ),
+      ],
     );
   }
 }

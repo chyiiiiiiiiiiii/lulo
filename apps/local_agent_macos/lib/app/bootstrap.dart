@@ -15,6 +15,7 @@ import '../features/model/model_catalog.dart';
 import '../features/model/model_download_manager.dart';
 import '../features/model/model_file_service.dart';
 import '../features/settings/app_settings.dart';
+import '../features/sidecar/sidecar_health.dart';
 import '../features/transcript_refiner/deadline_transcript_refiner.dart';
 import '../features/transcript_refiner/loopback_transcript_proposal_provider.dart';
 import '../features/transcript_refiner/transcript_shadow_coordinator.dart';
@@ -224,6 +225,7 @@ AppComposition createAppComposition({
     transcriptShadowEvidence: transcriptShadowEvidence,
     protectedVocabulary: () => profileStore.current.vocabulary,
     misheard: () => profileStore.current.misheard,
+    sidecarProbe: const SidecarHealthProbe(),
     floorControl: () => profileStore.current.floorControl,
     unfinishedEndings: () => profileStore.current.turnTaking.unfinished,
     agentProfile: profileStore,

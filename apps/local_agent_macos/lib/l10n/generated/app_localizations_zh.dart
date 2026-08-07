@@ -242,6 +242,21 @@ class AppLocalizationsZh extends AppLocalizations {
   String get launchAtLoginFailed => '問不到 macOS 的設定。';
 
   @override
+  String get sidecarSection => '在背景幫忙的兩個程式';
+
+  @override
+  String get sidecarAllRunning => '兩個都在跑。';
+
+  @override
+  String get sidecarVoiceStopped => '講話的那個沒在跑 —— Lulo 聽得到也想得出來，但不會出聲。';
+
+  @override
+  String get sidecarEarsStopped => '聽寫的那個沒在跑 —— 按住講話還能用，但會用比較不準的那一套。';
+
+  @override
+  String get sidecarCannotStart => 'Lulo 在沙盒裡，沒辦法幫你啟動它們。到終端機把它們開起來就好。';
+
+  @override
   String get sectionModel => '它用來思考的模型';
 
   @override

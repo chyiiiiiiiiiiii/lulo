@@ -130,6 +130,17 @@ first), `sweepHeldClips` deletes held-speech recordings after an hour, and
 `transcribeHeld` returns `String?` so "no recogniser" stays distinct from
 "heard nothing".
 
+The two sidecars fail silently by design and no longer fail invisibly. Both
+live outside this repository, are started by hand, and take the voice and the
+batch recogniser down with them — until now the only symptom was an agent
+that heard, thought, wrote, and stayed quiet. `SidecarHealthProbe` opens a
+socket against 46557 and 46558 when Settings opens and says which is down.
+It reports rather than offers to fix: the sandbox forbids spawning a
+subprocess, so a restart button would be a button that does nothing. It is
+injected from the composition root and absent by default, because the real
+probe opens a socket with a real timeout and a widget test that merely builds
+the app must not hold a pending timer for a question it never asked.
+
 Toolchain is pinned by CI: Flutter **3.44.1** stable, Dart SDK `^3.12.0`.
 
 ## Layout

@@ -248,6 +248,24 @@ class AppLocalizationsEn extends AppLocalizations {
   String get launchAtLoginFailed => 'Could not ask macOS about this.';
 
   @override
+  String get sidecarSection => 'The two helpers running behind this';
+
+  @override
+  String get sidecarAllRunning => 'Both are running.';
+
+  @override
+  String get sidecarVoiceStopped =>
+      'The voice is not running — Lulo will hear you and think, and stay silent.';
+
+  @override
+  String get sidecarEarsStopped =>
+      'The transcriber is not running — holding the key still works, on the less accurate one.';
+
+  @override
+  String get sidecarCannotStart =>
+      'Lulo is sandboxed and cannot start them for you. Start them from a terminal.';
+
+  @override
   String get sectionModel => 'The model it thinks with';
 
   @override

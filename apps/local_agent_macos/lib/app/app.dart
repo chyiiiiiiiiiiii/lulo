@@ -1034,6 +1034,7 @@ final class _PresentationSwitchState extends State<_PresentationSwitch>
                               .composition
                               .presentationHost
                               ?.setLaunchAtLogin,
+                          sidecarProbe: widget.composition.sidecarProbe,
                         ),
                     ],
                   ),
