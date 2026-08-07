@@ -251,7 +251,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get sidecarSection => 'The two helpers running behind this';
 
   @override
-  String get sidecarAllRunning => 'Both are running.';
+  String get sidecarAllRunning => 'Both are answering.';
 
   @override
   String get sidecarVoiceStopped =>
@@ -264,6 +264,9 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get sidecarCannotStart =>
       'Lulo is sandboxed and cannot start them for you. Start them from a terminal.';
+
+  @override
+  String get sidecarRecheck => 'Check again';
 
   @override
   String get transcribeSection => 'Write a recording out';
@@ -281,7 +284,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get transcribeFailed =>
-      'Nothing came back. If the transcriber is not running, start it first.';
+      'Nothing came back. Either the transcriber is not running, or it could not read that file — it is a separate process, and macOS asks it separately for Downloads and Desktop.';
 
   @override
   String transcribeSaved(String name) {

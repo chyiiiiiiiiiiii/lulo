@@ -546,7 +546,7 @@ abstract class AppLocalizations {
   /// No description provided for @sidecarAllRunning.
   ///
   /// In en, this message translates to:
-  /// **'Both are running.'**
+  /// **'Both are answering.'**
   String get sidecarAllRunning;
 
   /// No description provided for @sidecarVoiceStopped.
@@ -566,6 +566,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Lulo is sandboxed and cannot start them for you. Start them from a terminal.'**
   String get sidecarCannotStart;
+
+  /// No description provided for @sidecarRecheck.
+  ///
+  /// In en, this message translates to:
+  /// **'Check again'**
+  String get sidecarRecheck;
 
   /// No description provided for @transcribeSection.
   ///
@@ -594,7 +600,7 @@ abstract class AppLocalizations {
   /// No description provided for @transcribeFailed.
   ///
   /// In en, this message translates to:
-  /// **'Nothing came back. If the transcriber is not running, start it first.'**
+  /// **'Nothing came back. Either the transcriber is not running, or it could not read that file — it is a separate process, and macOS asks it separately for Downloads and Desktop.'**
   String get transcribeFailed;
 
   /// No description provided for @transcribeSaved.

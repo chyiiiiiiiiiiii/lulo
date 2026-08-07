@@ -221,11 +221,9 @@ final class _PresentationSwitchState extends State<_PresentationSwitch>
     // A selection sent from another app. The window is already being shown
     // by the native side; this puts the text where the user can add what
     // they want done with it.
-    _serviceText = widget.composition.presentationHost?.serviceText.listen((
-      String text,
-    ) {
-      _composerSeed.value = text;
-    });
+    _serviceText = widget.composition.presentationHost?.serviceText.listen(
+      _composerSeed.add,
+    );
     _settingsRequests = widget.composition.presentationHost?.settingsRequests
         .listen((void _) {
           // Not before the stored settings have arrived: the sheet applies
@@ -334,8 +332,12 @@ final class _PresentationSwitchState extends State<_PresentationSwitch>
   StreamSubscription<void>? _menuVoice;
   StreamSubscription<String>? _serviceText;
 
-  /// The last selection sent in from another app, for the composer to take.
-  final ValueNotifier<String> _composerSeed = ValueNotifier<String>('');
+  /// Selections sent in from another app, for the composer to take.
+  ///
+  /// A stream rather than a held value: the same paragraph sent twice is two
+  /// events, and a composer mounted later must not inherit an old one.
+  final StreamController<String> _composerSeed =
+      StreamController<String>.broadcast();
 
   /// The conversations the menu bar was last given.
   ///
@@ -625,6 +627,39 @@ final class _PresentationSwitchState extends State<_PresentationSwitch>
   /// batch recogniser is not running, and the section next to this one says
   /// so by name.
   Future<String?> _transcribeRecording() async {
+    if (_transcribing) {
+      // The guard has to live here rather than in the section: the settings
+      // sheet is unmounted whenever the window changes form, which destroyed
+      // the widget's own flag and let a second job start against a
+      // single-threaded sidecar — with a second open panel over the first
+      // job's pending save panel.
+      return '';
+    }
+    _transcribing = true;
+    try {
+      return await _runTranscription();
+    } finally {
+      _transcribing = false;
+    }
+  }
+
+  /// True while a recording is being written out, whatever is on screen.
+  bool _transcribing = false;
+
+  /// The file's name without its extension.
+  ///
+  /// Splitting on the first dot turned `2026.08.07 lecture.m4a` — the
+  /// ordinary shape of a dated 課堂錄音 — into `2026`, and a dotfile into
+  /// nothing at all, which the save panel then showed as a file called
+  /// `.txt` with no visible name.
+  static String _baseName(String path) {
+    final String file = path.split('/').last;
+    final int dot = file.lastIndexOf('.');
+    // A leading dot is a hidden file, not an extension separator.
+    return dot > 0 ? file.substring(0, dot) : file;
+  }
+
+  Future<String?> _runTranscription() async {
     final VoiceService? voice = widget.composition.voiceService;
     final DesktopPresentationHost? host = widget.composition.presentationHost;
     if (voice == null || host == null) {
@@ -640,7 +675,7 @@ final class _PresentationSwitchState extends State<_PresentationSwitch>
     }
     // Written through the save panel for the same reason an export is: a
     // sandboxed app may write where the panel says and nowhere else.
-    final String suggested = '${path.split('/').last.split('.').first}.txt';
+    final String suggested = '${_baseName(path)}.txt';
     final String written = await host.saveTextFile(
       suggestedName: suggested,
       contents: text,
@@ -698,7 +733,7 @@ final class _PresentationSwitchState extends State<_PresentationSwitch>
     unawaited(_menuConversations?.cancel());
     unawaited(_menuVoice?.cancel());
     unawaited(_serviceText?.cancel());
-    _composerSeed.dispose();
+    unawaited(_composerSeed.close());
     unawaited(_settingsRequests?.cancel());
     unawaited(_geometryChanges?.cancel());
     widget.composition.presentationHost?.presentation.removeListener(
@@ -926,7 +961,7 @@ final class _PresentationSwitchState extends State<_PresentationSwitch>
       child: ConversationView(
         key: _conversationKey,
         voiceRequests: widget.composition.voiceRequests,
-        composerSeed: _composerSeed,
+        composerSeed: _composerSeed.stream,
         viewModelFactory: () => widget.composition.createConversationViewModel(
           conversationId: _openConversation,
           startFresh: _startFresh,

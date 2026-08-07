@@ -62,7 +62,7 @@ void main() {
   ) async {
     await show(tester, section(<int>{Sidecar.voice.port, Sidecar.ears.port}));
 
-    expect(find.text('Both are running.'), findsOneWidget);
+    expect(find.text('Both are answering.'), findsOneWidget);
     expect(find.textContaining('not running'), findsNothing);
   });
 
@@ -74,5 +74,46 @@ void main() {
     await tester.pumpWidget(section(<int>{}));
 
     expect(find.byKey(const Key('setting-sidecars')), findsNothing);
+  });
+
+  testWidgets('it can be asked again after the user starts something', (
+    WidgetTester tester,
+  ) async {
+    // A connection proves something is listening, not that it is well, and
+    // the answer goes stale the moment a sidecar dies or is started. Without
+    // this the section could sit reading "both are answering" directly above
+    // a transcription that had just failed.
+    final Set<int> listening = <int>{};
+    await tester.pumpWidget(
+      MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: Scaffold(
+          body: ListView(
+            children: <Widget>[
+              SidecarSection(
+                probe: SidecarHealthProbe(
+                  connect: (int port, Duration timeout) async {
+                    if (!listening.contains(port)) {
+                      throw const SocketRefused();
+                    }
+                  },
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+    expect(find.textContaining('voice is not running'), findsOneWidget);
+
+    listening.addAll(<int>[Sidecar.voice.port, Sidecar.ears.port]);
+    await tester.tap(find.byKey(const Key('setting-sidecars-recheck')));
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.text('Both are answering.'), findsOneWidget);
   });
 }

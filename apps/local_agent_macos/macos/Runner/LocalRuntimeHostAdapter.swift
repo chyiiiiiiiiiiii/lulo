@@ -330,8 +330,15 @@ final class LocalRuntimeDesktopHostApi: DesktopHostApi {
     onMain {
       let panel = NSSavePanel()
       panel.nameFieldStringValue = suggestedName
-      if let markdown = UTType(filenameExtension: "md") {
-        panel.allowedContentTypes = [markdown]
+      // Taken from what the caller asked to be called, not pinned to
+      // markdown. This was written for the conversation export and a second
+      // caller arrived wanting `.txt`; a panel restricted to `md` appends
+      // the type it allows, so a transcript was saved as `名字.txt.md`.
+      let suggestedType = UTType(
+        filenameExtension: (suggestedName as NSString).pathExtension
+      )
+      if let suggestedType {
+        panel.allowedContentTypes = [suggestedType]
       }
       // Cancelling is an answer, not a failure: the user decided not to.
       guard panel.runModal() == .OK, let url = panel.url else {

@@ -88,6 +88,11 @@ final class SidecarHealthProbe {
   /// under its control, so assuming a `/health` route would report a running
   /// sidecar as stopped the day that route is renamed. A process that
   /// accepts a connection is a process that is there.
+  ///
+  /// Which is all it proves. A sidecar that has bound its port and is still
+  /// loading its model accepts a connection and cannot yet answer, so this
+  /// says *answering*, not *well*, and the section that shows it can be
+  /// asked again rather than deciding once.
   Future<SidecarHealth> check() async {
     final Set<Sidecar> running = <Sidecar>{};
     // Both at once, so the sheet waits one timeout rather than two, and both

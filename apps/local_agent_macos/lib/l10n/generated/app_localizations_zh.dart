@@ -245,7 +245,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get sidecarSection => '在背景幫忙的兩個程式';
 
   @override
-  String get sidecarAllRunning => '兩個都在跑。';
+  String get sidecarAllRunning => '兩個都有回應。';
 
   @override
   String get sidecarVoiceStopped => '講話的那個沒在跑 —— Lulo 聽得到也想得出來，但不會出聲。';
@@ -255,6 +255,9 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get sidecarCannotStart => 'Lulo 在沙盒裡，沒辦法幫你啟動它們。到終端機把它們開起來就好。';
+
+  @override
+  String get sidecarRecheck => '重新檢查';
 
   @override
   String get transcribeSection => '把錄音寫成文字';
@@ -269,7 +272,8 @@ class AppLocalizationsZh extends AppLocalizations {
   String get transcribeWorking => '寫字中 —— 長一點的錄音要等幾分鐘。';
 
   @override
-  String get transcribeFailed => '沒有寫出東西。聽寫的那個程式沒在跑的話，先把它開起來。';
+  String get transcribeFailed =>
+      '沒有寫出東西。可能是聽寫的程式沒在跑，也可能是它讀不到那個檔案 —— 它是另一個行程，第一次讀「下載」或「桌面」時 macOS 會另外要權限。';
 
   @override
   String transcribeSaved(String name) {

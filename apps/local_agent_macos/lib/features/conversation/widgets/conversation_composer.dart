@@ -28,7 +28,14 @@ final class ConversationComposer extends StatefulWidget {
   ///
   /// A selection sent from another app's Services menu. It lands in the
   /// field rather than being sent, because a selection is not a question.
-  final ValueListenable<String>? seed;
+  ///
+  /// A stream rather than a listenable, and both reasons are bugs this
+  /// replaced. A `ValueNotifier` suppresses a write equal to what it already
+  /// holds, so invoking the service twice on the same paragraph did nothing
+  /// the second time; and it still held that value when a new conversation
+  /// remounted the composer, so last week's selection reappeared in an empty
+  /// field. An event happens once, when it happens.
+  final Stream<String>? seed;
 
   /// Push-to-talk, when a voice is present and enabled: hold the button to
   /// speak, release to send, and the answer plays out uninterrupted.
@@ -49,14 +56,14 @@ final class ConversationComposer extends StatefulWidget {
 
 final class _ConversationComposerState extends State<ConversationComposer> {
   final TextEditingController _controller = TextEditingController();
+  StreamSubscription<String>? _seed;
   final FocusNode _focusNode = FocusNode(debugLabel: 'Conversation composer');
 
   @override
   void initState() {
     super.initState();
     _controller.addListener(_refresh);
-    widget.seed?.addListener(_takeSeed);
-    _takeSeed();
+    _seed = widget.seed?.listen(_takeSeed);
     WidgetsBinding.instance.addPostFrameCallback(
       (_) => _focusNode.requestFocus(),
     );
@@ -71,9 +78,8 @@ final class _ConversationComposerState extends State<ConversationComposer> {
   /// say what they want done with it. Appended rather than replacing, so a
   /// second send does not silently discard what they were part-way through
   /// typing.
-  void _takeSeed() {
-    final String? text = widget.seed?.value;
-    if (text == null || text.isEmpty) {
+  void _takeSeed(String text) {
+    if (text.isEmpty) {
       return;
     }
     final String existing = _controller.text;
@@ -115,7 +121,7 @@ final class _ConversationComposerState extends State<ConversationComposer> {
 
   @override
   void dispose() {
-    widget.seed?.removeListener(_takeSeed);
+    unawaited(_seed?.cancel());
     _controller.removeListener(_refresh);
     _controller.dispose();
     _focusNode.dispose();

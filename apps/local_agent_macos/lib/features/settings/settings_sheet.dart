@@ -661,6 +661,17 @@ final class _SidecarSectionState extends State<SidecarSection> {
       children: <Widget>[
         ListTile(
           contentPadding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+          // Asked once when the sheet opens and again whenever the user
+          // says so. A connection proves something is listening, not that
+          // it is well — a sidecar still loading its model accepts one — so
+          // this could otherwise sit reading "both are answering" directly
+          // above a transcription that failed, and the two sentences would
+          // disagree in the same sheet.
+          trailing: TextButton(
+            key: const Key('setting-sidecars-recheck'),
+            onPressed: () => unawaited(_refresh()),
+            child: Text(words.sidecarRecheck),
+          ),
           leading: Icon(
             health.allRunning
                 ? Icons.check_circle_outline

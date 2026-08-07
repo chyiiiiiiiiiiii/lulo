@@ -140,7 +140,7 @@ final class ConversationView extends StatefulWidget {
 
   /// Text handed in from outside the window — a selection sent from another
   /// app's Services menu — or null on a surface where nothing does.
-  final ValueListenable<String>? composerSeed;
+  final Stream<String>? composerSeed;
 
   /// Who has the floor, or null to use the built-in policy.
   final FloorControl Function()? floorControl;
