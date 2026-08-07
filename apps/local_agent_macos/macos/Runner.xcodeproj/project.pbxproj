@@ -28,6 +28,7 @@
 		A1IP000000000000000IP001 /* InputDevicePolicyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1IP000000000000000IP002 /* InputDevicePolicyTests.swift */; };
 		A2AE000000000000000AE001 /* SecondAudioEngineTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2AE000000000000000AE002 /* SecondAudioEngineTests.swift */; };
 		A2ST000000000000000ST011 /* SelectionServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2ST000000000000000ST012 /* SelectionServiceTests.swift */; };
+		A2DT000000000000000DT011 /* DictationControllerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2DT000000000000000DT012 /* DictationControllerTests.swift */; };
 		A2LT000000000000000LT001 /* LaunchAtLoginTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2LT000000000000000LT002 /* LaunchAtLoginTests.swift */; };
 		A1SV000000000000000SV001 /* SpokenVocabularyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1SV000000000000000SV002 /* SpokenVocabularyTests.swift */; };
 		A1HK000000000000000HK001 /* HotKeyHoldSplitterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1HK000000000000000HK002 /* HotKeyHoldSplitterTests.swift */; };
@@ -47,6 +48,7 @@
 		A1CE000000000000000VH001 /* VoiceHostAdapter.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1CE000000000000000VH002 /* VoiceHostAdapter.swift */; };
 		A20000000000000000000002 /* GlobalHotKeyController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000007 /* GlobalHotKeyController.swift */; };
 		A2SS000000000000000SS001 /* SelectionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2SS000000000000000SS002 /* SelectionService.swift */; };
+		A2DC000000000000000DC001 /* DictationController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2DC000000000000000DC002 /* DictationController.swift */; };
 		A2LA000000000000000LA001 /* LaunchAtLogin.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2LA000000000000000LA002 /* LaunchAtLogin.swift */; };
 		A20000000000000000000003 /* MenuBarController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000008 /* MenuBarController.swift */; };
 		A20000000000000000000004 /* GeneratedDesktopHostApi.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000009 /* GeneratedDesktopHostApi.swift */; };
@@ -96,6 +98,7 @@
 		A1IP000000000000000IP002 /* InputDevicePolicyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InputDevicePolicyTests.swift; sourceTree = "<group>"; };
 		A2AE000000000000000AE002 /* SecondAudioEngineTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SecondAudioEngineTests.swift; sourceTree = "<group>"; };
 		A2ST000000000000000ST012 /* SelectionServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SelectionServiceTests.swift; sourceTree = "<group>"; };
+		A2DT000000000000000DT012 /* DictationControllerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DictationControllerTests.swift; sourceTree = "<group>"; };
 		A2LT000000000000000LT002 /* LaunchAtLoginTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LaunchAtLoginTests.swift; sourceTree = "<group>"; };
 		A1SV000000000000000SV002 /* SpokenVocabularyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpokenVocabularyTests.swift; sourceTree = "<group>"; };
 		A1HK000000000000000HK002 /* HotKeyHoldSplitterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HotKeyHoldSplitterTests.swift; sourceTree = "<group>"; };
@@ -118,6 +121,7 @@
 		A1CE000000000000000VH002 /* VoiceHostAdapter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceHostAdapter.swift; sourceTree = "<group>"; };
 		A20000000000000000000007 /* GlobalHotKeyController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GlobalHotKeyController.swift; sourceTree = "<group>"; };
 		A2SS000000000000000SS002 /* SelectionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SelectionService.swift; sourceTree = "<group>"; };
+		A2DC000000000000000DC002 /* DictationController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DictationController.swift; sourceTree = "<group>"; };
 		A2LA000000000000000LA002 /* LaunchAtLogin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LaunchAtLogin.swift; sourceTree = "<group>"; };
 		A20000000000000000000008 /* MenuBarController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarController.swift; sourceTree = "<group>"; };
 		A20000000000000000000009 /* GeneratedDesktopHostApi.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeneratedDesktopHostApi.swift; sourceTree = "<group>"; };
@@ -184,6 +188,7 @@
 		A1IP000000000000000IP002 /* InputDevicePolicyTests.swift */,
 		A2AE000000000000000AE002 /* SecondAudioEngineTests.swift */,
 		A2ST000000000000000ST012 /* SelectionServiceTests.swift */,
+		A2DT000000000000000DT012 /* DictationControllerTests.swift */,
 		A2LT000000000000000LT002 /* LaunchAtLoginTests.swift */,
 		A1SV000000000000000SV002 /* SpokenVocabularyTests.swift */,
 		A1HK000000000000000HK002 /* HotKeyHoldSplitterTests.swift */,
@@ -260,6 +265,7 @@
 				A1CE000000000000000VH002 /* VoiceHostAdapter.swift */,
 				A20000000000000000000007 /* GlobalHotKeyController.swift */,
 				A2SS000000000000000SS002 /* SelectionService.swift */,
+				A2DC000000000000000DC002 /* DictationController.swift */,
 				A2LA000000000000000LA002 /* LaunchAtLogin.swift */,
 				A20000000000000000000008 /* MenuBarController.swift */,
 				A20000000000000000000009 /* GeneratedDesktopHostApi.swift */,
@@ -499,6 +505,7 @@
 		A1IP000000000000000IP001 /* InputDevicePolicyTests.swift in Sources */,
 		A2AE000000000000000AE001 /* SecondAudioEngineTests.swift in Sources */,
 		A2ST000000000000000ST011 /* SelectionServiceTests.swift in Sources */,
+		A2DT000000000000000DT011 /* DictationControllerTests.swift in Sources */,
 		A2LT000000000000000LT001 /* LaunchAtLoginTests.swift in Sources */,
 		A1SV000000000000000SV001 /* SpokenVocabularyTests.swift in Sources */,
 		A1HK000000000000000HK001 /* HotKeyHoldSplitterTests.swift in Sources */,
@@ -522,6 +529,7 @@
 				A1CE000000000000000VH001 /* VoiceHostAdapter.swift in Sources */,
 				A20000000000000000000002 /* GlobalHotKeyController.swift in Sources */,
 				A2SS000000000000000SS001 /* SelectionService.swift in Sources */,
+				A2DC000000000000000DC001 /* DictationController.swift in Sources */,
 				A2LA000000000000000LA001 /* LaunchAtLogin.swift in Sources */,
 				A20000000000000000000003 /* MenuBarController.swift in Sources */,
 				A20000000000000000000004 /* GeneratedDesktopHostApi.swift in Sources */,
