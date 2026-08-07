@@ -171,6 +171,38 @@ void main() {
       await expectLater(store.save(AgentProfile.builtIn()), throwsStateError);
       expect(file.existsSync(), isFalse);
     });
+
+    test('a change made while a write is in flight is not undone', () async {
+      // Every control on the settings sheet computes its next profile from
+      // `current`. While a write was in flight `current` still held the
+      // profile from before it, so a second change was built on the old one
+      // and saving it put the first change back — two chips deleted quickly
+      // and one of them returned.
+      final Directory dir = await Directory.systemTemp.createTemp('lulo-race');
+      addTearDown(() => dir.delete(recursive: true));
+      final FileAgentProfileStore store = FileAgentProfileStore(
+        file: File('${dir.path}/agent_profile.json'),
+        watch: false,
+      );
+      addTearDown(store.dispose);
+      await store.load();
+
+      // Not awaited: this is the window the bug lived in.
+      final Future<void> first = store.save(
+        store.current.copyWith(vocabulary: const <String>['one']),
+      );
+      final Future<void> second = store.save(
+        store.current.copyWith(
+          misheard: const <MisheardWord>[MisheardWord(heard: 'a', meant: 'b')],
+        ),
+      );
+      await Future.wait<void>(<Future<void>>[first, second]);
+
+      expect(store.current.vocabulary, <String>['one']);
+      expect(store.current.misheard, <MisheardWord>[
+        const MisheardWord(heard: 'a', meant: 'b'),
+      ]);
+    });
   });
 }
 

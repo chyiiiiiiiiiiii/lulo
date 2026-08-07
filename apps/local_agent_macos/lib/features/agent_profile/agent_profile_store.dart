@@ -131,6 +131,16 @@ final class FileAgentProfileStore implements AgentProfileStore {
     if (_disposed) {
       throw StateError('The agent profile store is disposed.');
     }
+    // In force before the write, not after it. Every control on the settings
+    // sheet computes its next profile from `current`, so while a write was
+    // in flight a second change was still being built on the profile from
+    // before the first — and saving it put the first change back. Two chips
+    // deleted quickly enough and one of them returned.
+    //
+    // In force now rather than when the watcher notices, too: watching is
+    // off in release builds entirely, and where it is on the debounce would
+    // leave the user looking at the setting they just changed, unchanged.
+    _replace(profile: profile, error: null);
     if (!file.parent.existsSync()) {
       await file.parent.create(recursive: true);
     }
@@ -139,10 +149,6 @@ final class FileAgentProfileStore implements AgentProfileStore {
       '${const JsonEncoder.withIndent('  ').convert(encodeAgentProfile(profile))}\n',
       flush: true,
     );
-    // In force now rather than when the watcher notices. Watching is off in
-    // release builds entirely, and where it is on the debounce would leave
-    // the user looking at the setting they just changed, unchanged.
-    _replace(profile: profile, error: null);
   }
 
   void _onEvent(FileSystemEvent event) {

@@ -32,7 +32,12 @@ final class AgentProfileSettings extends StatelessWidget {
       builder: (BuildContext context, int _, Widget? _) {
         final AppLocalizations words = AppLocalizations.of(context);
         final AgentProfile profile = store.current;
-        void save(AgentProfile next) => unawaited(store.save(next));
+        // Applied to whatever the store holds when the control is used, not
+        // to the profile this build captured. Two controls touched between
+        // rebuilds both computed from the same stale copy, so the second
+        // silently undid the first.
+        void save(AgentProfile Function(AgentProfile) change) =>
+            unawaited(store.save(change(store.current)));
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: <Widget>[
@@ -44,11 +49,11 @@ final class AgentProfileSettings extends StatelessWidget {
                   label: words.profileAgentName,
                   value: profile.identity.agentName,
                   onCommit: (String value) => save(
-                    profile.copyWith(
+                    (AgentProfile p) => p.copyWith(
                       identity: AgentIdentity(
                         agentName: value.isEmpty ? 'Lulo' : value,
-                        userName: profile.identity.userName,
-                        locale: profile.identity.locale,
+                        userName: p.identity.userName,
+                        locale: p.identity.locale,
                       ),
                     ),
                   ),
@@ -59,11 +64,11 @@ final class AgentProfileSettings extends StatelessWidget {
                   hint: words.profileUserNameHint,
                   value: profile.identity.userName,
                   onCommit: (String value) => save(
-                    profile.copyWith(
+                    (AgentProfile p) => p.copyWith(
                       identity: AgentIdentity(
-                        agentName: profile.identity.agentName,
+                        agentName: p.identity.agentName,
                         userName: value,
-                        locale: profile.identity.locale,
+                        locale: p.identity.locale,
                       ),
                     ),
                   ),
@@ -79,19 +84,16 @@ final class AgentProfileSettings extends StatelessWidget {
                   hint: words.profileToneHint,
                   value: profile.personality.tone,
                   onCommit: (String value) => save(
-                    profile.copyWith(
-                      personality: _personalityWith(profile, tone: value),
+                    (AgentProfile p) => p.copyWith(
+                      personality: _personalityWith(p, tone: value),
                     ),
                   ),
                 ),
                 _ResponseLengthChoice(
                   value: profile.personality.responseLength,
                   onChanged: (AgentResponseLength length) => save(
-                    profile.copyWith(
-                      personality: _personalityWith(
-                        profile,
-                        responseLength: length,
-                      ),
+                    (AgentProfile p) => p.copyWith(
+                      personality: _personalityWith(p, responseLength: length),
                     ),
                   ),
                 ),
@@ -101,11 +103,8 @@ final class AgentProfileSettings extends StatelessWidget {
                   title: Text(words.profileAdmitUncertainty),
                   subtitle: Text(words.profileAdmitUncertaintyNote),
                   onChanged: (bool value) => save(
-                    profile.copyWith(
-                      personality: _personalityWith(
-                        profile,
-                        admitUncertainty: value,
-                      ),
+                    (AgentProfile p) => p.copyWith(
+                      personality: _personalityWith(p, admitUncertainty: value),
                     ),
                   ),
                 ),
@@ -114,11 +113,8 @@ final class AgentProfileSettings extends StatelessWidget {
                   value: profile.personality.leadWithAnswer,
                   title: Text(words.profileLeadWithAnswer),
                   onChanged: (bool value) => save(
-                    profile.copyWith(
-                      personality: _personalityWith(
-                        profile,
-                        leadWithAnswer: value,
-                      ),
+                    (AgentProfile p) => p.copyWith(
+                      personality: _personalityWith(p, leadWithAnswer: value),
                     ),
                   ),
                 ),
@@ -132,9 +128,9 @@ final class AgentProfileSettings extends StatelessWidget {
                   _MemoryRow(
                     memory: memory,
                     onToggle: (bool enabled) => save(
-                      profile.copyWith(
+                      (AgentProfile p) => p.copyWith(
                         memories: <AgentMemory>[
-                          for (final AgentMemory item in profile.memories)
+                          for (final AgentMemory item in p.memories)
                             if (item.id == memory.id)
                               AgentMemory(
                                 id: item.id,
@@ -149,9 +145,9 @@ final class AgentProfileSettings extends StatelessWidget {
                       ),
                     ),
                     onForget: () => save(
-                      profile.copyWith(
+                      (AgentProfile p) => p.copyWith(
                         memories: <AgentMemory>[
-                          for (final AgentMemory item in profile.memories)
+                          for (final AgentMemory item in p.memories)
                             if (item.id != memory.id) item,
                         ],
                       ),
@@ -165,11 +161,11 @@ final class AgentProfileSettings extends StatelessWidget {
                     fieldKey: const Key('profile-add-memory'),
                     hint: words.profileAddMemoryHint,
                     onAdd: (String content) => save(
-                      profile.copyWith(
+                      (AgentProfile p) => p.copyWith(
                         memories: <AgentMemory>[
-                          ...profile.memories,
+                          ...p.memories,
                           AgentMemory(
-                            id: _memoryId(profile),
+                            id: _memoryId(p),
                             // Personal, always: a memory with no triggers is
                             // only ever eligible when it is personal or a
                             // preference, so any other kind added here would
@@ -196,7 +192,7 @@ final class AgentProfileSettings extends StatelessWidget {
                 _MisheardList(
                   words: profile.misheard,
                   onChanged: (List<MisheardWord> words) =>
-                      save(profile.copyWith(misheard: words)),
+                      save((AgentProfile p) => p.copyWith(misheard: words)),
                 ),
                 _WordList(
                   name: 'vocabulary',
@@ -205,7 +201,7 @@ final class AgentProfileSettings extends StatelessWidget {
                   hint: words.profileVocabularyHint,
                   words: profile.vocabulary,
                   onChanged: (List<String> words) =>
-                      save(profile.copyWith(vocabulary: words)),
+                      save((AgentProfile p) => p.copyWith(vocabulary: words)),
                 ),
               ],
             ),
@@ -220,11 +216,8 @@ final class AgentProfileSettings extends StatelessWidget {
                   hint: words.profileCarryOnHint,
                   words: profile.turnTaking.acknowledgements,
                   onChanged: (List<String> words) => save(
-                    profile.copyWith(
-                      turnTaking: _turnTakingWith(
-                        profile,
-                        acknowledgements: words,
-                      ),
+                    (AgentProfile p) => p.copyWith(
+                      turnTaking: _turnTakingWith(p, acknowledgements: words),
                     ),
                   ),
                 ),
@@ -235,8 +228,8 @@ final class AgentProfileSettings extends StatelessWidget {
                   hint: words.profileStopHint,
                   words: profile.turnTaking.corrections,
                   onChanged: (List<String> words) => save(
-                    profile.copyWith(
-                      turnTaking: _turnTakingWith(profile, corrections: words),
+                    (AgentProfile p) => p.copyWith(
+                      turnTaking: _turnTakingWith(p, corrections: words),
                     ),
                   ),
                 ),
@@ -247,8 +240,8 @@ final class AgentProfileSettings extends StatelessWidget {
                   hint: words.profileUnfinishedHint,
                   words: profile.turnTaking.unfinished,
                   onChanged: (List<String> words) => save(
-                    profile.copyWith(
-                      turnTaking: _turnTakingWith(profile, unfinished: words),
+                    (AgentProfile p) => p.copyWith(
+                      turnTaking: _turnTakingWith(p, unfinished: words),
                     ),
                   ),
                 ),
