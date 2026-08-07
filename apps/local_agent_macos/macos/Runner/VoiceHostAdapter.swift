@@ -851,176 +851,38 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
     }
     try guardCurrent(id)
 
-    let engine = AVAudioEngine()
-    let input = engine.inputNode
-    var duplex = false
-    var openMic = false
-    if let outputTransport = InputDevicePolicy.defaultOutputTransport(),
-      InputDevicePolicy.skipsEchoCancellation(outputTransport: outputTransport)
-    {
-      // Headphones: the far end goes into the user's ears and never
-      // reaches the room, so there is nothing for a canceller to subtract
-      // — and a Bluetooth output is unusable under this engine anyway.
-      // Touching the output side while the route renegotiates its profile
-      // failed start after start, first as kAUInitialize -10875 in the
-      // voice-processing unit, then — with voice processing skipped — as
-      // IsFormatSampleRateAndChannelCountValid(outputHWFormat) on the
-      // plain output, the device mid-switch reporting no sample rate at
-      // all. The engine that only listens initializes no output unit, so
-      // neither failure exists: the sidecar speaks through its own
-      // player, the microphone stays open, and interruption still works.
-      openMic = true
-    } else {
-      // The main mixer must exist before voice processing reshapes the
-      // graph. Instantiated afterwards it lands on 44.1kHz against 48kHz
-      // hardware, and the output unit then refuses to initialize the
-      // moment a player node is connected to it — kAUInitialize -10875 on
-      // engine start, which reads as "voice processing is impossible
-      // here" and is nothing of the sort. Six trials: input-only, input
-      // and output, output-only, and no voice processing at all, each
-      // with and without a player node. Only the ones that touched the
-      // mixer first started.
-      _ = engine.mainMixerNode
-      // Voice processing gives the engine the system echo canceller: what
-      // this process plays through its own output is subtracted from its
-      // own microphone, so the microphone can stay open while the agent
-      // talks and the user can interrupt by talking over it.
-      // The canceller lives in one Voice-Processing I/O unit that owns
-      // both ends of the audio. Enabling it on the input alone gives the
-      // microphone side and leaves playback on a plain output unit, so
-      // the unit has no far-end reference and there is nothing for it to
-      // subtract. That was this app's arrangement, and the microphone was
-      // never deaf — it simply heard the agent. Measured in use: nineteen
-      // partial transcripts arrived while speaking, spelling out
-      // "Flonter Google的這個技" in the agent's own words, at a peak of
-      // 0.1443 against a 0.0021 noise floor. The first of them cancelled
-      // the answer it came from.
-      do {
-        try input.setVoiceProcessingEnabled(true)
-        do {
-          try engine.outputNode.setVoiceProcessingEnabled(true)
-          duplex = true
-        } catch {
-          // Input-only voice processing is worse than none at all: the
-          // microphone stays open and nothing removes the agent from it.
-          // Undo it so the half-duplex path, which mutes instead, takes
-          // over.
-          try? input.setVoiceProcessingEnabled(false)
-          NSLog(
-            "Lulo voice: output voice processing refused (%@); half-duplex",
-            String(describing: error)
-          )
-        }
-      } catch {
-        NSLog(
-          "Lulo voice: voice processing unavailable (%@); half-duplex",
-          String(describing: error)
-        )
-      }
-    }
-    fullDuplex = duplex
-    openMicWithoutCanceller = openMic
-    NSLog(
-      "Lulo voice: %@",
-      openMic
-        ? "open microphone (headphones; the sidecar speaks, nothing echoes)"
-        : duplex
-          ? "full duplex (echo cancellation on both ends)"
-          : "half duplex (microphone mutes while speaking)"
-    )
-    // Before the format is read: the format belongs to the device. The
-    // output stays where the user put it — only the ears move.
-    if let transport = InputDevicePolicy.defaultInputTransport(),
-      InputDevicePolicy.pinsBuiltInMicrophone(transport: transport),
-      let builtIn = InputDevicePolicy.builtInMicrophone()
-    {
-      do {
-        try input.auAudioUnit.setDeviceID(builtIn)
-        NSLog(
-          "Lulo voice: bluetooth input declined; listening through the built-in microphone"
-        )
-      } catch {
-        NSLog(
-          "Lulo voice: could not pin the built-in microphone (%@)",
-          String(describing: error)
-        )
-      }
-    }
-    let microphoneFormat = input.outputFormat(forBus: 0)
-    // The microphone is an array — three channels built in, more on
-    // aggregates — and which channel carries the voice is the device's
-    // business. Each buffer is mixed down by taking its loudest channel,
-    // then converted to what the analyzer wants.
-    guard
-      let monoFormat = AVAudioFormat(
-        commonFormat: .pcmFormatFloat32,
-        sampleRate: microphoneFormat.sampleRate,
-        channels: 1,
-        interleaved: false
-      ),
-      let converter = AVAudioConverter(from: monoFormat, to: analyzerFormat)
-    else {
-      throw VoiceHostError.audioFormatUnavailable
-    }
-
-    let (inputSequence, builder) = AsyncStream<AnalyzerInput>.makeStream()
-    // The tap runs on the real-time audio thread. It captures only values
-    // it owns — the continuation, the converter, and the boxes — never
-    // the adapter, whose state belongs to the main actor.
+    // Built off the main thread. What follows this line used to be a second
+    // of synchronous CoreAudio running on the actor that draws the app, so
+    // every press of the microphone button froze it; see
+    // `makeListeningGraph`.
     let muteBox = mute
-    let vad = VoiceActivityBox()
     let heldSpeechBox = heldSpeech
-    input.installTap(onBus: 0, bufferSize: 4096, format: microphoneFormat) {
-      buffer, _ in
-      if muteBox.muted {
-        return
-      }
-      guard
-        let (mono, rms) = VoiceHostAdapter.loudestChannel(
-          of: buffer,
-          as: monoFormat
-        ),
-        let converted = VoiceHostAdapter.convert(
-          mono,
-          with: converter,
-          to: analyzerFormat
-        ),
-        converted.frameLength > 0
-      else {
-        return
-      }
-      vad.observe(rms: rms, at: ProcessInfo.processInfo.systemUptime)
-      heldSpeechBox.append(
-        Array(
-          UnsafeBufferPointer(
-            start: mono.floatChannelData![0],
-            count: Int(mono.frameLength)
-          )
-        ),
-        sampleRate: mono.format.sampleRate
+    let graph = try await Task.detached(priority: .userInitiated) {
+      try Self.makeListeningGraph(
+        analyzerFormat: analyzerFormat,
+        mute: muteBox,
+        heldSpeech: heldSpeechBox
       )
-      builder.yield(AnalyzerInput(buffer: converted))
+    }.value
+    // A stop that arrived while the graph was being built owns the outcome.
+    // It is a whole second now, which is long enough for the user to change
+    // their mind in.
+    do {
+      try guardCurrent(id)
+    } catch {
+      graph.engine.stop()
+      graph.engine.inputNode.removeTap(onBus: 0)
+      graph.builder.finish()
+      throw error
     }
-    // The mouth: sidecar PCM plays through this node, inside the voice-
-    // processed output so the echo canceller knows what to subtract.
-    var playerNode: AVAudioPlayerNode?
-    var renderFormat: AVAudioFormat?
-    if fullDuplex,
-      let pcmFormat = AVAudioFormat(
-        commonFormat: .pcmFormatFloat32,
-        sampleRate: 24_000,
-        channels: 1,
-        interleaved: false
-      )
-    {
-      let player = AVAudioPlayerNode()
-      engine.attach(player)
-      engine.connect(player, to: engine.mainMixerNode, format: pcmFormat)
-      playerNode = player
-      renderFormat = pcmFormat
-    }
-    engine.prepare()
-    try engine.start()
+    let engine = graph.engine
+    let builder = graph.builder
+    let inputSequence = graph.inputSequence
+    let vad = graph.vad
+    let playerNode = graph.playerNode
+    let renderFormat = graph.renderFormat
+    fullDuplex = graph.fullDuplex
+    openMicWithoutCanceller = graph.openMicWithoutCanceller
 
     let resultsTask = Task { [weak self, vad] in
       do {
@@ -1163,6 +1025,233 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
       renderFormat: renderFormat
     )
     emit(.listeningStarted)
+  }
+
+  /// One listening session's audio, built whole.
+  ///
+  /// `@unchecked Sendable` because `AVAudioEngine` is not: the graph is
+  /// built on one background thread, handed over once, and touched only on
+  /// the main actor afterwards. Nothing shares it while it crosses.
+  struct ListeningGraph: @unchecked Sendable {
+    let engine: AVAudioEngine
+    let builder: AsyncStream<AnalyzerInput>.Continuation
+    let inputSequence: AsyncStream<AnalyzerInput>
+    let vad: VoiceActivityBox
+    let playerNode: AVAudioPlayerNode?
+    let renderFormat: AVAudioFormat?
+    /// Whether the echo canceller took both ends, so the microphone can
+    /// stay open while the agent talks.
+    let fullDuplex: Bool
+    /// Headphones: the microphone stays open with no canceller, because
+    /// there is nothing in the room to cancel.
+    let openMicWithoutCanceller: Bool
+  }
+
+  /// Builds the whole listening graph, off the main thread.
+  ///
+  /// `nonisolated` is the entire point. This is a second of **synchronous**
+  /// CoreAudio, and this class is `@MainActor`, so it used to run on the
+  /// thread that draws: measured on one machine across three consecutive
+  /// starts in one process, 1244, 1161 and 1076 ms, of which
+  /// `setVoiceProcessingEnabled(true)` alone was 826-960 and the first touch
+  /// of `inputNode` another 100-229. Not a first-run cost — every press of
+  /// the microphone button paid it, and the interface froze for the whole of
+  /// it. Built on a background thread instead, the main thread's worst stall
+  /// over the same work measures 23 ms, and
+  /// `testBuildingTheListeningGraphLeavesTheMainThreadFree` keeps it there.
+  ///
+  /// This does not make listening start any sooner. The second is still
+  /// spent; it is spent somewhere the user can keep using the app. Removing
+  /// it altogether means holding a voice-processing unit open before anyone
+  /// has asked to be heard, which costs a privacy indicator and a battery,
+  /// and needs its own measurement before anybody trades for it.
+  ///
+  /// The boxes are passed in rather than read off `self`: they are the only
+  /// adapter state the audio thread is allowed to touch, and every one of
+  /// them is already `Sendable`.
+  nonisolated static func makeListeningGraph(
+    analyzerFormat: AVAudioFormat,
+    mute: MuteBox,
+    heldSpeech: HeldSpeechCaptureBox
+  ) throws -> ListeningGraph {
+    let engine = AVAudioEngine()
+    let input = engine.inputNode
+    var duplex = false
+    var openMic = false
+    if let outputTransport = InputDevicePolicy.defaultOutputTransport(),
+      InputDevicePolicy.skipsEchoCancellation(outputTransport: outputTransport)
+    {
+      // Headphones: the far end goes into the user's ears and never
+      // reaches the room, so there is nothing for a canceller to subtract
+      // — and a Bluetooth output is unusable under this engine anyway.
+      // Touching the output side while the route renegotiates its profile
+      // failed start after start, first as kAUInitialize -10875 in the
+      // voice-processing unit, then — with voice processing skipped — as
+      // IsFormatSampleRateAndChannelCountValid(outputHWFormat) on the
+      // plain output, the device mid-switch reporting no sample rate at
+      // all. The engine that only listens initializes no output unit, so
+      // neither failure exists: the sidecar speaks through its own
+      // player, the microphone stays open, and interruption still works.
+      openMic = true
+    } else {
+      // The main mixer must exist before voice processing reshapes the
+      // graph. Instantiated afterwards it lands on 44.1kHz against 48kHz
+      // hardware, and the output unit then refuses to initialize the
+      // moment a player node is connected to it — kAUInitialize -10875 on
+      // engine start, which reads as "voice processing is impossible
+      // here" and is nothing of the sort. Six trials: input-only, input
+      // and output, output-only, and no voice processing at all, each
+      // with and without a player node. Only the ones that touched the
+      // mixer first started.
+      _ = engine.mainMixerNode
+      // Voice processing gives the engine the system echo canceller: what
+      // this process plays through its own output is subtracted from its
+      // own microphone, so the microphone can stay open while the agent
+      // talks and the user can interrupt by talking over it.
+      // The canceller lives in one Voice-Processing I/O unit that owns
+      // both ends of the audio. Enabling it on the input alone gives the
+      // microphone side and leaves playback on a plain output unit, so
+      // the unit has no far-end reference and there is nothing for it to
+      // subtract. That was this app's arrangement, and the microphone was
+      // never deaf — it simply heard the agent. Measured in use: nineteen
+      // partial transcripts arrived while speaking, spelling out
+      // "Flonter Google的這個技" in the agent's own words, at a peak of
+      // 0.1443 against a 0.0021 noise floor. The first of them cancelled
+      // the answer it came from.
+      do {
+        try input.setVoiceProcessingEnabled(true)
+        do {
+          try engine.outputNode.setVoiceProcessingEnabled(true)
+          duplex = true
+        } catch {
+          // Input-only voice processing is worse than none at all: the
+          // microphone stays open and nothing removes the agent from it.
+          // Undo it so the half-duplex path, which mutes instead, takes
+          // over.
+          try? input.setVoiceProcessingEnabled(false)
+          NSLog(
+            "Lulo voice: output voice processing refused (%@); half-duplex",
+            String(describing: error)
+          )
+        }
+      } catch {
+        NSLog(
+          "Lulo voice: voice processing unavailable (%@); half-duplex",
+          String(describing: error)
+        )
+      }
+    }
+    NSLog(
+      "Lulo voice: %@",
+      openMic
+        ? "open microphone (headphones; the sidecar speaks, nothing echoes)"
+        : duplex
+          ? "full duplex (echo cancellation on both ends)"
+          : "half duplex (microphone mutes while speaking)"
+    )
+    // Before the format is read: the format belongs to the device. The
+    // output stays where the user put it — only the ears move.
+    if let transport = InputDevicePolicy.defaultInputTransport(),
+      InputDevicePolicy.pinsBuiltInMicrophone(transport: transport),
+      let builtIn = InputDevicePolicy.builtInMicrophone()
+    {
+      do {
+        try input.auAudioUnit.setDeviceID(builtIn)
+        NSLog(
+          "Lulo voice: bluetooth input declined; listening through the built-in microphone"
+        )
+      } catch {
+        NSLog(
+          "Lulo voice: could not pin the built-in microphone (%@)",
+          String(describing: error)
+        )
+      }
+    }
+    let microphoneFormat = input.outputFormat(forBus: 0)
+    // The microphone is an array — three channels built in, more on
+    // aggregates — and which channel carries the voice is the device's
+    // business. Each buffer is mixed down by taking its loudest channel,
+    // then converted to what the analyzer wants.
+    guard
+      let monoFormat = AVAudioFormat(
+        commonFormat: .pcmFormatFloat32,
+        sampleRate: microphoneFormat.sampleRate,
+        channels: 1,
+        interleaved: false
+      ),
+      let converter = AVAudioConverter(from: monoFormat, to: analyzerFormat)
+    else {
+      throw VoiceHostError.audioFormatUnavailable
+    }
+
+    let (inputSequence, builder) = AsyncStream<AnalyzerInput>.makeStream()
+    // The tap runs on the real-time audio thread. It captures only values
+    // it owns — the continuation, the converter, and the boxes — never
+    // the adapter, whose state belongs to the main actor.
+    let muteBox = mute
+    let vad = VoiceActivityBox()
+    let heldSpeechBox = heldSpeech
+    input.installTap(onBus: 0, bufferSize: 4096, format: microphoneFormat) {
+      buffer, _ in
+      if muteBox.muted {
+        return
+      }
+      guard
+        let (mono, rms) = VoiceHostAdapter.loudestChannel(
+          of: buffer,
+          as: monoFormat
+        ),
+        let converted = VoiceHostAdapter.convert(
+          mono,
+          with: converter,
+          to: analyzerFormat
+        ),
+        converted.frameLength > 0
+      else {
+        return
+      }
+      vad.observe(rms: rms, at: ProcessInfo.processInfo.systemUptime)
+      heldSpeechBox.append(
+        Array(
+          UnsafeBufferPointer(
+            start: mono.floatChannelData![0],
+            count: Int(mono.frameLength)
+          )
+        ),
+        sampleRate: mono.format.sampleRate
+      )
+      builder.yield(AnalyzerInput(buffer: converted))
+    }
+    // The mouth: sidecar PCM plays through this node, inside the voice-
+    // processed output so the echo canceller knows what to subtract.
+    var playerNode: AVAudioPlayerNode?
+    var renderFormat: AVAudioFormat?
+    if duplex,
+      let pcmFormat = AVAudioFormat(
+        commonFormat: .pcmFormatFloat32,
+        sampleRate: 24_000,
+        channels: 1,
+        interleaved: false
+      )
+    {
+      let player = AVAudioPlayerNode()
+      engine.attach(player)
+      engine.connect(player, to: engine.mainMixerNode, format: pcmFormat)
+      playerNode = player
+      renderFormat = pcmFormat
+    }
+    engine.prepare()
+    try engine.start()
+    return ListeningGraph(
+      engine: engine,
+      builder: builder,
+      inputSequence: inputSequence,
+      vad: vad,
+      playerNode: playerNode,
+      renderFormat: renderFormat,
+      fullDuplex: duplex,
+      openMicWithoutCanceller: openMic
+    )
   }
 
   /// Settles the utterance in progress once the room has gone quiet.

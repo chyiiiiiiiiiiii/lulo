@@ -63,4 +63,75 @@ final class SecondAudioEngineTests: XCTestCase {
       "the second engine heard nothing — dictation cannot have its own"
     )
   }
+
+  /// Starting to listen must not freeze the interface.
+  ///
+  /// `VoiceHostAdapter` is `@MainActor`, and building the listening graph
+  /// used to happen on it: measured on this machine at 1244, 1161 and 1076 ms
+  /// across three consecutive starts in one process, so every press of the
+  /// microphone button froze the app for over a second. It was not a
+  /// first-run cost — `setVoiceProcessingEnabled(true)` alone took 826-960 ms
+  /// every single time, and touching `engine.inputNode` another 100-229.
+  ///
+  /// The threshold is loose on purpose. What is being guarded is the
+  /// difference between "off the main thread" and "on it", which is a factor
+  /// of fifty; a number tight enough to also police scheduling jitter would
+  /// fail on a busy machine and teach everyone to ignore it.
+  @available(macOS 26.0, *)
+  func testBuildingTheListeningGraphLeavesTheMainThreadFree() throws {
+    guard ProcessInfo.processInfo.environment["LULO_AUDIO_DEVICE_TESTS"] != nil
+    else {
+      throw XCTSkip(
+        "Set LULO_AUDIO_DEVICE_TESTS to run: this opens the real microphone."
+      )
+    }
+    guard
+      let analyzerFormat = AVAudioFormat(
+        commonFormat: .pcmFormatFloat32,
+        sampleRate: 16_000,
+        channels: 1,
+        interleaved: false
+      )
+    else {
+      return XCTFail("no format to convert into")
+    }
+
+    let finished = DispatchSemaphore(value: 0)
+    let built = UncheckedBox<VoiceHostAdapter.ListeningGraph?>(nil)
+    DispatchQueue.global(qos: .userInitiated).async {
+      built.value = try? VoiceHostAdapter.makeListeningGraph(
+        analyzerFormat: analyzerFormat,
+        mute: MuteBox(),
+        heldSpeech: HeldSpeechCaptureBox()
+      )
+      finished.signal()
+    }
+
+    // This thread does what a UI thread does: wake on a frame-sized timer.
+    // The longest gap between wakes is how long it was starved for.
+    var worstStall = 0.0
+    var last = ProcessInfo.processInfo.systemUptime
+    while finished.wait(timeout: .now() + 0.016) == .timedOut {
+      let now = ProcessInfo.processInfo.systemUptime
+      worstStall = max(worstStall, (now - last) * 1000)
+      last = now
+    }
+
+    let graph = try XCTUnwrap(built.value, "the listening graph was not built")
+    graph.engine.stop()
+    graph.engine.inputNode.removeTap(onBus: 0)
+
+    XCTAssertLessThan(
+      worstStall,
+      100,
+      "building the listening graph starved the main thread for "
+        + String(format: "%.0f ms", worstStall)
+    )
+  }
+}
+
+/// Carries a value out of a background queue in a test.
+private final class UncheckedBox<Value>: @unchecked Sendable {
+  var value: Value
+  init(_ value: Value) { self.value = value }
 }
