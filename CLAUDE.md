@@ -247,6 +247,15 @@ Before the first step it deletes the previously built app bundle, because `flutt
 
 Before running the gate, quit any running Lulo.app first — a live instance with the same bundle ID makes the xcodebuild test host hang ("test runner hung before establishing connection").
 
+Sweep again **after** it finishes. Steps 14, 14a and 17 launch real windows, and an instance that outlives its test stays in the Dock and hangs the next run for the same reason. Report the gate's result and the sweep together:
+
+```sh
+pkill -f "Products/(Debug|Profile)/Lulo.app" || true
+ps aux | grep -iE "flutter_local_agent.*\.app|Products/(Debug|Profile)" | grep -v grep
+```
+
+Leave the sidecars alone — they run from outside this repository, are started by hand, and take voice and the batch recogniser down with them.
+
 Individual commands during iteration:
 
 ```sh
