@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR/tool/sweep_app_instances.sh\"",
+            "timeout": 10,
+            "statusMessage": "Closing leftover app windows"
+          }
+        ]
+      }
+    ]
+  }
+}

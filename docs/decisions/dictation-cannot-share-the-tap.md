@@ -88,13 +88,13 @@ Things the built version got right and worth keeping:
   long as Lulo runs. Neither hotkey being user-configurable is the real
   problem underneath that, and is still not solved.
 
-## The plan for the next attempt, and the one thing to check first
+## The plan for the next attempt, and the answer to the one thing to check first
 
-`SecondAudioEngineTests` is checked in and skipped by default. It starts two
-`AVAudioEngine`s, taps the input on both, and asserts each one receives
-buffers. **Run it before writing anything else** — the whole recommendation
-above rests on two engines being able to coexist, and if they cannot, this
-plan is wrong and nobody should spend a day discovering that.
+**Two `AVAudioEngine`s can coexist. The plan below stands.** Measured
+2026-08-07 20:21: `SecondAudioEngineTests` passes in **2.4s**, both taps
+receiving buffers. A standalone script outside XCTest agrees, three runs out
+of three, at 48 kHz mono with 22 and 20 buffers arriving in two seconds. The
+question the rest of this document rests on is closed.
 
 ```sh
 cd apps/local_agent_macos/macos
@@ -105,11 +105,15 @@ TEST_RUNNER_LULO_AUDIO_DEVICE_TESTS=1 xcodebuild test \
   -only-testing:RunnerTests/SecondAudioEngineTests
 ```
 
-### It still has not been run, and the reason first written here was wrong
+### Two wrong explanations for a hang that was environmental
 
-This section used to say the run needs somebody at the machine to dismiss a
-TCC prompt. That was a guess from watching an `xcodebuild` hang, and it does
-not survive being checked. Measured on 2026-08-07:
+The answer above took three tries to get, and the two failed ones are worth
+keeping because both were confident and both sent the next person somewhere
+useless.
+
+**The first** said the run needs somebody at the machine to dismiss a TCC
+prompt. That was a guess from watching an `xcodebuild` hang. Measured on
+2026-08-07 it does not survive:
 
 - With the environment variable set, the run hangs **three times out of
   three** — 19 minutes, 7 minutes, and a third killed at 4. It stops after
@@ -131,21 +135,40 @@ not survive being checked. Measured on 2026-08-07:
   `isInUseByAnotherApplication`, the built-in microphone is the default and
   is free.
 
-So: authorized, device free, enumeration instant — and any process that
-actually opens an input tap hangs. Enumeration goes through `AVCaptureDevice`
-and never builds the input graph; `AVAudioEngine.inputNode` does. The
-untested suspect is one of the virtual HAL drivers installed on this machine
-(`iShotAudioPlugin`, `MSLoopbackDriverDevice`, `Yii麥克風`) — a HAL plugin
-loads into every process that touches CoreAudio, and a wedged one hangs it
-there. Confirming that means disabling them, which is the machine owner's
-call, not a test's.
+**The second** — written a few hours later, from the evidence just above —
+concluded that a wedged virtual HAL driver was hanging every process that
+touched CoreAudio, that the machine owner would have to disable
+`iShotAudioPlugin` / `MSLoopbackDriverDevice` / 「Yii麥克風」 to find out, and
+that "the answer cannot be got from an agent-spawned process on this
+machine." Every one of those is wrong. The answer was got from an
+agent-spawned process, with all four HAL plugins still installed —
+`KrispAudio`, `MSTeamsAudioDevice`, `ParrotAudioPlugin`, `iShotAudioPlugin`
+— and nothing disabled.
 
-**What this does and does not tell the next person.** It says nothing about
-whether two `AVAudioEngine`s can coexist — the question is still open and the
-plan below still rests on it. What it does say is that the answer cannot be
-got from an agent-spawned process on this machine, and that a hang here is
-not a permission prompt to be clicked through. Run it from Xcode or a
-Terminal you own, after ruling out the virtual drivers.
+**What actually happened is that the machine was restarted.** It booted at
+19:02 and `coreaudiod` came up at 19:06; every hang recorded above is from
+before that, and every run that works is from after. CoreAudio was wedged,
+and a wedged CoreAudio hangs the input graph without touching permissions,
+without logging to `tccd`, and without making the devices look busy — which
+is exactly the evidence above, and exactly why it read as something
+structural.
+
+**The lesson is about the shape of the reasoning, not about audio.** Both
+wrong explanations were built by ruling things out — not a prompt, not
+permission, not a busy device, not `xcodebuild` — and then handing the
+remainder to the most complicated suspect still standing. Elimination cannot
+reach a cause that is not on the list, and "the daemon is wedged and a
+restart clears it" was never on it. When every specific suspect has been
+cleared and the conclusion is getting more elaborate, the next move is to
+re-run the cheap experiment in a fresh environment before writing anything
+down. That costs a minute; the second explanation cost a day of somebody
+else's plan and told them to uninstall their audio software.
+
+The bounded experiment is also part of the lesson. The runs that produced
+the wrong conclusion were killed at 19, 7 and 4 minutes, and the standalone
+one at 600 seconds. The run that produced the right one was capped at 60
+seconds and printed a line before and after every call, so "it hung" could
+have named the call it hung in. It finished in two.
 
 If both engines run, the rest is mechanical and every piece already exists:
 

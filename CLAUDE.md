@@ -130,7 +130,14 @@ half-duplex mute, and every guard added for dictation broke one of them —
 skipping the VAD froze `lastVoice` and made the endpointer fire *sooner*,
 submitting a truncated question mid-dictation, and letting dictation past
 the mute recorded the agent's own voice in the one mode with no echo
-canceller. The next attempt needs its own `AVAudioEngine`. Three fixes from
+canceller. The next attempt needs its own `AVAudioEngine`, and that is now
+measured rather than hoped: `SecondAudioEngineTests` passes in 2.4s with
+both taps receiving buffers, so the plan in that document is unblocked. It
+was twice written up as impossible — first as a TCC prompt nobody could
+click, then as a wedged virtual HAL driver the machine owner would have to
+uninstall — and both were an elimination argument handing the remainder to
+the most elaborate suspect left standing. CoreAudio was wedged; the machine
+was restarted; it works. Three fixes from
 that work were kept because they stand alone: `GlobalHotKeyController.nextID`
 is now `static` (it was per-instance, and Carbon routes on `(signature, id)`
 with one shared signature, so any second hotkey silently answered for the
@@ -247,14 +254,15 @@ Before the first step it deletes the previously built app bundle, because `flutt
 
 Before running the gate, quit any running Lulo.app first — a live instance with the same bundle ID makes the xcodebuild test host hang ("test runner hung before establishing connection").
 
-Sweep again **after** it finishes. Steps 14, 14a and 17 launch real windows, and an instance that outlives its test stays in the Dock and hangs the next run for the same reason. Report the gate's result and the sweep together:
+Sweep again **after** it finishes. Steps 14, 14a and 17 launch real windows, and an instance that outlives its test stays in the Dock and hangs the next run for the same reason:
 
 ```sh
-pkill -f "Products/(Debug|Profile)/Lulo.app" || true
-ps aux | grep -iE "flutter_local_agent.*\.app|Products/(Debug|Profile)" | grep -v grep
+./tool/sweep_app_instances.sh
 ```
 
-Leave the sidecars alone — they run from outside this repository, are started by hand, and take voice and the batch recogniser down with them.
+It matches the **build directory**, not the process name, so a Lulo installed to `/Applications` — the user's own resident agent — is left alone, and so are the sidecars, which live outside this repository and take voice and the batch recogniser down with them. It prints only when it closed something.
+
+`.claude/settings.json` runs it as a `Stop` hook, so it also happens at the end of every turn without anybody remembering to. Report the gate's result and the sweep together anyway: the hook fires after the reply is written, so a report that does not mention the sweep was written before it ran.
 
 Individual commands during iteration:
 
