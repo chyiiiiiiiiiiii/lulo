@@ -264,6 +264,14 @@ It matches the **build directory**, not the process name, so a Lulo installed to
 
 `.claude/settings.json` runs it as a `Stop` hook, so it also happens at the end of every turn without anybody remembering to. Report the gate's result and the sweep together anyway: the hook fires after the reply is written, so a report that does not mention the sweep was written before it ran.
 
+Once the gate is green, put the app where the user can actually run it:
+
+```sh
+./tool/ship_to_desktop.sh
+```
+
+It builds **Release** — the gate builds `--profile`, so the only build anybody looks at is not the one that ships — checks the entitlements file a released app is really signed with, and verifies the signature and the LiteRT bundle on the copy that lands rather than on the one that was built. The bundle ID does not change, so the Desktop copy opens the same container: installed models, conversation history and profile are all still there. Deliberately outside `verify.dart`, which asserts correctness rather than delivering anything, and has no reason to pay for a Release compile at every checkpoint.
+
 Individual commands during iteration:
 
 ```sh
