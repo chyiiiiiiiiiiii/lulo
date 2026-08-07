@@ -69,7 +69,7 @@ final class AgentPromptContext {
 /// either language, at either temperature, and still 0 with a further
 /// paragraph ordering it to. It invents a confident wrong time instead, in
 /// an app whose core instruction says 不捏造資訊. Told the time in the
-/// prompt, the same conditions answer 5/5 in Chinese and 3/5 in English.
+/// prompt, the same conditions answer 5/5 in Chinese and 5/5 in English.
 /// `docs/decisions/tool-calling-readiness.md` has both tables.
 ///
 /// [document] is one file the user has asked about. The passages of it that

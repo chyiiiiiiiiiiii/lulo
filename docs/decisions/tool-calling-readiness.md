@@ -35,7 +35,7 @@ one call and one refusal are the same observation until they are repeated.
 |---|---|
 | Chinese, this app's instruction | **5/5** |
 | Chinese, this app's instruction, `AnswerStyle.steady` | **5/5** |
-| English, this app's instruction | 3/5 |
+| English, this app's instruction | **5/5** |
 
 **The system instruction is the whole story.** With nothing in front of it
 the model called the clock every single time. With this app's instruction in
@@ -68,34 +68,72 @@ a timestamp is a dozen tokens of it. Read per turn rather than per provider,
 so an app left open overnight does not spend the next day insisting it is
 still yesterday.
 
-**English is weaker and the number is here rather than hidden**: 3/5, where
-Chinese is 5/5. Both failures still put a time in the answer, so what is
-being measured is whether it reads back the one it was handed. Two in five
-saying something else is not good enough to call finished, and the English
-clock ships knowing that.
+**English is not weaker. That was the scorer.** This section used to read
+3/5 against Chinese 5/5 and treated the gap as a property of the model —
+"two in five saying something else is not good enough to call finished, and
+the English clock ships knowing that." It shipped knowing something that was
+not true. The minute list was `["53", "五十三"]`: Chinese was allowed both
+its digits and its numerals, English only its digits, so `It's two
+fifty-three in the morning.` scored wrong. With the two languages spelled
+out evenly, English told is **5/5**, and every other row in this file
+re-runs unchanged.
 
-One obvious explanation was checked and ruled out. The English instruction
-used to carry a Chinese sentence — the built-in tone was rendered raw into
-both languages, so every English prompt this app sent ended `Tone:
-親近但不裝熟.` — which in a composer whose own comment says a small model
-answers in the language it was instructed in is exactly the kind of thing
-that would explain a weak English column. It was fixed, the prefaces were
-regenerated from the composer, and every condition was re-run: **all nine
-numbers came back identical, English told included**. Whatever makes English
-weaker here, it is not that.
+The five replies say which two were being thrown away, so this is not an
+inference from the totals moving:
+
+```
+right 1: It is currently 2:53. …
+right 2: It is currently two fifty-three in the morning. …
+right 3: It is currently 2:53.
+right 4: It is two fifty-three in the morning right now. …
+right 5: It is 2:53 in the morning right now. …
+```
+
+Two of the five spell the minute out. Five minus those two is exactly the
+3/5 this file used to report, and both of them read the handed clock back
+correctly.
+
+An earlier explanation had already been checked and ruled out, and it stays
+ruled out. The English instruction used to carry a Chinese sentence — the
+built-in tone was rendered raw into both languages, so every English prompt
+this app sent ended `Tone: 親近但不裝熟.` — which in a composer whose own
+comment says a small model answers in the language it was instructed in is
+exactly the kind of thing that would explain a weak English column. It was
+fixed, the prefaces were regenerated from the composer, every condition was
+re-run, and all nine numbers came back identical. That was the right check,
+aimed at a gap that was never in the model.
 
 ## Scoring this is where it keeps going wrong
 
-Twice. The first pass compared against the literal string `02:53` and marked
-「凌晨 2 點 53 分」 wrong. The second added a handful of spellings and still
-marked 「現在是凌晨兩點五十三分」 wrong, which is the same answer written in
-Chinese numerals — and that was after this file already carried the lesson.
-Scoring now looks for the minute in either script and nothing else.
+Three times now, in this one file.
 
-Both mistakes ran the same direction: they understated the option being
-argued for. An error that flatters the alternative is the kind that survives
-review, so check the scorer against the actual replies before believing a
-column.
+1. Compared against the literal string `02:53`, marking 「凌晨 2 點 53 分」
+   wrong.
+2. Added a handful of spellings and still marked 「現在是凌晨兩點五十三分」
+   wrong — the same answer in Chinese numerals — after this file already
+   carried the lesson.
+3. Held 「五十三」 and no English word form, so the same clock spelled out
+   scored right in one language and wrong in the other.
+
+All three ran the same direction: they understated the option being argued
+for. An error that flatters the alternative is the kind that survives
+review, because the conclusion does not move — only the margin does.
+
+The third is worse than the first two and worth naming separately. A scorer
+whose spellings are uneven between two languages does not merely understate
+a column; it **manufactures a difference between the languages**, and that
+difference then reads as a finding about the model. Two paragraphs of this
+file were written about a weakness that was in the list of strings above.
+When a measurement spans languages, check that both sides are allowed the
+same forms before believing any gap between them.
+
+The probe now prints **every reply that scored wrong**, not the last reply
+of each condition. A column reading 3/5 is a number until those two misses
+can be read: a time the model invented and a real one the scorer could not
+parse are the same number and completely different problems. The difference
+is obvious once printed — 「現在是下午兩點零七分」 five times over is a model
+making one up, and it looks nothing like `It is 2:53 in the morning right
+now.`
 
 ## What this rules in and out
 

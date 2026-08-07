@@ -186,6 +186,14 @@ final class ToolCallProbeTests: XCTestCase {
   /// often: a hallucinated clock has sixty minutes to choose from, so across
   /// five attempts this admits a false positive at a rate worth accepting
   /// for a check that no longer misses the real answers.
+  ///
+  /// The spellings have to be even between the two languages, and for a
+  /// third version of this scorer they were not: the list held 「五十三」 and
+  /// no English word form, so a Chinese answer spelled out scored right and
+  /// the identical English one scored wrong. That is a scorer flattering
+  /// whichever column it was asked about, and the English column it
+  /// understated — 3/5 against 5/5 — was the one being investigated. Even,
+  /// the English column re-runs at 5/5 and the gap is gone.
   static func answered(_ reply: String, told: Bool) -> Bool {
     if reply.contains(sentinel) {
       return true
@@ -193,8 +201,45 @@ final class ToolCallProbeTests: XCTestCase {
     guard told else {
       return false
     }
-    let minute = ["53", "五十三"]
-    return minute.contains { reply.contains($0) }
+    let minute = ["53", "五十三", "fifty-three", "fifty three"]
+    let lowered = reply.lowercased()
+    return minute.contains { lowered.contains($0) }
+  }
+
+  func testTheScorerReadsAClockSpelledOutInEitherLanguage() {
+    // The minute list held 「五十三」 and not "fifty-three", so a Chinese
+    // answer spelled out scored right and the identical English one scored
+    // wrong. The English column read 3/5 against Chinese 5/5, and with the
+    // spellings even it re-runs at 5/5 — the whole gap was the instrument
+    // being harsher in one language than the other.
+    XCTAssertTrue(
+      Self.answered("現在是凌晨兩點五十三分。", told: true),
+      "A Chinese clock spelled out has always been read."
+    )
+    XCTAssertTrue(
+      Self.answered("It's two fifty-three in the morning.", told: true),
+      "The same answer in English has to be read the same way."
+    )
+    XCTAssertTrue(
+      Self.answered("It is 02:53.", told: true),
+      "Digits were the one English form the scorer already accepted."
+    )
+  }
+
+  func testTheScorerStillRefusesAnInventedTime() {
+    // Widening the spellings must not widen what counts as answering. A
+    // clock the model made up names a different minute.
+    XCTAssertFalse(Self.answered("It's about 4:17 in the morning.", told: true))
+    XCTAssertFalse(Self.answered("It is twenty past three.", told: true))
+    XCTAssertFalse(Self.answered("現在是凌晨四點十七分。", told: true))
+  }
+
+  func testAToolTurnIsOnlyRightWhenTheToolActuallyRan() {
+    // A told turn is scored on the minute; a tool turn is scored on the
+    // sentinel, and reading a plausible clock back is exactly the failure
+    // the sentinel exists to catch.
+    XCTAssertFalse(Self.answered("It is 02:53.", told: false))
+    XCTAssertTrue(Self.answered("The time is \(Self.sentinel).", told: false))
   }
 
   func testWhetherGemmaCallsAToolOrShouldJustBeTold() async throws {
@@ -274,6 +319,14 @@ final class ToolCallProbeTests: XCTestCase {
     for condition in conditions {
       var right = 0
       var last = ""
+      // Every reply and how it scored, not the last one seen. This file's
+      // own lesson is to check the scorer against the actual replies before
+      // believing a column, and it has been broken three times by a version
+      // that printed a single reply chosen by nothing but arrival order. A
+      // column reading 3/5 is a number until all five can be read: a time
+      // the model invented and a real one the scorer could not parse are
+      // the same number and completely different problems.
+      var transcript: [(right: Bool, reply: String)] = []
       for attempt in 0..<Self.attempts {
         // A fixed seed would repeat one sample rather than draw five.
         last = try await ask(
@@ -281,14 +334,21 @@ final class ToolCallProbeTests: XCTestCase {
           modelPath: modelPath,
           seed: attempt + 1
         )
-        if Self.answered(last, told: condition.told) {
+        let scored = Self.answered(last, told: condition.told)
+        if scored {
           right += 1
         }
+        transcript.append(
+          (scored, last.replacingOccurrences(of: "\n", with: " "))
+        )
       }
-      print(
-        "PROBE \(condition.label): \(right)/\(Self.attempts) — last: "
-          + last.replacingOccurrences(of: "\n", with: " ")
-      )
+      print("PROBE \(condition.label): \(right)/\(Self.attempts)")
+      for (index, attempt) in transcript.enumerated() {
+        print(
+          "PROBE   \(attempt.right ? "right" : "wrong") "
+            + "\(index + 1): \(attempt.reply)"
+        )
+      }
     }
   }
 }

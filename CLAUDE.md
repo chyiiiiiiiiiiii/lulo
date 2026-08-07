@@ -78,9 +78,17 @@ under this app's own system instruction — either language, either
 temperature, and still 0 when a further paragraph ordered it to use the
 tool. It invents a confident wrong time instead, in an app whose core
 instruction says 不捏造資訊. Telling it the time in the prompt answers 5/5 in
-Chinese and 3/5 in English, so `composeAgentPrompt` takes
+both languages, so `composeAgentPrompt` takes
 a `now` and puts the clock in the **turn** half, where it costs nothing the
-turn was not already paying. Read `docs/decisions/tool-calling-readiness.md`
+turn was not already paying. English used to read 3/5 there and does not:
+the scorer's minute list held 「五十三」 and no English word form, so a clock
+spelled out scored right in one language and wrong in the other — a scorer
+uneven between two languages manufactures a difference that then reads as a
+finding about the model, and two paragraphs had been written about it. The
+probe now prints every reply that scored wrong rather than the last one,
+because an invented time and a real one the scorer could not parse are the
+same number and different problems. Read
+`docs/decisions/tool-calling-readiness.md`
 before building on tool calling: the probe is checked in and skipped by
 default, and the thing that would actually fix it — constrained decoding —
 is missing from the vendored runtime.
