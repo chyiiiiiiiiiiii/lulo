@@ -157,8 +157,21 @@ class AppDelegate: FlutterAppDelegate {
     }
     self.hotKeySplitter = holdSplitter
 
+
     let binaryMessenger = window.flutterEngine.binaryMessenger
     let eventApi = DesktopHostEventApi(binaryMessenger: binaryMessenger)
+    // The menu's items are the only place outside the window where the user
+    // can ask for something, so they travel the same way every other request
+    // from this side does.
+    menuBarController.onConversationChosen = { conversationId in
+      eventApi.onMenuBarConversationChosen(
+        conversationId: conversationId,
+        completion: { _ in }
+      )
+    }
+    menuBarController.onVoiceRequested = {
+      eventApi.onMenuBarVoiceRequested(completion: { _ in })
+    }
     // The hotkey and the menu bar can both change the form, so the Flutter
     // surface is told about every change rather than only the ones it asked
     // for. Otherwise the orb and the conversation can disagree about which is
@@ -215,7 +228,8 @@ class AppDelegate: FlutterAppDelegate {
     let desktopHostApi = LocalRuntimeDesktopHostApi(
       panelController: panelController,
       coordinator: coordinator,
-      eventBridge: eventBridge
+      eventBridge: eventBridge,
+      menuBar: menuBarController
     )
     DesktopHostApiSetup.setUp(
       binaryMessenger: binaryMessenger,

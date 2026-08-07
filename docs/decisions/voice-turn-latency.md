@@ -89,8 +89,32 @@ A question with any CJK character in it counts as Chinese, so ordinary
 code-switching (「幫我看 Flutter 的版本」) is safe; only a wholly English
 question inside a Chinese conversation, or the reverse, pays. Before this
 change that turn cost 1637 ms anyway, so nothing regressed — but it is now
-the only expensive turn left, and it is fixable by making the stable half
-language-neutral instead of choosing between two translations of it.
+the only expensive turn left.
+
+### It is not fixable by making the stable half language-neutral
+
+That was the obvious next move and it does not work. Moving the language
+request into the turn half would leave the system instruction stable across a
+switch and cost a re-read instead of a re-prefill — but a model this size
+answers in the language it was *instructed* in, not the language it was asked
+to answer in. An English preamble in front of a Chinese question turns the
+whole reply English however plainly the preamble asks for the language of the
+question; the instruction is simply the strongest signal in the prompt. That
+finding is pinned by `the instruction is written in the language of the
+question` in `pigeon_inference_service_test.dart`, and
+`agent_prompt_composer.dart` now says so at the line that would be changed.
+
+`AgentIdentity.locale` is not the answer either: writing the stable half in a
+profile's declared language would answer a Chinese question in English for
+anyone whose profile said English. Nothing reads that field today, and its
+doc says so.
+
+So the 1580 ms stands, on wholly-language-switched turns only. What would
+actually remove it is a KV cache per language rather than per conversation —
+each language keeping its own prefilled session — and that costs twice the
+resident memory and leaves each session blind to what was said in the other.
+Not worth it for one turn, and written down here so the cheap fix is not
+attempted a third time.
 
 ## The endpointer stays at 0.8 seconds
 

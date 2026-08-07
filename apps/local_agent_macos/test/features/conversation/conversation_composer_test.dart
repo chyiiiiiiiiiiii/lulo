@@ -2,12 +2,15 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:local_agent_macos/features/conversation/widgets/conversation_composer.dart';
+import 'package:local_agent_macos/l10n/generated/app_localizations.dart';
 
 void main() {
   Widget composer({
     required ValueNotifier<bool> canSubmit,
     required Future<void> Function() onStop,
   }) => MaterialApp(
+    localizationsDelegates: AppLocalizations.localizationsDelegates,
+    supportedLocales: AppLocalizations.supportedLocales,
     home: Scaffold(
       body: ConversationComposer(
         canSubmit: canSubmit,

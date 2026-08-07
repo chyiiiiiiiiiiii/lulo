@@ -104,10 +104,35 @@ final class OrbCatcherView: NSView {
   /// Anything below one part in 255 rounds away to nothing again.
   static let catchingTint = NSColor(white: 0, alpha: 0.01)
 
-  /// Draws the orb's own circle, so the corners of the square stay passable.
+  /// How much of the orb's square is body solid enough to catch clicks in.
+  ///
+  /// The tint above has to be drawn to be there at all, so wherever it reaches
+  /// past the orb it is the only thing on that pixel and its edge stands on the
+  /// desktop as a faint circle. Filling the whole square put that edge a full
+  /// half-side out, where the orb draws nothing — and took every click within
+  /// it away from whatever the user actually meant to hit.
+  ///
+  /// So the catcher stops inside the body rather than at its outermost vapour.
+  /// Read off the capture in
+  /// `integration_test/agent_presence_silhouette_test.dart`, where the resting
+  /// orb still paints 90/255 at this fraction and nothing at all past 0.725.
+  static let bodyFraction: CGFloat = 0.62
+
+  /// The part of [bounds] this view catches in, centred and circular.
+  static func catchingCircle(in bounds: NSRect) -> NSRect {
+    let diameter = min(bounds.width, bounds.height) * bodyFraction
+    return NSRect(
+      x: bounds.midX - diameter / 2,
+      y: bounds.midY - diameter / 2,
+      width: diameter,
+      height: diameter
+    )
+  }
+
+  /// Draws the orb's own body, so the desktop around it stays passable.
   override func draw(_ dirtyRect: NSRect) {
     Self.catchingTint.setFill()
-    NSBezierPath(ovalIn: bounds).fill()
+    NSBezierPath(ovalIn: Self.catchingCircle(in: bounds)).fill()
   }
 
   /// Answers the very first click even when the app is not in front, or the
@@ -128,7 +153,11 @@ final class OrbCatcherView: NSView {
   }
 
   override func resetCursorRects() {
-    addCursorRect(bounds, cursor: .pointingHand)
+    // A rectangle is the only shape a cursor rect comes in, so this is the
+    // circle's box. It cannot reach past the catching circle in the directions
+    // that matter, because the pointer only arrives here at all where the
+    // window server already decided this window owns the point.
+    addCursorRect(Self.catchingCircle(in: bounds), cursor: .pointingHand)
   }
 }
 

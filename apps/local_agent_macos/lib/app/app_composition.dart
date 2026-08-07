@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:agent_core/agent_core.dart';
 import 'package:flutter/foundation.dart';
 
+import '../features/agent_profile/agent_profile_store.dart';
 import '../features/conversation/conversation_repository.dart';
 import '../features/conversation/conversation_storage_service.dart';
 import '../features/conversation/conversation_view_model.dart';
@@ -34,13 +35,22 @@ final class AppComposition {
     this.transcriptShadow,
     this.transcriptShadowEvidence,
     List<String> Function()? protectedVocabulary,
+    List<MisheardWord> Function()? misheard,
     FloorControl Function()? floorControl,
     List<String> Function()? unfinishedEndings,
     ValueNotifier<String>? ttsVoice,
-  }) : ttsVoice = ttsVoice ?? ValueNotifier<String>('ryan'),
+    AgentProfileStore? agentProfile,
+    ValueNotifier<AnswerStyle>? answerStyle,
+    ValueNotifier<int>? voiceRequests,
+  }) : voiceRequests = voiceRequests ?? ValueNotifier<int>(0),
+       answerStyle =
+           answerStyle ?? ValueNotifier<AnswerStyle>(AnswerStyle.balanced),
+       agentProfile = agentProfile ?? InMemoryAgentProfileStore(),
+       ttsVoice = ttsVoice ?? ValueNotifier<String>('ryan'),
        transcriptRefiner =
            transcriptRefiner ?? const DeterministicTranscriptRefiner(),
        protectedVocabulary = protectedVocabulary ?? _emptyVocabulary,
+       misheard = misheard ?? _nothingMisheard,
        floorControl = floorControl ?? _builtInFloorControl,
        unfinishedEndings = unfinishedEndings ?? _emptyVocabulary,
        _changeModel = changeModel ?? _keepThePreview,
@@ -50,6 +60,30 @@ final class AppComposition {
          storageService: storageService,
          inferenceService: inferenceService,
        );
+
+  /// Bumped whenever something outside the conversation asks it to listen.
+  ///
+  /// A counter rather than a flag because the answer to "start listening" is
+  /// the same every time it is asked, and a flag would only fire once. The
+  /// conversation view owns the microphone — it is the only thing that knows
+  /// whether one is already open — so the request travels to it rather than
+  /// the state travelling out.
+  final ValueNotifier<int> voiceRequests;
+
+  /// How far the model may roam, read by the inference service on every
+  /// question.
+  ///
+  /// A notifier rather than a value passed at construction, for the same
+  /// reason `ttsVoice` is one: the setting can change while the model stays
+  /// loaded, and reloading it to move a slider would cost seconds.
+  final ValueNotifier<AnswerStyle> answerStyle;
+
+  /// How Lulo talks, and where the user changes it.
+  ///
+  /// The same store the prompt, the recogniser and the endpointer already
+  /// read from, so a change made in settings is in force on the next turn
+  /// without anything having to be told about it.
+  final AgentProfileStore agentProfile;
 
   /// Drives the desktop window between its orb and conversation forms.
   ///
@@ -82,6 +116,10 @@ final class AppComposition {
 
   /// Latest profile vocabulary, read at the moment an utterance settles.
   final List<String> Function() protectedVocabulary;
+
+  /// Corrections the user has taught, read at the moment an utterance
+  /// settles rather than captured — the profile is a watched file.
+  final List<MisheardWord> Function() misheard;
 
   /// Who has the floor, read again at every ruling.
   ///
@@ -164,6 +202,30 @@ final class AppComposition {
   Future<List<ConversationSummary>> listConversations() =>
       _conversationRepository.listConversations();
 
+  /// Every stored conversation containing [query], most recent first.
+  Future<List<ConversationSummary>> searchConversations(String query) =>
+      _conversationRepository.searchConversations(query);
+
+  /// Gives [conversationId] a name of the user's own, or restores the
+  /// derived one.
+  Future<void> renameConversation(
+    ConversationId conversationId,
+    String title,
+  ) => _conversationRepository.renameConversation(conversationId, title);
+
+  /// Keeps [conversationId] at the top of the list, or lets it go.
+  Future<void> setConversationPinned(
+    ConversationId conversationId, {
+    required bool pinned,
+  }) => _conversationRepository.setConversationPinned(
+    conversationId,
+    pinned: pinned,
+  );
+
+  /// Reads back every stored turn of [conversationId].
+  Future<List<Turn>> loadTurns(ConversationId conversationId) =>
+      _conversationRepository.loadTurns(conversationId);
+
   /// Forgets [conversationId] and everything said in it.
   Future<void> deleteConversation(ConversationId conversationId) =>
       _conversationRepository.deleteConversation(conversationId);
@@ -183,3 +245,5 @@ final class AppComposition {
 List<String> _emptyVocabulary() => const <String>[];
 
 FloorControl _builtInFloorControl() => FloorControl.standard;
+
+List<MisheardWord> _nothingMisheard() => const <MisheardWord>[];

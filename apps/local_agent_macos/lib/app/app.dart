@@ -7,14 +7,18 @@ import 'package:flutter/physics.dart';
 
 import '../features/conversation/conversation_storage_service.dart';
 import '../features/conversation/conversation_view.dart';
+import '../features/conversation/export_file_name.dart';
 import '../features/conversation/widgets/conversation_history_sheet.dart';
+import '../features/model/first_run.dart';
 import '../features/model/model_catalog.dart';
 import '../features/presence/agent_presence_controller.dart';
 import '../features/presence/agent_presence_orb.dart';
+import '../features/presence/agent_presence_state.dart';
 import '../features/presence/desktop_orb_surface.dart';
 import '../features/presence/presence_flight.dart';
 import '../features/settings/app_settings.dart';
 import '../features/settings/settings_sheet.dart';
+import '../l10n/generated/app_localizations.dart';
 import '../platform/desktop_host_service.dart';
 import 'app_composition.dart';
 
@@ -51,6 +55,11 @@ final class _LocalAgentAppState extends State<LocalAgentApp> {
       title: 'Lulo',
       debugShowCheckedModeBanner: false,
       themeMode: ThemeMode.system,
+      // The system's language, not one chosen here. A Mac set to Traditional
+      // Chinese and an agent answering in it should not be operated through
+      // an English settings sheet.
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
       theme: _theme(Brightness.light, seed),
       darkTheme: _theme(Brightness.dark, seed),
       home: _PresentationSwitch(
@@ -147,6 +156,14 @@ final class _PresentationSwitchState extends State<_PresentationSwitch>
   AppSettings _settings = const AppSettings();
   bool _showingSettings = false;
 
+  /// Whether the user has asked to look around without a model.
+  ///
+  /// Not persisted: an app with no model still has one thing to do, so the
+  /// next launch offers it again. Installing a model is what retires this for
+  /// good, because the offer is only made while there is nothing to think
+  /// with.
+  bool _lookedAround = false;
+
   /// The stored conversations, and whether they are currently being looked at.
   List<ConversationSummary> _conversations = const <ConversationSummary>[];
   bool _showingConversations = false;
@@ -180,9 +197,26 @@ final class _PresentationSwitchState extends State<_PresentationSwitch>
     // nothing left to draw.
     _requests = widget.composition.presentationHost?.presentationRequests
         .listen(_flyTo);
+    _presence.semanticStateListenable.addListener(_followPresenceIntoMenuBar);
     unawaited(_loadStage());
     final Future<void> settingsLoaded = _loadSettings();
+    unawaited(settingsLoaded.then((void _) => _refreshMenuBar()));
     unawaited(settingsLoaded);
+    // The status-bar menu is the one place outside the window where the user
+    // can ask for something, so its items are answered the same way the
+    // hotkey's are.
+    _menuConversations = widget
+        .composition
+        .presentationHost
+        ?.menuConversationRequests
+        .listen((ConversationId conversationId) {
+          unawaited(_openFromMenuBar(conversationId));
+        });
+    _menuVoice = widget.composition.presentationHost?.menuVoiceRequests.listen((
+      void _,
+    ) {
+      unawaited(_openFromMenuBar(null, thenListen: true));
+    });
     _settingsRequests = widget.composition.presentationHost?.settingsRequests
         .listen((void _) {
           // Not before the stored settings have arrived: the sheet applies
@@ -253,6 +287,7 @@ final class _PresentationSwitchState extends State<_PresentationSwitch>
 
   /// Reads the store and puts its conversations in front of the user.
   Future<void> _showConversations() async {
+    _conversationQuery = '';
     final List<ConversationSummary> conversations = await widget.composition
         .listConversations();
     if (!mounted) {
@@ -262,6 +297,7 @@ final class _PresentationSwitchState extends State<_PresentationSwitch>
       _conversations = conversations;
       _showingConversations = true;
     });
+    unawaited(_refreshMenuBar());
   }
 
   /// Puts [conversationId] into the view, in place of what it held.
@@ -276,6 +312,7 @@ final class _PresentationSwitchState extends State<_PresentationSwitch>
 
   /// Starts an empty conversation, leaving the stored ones where they are.
   void _startNewConversation() {
+    unawaited(_refreshMenuBar());
     setState(() {
       _openConversation = null;
       _startFresh = true;
@@ -284,7 +321,230 @@ final class _PresentationSwitchState extends State<_PresentationSwitch>
     });
   }
 
-  /// Forgets [conversationId]; a view still holding it starts fresh.
+  StreamSubscription<ConversationId>? _menuConversations;
+  StreamSubscription<void>? _menuVoice;
+
+  /// The conversations the menu bar was last given.
+  ///
+  /// Kept so that a change of activity can be pushed without going back to
+  /// the store: the presence moves several times a turn and the list does
+  /// not move at all.
+  List<({ConversationId id, String title})> _menuBarConversations =
+      const <({ConversationId id, String title})>[];
+
+  /// Follows the presence into the menu bar.
+  ///
+  /// The menu is the only place the agent's state is visible while the window
+  /// is away, which is most of the time for a resident app.
+  void _followPresenceIntoMenuBar() {
+    unawaited(_pushMenuBar(reloadConversations: false));
+  }
+
+  /// What the presence is doing, in the terms the menu bar speaks.
+  DesktopAgentActivity get _menuActivity =>
+      switch (_presence.semanticStateListenable.value) {
+        AgentPresenceState.idle => DesktopAgentActivity.idle,
+        AgentPresenceState.listening => DesktopAgentActivity.listening,
+        AgentPresenceState.thinking => DesktopAgentActivity.thinking,
+        AgentPresenceState.speaking => DesktopAgentActivity.speaking,
+        AgentPresenceState.working => DesktopAgentActivity.working,
+        AgentPresenceState.error => DesktopAgentActivity.error,
+      };
+
+  /// Brings the window forward on a request from the status-bar menu.
+  ///
+  /// A menu item that only changed something behind a hidden window would
+  /// look like it had done nothing.
+  Future<void> _openFromMenuBar(
+    ConversationId? conversationId, {
+    bool thenListen = false,
+  }) async {
+    final DesktopPresentationHost? host = widget.composition.presentationHost;
+    if (host == null) {
+      return;
+    }
+    await host.setPresentation(DesktopPresentation.expanded);
+    if (!mounted) {
+      return;
+    }
+    // Everything that could be covering the conversation goes away first.
+    // The settings sheet and the first-run offer are both opaque and fill the
+    // window, so without this a menu item brings the window forward onto a
+    // screen that has nothing to do with what was chosen — and on a fresh
+    // install, where the first-run offer is up on every launch, every menu
+    // conversation would be dead.
+    setState(() {
+      _showingSettings = false;
+      _showingConversations = false;
+      _lookedAround = true;
+    });
+    if (conversationId != null) {
+      _openStoredConversation(conversationId);
+    }
+    if (thenListen) {
+      widget.composition.voiceRequests.value += 1;
+    }
+  }
+
+  /// Tells the status-bar menu what to show.
+  ///
+  /// Pushed on every change rather than answered on demand, because AppKit
+  /// builds the menu at the moment it opens and there is nowhere to wait.
+  Future<void> _refreshMenuBar() => _pushMenuBar(reloadConversations: true);
+
+  /// Tells the status-bar menu what to show.
+  Future<void> _pushMenuBar({required bool reloadConversations}) async {
+    final DesktopPresentationHost? host = widget.composition.presentationHost;
+    if (host == null) {
+      return;
+    }
+    final AppLocalizations words = AppLocalizations.of(context);
+    final DesktopAgentActivity activity = _menuActivity;
+    if (reloadConversations) {
+      final List<ConversationSummary> recent = await widget.composition
+          .listConversations();
+      if (!mounted) {
+        return;
+      }
+      _menuBarConversations = <({ConversationId id, String title})>[
+        for (final ConversationSummary summary in recent.take(3))
+          (id: summary.id, title: summary.title),
+      ];
+    }
+    await host.setMenuBarState(
+      conversations: _menuBarConversations,
+      modelName: _settings.modelPath.isEmpty
+          ? ''
+          : _settings.modelPath.split('/').last,
+      activity: activity,
+      canStartVoice: widget.composition.voiceService != null,
+      labels: DesktopMenuBarLabels(
+        show: words.menuShow,
+        hide: words.menuHide,
+        talk: words.menuTalk,
+        recent: words.menuRecent,
+        quit: words.menuQuit,
+        activity: switch (activity) {
+          DesktopAgentActivity.idle => words.activityIdle,
+          DesktopAgentActivity.listening => words.activityListening,
+          DesktopAgentActivity.thinking => words.activityThinking,
+          DesktopAgentActivity.speaking => words.activitySpeaking,
+          DesktopAgentActivity.working => words.activityWorking,
+          DesktopAgentActivity.error => words.activityError,
+        },
+      ),
+    );
+  }
+
+  /// What the user last typed into the list's search field.
+  ///
+  /// Held so that renaming or pinning re-reads the same narrowed list rather
+  /// than throwing the user back to everything.
+  String _conversationQuery = '';
+
+  /// Narrows the list to what the user is looking for.
+  Future<void> _searchConversations(String query) async {
+    _conversationQuery = query;
+    final List<ConversationSummary> found = await widget.composition
+        .searchConversations(query);
+    if (!mounted || _conversationQuery != query) {
+      // A later keystroke has already asked a better question.
+      return;
+    }
+    setState(() => _conversations = found);
+  }
+
+  /// Gives a conversation a name of the user's own.
+  Future<void> _renameConversation(
+    ConversationId conversationId,
+    String title,
+  ) async {
+    await widget.composition.renameConversation(conversationId, title);
+    unawaited(_refreshMenuBar());
+    await _searchConversations(_conversationQuery);
+  }
+
+  /// Keeps a conversation at the top of the list, or lets it go.
+  Future<void> _pinConversation(
+    ConversationId conversationId, {
+    required bool pinned,
+  }) async {
+    await widget.composition.setConversationPinned(
+      conversationId,
+      pinned: pinned,
+    );
+    unawaited(_refreshMenuBar());
+    await _searchConversations(_conversationQuery);
+  }
+
+  /// Writes one conversation out as Markdown, wherever the user says.
+  ///
+  /// The whole store is on this machine and nothing backs it up, so this is
+  /// the only way anything said to Lulo can leave it.
+  Future<void> _exportConversation(ConversationId conversationId) async {
+    final DesktopPresentationHost? host = widget.composition.presentationHost;
+    if (host == null) {
+      return;
+    }
+    final AppLocalizations words = AppLocalizations.of(context);
+    final String title = _conversations
+        .firstWhere(
+          (ConversationSummary summary) => summary.id == conversationId,
+          orElse: () => ConversationSummary(
+            id: conversationId,
+            title: words.conversationsTitle,
+            updatedAt: DateTime.fromMillisecondsSinceEpoch(0),
+          ),
+        )
+        .title;
+    try {
+      // Inside the guard, not before it: a store that cannot be read is a
+      // failed export too, and outside it that error escaped an unawaited
+      // future with nothing said to anyone.
+      final List<Turn> turns = await widget.composition.loadTurns(
+        conversationId,
+      );
+      if (!mounted) {
+        return;
+      }
+      await host.saveTextFile(
+        suggestedName: '${exportFileName(title)}.md',
+        contents: conversationToMarkdown(
+          title: title,
+          turns: turns,
+          labels: ConversationLabels(
+            user: words.roleYou,
+            assistant: words.roleAssistant,
+            interrupted: words.turnInterrupted,
+            stopped: words.turnStopped,
+            failed: words.turnFailed,
+            doubted: words.heardDoubtLabel,
+          ),
+        ),
+      );
+    } on Object {
+      if (!mounted) {
+        return;
+      }
+      // A dialog rather than a snackbar. The conversation list is an opaque
+      // sheet filling the window and it is still up at this moment, so a
+      // snackbar animates in underneath it and the user is told nothing.
+      await showDialog<void>(
+        context: context,
+        builder: (BuildContext context) => AlertDialog(
+          key: const Key('export-failed'),
+          content: Text(words.exportFailed),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: Text(words.reviseCancel),
+            ),
+          ],
+        ),
+      );
+    }
+  }
+
   Future<void> _forgetConversation(ConversationId conversationId) async {
     // Launch resumes the most recently spoken-in conversation without naming
     // it here, so "the one being looked at" includes the head of the list the
@@ -298,6 +558,7 @@ final class _PresentationSwitchState extends State<_PresentationSwitch>
             _conversations.isNotEmpty &&
             conversationId == _conversations.first.id);
     await widget.composition.deleteConversation(conversationId);
+    unawaited(_refreshMenuBar());
     final List<ConversationSummary> conversations = await widget.composition
         .listConversations();
     if (!mounted) {
@@ -347,6 +608,7 @@ final class _PresentationSwitchState extends State<_PresentationSwitch>
   /// Hands the choices to the window and writes them down.
   Future<void> _applySettings(AppSettings settings) async {
     widget.composition.ttsVoice.value = settings.ttsVoice;
+    widget.composition.answerStyle.value = settings.answerStyle;
     await widget.composition.presentationHost?.setWindowBehaviour(
       keepOrbOnTop: settings.keepOrbOnTop,
       followAcrossSpaces: settings.followAcrossSpaces,
@@ -387,6 +649,11 @@ final class _PresentationSwitchState extends State<_PresentationSwitch>
   @override
   void dispose() {
     unawaited(_requests?.cancel());
+    _presence.semanticStateListenable.removeListener(
+      _followPresenceIntoMenuBar,
+    );
+    unawaited(_menuConversations?.cancel());
+    unawaited(_menuVoice?.cancel());
     unawaited(_settingsRequests?.cancel());
     unawaited(_geometryChanges?.cancel());
     widget.composition.presentationHost?.presentation.removeListener(
@@ -613,6 +880,7 @@ final class _PresentationSwitchState extends State<_PresentationSwitch>
       },
       child: ConversationView(
         key: _conversationKey,
+        voiceRequests: widget.composition.voiceRequests,
         viewModelFactory: () => widget.composition.createConversationViewModel(
           conversationId: _openConversation,
           startFresh: _startFresh,
@@ -624,6 +892,7 @@ final class _PresentationSwitchState extends State<_PresentationSwitch>
         transcriptRefiner: widget.composition.transcriptRefiner,
         transcriptShadow: widget.composition.transcriptShadow,
         protectedVocabulary: widget.composition.protectedVocabulary,
+        misheard: widget.composition.misheard,
         floorControl: widget.composition.floorControl,
         unfinishedEndings: widget.composition.unfinishedEndings,
         presenceShaderLoader: widget.presenceShaderLoader,
@@ -706,9 +975,47 @@ final class _PresentationSwitchState extends State<_PresentationSwitch>
                               unawaited(_forgetConversation(conversationId)),
                           onClose: () =>
                               setState(() => _showingConversations = false),
+                          // Only reachable where there is a window to put a
+                          // save panel over, which this branch already is.
+                          onExport: (ConversationId conversationId) =>
+                              unawaited(_exportConversation(conversationId)),
+                          onSearch: (String query) =>
+                              unawaited(_searchConversations(query)),
+                          onRename:
+                              (ConversationId conversationId, String title) =>
+                                  unawaited(
+                                    _renameConversation(conversationId, title),
+                                  ),
+                          onPin:
+                              (
+                                ConversationId conversationId, {
+                                required bool pinned,
+                              }) => unawaited(
+                                _pinConversation(
+                                  conversationId,
+                                  pinned: pinned,
+                                ),
+                              ),
+                        ),
+                      // Before anything else it could cover: with no model
+                      // the conversation behind this is a built-in preview
+                      // that says the same thing every time, and letting the
+                      // user talk to that first is the app pretending to
+                      // work.
+                      if (_settings.modelPath.isEmpty &&
+                          !_lookedAround &&
+                          expanded &&
+                          !travelling)
+                        FirstRun(
+                          downloads: widget.composition.modelDownloads,
+                          entry: recommendedModel,
+                          onDownload: () =>
+                              unawaited(_downloadModel(recommendedModel)),
+                          onDismiss: () => setState(() => _lookedAround = true),
                         ),
                       if (_showingSettings && expanded && !travelling)
                         SettingsSheet(
+                          agentProfile: widget.composition.agentProfile,
                           settings: _settings,
                           onChanged: (AppSettings settings) =>
                               unawaited(_changeSettings(settings)),
@@ -721,6 +1028,12 @@ final class _PresentationSwitchState extends State<_PresentationSwitch>
                           onDownloadModel: (ModelCatalogEntry entry) =>
                               unawaited(_downloadModel(entry)),
                           onUseModel: _useModel,
+                          loginItem:
+                              widget.composition.presentationHost?.loginItem,
+                          setLaunchAtLogin: widget
+                              .composition
+                              .presentationHost
+                              ?.setLaunchAtLogin,
                         ),
                     ],
                   ),

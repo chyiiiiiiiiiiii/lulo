@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 
+import '../../../l10n/generated/app_localizations.dart';
 import 'active_streaming_turn.dart';
 import 'completed_turn.dart';
 import 'conversation_content_column.dart';
@@ -15,11 +16,27 @@ final class ConversationList extends StatefulWidget {
   const ConversationList({
     required this.completedTurns,
     required this.activeTurn,
+    this.retryAvailable,
+    this.onRegenerate,
+    this.onRevise,
     this.onBuild,
     this.onCompletedTurnsBuild,
     this.onActiveTurnBuild,
     super.key,
   });
+
+  /// Whether a retry can be started now, or null to offer none.
+  ///
+  /// Watched around the newest turn alone rather than the whole history: it
+  /// flips at the start and the end of every generation, and the history is
+  /// deliberately built once and left alone while an answer streams.
+  final ValueListenable<bool>? retryAvailable;
+
+  /// Asks the newest answer to be produced again.
+  final VoidCallback? onRegenerate;
+
+  /// Asks the newest question again, as the given text.
+  final ValueChanged<String>? onRevise;
 
   /// Immutable terminal turns shown in history.
   final ValueListenable<List<Turn>> completedTurns;
@@ -252,9 +269,23 @@ final class _ConversationListState extends State<ConversationList> {
                     child: const _EmptyConversation(),
                   );
                 }
+                // Only the newest exchange can be retried: replacing an answer
+                // in the middle would leave every answer after it standing on
+                // a question that never got that reply.
+                final int newestQuestion = turns.lastIndexWhere(
+                  (Turn turn) => turn.role == TurnRole.user,
+                );
+                final int newestAnswer = turns.last.role == TurnRole.assistant
+                    ? turns.length - 1
+                    : -1;
                 return Column(
                   children: <Widget>[
-                    for (final Turn turn in turns) CompletedTurn(turn: turn),
+                    for (int index = 0; index < turns.length; index++)
+                      _retryable(
+                        turn: turns[index],
+                        regenerate: index == newestAnswer,
+                        revise: index == newestQuestion,
+                      ),
                   ],
                 );
               },
@@ -270,6 +301,34 @@ final class _ConversationListState extends State<ConversationList> {
   }
 }
 
+/// One turn, with whichever retries it is the right turn for.
+///
+/// A turn that offers none is built plainly, so the listenable that gates the
+/// retries cannot rebuild the history behind it.
+extension on _ConversationListState {
+  Widget _retryable({
+    required Turn turn,
+    required bool regenerate,
+    required bool revise,
+  }) {
+    final ValueListenable<bool>? available = widget.retryAvailable;
+    final VoidCallback? onRegenerate = regenerate ? widget.onRegenerate : null;
+    final ValueChanged<String>? onRevise = revise ? widget.onRevise : null;
+    if (available == null || (onRegenerate == null && onRevise == null)) {
+      return CompletedTurn(turn: turn);
+    }
+    return ValueListenableBuilder<bool>(
+      valueListenable: available,
+      builder: (BuildContext context, bool ready, Widget? child) =>
+          CompletedTurn(
+            turn: turn,
+            onRegenerate: ready ? onRegenerate : null,
+            onRevise: ready ? onRevise : null,
+          ),
+    );
+  }
+}
+
 /// The way back to the newest answer, offered only while it is off screen.
 final class _ScrollToBottomButton extends StatelessWidget {
   const _ScrollToBottomButton({required this.onPressed});
@@ -281,7 +340,7 @@ final class _ScrollToBottomButton extends StatelessWidget {
     final ColorScheme colors = Theme.of(context).colorScheme;
     return Semantics(
       button: true,
-      label: 'Jump to the newest message',
+      label: AppLocalizations.of(context).jumpToNewest,
       child: Material(
         key: const Key('conversation-scroll-to-bottom'),
         color: colors.surfaceContainerHighest,
@@ -309,6 +368,7 @@ final class _EmptyConversation extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Center(
+    key: const Key('conversation-empty'),
     child: Column(
       mainAxisSize: MainAxisSize.min,
       children: <Widget>[
@@ -319,12 +379,12 @@ final class _EmptyConversation extends StatelessWidget {
         ),
         const SizedBox(height: 14),
         Text(
-          'Start a conversation',
+          AppLocalizations.of(context).conversationEmptyTitle,
           style: Theme.of(context).textTheme.titleLarge,
         ),
         const SizedBox(height: 6),
         Text(
-          'Private, fast, and ready on this Mac.',
+          AppLocalizations.of(context).conversationEmptyNote,
           style: Theme.of(context).textTheme.bodyMedium?.copyWith(
             color: Theme.of(context).colorScheme.onSurfaceVariant,
           ),

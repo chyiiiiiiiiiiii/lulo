@@ -229,8 +229,12 @@ void main() {
       expect(payload.systemInstruction, contains('Do not use Markdown'));
       expect(payload.systemInstruction, isNot(contains('Exact private')));
       expect(payload.context, isEmpty);
-      expect(payload.temperature, 0.25);
-      expect(payload.topP, 0.9);
+      // The sampler is per generation and read from the answer style, not
+      // frozen into the model config: a style the user changes must reach the
+      // next question without the model being reloaded. Both halves, because
+      // hard-coding either would otherwise pass every test in the suite.
+      expect(payload.temperature, AnswerStyle.balanced.temperature);
+      expect(payload.topP, AnswerStyle.balanced.topP);
       expect(payload.maxTokens, 128);
       expect(payload.seed, 7);
     },
@@ -784,6 +788,57 @@ void main() {
     await english.cancel();
   });
 
+  test('a style changed between turns reaches the next one', () async {
+    // The sampler travels in the request the host already receives, so a
+    // change costs nothing. Frozen into the model config it would have cost a
+    // reload — seconds, for a setting that reads like a toggle.
+    final host = _startingHost();
+    AnswerStyle style = AnswerStyle.steady;
+    final service = PigeonInferenceService(
+      desktopHostService: host,
+      config: testModelConfig,
+      answerStyle: () => style,
+    );
+
+    final first = service
+        .generate(
+          const GenerationRequest(
+            conversationId: ConversationId('conversation-1'),
+            prompt: 'first',
+          ),
+        )
+        .listen((_) {});
+    await Future<void>.delayed(Duration.zero);
+    style = AnswerStyle.inventive;
+    final second = service
+        .generate(
+          const GenerationRequest(
+            conversationId: ConversationId('conversation-1'),
+            prompt: 'second',
+          ),
+        )
+        .listen((_) {});
+    await Future<void>.delayed(Duration.zero);
+
+    expect(host.generationRequests, hasLength(2));
+    // Both halves, because they are one decision and hard-coding either would
+    // otherwise pass every test in the suite.
+    expect(
+      host.generationRequests[0].temperature,
+      AnswerStyle.steady.temperature,
+    );
+    expect(host.generationRequests[0].topP, AnswerStyle.steady.topP);
+    expect(
+      host.generationRequests[1].temperature,
+      AnswerStyle.inventive.temperature,
+    );
+    expect(host.generationRequests[1].topP, AnswerStyle.inventive.topP);
+
+    await first.cancel();
+    await second.cancel();
+    await service.dispose();
+  });
+
   test('warmUp reports a failure instead of hiding it', () async {
     final host = RecordingDesktopHostService(loadFailuresRemaining: 1);
     final service = PigeonInferenceService(
@@ -841,8 +896,6 @@ const LocalModelConfig testModelConfig = LocalModelConfig(
   modelId: 'model-1',
   modelPath: '/models/model-1.litertlm',
   contextSize: 4096,
-  temperature: 0.25,
-  topP: 0.9,
   maxTokens: 128,
   seed: 7,
 );
@@ -860,6 +913,13 @@ typedef CancelHandler =
     );
 
 final class RecordingDesktopHostService implements DesktopHostService {
+  @override
+  Future<DesktopLoginItem> loginItem() async => DesktopLoginItem.off;
+
+  @override
+  Future<DesktopLoginItem> setLaunchAtLogin({required bool enabled}) async =>
+      enabled ? DesktopLoginItem.on : DesktopLoginItem.off;
+
   RecordingDesktopHostService({
     this.onStart,
     this.onCancel,
@@ -993,6 +1053,28 @@ final class RecordingDesktopHostService implements DesktopHostService {
 
   @override
   Future<String> chooseModelFile() async => '';
+
+  @override
+  Future<String> saveTextFile({
+    required String suggestedName,
+    required String contents,
+  }) async => '';
+
+  @override
+  Stream<ConversationId> get menuConversationRequests =>
+      const Stream<ConversationId>.empty();
+
+  @override
+  Stream<void> get menuVoiceRequests => const Stream<void>.empty();
+
+  @override
+  Future<void> setMenuBarState({
+    required List<({ConversationId id, String title})> conversations,
+    required String modelName,
+    required DesktopAgentActivity activity,
+    required bool canStartVoice,
+    required DesktopMenuBarLabels labels,
+  }) async {}
 
   @override
   Future<void> setWindowBehaviour({

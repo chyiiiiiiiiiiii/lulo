@@ -177,6 +177,77 @@ final class ConversationViewModel extends ChangeNotifier {
     _canSubmit.value = false;
   }
 
+  /// The last thing the user asked, or null if they have not asked anything.
+  Turn? get lastQuestion {
+    final int index = _projection.completedTurns.lastIndexWhere(
+      (Turn turn) => turn.role == TurnRole.user,
+    );
+    return index < 0 ? null : _projection.completedTurns[index];
+  }
+
+  /// Asks the last question again, in place of the answer it already has.
+  ///
+  /// The model here runs on this machine and is small enough to be wrong in
+  /// ways a second attempt fixes, so this is not a convenience — without it
+  /// the only way past a bad answer is to type the question out again, which
+  /// leaves the bad one in the conversation and in the model's own history.
+  ///
+  /// A voice question is asked again as the voice question it was, so the
+  /// turn keeps what the recogniser said about it.
+  Future<void> regenerateLastAnswer() async {
+    final Turn? question = lastQuestion;
+    if (question == null) {
+      return;
+    }
+    await _askAgain(question.text, voiceInput: question.voiceInput);
+  }
+
+  /// Replaces the last question with [text] and asks that instead.
+  ///
+  /// The repair for a question that was misheard or badly put. What it
+  /// replaces leaves the conversation with it: keeping the original would
+  /// leave the model answering a question the user has retracted.
+  Future<void> reviseLastQuestion(String text) async {
+    if (lastQuestion == null || text.trim().isEmpty) {
+      return;
+    }
+    await _askAgain(text);
+  }
+
+  /// Takes the conversation back to before its last question and asks again.
+  Future<void> _askAgain(
+    String text, {
+    TranscriptRefinement? voiceInput,
+  }) async {
+    if (!canSubmit || text.trim().isEmpty) {
+      return;
+    }
+    await _restored;
+    final ConversationId? conversationId = _conversationId;
+    if (_disposed || !canSubmit || conversationId == null) {
+      return;
+    }
+    final int question = _projection.completedTurns.lastIndexWhere(
+      (Turn turn) => turn.role == TurnRole.user,
+    );
+    if (question < 0) {
+      return;
+    }
+    // The store and the runtime both let go before the screen does, so a
+    // failure here leaves the conversation as it was rather than showing a
+    // question whose answer is still on disk.
+    await _repository.dropFromLastQuestion(conversationId);
+    if (_disposed) {
+      return;
+    }
+    _projection = ConversationProjection(
+      completedTurns: _projection.completedTurns.sublist(0, question),
+    );
+    _completedTurns.value = _projection.completedTurns;
+    notifyListeners();
+    await submit(text, voiceInput: voiceInput);
+  }
+
   void _onEvent(GenerationEvent event) {
     if (_disposed) {
       return;

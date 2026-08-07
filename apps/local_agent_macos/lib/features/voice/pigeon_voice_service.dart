@@ -49,6 +49,10 @@ final class PigeonVoiceService implements VoiceService, VoiceHostEvents {
   Future<void> useUnfinishedEndings(List<String> endings) =>
       _guard(() => _host.useUnfinishedEndings(endings));
 
+  @override
+  Future<void> useSpokenVocabulary(List<String> terms) =>
+      _guard(() => _host.useSpokenVocabulary(terms));
+
   Future<void> _guard(Future<void> Function() call) async {
     try {
       await call();

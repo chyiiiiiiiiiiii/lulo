@@ -1,0 +1,233 @@
+{
+  "schemaVersion": 1,
+  "corpusId": "en-spoken-v1",
+  "locale": "en-US",
+  "cases": [
+    {
+      "id": "spoken-run-tests",
+      "category": "english_repeat",
+      "prompt": "How do I run the tests in this project?",
+      "expectedTranscript": "How do I run the tests in this project?",
+      "audioPath": "audio/en-spoken/spoken-run-tests.wav",
+      "tags": [
+        "english",
+        "spoken",
+        "paired"
+      ],
+      "expectedPausesMs": [],
+      "notes": "Same sentence as en-synthetic-v1's en-run-tests, so the only variable is the speaker."
+    },
+    {
+      "id": "spoken-widget-question",
+      "category": "english_repeat",
+      "prompt": "What is the difference between a stateless and a stateful widget?",
+      "expectedTranscript": "What is the difference between a stateless and a stateful widget?",
+      "audioPath": "audio/en-spoken/spoken-widget-question.wav",
+      "tags": [
+        "english",
+        "spoken",
+        "paired"
+      ],
+      "expectedPausesMs": [],
+      "notes": "Same sentence as en-synthetic-v1's en-widget-question, so the only variable is the speaker."
+    },
+    {
+      "id": "spoken-litert",
+      "category": "english_repeat",
+      "prompt": "Can you explain what the LiteRT runtime does?",
+      "expectedTranscript": "Can you explain what the LiteRT runtime does?",
+      "audioPath": "audio/en-spoken/spoken-litert.wav",
+      "tags": [
+        "english",
+        "spoken",
+        "paired"
+      ],
+      "expectedPausesMs": [],
+      "notes": "Same sentence as en-synthetic-v1's en-litert, so the only variable is the speaker."
+    },
+    {
+      "id": "spoken-commits",
+      "category": "english_repeat",
+      "prompt": "Show me the latest commits on the main branch.",
+      "expectedTranscript": "Show me the latest commits on the main branch.",
+      "audioPath": "audio/en-spoken/spoken-commits.wav",
+      "tags": [
+        "english",
+        "spoken",
+        "paired"
+      ],
+      "expectedPausesMs": [],
+      "notes": "Same sentence as en-synthetic-v1's en-commits, so the only variable is the speaker."
+    },
+    {
+      "id": "spoken-download-failed",
+      "category": "english_repeat",
+      "prompt": "I think the download failed. Can you try again?",
+      "expectedTranscript": "I think the download failed. Can you try again?",
+      "audioPath": "audio/en-spoken/spoken-download-failed.wav",
+      "tags": [
+        "english",
+        "spoken",
+        "paired"
+      ],
+      "expectedPausesMs": [],
+      "notes": "Same sentence as en-synthetic-v1's en-download-failed, so the only variable is the speaker."
+    },
+    {
+      "id": "spoken-remind-mic",
+      "category": "english_repeat",
+      "prompt": "Remind me to check the microphone permissions later.",
+      "expectedTranscript": "Remind me to check the microphone permissions later.",
+      "audioPath": "audio/en-spoken/spoken-remind-mic.wav",
+      "tags": [
+        "english",
+        "spoken",
+        "paired"
+      ],
+      "expectedPausesMs": [],
+      "notes": "Same sentence as en-synthetic-v1's en-remind-mic, so the only variable is the speaker."
+    },
+    {
+      "id": "spoken-dart-test",
+      "category": "english_repeat",
+      "prompt": "Dart test is failing on the second case.",
+      "expectedTranscript": "Dart test is failing on the second case.",
+      "audioPath": "audio/en-spoken/spoken-dart-test.wav",
+      "tags": [
+        "english",
+        "spoken",
+        "paired"
+      ],
+      "expectedPausesMs": [],
+      "notes": "Same sentence as en-synthetic-v1's en-dart-test, so the only variable is the speaker."
+    },
+    {
+      "id": "spoken-settings-voice",
+      "category": "english_repeat",
+      "prompt": "Open the settings and turn the voice off.",
+      "expectedTranscript": "Open the settings and turn the voice off.",
+      "audioPath": "audio/en-spoken/spoken-settings-voice.wav",
+      "tags": [
+        "english",
+        "spoken",
+        "paired"
+      ],
+      "expectedPausesMs": [],
+      "notes": "Same sentence as en-synthetic-v1's en-settings-voice, so the only variable is the speaker."
+    },
+    {
+      "id": "spoken-restart",
+      "category": "english_disfluency",
+      "prompt": "Can you — actually, can you show me the last three commits instead?",
+      "expectedTranscript": "Can you — actually, can you show me the last three commits instead?",
+      "audioPath": "audio/en-spoken/spoken-restart.wav",
+      "tags": [
+        "english",
+        "spoken",
+        "disfluency"
+      ],
+      "expectedPausesMs": [],
+      "notes": "A self-correction mid-sentence. Read speech never has these and the standing caveat on every corpus in this repo is that spontaneous speech is harder."
+    },
+    {
+      "id": "spoken-filler",
+      "category": "english_disfluency",
+      "prompt": "So, um, I want to know why the download keeps failing.",
+      "expectedTranscript": "So, um, I want to know why the download keeps failing.",
+      "audioPath": "audio/en-spoken/spoken-filler.wav",
+      "tags": [
+        "english",
+        "spoken",
+        "disfluency"
+      ],
+      "expectedPausesMs": [],
+      "notes": "Fillers. Whisper is known to drop or hallucinate around them."
+    },
+    {
+      "id": "spoken-vocabulary",
+      "category": "english_vocabulary",
+      "prompt": "Does Gemma run through LiteRT or through MLX on this Mac?",
+      "expectedTranscript": "Does Gemma run through LiteRT or through MLX on this Mac?",
+      "audioPath": "audio/en-spoken/spoken-vocabulary.wav",
+      "tags": [
+        "english",
+        "spoken",
+        "vocabulary"
+      ],
+      "expectedPausesMs": [],
+      "notes": "Three terms from builtInVocabulary in one breath. The recogniser is given this list, so this measures whether the help lands."
+    },
+    {
+      "id": "spoken-tooling",
+      "category": "english_vocabulary",
+      "prompt": "Open Xcode and run the Swift tests, then tell me what Dart test says.",
+      "expectedTranscript": "Open Xcode and run the Swift tests, then tell me what Dart test says.",
+      "audioPath": "audio/en-spoken/spoken-tooling.wav",
+      "tags": [
+        "english",
+        "spoken",
+        "vocabulary"
+      ],
+      "expectedPausesMs": [],
+      "notes": "Product names that are also ordinary English words — swift, dart — which is the case a vocabulary list cannot disambiguate by spelling alone."
+    },
+    {
+      "id": "spoken-numbers",
+      "category": "english_numbers",
+      "prompt": "Flutter three point forty-four point one, and the gate has twenty-one steps.",
+      "expectedTranscript": "Flutter three point forty-four point one, and the gate has twenty-one steps.",
+      "audioPath": "audio/en-spoken/spoken-numbers.wav",
+      "tags": [
+        "english",
+        "spoken",
+        "numbers"
+      ],
+      "expectedPausesMs": [],
+      "notes": "Numbers are scored separately: heardCer removes them from both sides, so this case is the only way to see them."
+    },
+    {
+      "id": "spoken-short",
+      "category": "english_short",
+      "prompt": "Stop.",
+      "expectedTranscript": "Stop.",
+      "audioPath": "audio/en-spoken/spoken-short.wav",
+      "tags": [
+        "english",
+        "spoken",
+        "short"
+      ],
+      "expectedPausesMs": [],
+      "notes": "One word. The shortest thing a person says to a machine, and the case an endpointer is most likely to swallow."
+    },
+    {
+      "id": "spoken-code-switch-out",
+      "category": "english_code_switch",
+      "prompt": "I think the 語音 part is broken, not the model.",
+      "expectedTranscript": "I think the 語音 part is broken, not the model.",
+      "audioPath": "audio/en-spoken/spoken-code-switch-out.wav",
+      "tags": [
+        "english",
+        "spoken",
+        "code-switch"
+      ],
+      "expectedPausesMs": [],
+      "notes": "Mostly English with one Chinese word — the reverse of every code-switching case measured so far, all of which were Chinese sentences carrying English terms."
+    },
+    {
+      "id": "spoken-long-pause",
+      "category": "english_pause",
+      "prompt": "The thing I actually want is… a way to tell which recogniser is listening.",
+      "expectedTranscript": "The thing I actually want is… a way to tell which recogniser is listening.",
+      "audioPath": "audio/en-spoken/spoken-long-pause.wav",
+      "tags": [
+        "english",
+        "spoken",
+        "pause"
+      ],
+      "expectedPausesMs": [
+        1200
+      ],
+      "notes": "A mid-sentence pause of about 1.2 s. voice-turn-latency.md records real pauses of 1.02 s in the zh corpus; this asks whether the same thing happens in English."
+    }
+  ]
+}

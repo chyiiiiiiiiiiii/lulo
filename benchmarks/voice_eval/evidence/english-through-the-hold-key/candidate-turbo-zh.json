@@ -1,0 +1,68 @@
+{
+  "schemaVersion": 1,
+  "runId": "turbo-zh-1786015671",
+  "corpusId": "en-synthetic-v1",
+  "kind": "transcript",
+  "adapter": {
+    "name": "turbo-zh",
+    "version": "mlx-community/whisper-large-v3-turbo language=zh"
+  },
+  "cases": [
+    {
+      "caseId": "en-run-tests",
+      "rawTranscript": "How do I run the tests in this project?",
+      "refinedTranscript": null,
+      "partialEvents": [],
+      "finalAtMs": 880
+    },
+    {
+      "caseId": "en-widget-question",
+      "rawTranscript": "What is the difference between a stateless and a stateful widget?",
+      "refinedTranscript": null,
+      "partialEvents": [],
+      "finalAtMs": 887
+    },
+    {
+      "caseId": "en-litert",
+      "rawTranscript": "可你解釋什麼LiteRT runtime?",
+      "refinedTranscript": null,
+      "partialEvents": [],
+      "finalAtMs": 854
+    },
+    {
+      "caseId": "en-commits",
+      "rawTranscript": "Show me the latest commits on the main branch.",
+      "refinedTranscript": null,
+      "partialEvents": [],
+      "finalAtMs": 878
+    },
+    {
+      "caseId": "en-download-failed",
+      "rawTranscript": "I think the download failed,Can you try again?",
+      "refinedTranscript": null,
+      "partialEvents": [],
+      "finalAtMs": 878
+    },
+    {
+      "caseId": "en-remind-mic",
+      "rawTranscript": "remind me to check the microphone permissions later.",
+      "refinedTranscript": null,
+      "partialEvents": [],
+      "finalAtMs": 821
+    },
+    {
+      "caseId": "en-dart-test",
+      "rawTranscript": "Dart test is failing on the second case.",
+      "refinedTranscript": null,
+      "partialEvents": [],
+      "finalAtMs": 857
+    },
+    {
+      "caseId": "en-settings-voice",
+      "rawTranscript": "開啟鼓鼓鼓鼓鼓鼓鼓鼓鼓鼓鼓鼓鼓鼓鼓鼓鼓鼓鼓鼓鼓鼓鼓鼓鼓鼓鼓鼓鼓鼓鼓鼓鼓鼓鼓鼓鼓鼓鼓鼓鼓鼓鼓鼓鼓鼓鼓鼓鼓鼓鼓鼓鼓鼓鼓鼓鼓鼓鼓鼓鼓鼓鼓鼓鼓鼓鼓鼓鼓鼓鼓鼓鼓鼓鼓鼓鼓鼓鼓鼓鼓鼓鼓鼓鼓鼓鼓鼓鼓鼓鼓鼓鼓鼓鼓鼓�鼓鼓�鼓鼓�鼓�鼓�鼓��鼓��鼓�",
+      "refinedTranscript": null,
+      "partialEvents": [],
+      "finalAtMs": 8664
+    }
+  ]
+}

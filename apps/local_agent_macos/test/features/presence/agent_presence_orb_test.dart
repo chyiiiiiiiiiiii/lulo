@@ -9,6 +9,7 @@ import 'package:local_agent_macos/features/presence/agent_presence_fallback_pain
 import 'package:local_agent_macos/features/presence/agent_presence_orb.dart';
 import 'package:local_agent_macos/features/presence/agent_presence_painter.dart';
 import 'package:local_agent_macos/features/presence/agent_presence_state.dart';
+import 'package:local_agent_macos/l10n/generated/app_localizations.dart';
 
 void main() {
   group('AgentPresenceOrb', () {
@@ -744,6 +745,8 @@ Widget _app({
   Key? orbKey,
 }) {
   return MaterialApp(
+    localizationsDelegates: AppLocalizations.localizationsDelegates,
+    supportedLocales: AppLocalizations.supportedLocales,
     home: MediaQuery(
       data: MediaQueryData(disableAnimations: disableAnimations),
       child: TickerMode(

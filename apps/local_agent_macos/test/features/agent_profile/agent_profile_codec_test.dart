@@ -142,4 +142,35 @@ void main() {
     expect(future.profile, AgentProfile.builtIn());
     expect(future.error, contains('schemaVersion'));
   });
+
+  test(
+    'a profile that says nothing about vocabulary keeps the built-in one',
+    () {
+      // The words this app is about reach two places that cannot invent them:
+      // the recogniser biases towards them, and the refiner refuses to edit
+      // them away. A hand-written profile file that simply does not mention
+      // them was silently stripping all ten — which is the failure mode
+      // builtInVocabulary exists to prevent, arriving through the very file
+      // that was supposed to be optional.
+      final AgentProfileDecodeResult result = decodeAgentProfile(
+        <String, Object?>{
+          'schemaVersion': 1,
+          'identity': <String, Object?>{'userName': 'Yii'},
+        },
+      );
+
+      expect(result.error, isNull);
+      expect(result.profile.vocabulary, builtInVocabulary);
+    },
+  );
+
+  test('a profile that says the vocabulary is empty is believed', () {
+    // Absent and empty are different answers. Someone who writes [] has said
+    // they want no biasing, and overriding that would make the setting a lie.
+    final AgentProfileDecodeResult result = decodeAgentProfile(
+      <String, Object?>{'schemaVersion': 1, 'vocabulary': <Object?>[]},
+    );
+
+    expect(result.profile.vocabulary, isEmpty);
+  });
 }

@@ -191,6 +191,62 @@ leaving — is observed and reported through `pipelineFailed`. Without it the
 tap simply goes quiet and the UI keeps a live microphone button over a dead
 pipeline.
 
+## What each path hears, and in what language
+
+Three ways in, and they differ far more from each other than the two
+languages do. The measurements are scattered across the decision docs; this
+is the one place that puts them beside each other.
+
+| | Typing | Holding the key | Full duplex |
+|---|---|---|---|
+| Recogniser | none | Breeze-ASR-25, batch | Apple `SpeechTranscriber`, streaming |
+| How the language is chosen | from what is typed | **pinned `language="zh"`** | **pinned at `begin()` from `Locale.preferredLanguages`** |
+| Chinese | — | 1.6% heard CER | 14.6% spoken CER |
+| English | — | **3.8% heard CER** | **never measured** |
+| Per utterance | — | ~1.3 s | live partials |
+
+**Typing** is the only path with no language disadvantage. The prompt is
+translated whole according to whether the question contains a CJK character,
+so a wholly-switched turn costs a rebuilt KV cache — 1580 ms against 362 ms —
+and ordinary code-switching costs nothing. See
+[voice-turn-latency.md](../decisions/voice-turn-latency.md).
+
+**Holding the key** works in both, and is worse in English: 3.8% heard CER
+against 1.6%, on the same model in the same configuration. The errors are not
+spread out — they land on product names that are also ordinary English words,
+`Swift tests` → `sweep test` and `Dart test` → `Dark text`, which is the one
+thing a vocabulary list cannot fix by spelling — the words are correctly
+spelled and correctly ordinary, so nothing downstream can tell they are
+wrong. `AgentProfile.misheard` is the answer to exactly this: the user says
+「你聽成 Dark text，其實是 Dart test」 once, and the substitution runs on every
+transcript afterwards. A hint to the recogniser can do nothing; a
+substitution cannot fail the same way. See
+[agent-profile.md](agent-profile.md) and
+[batch-asr-candidates.md](../decisions/batch-asr-candidates.md).
+
+**Full duplex** pins one locale for the whole session, so on a zh-TW Mac an
+English sentence is heard by a recogniser set to Chinese. Nothing has measured
+what that costs, and no number here should be guessed at from the batch
+results — a different model, a different mechanism. What is known is that
+this recogniser's worst *Chinese* errors were already code-switching
+(`Flutter → Flater`, `MLX → NLX`, `Dart test → Dortest`), which is what sent
+us to Breeze for the other path.
+
+Turn-taking is bilingual on both halves and does not depend on which of these
+is in use: `FloorControl` carries English backchannels (`yeah`, `right`,
+`sure`, `mm-hmm`) and corrections (`wait`, `stop`, `no`, `actually`) beside
+the Chinese ones, `TurnCompletion` carries English connectives (`so`, `and`,
+`but`, `because`, `like`, `um`), and the burst-duration signal underneath both
+needs no language knowledge at all.
+
+### What follows from this
+
+The product's English problem is not a model problem. Two of the three paths
+already work; the third pins a locale nobody can change. What is missing is
+that **a user has no way to know the hold key hears English while the
+always-listening path does not** — an interface question, and a far cheaper
+one than a recogniser.
+
 ## Endpointing
 
 Three mechanisms decide that the user has stopped talking, in order of speed:

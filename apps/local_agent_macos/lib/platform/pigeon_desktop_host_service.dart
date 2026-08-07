@@ -164,6 +164,69 @@ final class PigeonDesktopHostService extends DesktopHostEventApi
   Stream<DesktopPresentation> get presentationRequests =>
       _presentationRequests.stream;
 
+  final StreamController<ConversationId> _menuConversationRequests =
+      StreamController<ConversationId>.broadcast();
+  final StreamController<void> _menuVoiceRequests =
+      StreamController<void>.broadcast();
+
+  @override
+  Stream<ConversationId> get menuConversationRequests =>
+      _menuConversationRequests.stream;
+
+  @override
+  Stream<void> get menuVoiceRequests => _menuVoiceRequests.stream;
+
+  @override
+  void onMenuBarConversationChosen(String conversationId) {
+    if (_disposed) {
+      return;
+    }
+    _menuConversationRequests.add(ConversationId(conversationId));
+  }
+
+  @override
+  void onMenuBarVoiceRequested() {
+    if (_disposed) {
+      return;
+    }
+    _menuVoiceRequests.add(null);
+  }
+
+  @override
+  Future<void> setMenuBarState({
+    required List<({ConversationId id, String title})> conversations,
+    required String modelName,
+    required DesktopAgentActivity activity,
+    required bool canStartVoice,
+    required DesktopMenuBarLabels labels,
+  }) {
+    return _invoke(
+      (HostRequest request) => _hostApi.setMenuBarState(
+        request,
+        HostMenuBarState(
+          conversations: <HostMenuConversation>[
+            for (final ({ConversationId id, String title}) conversation
+                in conversations)
+              HostMenuConversation(
+                conversationId: conversation.id.value,
+                title: conversation.title,
+              ),
+          ],
+          modelName: modelName,
+          canStartVoice: canStartVoice,
+          labels: HostMenuBarLabels(
+            show: labels.show,
+            hide: labels.hide,
+            talk: labels.talk,
+            recent: labels.recent,
+            quit: labels.quit,
+            activity: labels.activity,
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   void onPresentationChangeRequested(HostPresentationMode target) {
     if (_disposed) {
@@ -225,6 +288,33 @@ final class PigeonDesktopHostService extends DesktopHostEventApi
 
   @override
   Future<String> chooseModelFile() => _invokeResult(_hostApi.chooseModelFile);
+
+  @override
+  Future<String> saveTextFile({
+    required String suggestedName,
+    required String contents,
+  }) {
+    return _invokeResult(
+      (HostRequest request) =>
+          _hostApi.saveTextFile(request, suggestedName, contents),
+    );
+  }
+
+  @override
+  Future<DesktopLoginItem> loginItem() async {
+    final HostLoginItemStatus status = await _invokeResult(
+      _hostApi.loginItemStatus,
+    );
+    return _loginItemOf(status);
+  }
+
+  @override
+  Future<DesktopLoginItem> setLaunchAtLogin({required bool enabled}) async {
+    final HostLoginItemStatus status = await _invokeResult(
+      (HostRequest request) => _hostApi.setLaunchAtLogin(request, enabled),
+    );
+    return _loginItemOf(status);
+  }
 
   @override
   Future<void> setWindowBehaviour({
@@ -424,6 +514,8 @@ final class PigeonDesktopHostService extends DesktopHostEventApi
     await _events.close();
     await _presentationRequests.close();
     await _settingsRequests.close();
+    await _menuConversationRequests.close();
+    await _menuVoiceRequests.close();
     await _geometryChanges.close();
   }
 }
@@ -447,3 +539,12 @@ extension on HostFailureCode {
     };
   }
 }
+
+/// The host's answer as the app's own enum.
+DesktopLoginItem _loginItemOf(HostLoginItemStatus status) => switch (status) {
+  HostLoginItemStatus.on => DesktopLoginItem.on,
+  HostLoginItemStatus.off => DesktopLoginItem.off,
+  HostLoginItemStatus.needsApproval => DesktopLoginItem.needsApproval,
+  HostLoginItemStatus.refused => DesktopLoginItem.refused,
+  HostLoginItemStatus.unavailable => DesktopLoginItem.unavailable,
+};

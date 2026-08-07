@@ -1,7 +1,10 @@
+import 'dart:async';
+
 import 'package:agent_core/agent_core.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
+import '../../l10n/generated/app_localizations.dart';
 import '../presence/agent_presence_controller.dart';
 import '../presence/agent_presence_header.dart';
 import '../presence/agent_presence_orb.dart';
@@ -67,6 +70,7 @@ final class ConversationView extends StatefulWidget {
     this.transcriptRefiner,
     this.transcriptShadow,
     this.protectedVocabulary,
+    this.misheard,
     this.floorControl,
     this.unfinishedEndings,
     this.buildObserver,
@@ -76,8 +80,15 @@ final class ConversationView extends StatefulWidget {
     this.presenceOrb,
     this.presenceAnchorKey,
     this.showVoiceEvidence = false,
+    this.voiceRequests,
     super.key,
   });
+
+  /// Bumped when something outside this view asks it to start listening.
+  ///
+  /// The status-bar menu offers it while the window is away, which is most of
+  /// the time for a resident agent.
+  final ValueListenable<int>? voiceRequests;
 
   /// Whether to show why the agent took or yielded the floor.
   ///
@@ -121,6 +132,10 @@ final class ConversationView extends StatefulWidget {
 
   /// Latest vocabulary tokens protected during refinement.
   final List<String> Function()? protectedVocabulary;
+
+  /// Corrections the user has taught the recogniser, or null on a surface
+  /// with no profile behind it.
+  final List<MisheardWord> Function()? misheard;
 
   /// Who has the floor, or null to use the built-in policy.
   final FloorControl Function()? floorControl;
@@ -189,6 +204,7 @@ final class _ConversationViewState extends State<ConversationView> {
         transcriptShadow: widget.transcriptShadow,
         protectedVocabulary:
             widget.protectedVocabulary ?? _emptyProtectedVocabulary,
+        misheard: widget.misheard ?? _nothingMisheard,
         turnLog: _turnLog,
         floorControl: widget.floorControl ?? _builtInFloorControl,
         unfinishedEndings:
@@ -197,6 +213,7 @@ final class _ConversationViewState extends State<ConversationView> {
       );
       _voice = voice;
       voice.addListener(_reflectVoice);
+      widget.voiceRequests?.addListener(_startListeningOnRequest);
     }
   }
 
@@ -212,8 +229,20 @@ final class _ConversationViewState extends State<ConversationView> {
     _turnLog.dispose();
     _holdingToTalk.dispose();
     _agentSpeaking.dispose();
+    widget.voiceRequests?.removeListener(_startListeningOnRequest);
     _viewModel.dispose();
     super.dispose();
+  }
+
+  /// Opens the microphone because something outside asked, not because the
+  /// button was pressed — so an already-open one is left alone rather than
+  /// being closed by a request to open it.
+  void _startListeningOnRequest() {
+    final VoiceConversationController? voice = _voice;
+    if (voice == null || voice.enabled) {
+      return;
+    }
+    unawaited(voice.enable());
   }
 
   Future<void> _toggleVoice() async {
@@ -262,6 +291,11 @@ final class _ConversationViewState extends State<ConversationView> {
               child: ConversationList(
                 completedTurns: _viewModel.completedTurnsListenable,
                 activeTurn: _viewModel.activeTurnListenable,
+                retryAvailable: _viewModel.canSubmitListenable,
+                onRegenerate: () =>
+                    unawaited(_viewModel.regenerateLastAnswer()),
+                onRevise: (String text) =>
+                    unawaited(_viewModel.reviseLastQuestion(text)),
                 onBuild: () =>
                     widget.buildObserver?.conversationListBuilds += 1,
                 onCompletedTurnsBuild: () =>
@@ -361,7 +395,9 @@ final class _ConversationChrome extends StatelessWidget {
               animation: voice!,
               builder: (BuildContext context, Widget? _) => IconButton(
                 key: const Key('conversation-voice-button'),
-                tooltip: voice!.enabled ? '關閉語音對話' : '開啟語音對話',
+                tooltip: voice!.enabled
+                    ? AppLocalizations.of(context).voiceTurnOff
+                    : AppLocalizations.of(context).voiceTurnOn,
                 icon: Icon(
                   voice!.enabled ? Icons.mic_rounded : Icons.mic_none_rounded,
                   color: voice!.enabled
@@ -374,12 +410,12 @@ final class _ConversationChrome extends StatelessWidget {
           if (onShowHistory != null)
             IconButton(
               key: const Key('conversation-history-button'),
-              tooltip: '對話紀錄',
+              tooltip: AppLocalizations.of(context).conversationsTooltip,
               icon: const Icon(Icons.history_rounded),
               onPressed: onShowHistory,
             ),
           Semantics(
-            label: '本機模型',
+            label: AppLocalizations.of(context).localModelLabel,
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: <Widget>[
@@ -392,7 +428,7 @@ final class _ConversationChrome extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(width: 8),
-                const Text('本機'),
+                Text(AppLocalizations.of(context).localBadge),
               ],
             ),
           ),
@@ -420,7 +456,7 @@ final class _HeardSoFar extends StatelessWidget {
           return Padding(
             padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 4),
             child: Text(
-              '語音中斷：$failure',
+              AppLocalizations.of(context).voiceStopped(failure),
               key: const Key('conversation-voice-failure'),
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                 color: Theme.of(context).colorScheme.error,
@@ -438,18 +474,28 @@ final class _HeardSoFar extends StatelessWidget {
           // look the same as each other — in full duplex the microphone
           // never closes, so "Listening…" alone is true while thinking,
           // while talking, and while broken.
+          final AppLocalizations words = AppLocalizations.of(context);
           final (IconData icon, String label) = switch (voice.activity) {
-            VoiceActivity.listening => (Icons.graphic_eq_rounded, '聆聽中…'),
-            VoiceActivity.thinking => (Icons.more_horiz_rounded, '思考中…'),
-            VoiceActivity.speaking => (Icons.volume_up_rounded, '說話中…'),
+            VoiceActivity.listening => (
+              Icons.graphic_eq_rounded,
+              words.voiceListening,
+            ),
+            VoiceActivity.thinking => (
+              Icons.more_horiz_rounded,
+              words.voiceThinking,
+            ),
+            VoiceActivity.speaking => (
+              Icons.volume_up_rounded,
+              words.voiceSpeaking,
+            ),
             VoiceActivity.paused => (
               Icons.pause_circle_outline_rounded,
-              '已暫停——說句話就繼續',
+              words.voicePaused,
             ),
-            VoiceActivity.holding => (Icons.mic_rounded, '正在聽你說——放開送出'),
+            VoiceActivity.holding => (Icons.mic_rounded, words.voiceHolding),
             VoiceActivity.shielded => (
               Icons.volume_up_rounded,
-              '回答中——按住 ⇧⌘Space 可插話',
+              words.voiceAnswering,
             ),
           };
           return Padding(
@@ -489,3 +535,5 @@ final class _HeardSoFar extends StatelessWidget {
     );
   }
 }
+
+List<MisheardWord> _nothingMisheard() => const <MisheardWord>[];

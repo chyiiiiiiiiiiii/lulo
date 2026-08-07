@@ -1,0 +1,212 @@
+import 'package:agent_core/agent_core.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:local_agent_macos/features/conversation/widgets/completed_turn.dart';
+import 'package:local_agent_macos/l10n/generated/app_localizations.dart';
+
+/// What the user can do with a turn once it has been said.
+///
+/// A local model gets an answer wrong often enough that reading it is not the
+/// only thing anyone wants to do with one, and until now reading it was all
+/// the conversation offered.
+void main() {
+  const Turn answer = Turn(
+    role: TurnRole.assistant,
+    text: '好，我幫你查一下。',
+    status: TurnStatus.completed,
+  );
+
+  Future<List<MethodCall>> pumpTurn(WidgetTester tester, Turn turn) async {
+    final List<MethodCall> platformCalls = <MethodCall>[];
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      SystemChannels.platform,
+      (MethodCall call) async {
+        platformCalls.add(call);
+        return null;
+      },
+    );
+    addTearDown(
+      () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        SystemChannels.platform,
+        null,
+      ),
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: Scaffold(body: CompletedTurn(turn: turn)),
+      ),
+    );
+    return platformCalls;
+  }
+
+  testWidgets('an answer can be taken away as text', (
+    WidgetTester tester,
+  ) async {
+    final List<MethodCall> platformCalls = await pumpTurn(tester, answer);
+
+    await tester.tap(find.byKey(const Key('turn-copy-button')));
+    await tester.pump();
+
+    final MethodCall copy = platformCalls.singleWhere(
+      (MethodCall call) => call.method == 'Clipboard.setData',
+    );
+    expect(
+      (copy.arguments as Map<Object?, Object?>)['text'],
+      '好，我幫你查一下。',
+      reason: 'the clipboard did not get the turn the user copied',
+    );
+  });
+
+  testWidgets('copying says so, and stops saying so', (
+    WidgetTester tester,
+  ) async {
+    await pumpTurn(tester, answer);
+
+    expect(find.byKey(const Key('turn-copied')), findsNothing);
+    await tester.tap(find.byKey(const Key('turn-copy-button')));
+    await tester.pump();
+
+    // Without this the only evidence the click did anything is a clipboard
+    // the user has to go and check somewhere else.
+    expect(find.byKey(const Key('turn-copied')), findsOneWidget);
+
+    await tester.pump(CompletedTurn.copiedNoticeDuration);
+    await tester.pump();
+    expect(
+      find.byKey(const Key('turn-copied')),
+      findsNothing,
+      reason: 'the notice stayed on a turn the user has moved on from',
+    );
+  });
+
+  testWidgets('what the user said can be copied too', (
+    WidgetTester tester,
+  ) async {
+    final List<MethodCall> platformCalls = await pumpTurn(
+      tester,
+      const Turn(
+        role: TurnRole.user,
+        text: '幫我看一下明天的行程',
+        status: TurnStatus.completed,
+      ),
+    );
+
+    await tester.tap(find.byKey(const Key('turn-copy-button')));
+    await tester.pump();
+
+    final MethodCall copy = platformCalls.singleWhere(
+      (MethodCall call) => call.method == 'Clipboard.setData',
+    );
+    expect((copy.arguments as Map<Object?, Object?>)['text'], '幫我看一下明天的行程');
+  });
+
+  testWidgets('the last answer can be asked for again', (
+    WidgetTester tester,
+  ) async {
+    int asked = 0;
+    await tester.pumpWidget(
+      MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: Scaffold(
+          body: CompletedTurn(turn: answer, onRegenerate: () => asked++),
+        ),
+      ),
+    );
+
+    await tester.tap(find.byKey(const Key('turn-regenerate-button')));
+    await tester.pump();
+
+    expect(asked, 1);
+  });
+
+  testWidgets('a turn nothing can be retried on offers no retry', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: Scaffold(body: CompletedTurn(turn: answer)),
+      ),
+    );
+
+    expect(find.byKey(const Key('turn-regenerate-button')), findsNothing);
+    expect(find.byKey(const Key('turn-revise-button')), findsNothing);
+    expect(
+      find.byKey(const Key('turn-copy-button')),
+      findsOneWidget,
+      reason: 'copying is always available; retrying is not',
+    );
+  });
+
+  testWidgets('a question can be rewritten in place and asked again', (
+    WidgetTester tester,
+  ) async {
+    const Turn question = Turn(
+      role: TurnRole.user,
+      text: '明天天氣如何',
+      status: TurnStatus.completed,
+    );
+    final List<String> revisions = <String>[];
+    await tester.pumpWidget(
+      MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: Scaffold(
+          body: CompletedTurn(turn: question, onRevise: revisions.add),
+        ),
+      ),
+    );
+
+    await tester.tap(find.byKey(const Key('turn-revise-button')));
+    await tester.pump();
+
+    // The question it opens on is the question that was asked, so a small
+    // repair is a small edit rather than typing the whole thing again.
+    final Finder field = find.byKey(const Key('turn-revise-field'));
+    expect(tester.widget<TextField>(field).controller?.text, '明天天氣如何');
+
+    await tester.enterText(field, '後天天氣如何');
+    await tester.tap(find.byKey(const Key('turn-revise-submit')));
+    await tester.pump();
+
+    expect(revisions, <String>['後天天氣如何']);
+  });
+
+  testWidgets('backing out of a rewrite leaves the question alone', (
+    WidgetTester tester,
+  ) async {
+    const Turn question = Turn(
+      role: TurnRole.user,
+      text: '明天天氣如何',
+      status: TurnStatus.completed,
+    );
+    final List<String> revisions = <String>[];
+    await tester.pumpWidget(
+      MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: Scaffold(
+          body: CompletedTurn(turn: question, onRevise: revisions.add),
+        ),
+      ),
+    );
+
+    await tester.tap(find.byKey(const Key('turn-revise-button')));
+    await tester.pump();
+    await tester.enterText(
+      find.byKey(const Key('turn-revise-field')),
+      '完全不同的問題',
+    );
+    await tester.tap(find.byKey(const Key('turn-revise-cancel')));
+    await tester.pump();
+
+    expect(revisions, isEmpty);
+    expect(find.byKey(const Key('turn-revise-field')), findsNothing);
+    expect(find.text('明天天氣如何'), findsOneWidget);
+  });
+}

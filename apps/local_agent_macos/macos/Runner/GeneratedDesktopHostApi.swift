@@ -186,6 +186,32 @@ enum HostGenerationEventType: Int {
   case failed = 4
 }
 
+/// Whether the app starts itself when the user logs in.
+///
+/// Read from the system rather than remembered, because it is the system's
+/// state and not the app's: macOS keeps it across reinstalls, and the user
+/// can revoke it in System Settings without the app being running to notice.
+/// A stored copy would sooner or later claim something untrue about the
+/// machine.
+enum HostLoginItemStatus: Int {
+  /// The app does not start itself.
+  case off = 0
+  /// The app starts itself at login.
+  case on = 1
+  /// macOS has the registration but is waiting for the user to allow it in
+  /// System Settings. Neither on nor off, and the difference matters: this
+  /// is the state a switch that silently flipped back would be lying about.
+  case needsApproval = 2
+  /// macOS refused this copy of the app: the signature is not one it will
+  /// accept, or it could not find the bundle where it expected. Distinct
+  /// from [needsApproval], which the user can fix, and from [unavailable],
+  /// which no copy of the app could fix.
+  case refused = 3
+  /// This macOS cannot do it at all. `SMAppService` is macOS 13 and the
+  /// deployment target is 12.
+  case unavailable = 4
+}
+
 /// How the desktop window is currently presented.
 ///
 /// The window is always on screen. In [orb] it is a small transparent presence
@@ -209,6 +235,171 @@ enum HostFailureCode: Int {
 enum HostTurnRole: Int {
   case user = 0
   case assistant = 1
+}
+
+/// One conversation as the menu bar lists it.
+///
+/// Generated class from Pigeon that represents data sent in messages.
+struct HostMenuConversation: Hashable {
+  /// Which conversation to open when the item is chosen.
+  var conversationId: String
+  /// What the item is called.
+  var title: String
+
+
+  // swift-format-ignore: AlwaysUseLowerCamelCase
+  static func fromList(_ pigeonVar_list: [Any?]) -> HostMenuConversation? {
+    let conversationId = pigeonVar_list[0] as! String
+    let title = pigeonVar_list[1] as! String
+
+    return HostMenuConversation(
+      conversationId: conversationId,
+      title: title
+    )
+  }
+  func toList() -> [Any?] {
+    return [
+      conversationId,
+      title,
+    ]
+  }
+  static func == (lhs: HostMenuConversation, rhs: HostMenuConversation) -> Bool {
+    if Swift.type(of: lhs) != Swift.type(of: rhs) {
+      return false
+    }
+    return deepEqualsGeneratedDesktopHostApi(lhs.conversationId, rhs.conversationId) && deepEqualsGeneratedDesktopHostApi(lhs.title, rhs.title)
+  }
+
+  func hash(into hasher: inout Hasher) {
+    hasher.combine("HostMenuConversation")
+    deepHashGeneratedDesktopHostApi(value: conversationId, hasher: &hasher)
+    deepHashGeneratedDesktopHostApi(value: title, hasher: &hasher)
+  }
+}
+
+/// Every word the status-bar menu shows that is not a conversation title.
+///
+/// Generated class from Pigeon that represents data sent in messages.
+struct HostMenuBarLabels: Hashable {
+  /// Brings the conversation forward.
+  var show: String
+  /// Puts it away.
+  var hide: String
+  /// Starts talking.
+  var talk: String
+  /// Heads the list of recent conversations.
+  var recent: String
+  /// Ends the app.
+  var quit: String
+  /// What the agent is doing, empty when there is nothing to say.
+  var activity: String
+
+
+  // swift-format-ignore: AlwaysUseLowerCamelCase
+  static func fromList(_ pigeonVar_list: [Any?]) -> HostMenuBarLabels? {
+    let show = pigeonVar_list[0] as! String
+    let hide = pigeonVar_list[1] as! String
+    let talk = pigeonVar_list[2] as! String
+    let recent = pigeonVar_list[3] as! String
+    let quit = pigeonVar_list[4] as! String
+    let activity = pigeonVar_list[5] as! String
+
+    return HostMenuBarLabels(
+      show: show,
+      hide: hide,
+      talk: talk,
+      recent: recent,
+      quit: quit,
+      activity: activity
+    )
+  }
+  func toList() -> [Any?] {
+    return [
+      show,
+      hide,
+      talk,
+      recent,
+      quit,
+      activity,
+    ]
+  }
+  static func == (lhs: HostMenuBarLabels, rhs: HostMenuBarLabels) -> Bool {
+    if Swift.type(of: lhs) != Swift.type(of: rhs) {
+      return false
+    }
+    return deepEqualsGeneratedDesktopHostApi(lhs.show, rhs.show) && deepEqualsGeneratedDesktopHostApi(lhs.hide, rhs.hide) && deepEqualsGeneratedDesktopHostApi(lhs.talk, rhs.talk) && deepEqualsGeneratedDesktopHostApi(lhs.recent, rhs.recent) && deepEqualsGeneratedDesktopHostApi(lhs.quit, rhs.quit) && deepEqualsGeneratedDesktopHostApi(lhs.activity, rhs.activity)
+  }
+
+  func hash(into hasher: inout Hasher) {
+    hasher.combine("HostMenuBarLabels")
+    deepHashGeneratedDesktopHostApi(value: show, hasher: &hasher)
+    deepHashGeneratedDesktopHostApi(value: hide, hasher: &hasher)
+    deepHashGeneratedDesktopHostApi(value: talk, hasher: &hasher)
+    deepHashGeneratedDesktopHostApi(value: recent, hasher: &hasher)
+    deepHashGeneratedDesktopHostApi(value: quit, hasher: &hasher)
+    deepHashGeneratedDesktopHostApi(value: activity, hasher: &hasher)
+  }
+}
+
+/// What the menu bar is currently showing.
+///
+/// Pushed rather than pulled: the menu is built by AppKit at the moment it
+/// opens, and asking Dart for the list then would mean opening a menu that is
+/// empty until an answer arrives.
+///
+/// Generated class from Pigeon that represents data sent in messages.
+struct HostMenuBarState: Hashable {
+  /// The menu's own words, already in the user's language.
+  ///
+  /// Sent rather than written natively: the rest of the interface follows the
+  /// system language through `AppLocalizations`, and there is none of that on
+  /// the AppKit side. A menu that stayed English on a Chinese Mac would be the
+  /// one part of the app that did not.
+  var labels: HostMenuBarLabels
+  /// The most recent conversations, in the order they should be listed.
+  var conversations: [HostMenuConversation]
+  /// What the agent is thinking with, or empty while it is the preview.
+  var modelName: String
+  /// Whether voice can be started from the menu at all.
+  var canStartVoice: Bool
+
+
+  // swift-format-ignore: AlwaysUseLowerCamelCase
+  static func fromList(_ pigeonVar_list: [Any?]) -> HostMenuBarState? {
+    let labels = pigeonVar_list[0] as! HostMenuBarLabels
+    let conversations = pigeonVar_list[1] as! [HostMenuConversation]
+    let modelName = pigeonVar_list[2] as! String
+    let canStartVoice = pigeonVar_list[3] as! Bool
+
+    return HostMenuBarState(
+      labels: labels,
+      conversations: conversations,
+      modelName: modelName,
+      canStartVoice: canStartVoice
+    )
+  }
+  func toList() -> [Any?] {
+    return [
+      labels,
+      conversations,
+      modelName,
+      canStartVoice,
+    ]
+  }
+  static func == (lhs: HostMenuBarState, rhs: HostMenuBarState) -> Bool {
+    if Swift.type(of: lhs) != Swift.type(of: rhs) {
+      return false
+    }
+    return deepEqualsGeneratedDesktopHostApi(lhs.labels, rhs.labels) && deepEqualsGeneratedDesktopHostApi(lhs.conversations, rhs.conversations) && deepEqualsGeneratedDesktopHostApi(lhs.modelName, rhs.modelName) && deepEqualsGeneratedDesktopHostApi(lhs.canStartVoice, rhs.canStartVoice)
+  }
+
+  func hash(into hasher: inout Hasher) {
+    hasher.combine("HostMenuBarState")
+    deepHashGeneratedDesktopHostApi(value: labels, hasher: &hasher)
+    deepHashGeneratedDesktopHostApi(value: conversations, hasher: &hasher)
+    deepHashGeneratedDesktopHostApi(value: modelName, hasher: &hasher)
+    deepHashGeneratedDesktopHostApi(value: canStartVoice, hasher: &hasher)
+  }
 }
 
 /// Generated class from Pigeon that represents data sent in messages.
@@ -767,42 +958,54 @@ private class GeneratedDesktopHostApiPigeonCodecReader: FlutterStandardReader {
     case 130:
       let enumResultAsInt: Int? = nilOrValue(self.readValue() as! Int?)
       if let enumResultAsInt = enumResultAsInt {
-        return HostPresentationMode(rawValue: enumResultAsInt)
+        return HostLoginItemStatus(rawValue: enumResultAsInt)
       }
       return nil
     case 131:
       let enumResultAsInt: Int? = nilOrValue(self.readValue() as! Int?)
       if let enumResultAsInt = enumResultAsInt {
-        return HostFailureCode(rawValue: enumResultAsInt)
+        return HostPresentationMode(rawValue: enumResultAsInt)
       }
       return nil
     case 132:
       let enumResultAsInt: Int? = nilOrValue(self.readValue() as! Int?)
       if let enumResultAsInt = enumResultAsInt {
-        return HostTurnRole(rawValue: enumResultAsInt)
+        return HostFailureCode(rawValue: enumResultAsInt)
       }
       return nil
     case 133:
-      return HostRequest.fromList(self.readValue() as! [Any?])
+      let enumResultAsInt: Int? = nilOrValue(self.readValue() as! Int?)
+      if let enumResultAsInt = enumResultAsInt {
+        return HostTurnRole(rawValue: enumResultAsInt)
+      }
+      return nil
     case 134:
-      return HostHandshakeResult.fromList(self.readValue() as! [Any?])
+      return HostMenuConversation.fromList(self.readValue() as! [Any?])
     case 135:
-      return HostModelRequest.fromList(self.readValue() as! [Any?])
+      return HostMenuBarLabels.fromList(self.readValue() as! [Any?])
     case 136:
-      return HostModelLoadResult.fromList(self.readValue() as! [Any?])
+      return HostMenuBarState.fromList(self.readValue() as! [Any?])
     case 137:
-      return HostConversationTurn.fromList(self.readValue() as! [Any?])
+      return HostRequest.fromList(self.readValue() as! [Any?])
     case 138:
-      return HostGenerationRequest.fromList(self.readValue() as! [Any?])
+      return HostHandshakeResult.fromList(self.readValue() as! [Any?])
     case 139:
-      return HostGenerationAcknowledgement.fromList(self.readValue() as! [Any?])
+      return HostModelRequest.fromList(self.readValue() as! [Any?])
     case 140:
-      return HostCancellationAcknowledgement.fromList(self.readValue() as! [Any?])
+      return HostModelLoadResult.fromList(self.readValue() as! [Any?])
     case 141:
-      return HostOperationCompletion.fromList(self.readValue() as! [Any?])
+      return HostConversationTurn.fromList(self.readValue() as! [Any?])
     case 142:
-      return HostGenerationEvent.fromList(self.readValue() as! [Any?])
+      return HostGenerationRequest.fromList(self.readValue() as! [Any?])
     case 143:
+      return HostGenerationAcknowledgement.fromList(self.readValue() as! [Any?])
+    case 144:
+      return HostCancellationAcknowledgement.fromList(self.readValue() as! [Any?])
+    case 145:
+      return HostOperationCompletion.fromList(self.readValue() as! [Any?])
+    case 146:
+      return HostGenerationEvent.fromList(self.readValue() as! [Any?])
+    case 147:
       return HostTransitionGeometry.fromList(self.readValue() as! [Any?])
     default:
       return super.readValue(ofType: type)
@@ -815,47 +1018,59 @@ private class GeneratedDesktopHostApiPigeonCodecWriter: FlutterStandardWriter {
     if let value = value as? HostGenerationEventType {
       super.writeByte(129)
       super.writeValue(value.rawValue)
-    } else if let value = value as? HostPresentationMode {
+    } else if let value = value as? HostLoginItemStatus {
       super.writeByte(130)
       super.writeValue(value.rawValue)
-    } else if let value = value as? HostFailureCode {
+    } else if let value = value as? HostPresentationMode {
       super.writeByte(131)
       super.writeValue(value.rawValue)
-    } else if let value = value as? HostTurnRole {
+    } else if let value = value as? HostFailureCode {
       super.writeByte(132)
       super.writeValue(value.rawValue)
-    } else if let value = value as? HostRequest {
+    } else if let value = value as? HostTurnRole {
       super.writeByte(133)
-      super.writeValue(value.toList())
-    } else if let value = value as? HostHandshakeResult {
+      super.writeValue(value.rawValue)
+    } else if let value = value as? HostMenuConversation {
       super.writeByte(134)
       super.writeValue(value.toList())
-    } else if let value = value as? HostModelRequest {
+    } else if let value = value as? HostMenuBarLabels {
       super.writeByte(135)
       super.writeValue(value.toList())
-    } else if let value = value as? HostModelLoadResult {
+    } else if let value = value as? HostMenuBarState {
       super.writeByte(136)
       super.writeValue(value.toList())
-    } else if let value = value as? HostConversationTurn {
+    } else if let value = value as? HostRequest {
       super.writeByte(137)
       super.writeValue(value.toList())
-    } else if let value = value as? HostGenerationRequest {
+    } else if let value = value as? HostHandshakeResult {
       super.writeByte(138)
       super.writeValue(value.toList())
-    } else if let value = value as? HostGenerationAcknowledgement {
+    } else if let value = value as? HostModelRequest {
       super.writeByte(139)
       super.writeValue(value.toList())
-    } else if let value = value as? HostCancellationAcknowledgement {
+    } else if let value = value as? HostModelLoadResult {
       super.writeByte(140)
       super.writeValue(value.toList())
-    } else if let value = value as? HostOperationCompletion {
+    } else if let value = value as? HostConversationTurn {
       super.writeByte(141)
       super.writeValue(value.toList())
-    } else if let value = value as? HostGenerationEvent {
+    } else if let value = value as? HostGenerationRequest {
       super.writeByte(142)
       super.writeValue(value.toList())
-    } else if let value = value as? HostTransitionGeometry {
+    } else if let value = value as? HostGenerationAcknowledgement {
       super.writeByte(143)
+      super.writeValue(value.toList())
+    } else if let value = value as? HostCancellationAcknowledgement {
+      super.writeByte(144)
+      super.writeValue(value.toList())
+    } else if let value = value as? HostOperationCompletion {
+      super.writeByte(145)
+      super.writeValue(value.toList())
+    } else if let value = value as? HostGenerationEvent {
+      super.writeByte(146)
+      super.writeValue(value.toList())
+    } else if let value = value as? HostTransitionGeometry {
+      super.writeByte(147)
       super.writeValue(value.toList())
     } else {
       super.writeValue(value)
@@ -897,6 +1112,13 @@ protocol DesktopHostApi {
   /// The chooser is the system's own, so the app never has to be told where
   /// files live or be trusted with a path the user did not pick.
   func chooseModelFile(request: HostRequest, completion: @escaping (Result<String, Error>) -> Void)
+  /// Asks the user where to write [contents], and writes it there.
+  ///
+  /// Returns the path written, or empty if the user backed out. The write
+  /// happens natively for the same reason the chooser does: a sandboxed app
+  /// may write where a save panel says and nowhere else, so handing the path
+  /// back to Dart to write to would land outside the grant the panel gave.
+  func saveTextFile(request: HostRequest, suggestedName: String, contents: String, completion: @escaping (Result<String, Error>) -> Void)
   /// Applies the user's choices about how the resting orb behaves.
   ///
   /// Held natively rather than consulted per change of form, because the
@@ -916,6 +1138,17 @@ protocol DesktopHostApi {
   func beginPresentationTransition(request: HostRequest, target: HostPresentationMode, completion: @escaping (Result<HostTransitionGeometry, Error>) -> Void)
   /// Settles the window into [mode] and lets it take the mouse again.
   func endPresentationTransition(request: HostRequest, mode: HostPresentationMode) throws
+  /// Tells the menu bar what to show the next time it is opened.
+  func setMenuBarState(request: HostRequest, state: HostMenuBarState) throws
+  /// Whether the app currently starts itself when the user logs in.
+  func loginItemStatus(request: HostRequest, completion: @escaping (Result<HostLoginItemStatus, Error>) -> Void)
+  /// Asks macOS to start the app at login, or to stop.
+  ///
+  /// Returns the status that actually resulted, which is not always the one
+  /// asked for — macOS may hold the registration pending the user's approval
+  /// in System Settings. The caller shows what came back rather than what it
+  /// requested.
+  func setLaunchAtLogin(request: HostRequest, enabled: Bool, completion: @escaping (Result<HostLoginItemStatus, Error>) -> Void)
 }
 
 /// Generated setup class from Pigeon to handle messages through the `binaryMessenger`.
@@ -1130,6 +1363,31 @@ class DesktopHostApiSetup {
     } else {
       chooseModelFileChannel.setMessageHandler(nil)
     }
+    /// Asks the user where to write [contents], and writes it there.
+    ///
+    /// Returns the path written, or empty if the user backed out. The write
+    /// happens natively for the same reason the chooser does: a sandboxed app
+    /// may write where a save panel says and nowhere else, so handing the path
+    /// back to Dart to write to would land outside the grant the panel gave.
+    let saveTextFileChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.local_agent_macos.DesktopHostApi.saveTextFile\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
+    if let api = api {
+      saveTextFileChannel.setMessageHandler { message, reply in
+        let args = message as! [Any?]
+        let requestArg = args[0] as! HostRequest
+        let suggestedNameArg = args[1] as! String
+        let contentsArg = args[2] as! String
+        api.saveTextFile(request: requestArg, suggestedName: suggestedNameArg, contents: contentsArg) { result in
+          switch result {
+          case .success(let res):
+            reply(wrapResult(res))
+          case .failure(let error):
+            reply(wrapError(error))
+          }
+        }
+      }
+    } else {
+      saveTextFileChannel.setMessageHandler(nil)
+    }
     /// Applies the user's choices about how the resting orb behaves.
     ///
     /// Held natively rather than consulted per change of form, because the
@@ -1211,12 +1469,75 @@ class DesktopHostApiSetup {
     } else {
       endPresentationTransitionChannel.setMessageHandler(nil)
     }
+    /// Tells the menu bar what to show the next time it is opened.
+    let setMenuBarStateChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.local_agent_macos.DesktopHostApi.setMenuBarState\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
+    if let api = api {
+      setMenuBarStateChannel.setMessageHandler { message, reply in
+        let args = message as! [Any?]
+        let requestArg = args[0] as! HostRequest
+        let stateArg = args[1] as! HostMenuBarState
+        do {
+          try api.setMenuBarState(request: requestArg, state: stateArg)
+          reply(wrapResult(nil))
+        } catch {
+          reply(wrapError(error))
+        }
+      }
+    } else {
+      setMenuBarStateChannel.setMessageHandler(nil)
+    }
+    /// Whether the app currently starts itself when the user logs in.
+    let loginItemStatusChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.local_agent_macos.DesktopHostApi.loginItemStatus\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
+    if let api = api {
+      loginItemStatusChannel.setMessageHandler { message, reply in
+        let args = message as! [Any?]
+        let requestArg = args[0] as! HostRequest
+        api.loginItemStatus(request: requestArg) { result in
+          switch result {
+          case .success(let res):
+            reply(wrapResult(res))
+          case .failure(let error):
+            reply(wrapError(error))
+          }
+        }
+      }
+    } else {
+      loginItemStatusChannel.setMessageHandler(nil)
+    }
+    /// Asks macOS to start the app at login, or to stop.
+    ///
+    /// Returns the status that actually resulted, which is not always the one
+    /// asked for — macOS may hold the registration pending the user's approval
+    /// in System Settings. The caller shows what came back rather than what it
+    /// requested.
+    let setLaunchAtLoginChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.local_agent_macos.DesktopHostApi.setLaunchAtLogin\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
+    if let api = api {
+      setLaunchAtLoginChannel.setMessageHandler { message, reply in
+        let args = message as! [Any?]
+        let requestArg = args[0] as! HostRequest
+        let enabledArg = args[1] as! Bool
+        api.setLaunchAtLogin(request: requestArg, enabled: enabledArg) { result in
+          switch result {
+          case .success(let res):
+            reply(wrapResult(res))
+          case .failure(let error):
+            reply(wrapError(error))
+          }
+        }
+      }
+    } else {
+      setLaunchAtLoginChannel.setMessageHandler(nil)
+    }
   }
 }
 /// Generated protocol from Pigeon that represents Flutter messages that can be called from Swift.
 protocol DesktopHostEventApiProtocol {
   func onGenerationEvent(event eventArg: HostGenerationEvent, completion: @escaping (Result<Void, PigeonError>) -> Void)
   func onPresentationModeChanged(mode modeArg: HostPresentationMode, completion: @escaping (Result<Void, PigeonError>) -> Void)
+  /// The user chose a conversation from the menu bar.
+  func onMenuBarConversationChosen(conversationId conversationIdArg: String, completion: @escaping (Result<Void, PigeonError>) -> Void)
+  /// The user asked for voice from the menu bar.
+  func onMenuBarVoiceRequested(completion: @escaping (Result<Void, PigeonError>) -> Void)
   /// Asks the app to change form, rather than telling it that it already did.
   ///
   /// The hotkey and the menu bar live on the native side, so without this the
@@ -1266,6 +1587,44 @@ class DesktopHostEventApi: DesktopHostEventApiProtocol {
     let channelName: String = "dev.flutter.pigeon.local_agent_macos.DesktopHostEventApi.onPresentationModeChanged\(messageChannelSuffix)"
     let channel = FlutterBasicMessageChannel(name: channelName, binaryMessenger: binaryMessenger, codec: codec)
     channel.sendMessage([modeArg] as [Any?]) { response in
+      guard let listResponse = response as? [Any?] else {
+        completion(.failure(createConnectionError(withChannelName: channelName)))
+        return
+      }
+      if listResponse.count > 1 {
+        let code: String = listResponse[0] as! String
+        let message: String? = nilOrValue(listResponse[1])
+        let details: String? = nilOrValue(listResponse[2])
+        completion(.failure(PigeonError(code: code, message: message, details: details)))
+      } else {
+        completion(.success(()))
+      }
+    }
+  }
+  /// The user chose a conversation from the menu bar.
+  func onMenuBarConversationChosen(conversationId conversationIdArg: String, completion: @escaping (Result<Void, PigeonError>) -> Void) {
+    let channelName: String = "dev.flutter.pigeon.local_agent_macos.DesktopHostEventApi.onMenuBarConversationChosen\(messageChannelSuffix)"
+    let channel = FlutterBasicMessageChannel(name: channelName, binaryMessenger: binaryMessenger, codec: codec)
+    channel.sendMessage([conversationIdArg] as [Any?]) { response in
+      guard let listResponse = response as? [Any?] else {
+        completion(.failure(createConnectionError(withChannelName: channelName)))
+        return
+      }
+      if listResponse.count > 1 {
+        let code: String = listResponse[0] as! String
+        let message: String? = nilOrValue(listResponse[1])
+        let details: String? = nilOrValue(listResponse[2])
+        completion(.failure(PigeonError(code: code, message: message, details: details)))
+      } else {
+        completion(.success(()))
+      }
+    }
+  }
+  /// The user asked for voice from the menu bar.
+  func onMenuBarVoiceRequested(completion: @escaping (Result<Void, PigeonError>) -> Void) {
+    let channelName: String = "dev.flutter.pigeon.local_agent_macos.DesktopHostEventApi.onMenuBarVoiceRequested\(messageChannelSuffix)"
+    let channel = FlutterBasicMessageChannel(name: channelName, binaryMessenger: binaryMessenger, codec: codec)
+    channel.sendMessage(nil) { response in
       guard let listResponse = response as? [Any?] else {
         completion(.failure(createConnectionError(withChannelName: channelName)))
         return

@@ -37,33 +37,130 @@ final class InMemoryConversationStorageService
 
   @override
   Future<List<ConversationSummary>> listConversations() async {
+    // Pinned first, newest pin leading, then recency — the same order the
+    // SQLite store produces, because a contract both must satisfy is not a
+    // contract if only one of them implements it.
     final List<ConversationId> ids = _turns.keys.toList()
-      ..sort(
-        (ConversationId a, ConversationId b) =>
-            _lastTouch[b]!.compareTo(_lastTouch[a]!),
-      );
+      ..sort((ConversationId a, ConversationId b) {
+        final int? pinnedA = _pinnedAt[a];
+        final int? pinnedB = _pinnedAt[b];
+        if (pinnedA != pinnedB) {
+          if (pinnedA == null) {
+            return 1;
+          }
+          if (pinnedB == null) {
+            return -1;
+          }
+          return pinnedB.compareTo(pinnedA);
+        }
+        return _lastTouch[b]!.compareTo(_lastTouch[a]!);
+      });
     return List<ConversationSummary>.unmodifiable(
       ids.map(
         (ConversationId id) => ConversationSummary(
           id: id,
           title:
+              _titles[id] ??
               _turns[id]!
                   .where((Turn turn) => turn.role == TurnRole.user)
                   .map((Turn turn) => turn.text)
                   .firstOrNull ??
               '',
           updatedAt: _updatedAt[id]!,
+          isPinned: _pinnedAt.containsKey(id),
         ),
       ),
     );
   }
 
   @override
+  Future<List<ConversationSummary>> searchConversations(String query) async {
+    final String needle = _folded(query.trim());
+    if (needle.isEmpty) {
+      return listConversations();
+    }
+    final List<ConversationSummary> all = await listConversations();
+    return List<ConversationSummary>.unmodifiable(
+      all.where(
+        (ConversationSummary summary) =>
+            _folded(_titles[summary.id] ?? '').contains(needle) ||
+            (_turns[summary.id] ?? const <Turn>[]).any(
+              (Turn turn) => _folded(turn.text).contains(needle),
+            ),
+      ),
+    );
+  }
+
+  /// Case folding as SQLite does it: ASCII only.
+  ///
+  /// Dart's `toLowerCase` knows about É and SQLite's `LIKE` does not, and a
+  /// store that were quietly cleverer than the real one would hide the
+  /// difference behind a contract both are supposed to satisfy.
+  static String _folded(String value) => String.fromCharCodes(
+    value.codeUnits.map(
+      (int unit) => unit >= 0x41 && unit <= 0x5A ? unit + 0x20 : unit,
+    ),
+  );
+
+  final Map<ConversationId, String> _titles = <ConversationId, String>{};
+  final Map<ConversationId, int> _pinnedAt = <ConversationId, int>{};
+  int _pinOrder = 0;
+
+  @override
+  Future<void> renameConversation(
+    ConversationId conversationId,
+    String title,
+  ) async {
+    if (title.trim().isEmpty) {
+      _titles.remove(conversationId);
+    } else {
+      _titles[conversationId] = title.trim();
+    }
+  }
+
+  @override
+  Future<void> setConversationPinned(
+    ConversationId conversationId, {
+    required bool pinned,
+  }) async {
+    if (pinned) {
+      _pinnedAt[conversationId] = _pinOrder += 1;
+    } else {
+      _pinnedAt.remove(conversationId);
+    }
+  }
+
+  @override
   Future<void> deleteConversation(ConversationId conversationId) async {
     _turns.remove(conversationId);
+    _titles.remove(conversationId);
+    _pinnedAt.remove(conversationId);
     _lastTouch.remove(conversationId);
     _updatedAt.remove(conversationId);
     _runs.removeWhere((RunRecord run) => run.conversationId == conversationId);
+  }
+
+  @override
+  Future<void> dropFromLastQuestion(ConversationId conversationId) async {
+    final List<Turn>? turns = _turns[conversationId];
+    if (turns == null) {
+      return;
+    }
+    final int question = turns.lastIndexWhere(
+      (Turn turn) => turn.role == TurnRole.user,
+    );
+    if (question < 0) {
+      return;
+    }
+    turns.removeRange(question, turns.length);
+    if (turns.isEmpty) {
+      // A key with an empty list is still a row in the list, with no title.
+      _turns.remove(conversationId);
+      _lastTouch.remove(conversationId);
+      _updatedAt.remove(conversationId);
+      _titles.remove(conversationId);
+      _pinnedAt.remove(conversationId);
+    }
   }
 
   @override

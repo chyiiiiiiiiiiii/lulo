@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../../l10n/generated/app_localizations.dart';
 import '../../voice/voice_conversation_controller.dart';
 import 'conversation_content_column.dart';
 
@@ -124,7 +125,7 @@ final class _ConversationComposerState extends State<ConversationComposer> {
                 maxLines: 6,
                 textInputAction: TextInputAction.newline,
                 decoration: InputDecoration(
-                  hintText: '跟 Lulo 說些什麼…',
+                  hintText: AppLocalizations.of(context).composerHint,
                   filled: true,
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(22),
@@ -137,7 +138,7 @@ final class _ConversationComposerState extends State<ConversationComposer> {
                   suffixIcon: canSubmit
                       ? IconButton(
                           key: const Key('conversation-submit-button'),
-                          tooltip: '傳送',
+                          tooltip: AppLocalizations.of(context).sendTooltip,
                           onPressed: _controller.text.trim().isEmpty
                               ? null
                               : _submit,
@@ -145,7 +146,9 @@ final class _ConversationComposerState extends State<ConversationComposer> {
                         )
                       : IconButton(
                           key: const Key('conversation-stop-button'),
-                          tooltip: '停止回答',
+                          tooltip: AppLocalizations.of(
+                            context,
+                          ).stopAnswerTooltip,
                           onPressed: _stop,
                           icon: const Icon(Icons.stop_rounded),
                         ),
@@ -188,7 +191,7 @@ final class _HoldToTalkButton extends StatelessWidget {
           onPointerUp: (_) => voice.holdToTalkReleased(),
           onPointerCancel: (_) => voice.holdToTalkReleased(),
           child: Tooltip(
-            message: '按住說話，放開送出',
+            message: AppLocalizations.of(context).holdToTalkHint,
             child: AnimatedScale(
               scale: held ? 1.15 : 1,
               duration: const Duration(milliseconds: 120),

@@ -2,6 +2,7 @@ import 'package:agent_core/agent_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:local_agent_macos/features/conversation/widgets/completed_turn.dart';
+import 'package:local_agent_macos/l10n/generated/app_localizations.dart';
 
 void main() {
   Turn spoken({required double? confidence}) => Turn.voice(
@@ -21,6 +22,8 @@ void main() {
 
   Future<void> show(WidgetTester tester, Turn turn) => tester.pumpWidget(
     MaterialApp(
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
       home: Scaffold(body: CompletedTurn(turn: turn)),
     ),
   );

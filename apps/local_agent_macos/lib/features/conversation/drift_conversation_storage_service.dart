@@ -99,8 +99,35 @@ class RunRows extends Table {
       text().withDefault(const Constant<String>(''))();
 }
 
+/// What the user has decided about a conversation, as opposed to what was
+/// said in it.
+///
+/// A separate table rather than columns on the turns, because a conversation
+/// has no row of its own: it is whatever turns share a `conversationId`, and
+/// that is deliberate — it leaves no second copy of the truth to fall out of
+/// step. This holds only the things the turns cannot derive. A conversation
+/// nobody has renamed or pinned has no row here at all.
+class ConversationMetaRows extends Table {
+  /// The conversation these decisions belong to.
+  TextColumn get conversationId => text()();
+
+  /// The name the user gave it, or null to keep the derived one.
+  TextColumn get title => text().nullable()();
+
+  /// When it was pinned, or null if it is not.
+  ///
+  /// A time rather than a flag so that pinned conversations keep an order of
+  /// their own — most recently pinned first — instead of falling back to a
+  /// recency the user pinned them to escape.
+  IntColumn get pinnedAtMs => integer().nullable()();
+
+  /// One row per conversation, keyed by the conversation itself.
+  @override
+  Set<Column<Object>> get primaryKey => <Column<Object>>{conversationId};
+}
+
 /// The SQLite database holding every conversation.
-@DriftDatabase(tables: <Type>[TurnRows, RunRows])
+@DriftDatabase(tables: <Type>[TurnRows, RunRows, ConversationMetaRows])
 final class ConversationDatabase extends _$ConversationDatabase {
   /// Opens the database on [executor].
   ConversationDatabase(super.executor);
@@ -118,7 +145,7 @@ final class ConversationDatabase extends _$ConversationDatabase {
   ConversationDatabase.atFile(File file) : super(NativeDatabase(file));
 
   @override
-  int get schemaVersion => 4;
+  int get schemaVersion => 5;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -141,6 +168,9 @@ final class ConversationDatabase extends _$ConversationDatabase {
         // table is rebuilt rather than migrated row by row.
         await migrator.deleteTable(runRows.actualTableName);
         await migrator.createTable(runRows);
+      }
+      if (from < 5) {
+        await migrator.createTable(conversationMetaRows);
       }
     },
     beforeOpen: (OpeningDetails details) async {
@@ -201,35 +231,131 @@ final class DriftConversationStorageService
   }
 
   @override
-  Future<List<ConversationSummary>> listConversations() async {
-    // The list is derived from the turns: title is the first user row, and
-    // recency is the newest row's insertion order — monotonic even when two
-    // turns land inside the same millisecond.
+  Future<List<ConversationSummary>> listConversations() =>
+      _summaries(match: null);
+
+  /// The list, optionally narrowed to conversations containing [match].
+  ///
+  /// One query for both because the shape is the same: the title is the user's
+  /// own if they set one and the first thing they said otherwise, and the
+  /// order is pinned first — newest pin leading — then recency, which is the
+  /// newest row's insertion order and stays monotonic even when two turns
+  /// land inside the same millisecond.
+  Future<List<ConversationSummary>> _summaries({required String? match}) async {
     final List<QueryRow> rows = await _database
         .customSelect(
-          'SELECT conversation_id, '
-          '  (SELECT content FROM turn_rows AS titles '
-          '   WHERE titles.conversation_id = turns.conversation_id '
-          "   AND titles.role = 'user' "
-          '   ORDER BY titles.id LIMIT 1) AS title, '
-          '  MAX(saved_at_ms) AS updated_at_ms '
+          'SELECT turns.conversation_id AS conversation_id, '
+          '  COALESCE(NULLIF(meta.title, \'\'), ('
+          '    SELECT content FROM turn_rows AS titles '
+          '    WHERE titles.conversation_id = turns.conversation_id '
+          "    AND titles.role = 'user' "
+          '    ORDER BY titles.id LIMIT 1'
+          '  )) AS title, '
+          '  MAX(turns.saved_at_ms) AS updated_at_ms, '
+          '  meta.pinned_at_ms AS pinned_at_ms '
           'FROM turn_rows AS turns '
-          'GROUP BY conversation_id '
-          'ORDER BY MAX(id) DESC',
-          readsFrom: <TableInfo<Table, Object?>>{_database.turnRows},
+          'LEFT JOIN conversation_meta_rows AS meta '
+          '  ON meta.conversation_id = turns.conversation_id '
+          '${match == null ? '' : 'WHERE (turns.conversation_id IN ('
+                    '  SELECT conversation_id FROM turn_rows '
+                    r"  WHERE content LIKE ?1 ESCAPE '\'"
+                    ') OR turns.conversation_id IN ('
+                    '  SELECT conversation_id FROM conversation_meta_rows '
+                    r"  WHERE title LIKE ?1 ESCAPE '\'"
+                    ')) '}'
+          'GROUP BY turns.conversation_id '
+          'ORDER BY meta.pinned_at_ms IS NULL, meta.pinned_at_ms DESC, '
+          '  MAX(turns.id) DESC',
+          variables: <Variable<Object>>[
+            if (match != null) Variable<String>('%$match%'),
+          ],
+          readsFrom: <TableInfo<Table, Object?>>{
+            _database.turnRows,
+            _database.conversationMetaRows,
+          },
         )
         .get();
-    return List<ConversationSummary>.unmodifiable(
-      rows.map(
-        (QueryRow row) => ConversationSummary(
-          id: ConversationId(row.read<String>('conversation_id')),
-          title: row.readNullable<String>('title') ?? '',
-          updatedAt: DateTime.fromMillisecondsSinceEpoch(
-            row.read<int>('updated_at_ms'),
-          ),
-        ),
-      ),
+    return List<ConversationSummary>.unmodifiable(rows.map(_summaryFrom));
+  }
+
+  /// One list row, however it was selected.
+  ConversationSummary _summaryFrom(QueryRow row) => ConversationSummary(
+    id: ConversationId(row.read<String>('conversation_id')),
+    title: row.readNullable<String>('title') ?? '',
+    updatedAt: DateTime.fromMillisecondsSinceEpoch(
+      row.read<int>('updated_at_ms'),
+    ),
+    isPinned: row.readNullable<int>('pinned_at_ms') != null,
+  );
+
+  @override
+  Future<List<ConversationSummary>> searchConversations(String query) {
+    final String needle = query.trim();
+    if (needle.isEmpty) {
+      return listConversations();
+    }
+    // LIKE rather than a full-text index, deliberately. FTS5 tokenizes on
+    // non-alphanumerics, and Chinese has no word breaks: 「台中天氣」 would be
+    // one token and 「中天」 would find nothing. A substring scan over a store
+    // one person talks into is cheap, and it is the only thing that answers
+    // the question the user is actually asking.
+    //
+    // Escaped so a query containing % or _ searches for those characters
+    // rather than matching everything.
+    return _summaries(
+      match: needle
+          .replaceAll(r'\', r'\\')
+          .replaceAll('%', r'\%')
+          .replaceAll('_', r'\_'),
     );
+  }
+
+  @override
+  Future<void> renameConversation(
+    ConversationId conversationId,
+    String title,
+  ) async {
+    await _database
+        .into(_database.conversationMetaRows)
+        .insertOnConflictUpdate(
+          ConversationMetaRowsCompanion(
+            conversationId: Value<String>(conversationId.value),
+            title: Value<String?>(title.trim().isEmpty ? null : title.trim()),
+          ),
+        );
+  }
+
+  @override
+  Future<void> setConversationPinned(
+    ConversationId conversationId, {
+    required bool pinned,
+  }) async {
+    int? at;
+    if (pinned) {
+      // Strictly above every existing pin rather than simply "now". Two pins
+      // inside one millisecond are the same instant, and the order then falls
+      // through to recency — which is the exact ordering a pin exists to
+      // override.
+      final List<QueryRow> highest = await _database
+          .customSelect(
+            'SELECT MAX(pinned_at_ms) AS top FROM conversation_meta_rows',
+            readsFrom: <TableInfo<Table, Object?>>{
+              _database.conversationMetaRows,
+            },
+          )
+          .get();
+      final int? top = highest.single.readNullable<int>('top');
+      final int now = DateTime.now().millisecondsSinceEpoch;
+      at = top == null || now > top ? now : top + 1;
+    }
+    await _database
+        .into(_database.conversationMetaRows)
+        .insertOnConflictUpdate(
+          ConversationMetaRowsCompanion(
+            conversationId: Value<String>(conversationId.value),
+            pinnedAtMs: Value<int?>(at),
+          ),
+        );
   }
 
   @override
@@ -242,6 +368,57 @@ final class DriftConversationStorageService
           ($RunRowsTable r) => r.conversationId.equals(conversationId.value),
         ))
         .go();
+    await (_database.delete(_database.conversationMetaRows)..where(
+          ($ConversationMetaRowsTable m) =>
+              m.conversationId.equals(conversationId.value),
+        ))
+        .go();
+  }
+
+  @override
+  Future<void> dropFromLastQuestion(ConversationId conversationId) async {
+    // Found and cut by row id rather than by time. `saved_at_ms` repeats
+    // whenever two turns land inside the same millisecond, which is exactly
+    // what a question and the answer to it can do; the id is also the order
+    // `loadTurns` hands the caller.
+    final TurnRow? question =
+        await (_database.select(_database.turnRows)
+              ..where(
+                ($TurnRowsTable t) =>
+                    t.conversationId.equals(conversationId.value) &
+                    t.role.equals(TurnRole.user.name),
+              )
+              ..orderBy(<OrderClauseGenerator<$TurnRowsTable>>[
+                ($TurnRowsTable t) => OrderingTerm.desc(t.id),
+              ])
+              ..limit(1))
+            .getSingleOrNull();
+    if (question == null) {
+      return;
+    }
+    await (_database.delete(_database.turnRows)..where(
+          ($TurnRowsTable t) =>
+              t.conversationId.equals(conversationId.value) &
+              t.id.isBiggerOrEqualValue(question.id),
+        ))
+        .go();
+    // A conversation with no turns left is off the list, so what the user
+    // decided about it is unreachable — and would otherwise attach itself to
+    // whatever was said in that id next.
+    final int remaining =
+        await (_database.select(_database.turnRows)..where(
+              ($TurnRowsTable t) =>
+                  t.conversationId.equals(conversationId.value),
+            ))
+            .get()
+            .then((List<TurnRow> rows) => rows.length);
+    if (remaining == 0) {
+      await (_database.delete(_database.conversationMetaRows)..where(
+            ($ConversationMetaRowsTable m) =>
+                m.conversationId.equals(conversationId.value),
+          ))
+          .go();
+    }
   }
 
   @override

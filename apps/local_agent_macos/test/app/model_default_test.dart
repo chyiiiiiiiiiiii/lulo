@@ -18,7 +18,7 @@ void main() {
   const ModelCatalogEntry small = ModelCatalogEntry(
     id: 'small-model',
     name: 'A small model',
-    description: 'Fits in a test.',
+    descriptionKey: ModelDescription.balanced,
     fileName: 'small-model.litertlm',
     url: 'https://example.invalid/small-model.litertlm',
     sizeBytes: 4,

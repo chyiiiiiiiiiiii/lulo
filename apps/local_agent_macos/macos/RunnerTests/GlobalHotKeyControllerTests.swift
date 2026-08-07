@@ -77,6 +77,33 @@ final class GlobalHotKeyControllerTests: XCTestCase {
     )
     XCTAssertEqual(invocationCount, 1)
   }
+
+  @MainActor
+  func testTwoControllersNeverMintTheSameIdentifier() {
+    // Carbon addresses a registration by (signature, id), and every
+    // controller here shares one signature — so an id minted twice is two
+    // keys the router cannot tell apart, each answering for the other. The
+    // counter used to be per-instance, so a second controller was latent
+    // breakage of the first one's key. Only uniqueness is a contract here,
+    // not the particular numbers.
+    let first = RecordingHotKeyBackend()
+    let second = RecordingHotKeyBackend()
+    let one = GlobalHotKeyController(backend: first)
+    let two = GlobalHotKeyController(backend: second)
+
+    try? one.register(
+      GlobalHotKey(keyCode: 49, modifiers: 0),
+      handler: {},
+      releaseHandler: nil
+    )
+    try? two.register(
+      GlobalHotKey(keyCode: 2, modifiers: 0),
+      handler: {},
+      releaseHandler: nil
+    )
+
+    XCTAssertNotEqual(first.mintedIDs.first, second.mintedIDs.first)
+  }
 }
 
 @MainActor
@@ -87,6 +114,9 @@ private final class RecordingHotKeyBackend: HotKeyBackend {
   var activeKeys: [GlobalHotKey] {
     keysByID.keys.sorted().compactMap { keysByID[$0] }
   }
+
+  /// The identifiers this backend was handed, in the order they arrived.
+  var mintedIDs: [UInt32] = []
 
   func register(
     _ key: GlobalHotKey,
@@ -100,6 +130,7 @@ private final class RecordingHotKeyBackend: HotKeyBackend {
       )
     }
     keysByID[id] = key
+    mintedIDs.append(id)
     return HotKeyRegistration(id: id, token: NSObject())
   }
 
@@ -107,4 +138,5 @@ private final class RecordingHotKeyBackend: HotKeyBackend {
     keysByID[registration.id] = nil
     unregisterCount += 1
   }
+
 }

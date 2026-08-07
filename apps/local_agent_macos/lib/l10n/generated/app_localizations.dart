@@ -1,0 +1,1125 @@
+import 'dart:async';
+
+import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:intl/intl.dart' as intl;
+
+import 'app_localizations_en.dart';
+import 'app_localizations_zh.dart';
+
+// ignore_for_file: type=lint
+
+/// Callers can lookup localized strings with an instance of AppLocalizations
+/// returned by `AppLocalizations.of(context)`.
+///
+/// Applications need to include `AppLocalizations.delegate()` in their app's
+/// `localizationDelegates` list, and the locales they support in the app's
+/// `supportedLocales` list. For example:
+///
+/// ```dart
+/// import 'generated/app_localizations.dart';
+///
+/// return MaterialApp(
+///   localizationsDelegates: AppLocalizations.localizationsDelegates,
+///   supportedLocales: AppLocalizations.supportedLocales,
+///   home: MyApplicationHome(),
+/// );
+/// ```
+///
+/// ## Update pubspec.yaml
+///
+/// Please make sure to update your pubspec.yaml to include the following
+/// packages:
+///
+/// ```yaml
+/// dependencies:
+///   # Internationalization support.
+///   flutter_localizations:
+///     sdk: flutter
+///   intl: any # Use the pinned version from flutter_localizations
+///
+///   # Rest of dependencies
+/// ```
+///
+/// ## iOS Applications
+///
+/// iOS applications define key application metadata, including supported
+/// locales, in an Info.plist file that is built into the application bundle.
+/// To configure the locales supported by your app, you’ll need to edit this
+/// file.
+///
+/// First, open your project’s ios/Runner.xcworkspace Xcode workspace file.
+/// Then, in the Project Navigator, open the Info.plist file under the Runner
+/// project’s Runner folder.
+///
+/// Next, select the Information Property List item, select Add Item from the
+/// Editor menu, then select Localizations from the pop-up menu.
+///
+/// Select and expand the newly-created Localizations item then, for each
+/// locale your application supports, add a new item and select the locale
+/// you wish to add from the pop-up menu in the Value field. This list should
+/// be consistent with the languages listed in the AppLocalizations.supportedLocales
+/// property.
+abstract class AppLocalizations {
+  AppLocalizations(String locale)
+    : localeName = intl.Intl.canonicalizedLocale(locale.toString());
+
+  final String localeName;
+
+  static AppLocalizations of(BuildContext context) {
+    return Localizations.of<AppLocalizations>(context, AppLocalizations)!;
+  }
+
+  static const LocalizationsDelegate<AppLocalizations> delegate =
+      _AppLocalizationsDelegate();
+
+  /// A list of this localizations delegate along with the default localizations
+  /// delegates.
+  ///
+  /// Returns a list of localizations delegates containing this delegate along with
+  /// GlobalMaterialLocalizations.delegate, GlobalCupertinoLocalizations.delegate,
+  /// and GlobalWidgetsLocalizations.delegate.
+  ///
+  /// Additional delegates can be added by appending to this list in
+  /// MaterialApp. This list does not have to be used at all if a custom list
+  /// of delegates is preferred or required.
+  static const List<LocalizationsDelegate<dynamic>> localizationsDelegates =
+      <LocalizationsDelegate<dynamic>>[
+        delegate,
+        GlobalMaterialLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+      ];
+
+  /// A list of this localizations delegate's supported locales.
+  static const List<Locale> supportedLocales = <Locale>[
+    Locale('en'),
+    Locale('zh'),
+    Locale.fromSubtags(languageCode: 'zh', scriptCode: 'Hant'),
+  ];
+
+  /// No description provided for @voiceTurnOn.
+  ///
+  /// In en, this message translates to:
+  /// **'Turn voice on'**
+  String get voiceTurnOn;
+
+  /// No description provided for @voiceTurnOff.
+  ///
+  /// In en, this message translates to:
+  /// **'Turn voice off'**
+  String get voiceTurnOff;
+
+  /// No description provided for @conversationsTooltip.
+  ///
+  /// In en, this message translates to:
+  /// **'Conversations'**
+  String get conversationsTooltip;
+
+  /// No description provided for @localModelLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Local model'**
+  String get localModelLabel;
+
+  /// No description provided for @localBadge.
+  ///
+  /// In en, this message translates to:
+  /// **'Local'**
+  String get localBadge;
+
+  /// No description provided for @voiceStopped.
+  ///
+  /// In en, this message translates to:
+  /// **'Voice stopped: {reason}'**
+  String voiceStopped(String reason);
+
+  /// No description provided for @voiceListening.
+  ///
+  /// In en, this message translates to:
+  /// **'Listening…'**
+  String get voiceListening;
+
+  /// No description provided for @voiceThinking.
+  ///
+  /// In en, this message translates to:
+  /// **'Thinking…'**
+  String get voiceThinking;
+
+  /// No description provided for @voiceSpeaking.
+  ///
+  /// In en, this message translates to:
+  /// **'Speaking…'**
+  String get voiceSpeaking;
+
+  /// No description provided for @voicePaused.
+  ///
+  /// In en, this message translates to:
+  /// **'Paused — say something to carry on'**
+  String get voicePaused;
+
+  /// No description provided for @voiceHolding.
+  ///
+  /// In en, this message translates to:
+  /// **'Listening — let go to send'**
+  String get voiceHolding;
+
+  /// No description provided for @voiceAnswering.
+  ///
+  /// In en, this message translates to:
+  /// **'Answering — hold ⇧⌘Space to cut in'**
+  String get voiceAnswering;
+
+  /// No description provided for @composerHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Say something to Lulo…'**
+  String get composerHint;
+
+  /// No description provided for @sendTooltip.
+  ///
+  /// In en, this message translates to:
+  /// **'Send'**
+  String get sendTooltip;
+
+  /// No description provided for @stopAnswerTooltip.
+  ///
+  /// In en, this message translates to:
+  /// **'Stop the answer'**
+  String get stopAnswerTooltip;
+
+  /// No description provided for @holdToTalkHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Hold to talk, let go to send'**
+  String get holdToTalkHint;
+
+  /// No description provided for @turnFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Response failed'**
+  String get turnFailed;
+
+  /// No description provided for @turnStopped.
+  ///
+  /// In en, this message translates to:
+  /// **'Response stopped'**
+  String get turnStopped;
+
+  /// No description provided for @turnInterrupted.
+  ///
+  /// In en, this message translates to:
+  /// **'Response interrupted'**
+  String get turnInterrupted;
+
+  /// No description provided for @roleYou.
+  ///
+  /// In en, this message translates to:
+  /// **'You'**
+  String get roleYou;
+
+  /// No description provided for @roleAssistant.
+  ///
+  /// In en, this message translates to:
+  /// **'Assistant'**
+  String get roleAssistant;
+
+  /// No description provided for @copyTooltip.
+  ///
+  /// In en, this message translates to:
+  /// **'Copy'**
+  String get copyTooltip;
+
+  /// No description provided for @copiedNotice.
+  ///
+  /// In en, this message translates to:
+  /// **'Copied'**
+  String get copiedNotice;
+
+  /// No description provided for @regenerateTooltip.
+  ///
+  /// In en, this message translates to:
+  /// **'Answer again'**
+  String get regenerateTooltip;
+
+  /// No description provided for @reviseTooltip.
+  ///
+  /// In en, this message translates to:
+  /// **'Rewrite this question'**
+  String get reviseTooltip;
+
+  /// No description provided for @reviseCancel.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancel'**
+  String get reviseCancel;
+
+  /// No description provided for @reviseSubmit.
+  ///
+  /// In en, this message translates to:
+  /// **'Ask again'**
+  String get reviseSubmit;
+
+  /// No description provided for @heardDoubtLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Not sure it heard this right'**
+  String get heardDoubtLabel;
+
+  /// No description provided for @heardDoubtTooltip.
+  ///
+  /// In en, this message translates to:
+  /// **'The weakest word scored {score}; anything under {threshold} is marked.'**
+  String heardDoubtTooltip(String score, String threshold);
+
+  /// No description provided for @jumpToNewest.
+  ///
+  /// In en, this message translates to:
+  /// **'Jump to the newest message'**
+  String get jumpToNewest;
+
+  /// No description provided for @conversationEmptyTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Start a conversation'**
+  String get conversationEmptyTitle;
+
+  /// No description provided for @conversationEmptyNote.
+  ///
+  /// In en, this message translates to:
+  /// **'Private, fast, and ready on this Mac.'**
+  String get conversationEmptyNote;
+
+  /// No description provided for @conversationsTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Conversations'**
+  String get conversationsTitle;
+
+  /// No description provided for @newConversation.
+  ///
+  /// In en, this message translates to:
+  /// **'New conversation'**
+  String get newConversation;
+
+  /// No description provided for @closeConversations.
+  ///
+  /// In en, this message translates to:
+  /// **'Close the conversation list'**
+  String get closeConversations;
+
+  /// No description provided for @nothingYet.
+  ///
+  /// In en, this message translates to:
+  /// **'Nothing yet'**
+  String get nothingYet;
+
+  /// No description provided for @forgetConversation.
+  ///
+  /// In en, this message translates to:
+  /// **'Forget this conversation'**
+  String get forgetConversation;
+
+  /// No description provided for @presenceIdle.
+  ///
+  /// In en, this message translates to:
+  /// **'Agent ready'**
+  String get presenceIdle;
+
+  /// No description provided for @presenceListening.
+  ///
+  /// In en, this message translates to:
+  /// **'Listening'**
+  String get presenceListening;
+
+  /// No description provided for @presenceThinking.
+  ///
+  /// In en, this message translates to:
+  /// **'Thinking'**
+  String get presenceThinking;
+
+  /// No description provided for @presenceSpeaking.
+  ///
+  /// In en, this message translates to:
+  /// **'Speaking'**
+  String get presenceSpeaking;
+
+  /// No description provided for @presenceWorking.
+  ///
+  /// In en, this message translates to:
+  /// **'Working'**
+  String get presenceWorking;
+
+  /// No description provided for @presenceError.
+  ///
+  /// In en, this message translates to:
+  /// **'Attention needed'**
+  String get presenceError;
+
+  /// No description provided for @desktopOrbLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Lulo, your local assistant. Click to open the conversation, or drag to move it.'**
+  String get desktopOrbLabel;
+
+  /// No description provided for @firstRunTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Lulo runs on this Mac'**
+  String get firstRunTitle;
+
+  /// No description provided for @firstRunBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Nothing you type or say leaves it. To think, it needs a model — one file, downloaded once, kept here.'**
+  String get firstRunBody;
+
+  /// No description provided for @firstRunMicNote.
+  ///
+  /// In en, this message translates to:
+  /// **'The microphone is asked for the first time you talk, not now.'**
+  String get firstRunMicNote;
+
+  /// No description provided for @firstRunDismiss.
+  ///
+  /// In en, this message translates to:
+  /// **'Look around first'**
+  String get firstRunDismiss;
+
+  /// No description provided for @firstRunDownload.
+  ///
+  /// In en, this message translates to:
+  /// **'Download it'**
+  String get firstRunDownload;
+
+  /// No description provided for @firstRunRetry.
+  ///
+  /// In en, this message translates to:
+  /// **'Try again'**
+  String get firstRunRetry;
+
+  /// No description provided for @firstRunDownloading.
+  ///
+  /// In en, this message translates to:
+  /// **'Downloading. You can keep using the Mac; this window can go away and come back.'**
+  String get firstRunDownloading;
+
+  /// No description provided for @modelSummary.
+  ///
+  /// In en, this message translates to:
+  /// **'{description} {size}.'**
+  String modelSummary(String description, String size);
+
+  /// No description provided for @modelRecommended.
+  ///
+  /// In en, this message translates to:
+  /// **'{name} — recommended'**
+  String modelRecommended(String name);
+
+  /// No description provided for @downloadFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'The download did not finish: {reason}'**
+  String downloadFailed(String reason);
+
+  /// No description provided for @downloadModel.
+  ///
+  /// In en, this message translates to:
+  /// **'Download'**
+  String get downloadModel;
+
+  /// No description provided for @retryDownload.
+  ///
+  /// In en, this message translates to:
+  /// **'Retry'**
+  String get retryDownload;
+
+  /// No description provided for @useModel.
+  ///
+  /// In en, this message translates to:
+  /// **'Use'**
+  String get useModel;
+
+  /// No description provided for @settingsTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Settings'**
+  String get settingsTitle;
+
+  /// No description provided for @closeSettings.
+  ///
+  /// In en, this message translates to:
+  /// **'Close settings'**
+  String get closeSettings;
+
+  /// No description provided for @sectionDesktop.
+  ///
+  /// In en, this message translates to:
+  /// **'On the desktop'**
+  String get sectionDesktop;
+
+  /// No description provided for @keepOrbOnTop.
+  ///
+  /// In en, this message translates to:
+  /// **'Keep the orb above other windows'**
+  String get keepOrbOnTop;
+
+  /// No description provided for @keepOrbOnTopNote.
+  ///
+  /// In en, this message translates to:
+  /// **'Off puts it in the normal window order, where other windows can cover it.'**
+  String get keepOrbOnTopNote;
+
+  /// No description provided for @followAcrossSpaces.
+  ///
+  /// In en, this message translates to:
+  /// **'Follow me between Spaces'**
+  String get followAcrossSpaces;
+
+  /// No description provided for @followAcrossSpacesNote.
+  ///
+  /// In en, this message translates to:
+  /// **'Off leaves the orb on the Space it was opened in.'**
+  String get followAcrossSpacesNote;
+
+  /// No description provided for @sectionStart.
+  ///
+  /// In en, this message translates to:
+  /// **'When it starts'**
+  String get sectionStart;
+
+  /// No description provided for @openOnLaunch.
+  ///
+  /// In en, this message translates to:
+  /// **'Open the conversation on launch'**
+  String get openOnLaunch;
+
+  /// No description provided for @openOnLaunchNote.
+  ///
+  /// In en, this message translates to:
+  /// **'Off rests as an orb until you summon it.'**
+  String get openOnLaunchNote;
+
+  /// No description provided for @launchAtLogin.
+  ///
+  /// In en, this message translates to:
+  /// **'Be here when I log in'**
+  String get launchAtLogin;
+
+  /// No description provided for @launchAtLoginNote.
+  ///
+  /// In en, this message translates to:
+  /// **'Starts Lulo after you log in, so you do not have to.'**
+  String get launchAtLoginNote;
+
+  /// No description provided for @launchAtLoginNeedsApproval.
+  ///
+  /// In en, this message translates to:
+  /// **'Not in effect yet — macOS wants you to allow Lulo in System Settings › General › Login Items.'**
+  String get launchAtLoginNeedsApproval;
+
+  /// No description provided for @launchAtLoginUnavailable.
+  ///
+  /// In en, this message translates to:
+  /// **'This Mac\'s macOS is too old for this; it needs macOS 13 or later.'**
+  String get launchAtLoginUnavailable;
+
+  /// No description provided for @launchAtLoginRefused.
+  ///
+  /// In en, this message translates to:
+  /// **'macOS will not accept this copy of Lulo — open the one in your Applications folder and try again.'**
+  String get launchAtLoginRefused;
+
+  /// No description provided for @launchAtLoginFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not ask macOS about this.'**
+  String get launchAtLoginFailed;
+
+  /// No description provided for @sectionModel.
+  ///
+  /// In en, this message translates to:
+  /// **'The model it thinks with'**
+  String get sectionModel;
+
+  /// No description provided for @noModelChosen.
+  ///
+  /// In en, this message translates to:
+  /// **'No model chosen'**
+  String get noModelChosen;
+
+  /// No description provided for @previewNote.
+  ///
+  /// In en, this message translates to:
+  /// **'Lulo is answering from its built-in preview, which says the same thing every time.'**
+  String get previewNote;
+
+  /// No description provided for @modelLoadedNote.
+  ///
+  /// In en, this message translates to:
+  /// **'Loaded now. Choosing another takes a few seconds to swap.'**
+  String get modelLoadedNote;
+
+  /// No description provided for @chooseModel.
+  ///
+  /// In en, this message translates to:
+  /// **'Choose…'**
+  String get chooseModel;
+
+  /// No description provided for @sectionVoice.
+  ///
+  /// In en, this message translates to:
+  /// **'The voice it speaks with'**
+  String get sectionVoice;
+
+  /// No description provided for @voiceLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Voice'**
+  String get voiceLabel;
+
+  /// No description provided for @voiceNote.
+  ///
+  /// In en, this message translates to:
+  /// **'Spoken answers use the resident local synthesizer.'**
+  String get voiceNote;
+
+  /// No description provided for @sectionTakingTurns.
+  ///
+  /// In en, this message translates to:
+  /// **'Taking turns'**
+  String get sectionTakingTurns;
+
+  /// No description provided for @showVoiceEvidence.
+  ///
+  /// In en, this message translates to:
+  /// **'Show why it took the floor'**
+  String get showVoiceEvidence;
+
+  /// No description provided for @showVoiceEvidenceNote.
+  ///
+  /// In en, this message translates to:
+  /// **'A running account under the conversation: what was ignored as an acknowledgement, what cut in, and what each turn cost.'**
+  String get showVoiceEvidenceNote;
+
+  /// No description provided for @sectionSummoning.
+  ///
+  /// In en, this message translates to:
+  /// **'Summoning'**
+  String get sectionSummoning;
+
+  /// No description provided for @showHideConversation.
+  ///
+  /// In en, this message translates to:
+  /// **'Show or hide the conversation'**
+  String get showHideConversation;
+
+  /// No description provided for @anywhereOnMac.
+  ///
+  /// In en, this message translates to:
+  /// **'Anywhere on the Mac.'**
+  String get anywhereOnMac;
+
+  /// No description provided for @profileWhoItIs.
+  ///
+  /// In en, this message translates to:
+  /// **'Who it is'**
+  String get profileWhoItIs;
+
+  /// No description provided for @profileAgentName.
+  ///
+  /// In en, this message translates to:
+  /// **'What it is called'**
+  String get profileAgentName;
+
+  /// No description provided for @profileUserName.
+  ///
+  /// In en, this message translates to:
+  /// **'What it calls you'**
+  String get profileUserName;
+
+  /// No description provided for @profileUserNameHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Left empty it uses no name'**
+  String get profileUserNameHint;
+
+  /// No description provided for @profileHowItTalks.
+  ///
+  /// In en, this message translates to:
+  /// **'How it talks'**
+  String get profileHowItTalks;
+
+  /// No description provided for @profileTone.
+  ///
+  /// In en, this message translates to:
+  /// **'Tone'**
+  String get profileTone;
+
+  /// No description provided for @profileToneHint.
+  ///
+  /// In en, this message translates to:
+  /// **'For example: 直接一點，不要客套'**
+  String get profileToneHint;
+
+  /// No description provided for @profileHowMuch.
+  ///
+  /// In en, this message translates to:
+  /// **'How much it says'**
+  String get profileHowMuch;
+
+  /// No description provided for @lengthShort.
+  ///
+  /// In en, this message translates to:
+  /// **'Short'**
+  String get lengthShort;
+
+  /// No description provided for @lengthEnough.
+  ///
+  /// In en, this message translates to:
+  /// **'Enough'**
+  String get lengthEnough;
+
+  /// No description provided for @lengthThorough.
+  ///
+  /// In en, this message translates to:
+  /// **'Thorough'**
+  String get lengthThorough;
+
+  /// No description provided for @profileAdmitUncertainty.
+  ///
+  /// In en, this message translates to:
+  /// **'Say so when it is not sure'**
+  String get profileAdmitUncertainty;
+
+  /// No description provided for @profileAdmitUncertaintyNote.
+  ///
+  /// In en, this message translates to:
+  /// **'Off lets it state a guess as though it were a fact.'**
+  String get profileAdmitUncertaintyNote;
+
+  /// No description provided for @profileLeadWithAnswer.
+  ///
+  /// In en, this message translates to:
+  /// **'Answer first, explain after'**
+  String get profileLeadWithAnswer;
+
+  /// No description provided for @profileMemories.
+  ///
+  /// In en, this message translates to:
+  /// **'What it remembers'**
+  String get profileMemories;
+
+  /// No description provided for @profileMemoriesNote.
+  ///
+  /// In en, this message translates to:
+  /// **'Facts about you. Each one reaches the model only on a turn it is relevant to, rather than being sent every time.'**
+  String get profileMemoriesNote;
+
+  /// No description provided for @profileAddMemoryHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Remember something, such as 我住在台中'**
+  String get profileAddMemoryHint;
+
+  /// No description provided for @profileForget.
+  ///
+  /// In en, this message translates to:
+  /// **'Forget this'**
+  String get profileForget;
+
+  /// No description provided for @profileTurnTaking.
+  ///
+  /// In en, this message translates to:
+  /// **'Your own words for taking turns'**
+  String get profileTurnTaking;
+
+  /// No description provided for @profileTurnTakingNote.
+  ///
+  /// In en, this message translates to:
+  /// **'Each list is added to a built-in one. The built-in lists are a guess about how someone talks, and how you talk is something only you know.'**
+  String get profileTurnTakingNote;
+
+  /// No description provided for @profileCarryOn.
+  ///
+  /// In en, this message translates to:
+  /// **'These mean carry on'**
+  String get profileCarryOn;
+
+  /// No description provided for @profileCarryOnNote.
+  ///
+  /// In en, this message translates to:
+  /// **'Said while it is talking, these never stop it. A single character also covers being said several times over.'**
+  String get profileCarryOnNote;
+
+  /// No description provided for @profileCarryOnHint.
+  ///
+  /// In en, this message translates to:
+  /// **'For example: 蛤'**
+  String get profileCarryOnHint;
+
+  /// No description provided for @profileStop.
+  ///
+  /// In en, this message translates to:
+  /// **'These mean stop'**
+  String get profileStop;
+
+  /// No description provided for @profileStopNote.
+  ///
+  /// In en, this message translates to:
+  /// **'However short, these end the answer.'**
+  String get profileStopNote;
+
+  /// No description provided for @profileStopHint.
+  ///
+  /// In en, this message translates to:
+  /// **'For example: 先停'**
+  String get profileStopHint;
+
+  /// No description provided for @profileUnfinished.
+  ///
+  /// In en, this message translates to:
+  /// **'These mean you have not finished'**
+  String get profileUnfinished;
+
+  /// No description provided for @profileUnfinishedNote.
+  ///
+  /// In en, this message translates to:
+  /// **'A sentence ending on one of these buys you longer before it answers.'**
+  String get profileUnfinishedNote;
+
+  /// No description provided for @profileUnfinishedHint.
+  ///
+  /// In en, this message translates to:
+  /// **'For example: 然後'**
+  String get profileUnfinishedHint;
+
+  /// No description provided for @profileVocabulary.
+  ///
+  /// In en, this message translates to:
+  /// **'Names this computer is about'**
+  String get profileVocabulary;
+
+  /// No description provided for @profileVocabularyNote.
+  ///
+  /// In en, this message translates to:
+  /// **'Names, products, jargon. The recogniser leans towards these and the text repair leaves them alone. It is a hint, not a guarantee — for a word it actually gets wrong, use the list below.'**
+  String get profileVocabularyNote;
+
+  /// No description provided for @profileVocabularyHint.
+  ///
+  /// In en, this message translates to:
+  /// **'For example: Lulo'**
+  String get profileVocabularyHint;
+
+  /// No description provided for @profileMisheard.
+  ///
+  /// In en, this message translates to:
+  /// **'Fix a word it mishears, once'**
+  String get profileMisheard;
+
+  /// No description provided for @profileMisheardNote.
+  ///
+  /// In en, this message translates to:
+  /// **'When it hears the left, it writes the right instead. A substitution rather than a hint, so it always takes effect.'**
+  String get profileMisheardNote;
+
+  /// No description provided for @profileMisheardHeardHint.
+  ///
+  /// In en, this message translates to:
+  /// **'It heard'**
+  String get profileMisheardHeardHint;
+
+  /// No description provided for @profileMisheardMeantHint.
+  ///
+  /// In en, this message translates to:
+  /// **'You said'**
+  String get profileMisheardMeantHint;
+
+  /// No description provided for @profileMisheardAdd.
+  ///
+  /// In en, this message translates to:
+  /// **'Remember this'**
+  String get profileMisheardAdd;
+
+  /// No description provided for @profileWords.
+  ///
+  /// In en, this message translates to:
+  /// **'The words it hears'**
+  String get profileWords;
+
+  /// No description provided for @profileWordsNote.
+  ///
+  /// In en, this message translates to:
+  /// **'The recogniser has never met your jargon, and there will always be a word it gets wrong every time.'**
+  String get profileWordsNote;
+
+  /// No description provided for @addTooltip.
+  ///
+  /// In en, this message translates to:
+  /// **'Add'**
+  String get addTooltip;
+
+  /// No description provided for @modelDescriptionBalanced.
+  ///
+  /// In en, this message translates to:
+  /// **'The balanced choice: strongest answers this laptop-sized model family offers.'**
+  String get modelDescriptionBalanced;
+
+  /// No description provided for @modelDescriptionLight.
+  ///
+  /// In en, this message translates to:
+  /// **'The light choice: quicker to fetch and to answer, with simpler answers.'**
+  String get modelDescriptionLight;
+
+  /// No description provided for @sectionHearing.
+  ///
+  /// In en, this message translates to:
+  /// **'How it hears you'**
+  String get sectionHearing;
+
+  /// No description provided for @hearingHoldTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Holding the microphone button'**
+  String get hearingHoldTitle;
+
+  /// No description provided for @hearingHoldNote.
+  ///
+  /// In en, this message translates to:
+  /// **'Sends when you let go, and hears English as well as Chinese. Product names that are also ordinary English words are where it slips — Swift, Dart, test.'**
+  String get hearingHoldNote;
+
+  /// No description provided for @hearingDuplexTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Leaving voice on'**
+  String get hearingDuplexTitle;
+
+  /// No description provided for @hearingDuplexNote.
+  ///
+  /// In en, this message translates to:
+  /// **'Listens continuously so it can be interrupted, using the first of your preferred languages it supports — chosen when listening starts and kept for the whole conversation. Say something in another language and it will be heard as that one.'**
+  String get hearingDuplexNote;
+
+  /// No description provided for @sectionAnswerStyle.
+  ///
+  /// In en, this message translates to:
+  /// **'How far it may roam'**
+  String get sectionAnswerStyle;
+
+  /// No description provided for @answerStyleNote.
+  ///
+  /// In en, this message translates to:
+  /// **'Applies to the next question. The model stays loaded; only the conversation is rebuilt.'**
+  String get answerStyleNote;
+
+  /// No description provided for @answerStyleSteady.
+  ///
+  /// In en, this message translates to:
+  /// **'Careful'**
+  String get answerStyleSteady;
+
+  /// No description provided for @answerStyleBalanced.
+  ///
+  /// In en, this message translates to:
+  /// **'Balanced'**
+  String get answerStyleBalanced;
+
+  /// No description provided for @answerStyleInventive.
+  ///
+  /// In en, this message translates to:
+  /// **'Inventive'**
+  String get answerStyleInventive;
+
+  /// No description provided for @answerStyleSteadyNote.
+  ///
+  /// In en, this message translates to:
+  /// **'The same question tends to the same answer.'**
+  String get answerStyleSteadyNote;
+
+  /// No description provided for @answerStyleBalancedNote.
+  ///
+  /// In en, this message translates to:
+  /// **'What Lulo shipped with.'**
+  String get answerStyleBalancedNote;
+
+  /// No description provided for @answerStyleInventiveNote.
+  ///
+  /// In en, this message translates to:
+  /// **'Freer, and less steady. Good for drafting, not for facts.'**
+  String get answerStyleInventiveNote;
+
+  /// No description provided for @exportConversation.
+  ///
+  /// In en, this message translates to:
+  /// **'Save as Markdown'**
+  String get exportConversation;
+
+  /// No description provided for @exportFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not save that conversation.'**
+  String get exportFailed;
+
+  /// No description provided for @searchConversations.
+  ///
+  /// In en, this message translates to:
+  /// **'Search conversations'**
+  String get searchConversations;
+
+  /// No description provided for @noMatches.
+  ///
+  /// In en, this message translates to:
+  /// **'Nothing matches that.'**
+  String get noMatches;
+
+  /// No description provided for @pinConversation.
+  ///
+  /// In en, this message translates to:
+  /// **'Keep at the top'**
+  String get pinConversation;
+
+  /// No description provided for @unpinConversation.
+  ///
+  /// In en, this message translates to:
+  /// **'Stop keeping at the top'**
+  String get unpinConversation;
+
+  /// No description provided for @renameConversation.
+  ///
+  /// In en, this message translates to:
+  /// **'Rename'**
+  String get renameConversation;
+
+  /// No description provided for @conversationActions.
+  ///
+  /// In en, this message translates to:
+  /// **'More'**
+  String get conversationActions;
+
+  /// No description provided for @menuShow.
+  ///
+  /// In en, this message translates to:
+  /// **'Show Lulo'**
+  String get menuShow;
+
+  /// No description provided for @menuHide.
+  ///
+  /// In en, this message translates to:
+  /// **'Hide Lulo'**
+  String get menuHide;
+
+  /// No description provided for @menuTalk.
+  ///
+  /// In en, this message translates to:
+  /// **'Talk to Lulo'**
+  String get menuTalk;
+
+  /// No description provided for @menuRecent.
+  ///
+  /// In en, this message translates to:
+  /// **'Recent'**
+  String get menuRecent;
+
+  /// No description provided for @menuQuit.
+  ///
+  /// In en, this message translates to:
+  /// **'Quit Lulo'**
+  String get menuQuit;
+
+  /// No description provided for @activityIdle.
+  ///
+  /// In en, this message translates to:
+  /// **'Ready'**
+  String get activityIdle;
+
+  /// No description provided for @activityListening.
+  ///
+  /// In en, this message translates to:
+  /// **'Listening…'**
+  String get activityListening;
+
+  /// No description provided for @activityThinking.
+  ///
+  /// In en, this message translates to:
+  /// **'Thinking…'**
+  String get activityThinking;
+
+  /// No description provided for @activitySpeaking.
+  ///
+  /// In en, this message translates to:
+  /// **'Speaking…'**
+  String get activitySpeaking;
+
+  /// No description provided for @activityWorking.
+  ///
+  /// In en, this message translates to:
+  /// **'Working…'**
+  String get activityWorking;
+
+  /// No description provided for @activityError.
+  ///
+  /// In en, this message translates to:
+  /// **'Needs attention'**
+  String get activityError;
+
+  /// No description provided for @answering.
+  ///
+  /// In en, this message translates to:
+  /// **'Answering'**
+  String get answering;
+
+  /// No description provided for @thinkingPlaceholder.
+  ///
+  /// In en, this message translates to:
+  /// **'Thinking…'**
+  String get thinkingPlaceholder;
+}
+
+class _AppLocalizationsDelegate
+    extends LocalizationsDelegate<AppLocalizations> {
+  const _AppLocalizationsDelegate();
+
+  @override
+  Future<AppLocalizations> load(Locale locale) {
+    return SynchronousFuture<AppLocalizations>(lookupAppLocalizations(locale));
+  }
+
+  @override
+  bool isSupported(Locale locale) =>
+      <String>['en', 'zh'].contains(locale.languageCode);
+
+  @override
+  bool shouldReload(_AppLocalizationsDelegate old) => false;
+}
+
+AppLocalizations lookupAppLocalizations(Locale locale) {
+  // Lookup logic when language+script codes are specified.
+  switch (locale.languageCode) {
+    case 'zh':
+      {
+        switch (locale.scriptCode) {
+          case 'Hant':
+            return AppLocalizationsZhHant();
+        }
+        break;
+      }
+  }
+
+  // Lookup logic when only language code is specified.
+  switch (locale.languageCode) {
+    case 'en':
+      return AppLocalizationsEn();
+    case 'zh':
+      return AppLocalizationsZh();
+  }
+
+  throw FlutterError(
+    'AppLocalizations.delegate failed to load unsupported locale "$locale". This is likely '
+    'an issue with the localizations generation tool. Please file an issue '
+    'on GitHub with a reproducible sample app and the gen-l10n configuration '
+    'that was used.',
+  );
+}

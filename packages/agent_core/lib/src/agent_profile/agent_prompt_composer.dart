@@ -24,8 +24,8 @@ final class AgentPromptContext {
   /// conversation in one language, and never contains the question.
   final String systemInstruction;
 
-  /// What this question brought with it: the memories it made relevant, and
-  /// the question itself, exactly once.
+  /// What this question brought with it: the memories it made relevant, the
+  /// clock if the caller had one, and the question itself, exactly once.
   final String turnInstruction;
 
   /// Complete model input, including the current question exactly once.
@@ -37,17 +37,60 @@ final class AgentPromptContext {
   /// IDs of memories that survived relevance and prompt-size bounds.
   final List<String> selectedMemoryIds;
 
-  /// Characters before the final question section.
+  /// Characters of profile text: the stable half plus whatever memories
+  /// this question pulled in.
+  ///
+  /// Not the length of everything sent. The clock sits between the memories
+  /// and the question and is deliberately outside this, because the budget
+  /// it guards is the profile's — a timestamp is not profile content and
+  /// must not be able to push a memory out.
   final int profileCharacterCount;
 }
 
 /// Composes Lulo's stable behavior and relevant personal context for one turn.
+///
+/// [now] is what the clock said when the question was asked. It must be a
+/// local time — a UTC one would be rendered as if it were the wall clock,
+/// which is the exact failure this exists to remove — and it is omitted by
+/// a caller that has none.
+///
+/// Told rather than fetched. Probed against the real gemma-4-E4B with a
+/// clock tool registered, this app's own system instruction in front of it,
+/// and five attempts per condition: it called the tool 0 times out of 5, in
+/// either language, at either temperature, and still 0 with a further
+/// paragraph ordering it to. It invents a confident wrong time instead, in
+/// an app whose core instruction says 不捏造資訊. Told the time in the
+/// prompt, the same conditions answer 5/5 in Chinese and 3/5 in English.
+/// `docs/decisions/tool-calling-readiness.md` has both tables.
+///
+/// It joins the turn half rather than the stable one. The system
+/// instruction is prefilled once per conversation, so a clock inside it
+/// would expire between every question and rebuild the prompt each turn —
+/// the cost `docs/decisions/voice-turn-latency.md` measured at 1648ms and
+/// removed. The turn half is read again anyway, and a timestamp is a dozen
+/// tokens of it.
 AgentPromptContext composeAgentPrompt({
   required AgentProfile profile,
   required String prompt,
+  DateTime? now,
   int maxProfileCharacters = 1200,
 }) {
+  assert(
+    now == null || !now.isUtc,
+    'A UTC clock would be rendered as the wall clock and read as a wrong '
+    'time — the failure this parameter exists to remove.',
+  );
   final String question = prompt.trim();
+  // The whole stable half is translated rather than carrying one line that
+  // asks for a language, and that is deliberate. Putting the request in the
+  // turn half would leave the system instruction stable across a switch and
+  // save the 1580 ms rebuild that `docs/decisions/voice-turn-latency.md`
+  // measures — it was tried, and a small model answers in the language it
+  // was instructed in whatever the request says. See `the instruction is
+  // written in the language of the question` in the app's
+  // `pigeon_inference_service_test.dart`, which pins it. Do not move this to
+  // `AgentIdentity.locale` either: that would answer a Chinese question in
+  // English for anyone whose profile said so.
   final bool chinese = _cjk.hasMatch(question);
   final List<String> sections = <String>[
     _section(
@@ -107,7 +150,15 @@ AgentPromptContext composeAgentPrompt({
       chinese
           ? '稱呼使用者：${profile.identity.userName.trim()}。'
           : 'Address the user as ${profile.identity.userName.trim()}.',
-    if (profile.personality.tone.trim().isNotEmpty)
+    // Only when the user has said something of their own. The core-identity
+    // block above already states the built-in tone, in the language of the
+    // question; repeating it here said it twice, and said it in Chinese
+    // inside an English instruction — 「Tone: 親近但不裝熟.」 — in a composer
+    // whose own comment says a small model answers in the language it was
+    // instructed in. A tone the user typed is theirs and goes through as
+    // written, in whatever language they wrote it.
+    if (profile.personality.tone.trim().isNotEmpty &&
+        profile.personality.tone.trim() != const AgentPersonality().tone.trim())
       chinese
           ? '語氣：${profile.personality.tone.trim()}。'
           : 'Tone: ${profile.personality.tone.trim()}.',
@@ -163,16 +214,76 @@ AgentPromptContext composeAgentPrompt({
       : profileText.substring(systemInstruction.length + 2);
   final String questionSection =
       '${chinese ? '[問題]' : '[Question]'}\n$question';
+  final String clockSection = now == null
+      ? ''
+      : '${chinese ? '[現在]' : '[Now]'}\n${_clock(now, chinese: chinese)}';
+
+  // The question stays last, so it is the most recent thing the model read.
+  final String turnInstruction = <String>[
+    if (memories.isNotEmpty) memories,
+    if (clockSection.isNotEmpty) clockSection,
+    questionSection,
+  ].join('\n\n');
 
   return AgentPromptContext(
     systemInstruction: systemInstruction,
-    turnInstruction: memories.isEmpty
-        ? questionSection
-        : '$memories\n\n$questionSection',
+    turnInstruction: turnInstruction,
     selectedMemoryIds: selectedIds,
     profileCharacterCount: profileText.length,
   );
 }
+
+/// [now] as a sentence, in the language the question was asked in.
+///
+/// The weekday is spelled out because 「7 號」 alone does not tell the model
+/// whether it is a working day, which is most of what a date is asked for.
+/// Written by hand rather than through `intl`: `agent_core` is pure Dart
+/// with no package dependencies, and this is two lookup tables.
+String _clock(DateTime now, {required bool chinese}) {
+  final String hour = now.hour.toString().padLeft(2, '0');
+  final String minute = now.minute.toString().padLeft(2, '0');
+  if (chinese) {
+    return '現在是 ${now.year} 年 ${now.month} 月 ${now.day} 日'
+        '（${_zhWeekdays[now.weekday - 1]}）$hour:$minute。';
+  }
+  return 'It is ${_enWeekdays[now.weekday - 1]}, ${now.day} '
+      '${_enMonths[now.month - 1]} ${now.year}, $hour:$minute.';
+}
+
+const List<String> _zhWeekdays = <String>[
+  '星期一',
+  '星期二',
+  '星期三',
+  '星期四',
+  '星期五',
+  '星期六',
+  '星期日',
+];
+
+const List<String> _enWeekdays = <String>[
+  'Monday',
+  'Tuesday',
+  'Wednesday',
+  'Thursday',
+  'Friday',
+  'Saturday',
+  'Sunday',
+];
+
+const List<String> _enMonths = <String>[
+  'January',
+  'February',
+  'March',
+  'April',
+  'May',
+  'June',
+  'July',
+  'August',
+  'September',
+  'October',
+  'November',
+  'December',
+];
 
 final RegExp _cjk = RegExp(r'[\u4e00-\u9fff\u3040-\u30ff\uac00-\ud7af]');
 

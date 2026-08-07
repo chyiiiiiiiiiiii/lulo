@@ -1,0 +1,68 @@
+{
+  "schemaVersion": 1,
+  "runId": "breeze-auto-1786015705",
+  "corpusId": "en-synthetic-v1",
+  "kind": "transcript",
+  "adapter": {
+    "name": "breeze-auto",
+    "version": "Kenji8000/Breeze-ASR-25-mlx language=auto"
+  },
+  "cases": [
+    {
+      "caseId": "en-run-tests",
+      "rawTranscript": "How do I run the tests in this project?",
+      "refinedTranscript": null,
+      "partialEvents": [],
+      "finalAtMs": 2037
+    },
+    {
+      "caseId": "en-widget-question",
+      "rawTranscript": "What is the difference between a stateless and a stateful widget?",
+      "refinedTranscript": null,
+      "partialEvents": [],
+      "finalAtMs": 2087
+    },
+    {
+      "caseId": "en-litert",
+      "rawTranscript": "Can you explain what the LiteRT runtime does?",
+      "refinedTranscript": null,
+      "partialEvents": [],
+      "finalAtMs": 2041
+    },
+    {
+      "caseId": "en-commits",
+      "rawTranscript": "Show me the latest commits on the main branch.",
+      "refinedTranscript": null,
+      "partialEvents": [],
+      "finalAtMs": 2004
+    },
+    {
+      "caseId": "en-download-failed",
+      "rawTranscript": "I think the download failed, can you try again?",
+      "refinedTranscript": null,
+      "partialEvents": [],
+      "finalAtMs": 2027
+    },
+    {
+      "caseId": "en-remind-mic",
+      "rawTranscript": "Remind me to check the microphone permissions later.",
+      "refinedTranscript": null,
+      "partialEvents": [],
+      "finalAtMs": 1973
+    },
+    {
+      "caseId": "en-dart-test",
+      "rawTranscript": "Dart test is failing on the second case.",
+      "refinedTranscript": null,
+      "partialEvents": [],
+      "finalAtMs": 2014
+    },
+    {
+      "caseId": "en-settings-voice",
+      "rawTranscript": "Open the settings and turn the voice off",
+      "refinedTranscript": null,
+      "partialEvents": [],
+      "finalAtMs": 1962
+    }
+  ]
+}

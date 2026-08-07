@@ -11,6 +11,7 @@ import 'package:local_agent_macos/features/presence/agent_presence_controller.da
 import 'package:local_agent_macos/features/presence/agent_presence_frame_metrics.dart';
 import 'package:local_agent_macos/features/presence/agent_presence_orb.dart';
 import 'package:local_agent_macos/features/presence/agent_presence_state.dart';
+import 'package:local_agent_macos/l10n/generated/app_localizations.dart';
 
 const bool _isSmoke = bool.fromEnvironment('PRESENCE_PROFILE_SMOKE');
 const Duration _profileWarmup = Duration(seconds: 2);
@@ -397,6 +398,8 @@ final class _ProfileHarnessState extends State<_ProfileHarness>
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
       home: Scaffold(
         backgroundColor: const Color(0xff111318),
         body: Stack(

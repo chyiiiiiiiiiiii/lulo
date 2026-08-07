@@ -6,6 +6,7 @@ import 'package:local_agent_macos/features/conversation/conversation_repository.
 import 'package:local_agent_macos/features/conversation/conversation_view.dart';
 import 'package:local_agent_macos/features/conversation/conversation_view_model.dart';
 import 'package:local_agent_macos/features/voice/voice_service.dart';
+import 'package:local_agent_macos/l10n/generated/app_localizations.dart';
 
 import '../../support/controlled_inference_service.dart';
 import '../../support/fake_voice_service.dart';
@@ -26,7 +27,11 @@ void main() {
     WidgetTester tester,
   ) async {
     await tester.pumpWidget(
-      MaterialApp(home: ConversationView(viewModelFactory: viewModel)),
+      MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: ConversationView(viewModelFactory: viewModel),
+      ),
     );
     await tester.pump();
 
@@ -40,6 +45,8 @@ void main() {
     addTearDown(voice.dispose);
     await tester.pumpWidget(
       MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
         home: ConversationView(
           viewModelFactory: viewModel,
           voiceService: voice,
@@ -64,6 +71,8 @@ void main() {
     addTearDown(voice.dispose);
     await tester.pumpWidget(
       MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
         home: ConversationView(
           viewModelFactory: viewModel,
           voiceService: voice,
@@ -88,6 +97,8 @@ void main() {
     addTearDown(voice.dispose);
     await tester.pumpWidget(
       MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
         home: ConversationView(
           viewModelFactory: viewModel,
           voiceService: voice,
@@ -125,6 +136,12 @@ void main() {
     addTearDown(voice.dispose);
     await tester.pumpWidget(
       MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        // Pinned, because the strings this test reads are the point of it.
+        // The app itself follows the system; a test that took the harness's
+        // default would be asserting the harness's language.
+        locale: const Locale('zh'),
         home: ConversationView(
           viewModelFactory: viewModel,
           voiceService: voice,
@@ -153,6 +170,8 @@ void main() {
     addTearDown(voice.dispose);
     await tester.pumpWidget(
       MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
         home: ConversationView(
           viewModelFactory: viewModel,
           voiceService: voice,

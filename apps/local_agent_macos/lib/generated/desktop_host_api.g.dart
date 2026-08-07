@@ -113,6 +113,36 @@ int _deepHash(Object? value) {
 
 enum HostGenerationEventType { started, delta, completed, cancelled, failed }
 
+/// Whether the app starts itself when the user logs in.
+///
+/// Read from the system rather than remembered, because it is the system's
+/// state and not the app's: macOS keeps it across reinstalls, and the user
+/// can revoke it in System Settings without the app being running to notice.
+/// A stored copy would sooner or later claim something untrue about the
+/// machine.
+enum HostLoginItemStatus {
+  /// The app does not start itself.
+  off,
+
+  /// The app starts itself at login.
+  on,
+
+  /// macOS has the registration but is waiting for the user to allow it in
+  /// System Settings. Neither on nor off, and the difference matters: this
+  /// is the state a switch that silently flipped back would be lying about.
+  needsApproval,
+
+  /// macOS refused this copy of the app: the signature is not one it will
+  /// accept, or it could not find the bundle where it expected. Distinct
+  /// from [needsApproval], which the user can fix, and from [unavailable],
+  /// which no copy of the app could fix.
+  refused,
+
+  /// This macOS cannot do it at all. `SMAppService` is macOS 13 and the
+  /// deployment target is 12.
+  unavailable,
+}
+
 /// How the desktop window is currently presented.
 ///
 /// The window is always on screen. In [orb] it is a small transparent presence
@@ -131,6 +161,189 @@ enum HostFailureCode {
 
 /// Who said one remembered turn.
 enum HostTurnRole { user, assistant }
+
+/// One conversation as the menu bar lists it.
+class HostMenuConversation {
+  HostMenuConversation({required this.conversationId, required this.title});
+
+  /// Which conversation to open when the item is chosen.
+  String conversationId;
+
+  /// What the item is called.
+  String title;
+
+  List<Object?> _toList() {
+    return <Object?>[conversationId, title];
+  }
+
+  Object encode() {
+    return _toList();
+  }
+
+  static HostMenuConversation decode(Object result) {
+    result as List<Object?>;
+    return HostMenuConversation(
+      conversationId: result[0]! as String,
+      title: result[1]! as String,
+    );
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  bool operator ==(Object other) {
+    if (other is! HostMenuConversation || other.runtimeType != runtimeType) {
+      return false;
+    }
+    if (identical(this, other)) {
+      return true;
+    }
+    return _deepEquals(conversationId, other.conversationId) &&
+        _deepEquals(title, other.title);
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  int get hashCode => _deepHash(<Object?>[runtimeType, ..._toList()]);
+}
+
+/// Every word the status-bar menu shows that is not a conversation title.
+class HostMenuBarLabels {
+  HostMenuBarLabels({
+    required this.show,
+    required this.hide,
+    required this.talk,
+    required this.recent,
+    required this.quit,
+    required this.activity,
+  });
+
+  /// Brings the conversation forward.
+  String show;
+
+  /// Puts it away.
+  String hide;
+
+  /// Starts talking.
+  String talk;
+
+  /// Heads the list of recent conversations.
+  String recent;
+
+  /// Ends the app.
+  String quit;
+
+  /// What the agent is doing, empty when there is nothing to say.
+  String activity;
+
+  List<Object?> _toList() {
+    return <Object?>[show, hide, talk, recent, quit, activity];
+  }
+
+  Object encode() {
+    return _toList();
+  }
+
+  static HostMenuBarLabels decode(Object result) {
+    result as List<Object?>;
+    return HostMenuBarLabels(
+      show: result[0]! as String,
+      hide: result[1]! as String,
+      talk: result[2]! as String,
+      recent: result[3]! as String,
+      quit: result[4]! as String,
+      activity: result[5]! as String,
+    );
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  bool operator ==(Object other) {
+    if (other is! HostMenuBarLabels || other.runtimeType != runtimeType) {
+      return false;
+    }
+    if (identical(this, other)) {
+      return true;
+    }
+    return _deepEquals(show, other.show) &&
+        _deepEquals(hide, other.hide) &&
+        _deepEquals(talk, other.talk) &&
+        _deepEquals(recent, other.recent) &&
+        _deepEquals(quit, other.quit) &&
+        _deepEquals(activity, other.activity);
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  int get hashCode => _deepHash(<Object?>[runtimeType, ..._toList()]);
+}
+
+/// What the menu bar is currently showing.
+///
+/// Pushed rather than pulled: the menu is built by AppKit at the moment it
+/// opens, and asking Dart for the list then would mean opening a menu that is
+/// empty until an answer arrives.
+class HostMenuBarState {
+  HostMenuBarState({
+    required this.labels,
+    required this.conversations,
+    required this.modelName,
+    required this.canStartVoice,
+  });
+
+  /// The menu's own words, already in the user's language.
+  ///
+  /// Sent rather than written natively: the rest of the interface follows the
+  /// system language through `AppLocalizations`, and there is none of that on
+  /// the AppKit side. A menu that stayed English on a Chinese Mac would be the
+  /// one part of the app that did not.
+  HostMenuBarLabels labels;
+
+  /// The most recent conversations, in the order they should be listed.
+  List<HostMenuConversation> conversations;
+
+  /// What the agent is thinking with, or empty while it is the preview.
+  String modelName;
+
+  /// Whether voice can be started from the menu at all.
+  bool canStartVoice;
+
+  List<Object?> _toList() {
+    return <Object?>[labels, conversations, modelName, canStartVoice];
+  }
+
+  Object encode() {
+    return _toList();
+  }
+
+  static HostMenuBarState decode(Object result) {
+    result as List<Object?>;
+    return HostMenuBarState(
+      labels: result[0]! as HostMenuBarLabels,
+      conversations: (result[1]! as List<Object?>).cast<HostMenuConversation>(),
+      modelName: result[2]! as String,
+      canStartVoice: result[3]! as bool,
+    );
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  bool operator ==(Object other) {
+    if (other is! HostMenuBarState || other.runtimeType != runtimeType) {
+      return false;
+    }
+    if (identical(this, other)) {
+      return true;
+    }
+    return _deepEquals(labels, other.labels) &&
+        _deepEquals(conversations, other.conversations) &&
+        _deepEquals(modelName, other.modelName) &&
+        _deepEquals(canStartVoice, other.canStartVoice);
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  int get hashCode => _deepHash(<Object?>[runtimeType, ..._toList()]);
+}
 
 class HostRequest {
   HostRequest({
@@ -798,47 +1011,59 @@ class _PigeonCodec extends StandardMessageCodec {
     } else if (value is HostGenerationEventType) {
       buffer.putUint8(129);
       writeValue(buffer, value.index);
-    } else if (value is HostPresentationMode) {
+    } else if (value is HostLoginItemStatus) {
       buffer.putUint8(130);
       writeValue(buffer, value.index);
-    } else if (value is HostFailureCode) {
+    } else if (value is HostPresentationMode) {
       buffer.putUint8(131);
       writeValue(buffer, value.index);
-    } else if (value is HostTurnRole) {
+    } else if (value is HostFailureCode) {
       buffer.putUint8(132);
       writeValue(buffer, value.index);
-    } else if (value is HostRequest) {
+    } else if (value is HostTurnRole) {
       buffer.putUint8(133);
-      writeValue(buffer, value.encode());
-    } else if (value is HostHandshakeResult) {
+      writeValue(buffer, value.index);
+    } else if (value is HostMenuConversation) {
       buffer.putUint8(134);
       writeValue(buffer, value.encode());
-    } else if (value is HostModelRequest) {
+    } else if (value is HostMenuBarLabels) {
       buffer.putUint8(135);
       writeValue(buffer, value.encode());
-    } else if (value is HostModelLoadResult) {
+    } else if (value is HostMenuBarState) {
       buffer.putUint8(136);
       writeValue(buffer, value.encode());
-    } else if (value is HostConversationTurn) {
+    } else if (value is HostRequest) {
       buffer.putUint8(137);
       writeValue(buffer, value.encode());
-    } else if (value is HostGenerationRequest) {
+    } else if (value is HostHandshakeResult) {
       buffer.putUint8(138);
       writeValue(buffer, value.encode());
-    } else if (value is HostGenerationAcknowledgement) {
+    } else if (value is HostModelRequest) {
       buffer.putUint8(139);
       writeValue(buffer, value.encode());
-    } else if (value is HostCancellationAcknowledgement) {
+    } else if (value is HostModelLoadResult) {
       buffer.putUint8(140);
       writeValue(buffer, value.encode());
-    } else if (value is HostOperationCompletion) {
+    } else if (value is HostConversationTurn) {
       buffer.putUint8(141);
       writeValue(buffer, value.encode());
-    } else if (value is HostGenerationEvent) {
+    } else if (value is HostGenerationRequest) {
       buffer.putUint8(142);
       writeValue(buffer, value.encode());
-    } else if (value is HostTransitionGeometry) {
+    } else if (value is HostGenerationAcknowledgement) {
       buffer.putUint8(143);
+      writeValue(buffer, value.encode());
+    } else if (value is HostCancellationAcknowledgement) {
+      buffer.putUint8(144);
+      writeValue(buffer, value.encode());
+    } else if (value is HostOperationCompletion) {
+      buffer.putUint8(145);
+      writeValue(buffer, value.encode());
+    } else if (value is HostGenerationEvent) {
+      buffer.putUint8(146);
+      writeValue(buffer, value.encode());
+    } else if (value is HostTransitionGeometry) {
+      buffer.putUint8(147);
       writeValue(buffer, value.encode());
     } else {
       super.writeValue(buffer, value);
@@ -853,34 +1078,43 @@ class _PigeonCodec extends StandardMessageCodec {
         return value == null ? null : HostGenerationEventType.values[value];
       case 130:
         final value = readValue(buffer) as int?;
-        return value == null ? null : HostPresentationMode.values[value];
+        return value == null ? null : HostLoginItemStatus.values[value];
       case 131:
         final value = readValue(buffer) as int?;
-        return value == null ? null : HostFailureCode.values[value];
+        return value == null ? null : HostPresentationMode.values[value];
       case 132:
         final value = readValue(buffer) as int?;
-        return value == null ? null : HostTurnRole.values[value];
+        return value == null ? null : HostFailureCode.values[value];
       case 133:
-        return HostRequest.decode(readValue(buffer)!);
+        final value = readValue(buffer) as int?;
+        return value == null ? null : HostTurnRole.values[value];
       case 134:
-        return HostHandshakeResult.decode(readValue(buffer)!);
+        return HostMenuConversation.decode(readValue(buffer)!);
       case 135:
-        return HostModelRequest.decode(readValue(buffer)!);
+        return HostMenuBarLabels.decode(readValue(buffer)!);
       case 136:
-        return HostModelLoadResult.decode(readValue(buffer)!);
+        return HostMenuBarState.decode(readValue(buffer)!);
       case 137:
-        return HostConversationTurn.decode(readValue(buffer)!);
+        return HostRequest.decode(readValue(buffer)!);
       case 138:
-        return HostGenerationRequest.decode(readValue(buffer)!);
+        return HostHandshakeResult.decode(readValue(buffer)!);
       case 139:
-        return HostGenerationAcknowledgement.decode(readValue(buffer)!);
+        return HostModelRequest.decode(readValue(buffer)!);
       case 140:
-        return HostCancellationAcknowledgement.decode(readValue(buffer)!);
+        return HostModelLoadResult.decode(readValue(buffer)!);
       case 141:
-        return HostOperationCompletion.decode(readValue(buffer)!);
+        return HostConversationTurn.decode(readValue(buffer)!);
       case 142:
-        return HostGenerationEvent.decode(readValue(buffer)!);
+        return HostGenerationRequest.decode(readValue(buffer)!);
       case 143:
+        return HostGenerationAcknowledgement.decode(readValue(buffer)!);
+      case 144:
+        return HostCancellationAcknowledgement.decode(readValue(buffer)!);
+      case 145:
+        return HostOperationCompletion.decode(readValue(buffer)!);
+      case 146:
+        return HostGenerationEvent.decode(readValue(buffer)!);
+      case 147:
         return HostTransitionGeometry.decode(readValue(buffer)!);
       default:
         return super.readValueOfType(type, buffer);
@@ -1176,6 +1410,37 @@ class DesktopHostApi {
     return pigeonVar_replyValue! as String;
   }
 
+  /// Asks the user where to write [contents], and writes it there.
+  ///
+  /// Returns the path written, or empty if the user backed out. The write
+  /// happens natively for the same reason the chooser does: a sandboxed app
+  /// may write where a save panel says and nowhere else, so handing the path
+  /// back to Dart to write to would land outside the grant the panel gave.
+  Future<String> saveTextFile(
+    HostRequest request,
+    String suggestedName,
+    String contents,
+  ) async {
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.local_agent_macos.DesktopHostApi.saveTextFile$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channel = BasicMessageChannel<Object?>(
+      pigeonVar_channelName,
+      pigeonChannelCodec,
+      binaryMessenger: pigeonVar_binaryMessenger,
+    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(
+      <Object?>[request, suggestedName, contents],
+    );
+    final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
+
+    final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: false,
+    );
+    return pigeonVar_replyValue! as String;
+  }
+
   /// Applies the user's choices about how the resting orb behaves.
   ///
   /// Held natively rather than consulted per change of form, because the
@@ -1284,6 +1549,82 @@ class DesktopHostApi {
       isNullValid: true,
     );
   }
+
+  /// Tells the menu bar what to show the next time it is opened.
+  Future<void> setMenuBarState(
+    HostRequest request,
+    HostMenuBarState state,
+  ) async {
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.local_agent_macos.DesktopHostApi.setMenuBarState$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channel = BasicMessageChannel<Object?>(
+      pigeonVar_channelName,
+      pigeonChannelCodec,
+      binaryMessenger: pigeonVar_binaryMessenger,
+    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(
+      <Object?>[request, state],
+    );
+    final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
+
+    _extractReplyValueOrThrow(
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: true,
+    );
+  }
+
+  /// Whether the app currently starts itself when the user logs in.
+  Future<HostLoginItemStatus> loginItemStatus(HostRequest request) async {
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.local_agent_macos.DesktopHostApi.loginItemStatus$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channel = BasicMessageChannel<Object?>(
+      pigeonVar_channelName,
+      pigeonChannelCodec,
+      binaryMessenger: pigeonVar_binaryMessenger,
+    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(
+      <Object?>[request],
+    );
+    final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
+
+    final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: false,
+    );
+    return pigeonVar_replyValue! as HostLoginItemStatus;
+  }
+
+  /// Asks macOS to start the app at login, or to stop.
+  ///
+  /// Returns the status that actually resulted, which is not always the one
+  /// asked for — macOS may hold the registration pending the user's approval
+  /// in System Settings. The caller shows what came back rather than what it
+  /// requested.
+  Future<HostLoginItemStatus> setLaunchAtLogin(
+    HostRequest request,
+    bool enabled,
+  ) async {
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.local_agent_macos.DesktopHostApi.setLaunchAtLogin$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channel = BasicMessageChannel<Object?>(
+      pigeonVar_channelName,
+      pigeonChannelCodec,
+      binaryMessenger: pigeonVar_binaryMessenger,
+    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(
+      <Object?>[request, enabled],
+    );
+    final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
+
+    final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: false,
+    );
+    return pigeonVar_replyValue! as HostLoginItemStatus;
+  }
 }
 
 abstract class DesktopHostEventApi {
@@ -1292,6 +1633,12 @@ abstract class DesktopHostEventApi {
   void onGenerationEvent(HostGenerationEvent event);
 
   void onPresentationModeChanged(HostPresentationMode mode);
+
+  /// The user chose a conversation from the menu bar.
+  void onMenuBarConversationChosen(String conversationId);
+
+  /// The user asked for voice from the menu bar.
+  void onMenuBarVoiceRequested();
 
   /// Asks the app to change form, rather than telling it that it already did.
   ///
@@ -1360,6 +1707,54 @@ abstract class DesktopHostEventApi {
               args[0]! as HostPresentationMode;
           try {
             api.onPresentationModeChanged(arg_mode);
+            return wrapResponse(empty: true);
+          } on PlatformException catch (e) {
+            return wrapResponse(error: e);
+          } catch (e) {
+            return wrapResponse(
+              error: PlatformException(code: 'error', message: e.toString()),
+            );
+          }
+        });
+      }
+    }
+    {
+      final pigeonVar_channel = BasicMessageChannel<Object?>(
+        'dev.flutter.pigeon.local_agent_macos.DesktopHostEventApi.onMenuBarConversationChosen$messageChannelSuffix',
+        pigeonChannelCodec,
+        binaryMessenger: binaryMessenger,
+      );
+      if (api == null) {
+        pigeonVar_channel.setMessageHandler(null);
+      } else {
+        pigeonVar_channel.setMessageHandler((Object? message) async {
+          final List<Object?> args = message! as List<Object?>;
+          final String arg_conversationId = args[0]! as String;
+          try {
+            api.onMenuBarConversationChosen(arg_conversationId);
+            return wrapResponse(empty: true);
+          } on PlatformException catch (e) {
+            return wrapResponse(error: e);
+          } catch (e) {
+            return wrapResponse(
+              error: PlatformException(code: 'error', message: e.toString()),
+            );
+          }
+        });
+      }
+    }
+    {
+      final pigeonVar_channel = BasicMessageChannel<Object?>(
+        'dev.flutter.pigeon.local_agent_macos.DesktopHostEventApi.onMenuBarVoiceRequested$messageChannelSuffix',
+        pigeonChannelCodec,
+        binaryMessenger: binaryMessenger,
+      );
+      if (api == null) {
+        pigeonVar_channel.setMessageHandler(null);
+      } else {
+        pigeonVar_channel.setMessageHandler((Object? message) async {
+          try {
+            api.onMenuBarVoiceRequested();
             return wrapResponse(empty: true);
           } on PlatformException catch (e) {
             return wrapResponse(error: e);

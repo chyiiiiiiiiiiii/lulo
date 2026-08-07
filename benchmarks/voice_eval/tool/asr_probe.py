@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run an MLX Whisper checkpoint over the corpus and write candidate JSON.
+"""Run an MLX Whisper checkpoint over a corpus and write candidate JSON.
 
 The comparison this exists for is narrow: `~/dev/lulo-tts/ears.py` serves the
 push-to-talk path with `mlx-community/whisper-large-v3-turbo`, and
@@ -12,6 +12,11 @@ what is compared is the path the app would actually take and not two raw
 model outputs.
 
 Run: python3 asr_probe.py <model-repo> <adapter-name> <out.json>
+              [corpus.json] [language|auto]
+
+The corpus and the decode language are arguments because `ears.py` pins
+`language="zh"` on the live path, so "can this model hear English" and "can
+the shipped configuration hear English" are two different questions.
 """
 
 from __future__ import annotations
@@ -23,8 +28,7 @@ import wave
 from pathlib import Path
 
 REPO = Path("/Users/you/dev/flutter_local_agent")
-CORPUS = REPO / "benchmarks/voice_eval/corpus/zh-TW-v1.json"
-AUDIO = CORPUS.parent
+DEFAULT_CORPUS = REPO / "benchmarks/voice_eval/corpus/zh-TW-v1.json"
 sys.path.insert(0, "/Users/you/dev/lulo-tts")
 
 import mlx_whisper  # noqa: E402
@@ -48,28 +52,32 @@ def duration_ms(path: Path) -> int:
 
 def main() -> int:
     repo, adapter, out_path = sys.argv[1], sys.argv[2], sys.argv[3]
-    manifest = json.loads(CORPUS.read_text())
+    corpus = Path(sys.argv[4]) if len(sys.argv) > 4 else DEFAULT_CORPUS
+    language = sys.argv[5] if len(sys.argv) > 5 else "zh"
+    audio_root = corpus.parent
+    manifest = json.loads(corpus.read_text())
 
     print(f"loading {repo} …", flush=True)
     warm = time.monotonic()
     mlx_whisper.transcribe(
-        str(AUDIO / manifest["cases"][0]["audioPath"]), path_or_hf_repo=repo
+        str(audio_root / manifest["cases"][0]["audioPath"]), path_or_hf_repo=repo
     )
     print(f"warm in {time.monotonic() - warm:.1f}s", flush=True)
 
     cases = []
     for case in manifest["cases"]:
-        path = AUDIO / case["audioPath"]
+        path = audio_root / case["audioPath"]
         if not path.exists():
             print(f"missing {path}")
             continue
         began = time.monotonic()
-        result = mlx_whisper.transcribe(
-            str(path),
-            path_or_hf_repo=repo,
-            language="zh",
-            initial_prompt=held_prompt(TERMS),
-        )
+        options = {
+            "path_or_hf_repo": repo,
+            "initial_prompt": held_prompt(TERMS),
+        }
+        if language != "auto":
+            options["language"] = language
+        result = mlx_whisper.transcribe(str(path), **options)
         elapsed = time.monotonic() - began
         text = tidy_transcript(_to_traditional(str(result["text"]).strip()))
         cases.append(
@@ -94,7 +102,10 @@ def main() -> int:
                 "runId": f"{adapter}-{int(time.time())}",
                 "corpusId": manifest["corpusId"],
                 "kind": "transcript",
-                "adapter": {"name": adapter, "version": repo},
+                "adapter": {
+                    "name": adapter,
+                    "version": f"{repo} language={language}",
+                },
                 "cases": cases,
             },
             ensure_ascii=False,

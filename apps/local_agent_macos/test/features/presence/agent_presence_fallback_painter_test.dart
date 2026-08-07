@@ -7,6 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:local_agent_macos/features/presence/agent_presence_controller.dart';
 import 'package:local_agent_macos/features/presence/agent_presence_fallback_painter.dart';
 import 'package:local_agent_macos/features/presence/agent_presence_state.dart';
+import 'package:local_agent_macos/l10n/generated/app_localizations.dart';
 
 void main() {
   testWidgets('fallback uses a state-selected dark radial gradient', (
@@ -45,6 +46,8 @@ void main() {
 
 Widget _app(AgentPresenceController controller) {
   return MaterialApp(
+    localizationsDelegates: AppLocalizations.localizationsDelegates,
+    supportedLocales: AppLocalizations.supportedLocales,
     home: Scaffold(
       backgroundColor: Colors.black,
       body: Center(

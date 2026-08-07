@@ -2,6 +2,7 @@ import 'package:agent_core/agent_core.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
+import '../../../l10n/generated/app_localizations.dart';
 import 'completed_turn.dart';
 
 /// The isolated repaint and rebuild boundary for streamed output.
@@ -31,7 +32,7 @@ final class ActiveStreamingTurn extends StatelessWidget {
           }
           return Semantics(
             liveRegion: true,
-            label: '回覆中',
+            label: AppLocalizations.of(context).answering,
             child: Align(
               alignment: Alignment.centerLeft,
               child: Container(
@@ -54,7 +55,9 @@ final class ActiveStreamingTurn extends StatelessWidget {
                 child: KeyedSubtree(
                   key: const Key('active-streaming-markdown'),
                   child: TerminalMarkdown(
-                    turn.text.isEmpty ? '思考中…' : turn.text,
+                    turn.text.isEmpty
+                        ? AppLocalizations.of(context).thinkingPlaceholder
+                        : turn.text,
                   ),
                 ),
               ),

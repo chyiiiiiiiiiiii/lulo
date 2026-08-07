@@ -86,6 +86,98 @@ void main() {
       }
     });
 
+    test(
+      'schema 4 gains what the user decided, keeping turns and runs',
+      () async {
+        // Two migrations have shipped without a test of their own, and this is
+        // the first one where getting it wrong loses something the user typed.
+        // An install on schema 4 has real turns and possibly an open run; both
+        // have to survive, and the new table has to take a write.
+        driftRuntimeOptions.dontWarnAboutMultipleDatabases = true;
+        final Directory temporaryDirectory = Directory.systemTemp
+            .createTempSync('lulo-meta-migration-');
+        final NativeDatabase executor = NativeDatabase(
+          File('${temporaryDirectory.path}/conversations.db'),
+          setup: (database) {
+            database.execute('''
+            CREATE TABLE turn_rows (
+              id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+              conversation_id TEXT NOT NULL,
+              role TEXT NOT NULL,
+              status TEXT NOT NULL,
+              content TEXT NOT NULL,
+              saved_at_ms INTEGER NOT NULL,
+              raw_transcript TEXT,
+              refined_transcript TEXT,
+              refinement_status TEXT,
+              refiner_id TEXT,
+              refiner_version TEXT,
+              refinement_edits_json TEXT
+            )
+          ''');
+            database.execute('''
+            CREATE TABLE run_rows (
+              id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+              generation_id TEXT NOT NULL,
+              conversation_id TEXT NOT NULL,
+              model_id TEXT NOT NULL,
+              started_at_ms INTEGER NOT NULL,
+              ended_at_ms INTEGER,
+              outcome TEXT,
+              partial_text TEXT NOT NULL DEFAULT ''
+            )
+          ''');
+            database.execute(
+              'INSERT INTO turn_rows '
+              '(conversation_id, role, status, content, saved_at_ms) '
+              "VALUES ('existing', 'user', 'completed', '既有對話', 1)",
+            );
+            database.execute(
+              'INSERT INTO run_rows '
+              '(generation_id, conversation_id, model_id, started_at_ms, '
+              ' partial_text) '
+              "VALUES ('open', 'existing', 'gemma-4-E2B-it', 2, '說到一半')",
+            );
+            database.userVersion = 4;
+          },
+        );
+        final ConversationDatabase database = ConversationDatabase(executor);
+        final DriftConversationStorageService store =
+            DriftConversationStorageService(database: database);
+        try {
+          expect(
+            (await store.loadTurns(
+              const ConversationId('existing'),
+            )).single.text,
+            '既有對話',
+          );
+          expect(
+            (await store.loadUnfinishedRuns()).single.partialText,
+            '說到一半',
+            reason: 'an answer the last process died in the middle of was lost',
+          );
+
+          // The new table is not merely present: it takes a write and the list
+          // reads it back.
+          await store.renameConversation(
+            const ConversationId('existing'),
+            '舊的對話',
+          );
+          await store.setConversationPinned(
+            const ConversationId('existing'),
+            pinned: true,
+          );
+          final ConversationSummary listed =
+              (await store.listConversations()).single;
+          expect(listed.title, '舊的對話');
+          expect(listed.isPinned, isTrue);
+        } finally {
+          await database.close();
+          temporaryDirectory.deleteSync(recursive: true);
+        }
+      },
+    );
+
     test('schema 2 gains run records without losing its turns', () async {
       // Every existing install is on schema 2. Adding a table is the easy
       // migration to get wrong quietly: the app opens, the turns are all

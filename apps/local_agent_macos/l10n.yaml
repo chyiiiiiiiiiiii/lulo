@@ -1,0 +1,16 @@
+# The UI's own words, one file per language, generated into
+# lib/l10n/generated. English is the template because it is the language the
+# code is written in.
+#
+# app_zh.arb holds the Traditional strings. app_zh_Hant.arb holds nothing and
+# inherits all of them — its only job is to put zh-Hant into supportedLocales,
+# because the resolved locale is what picks the CJK font, and a bare zh gets
+# Simplified punctuation: a centred 「，」 with a gap after it rather than one
+# sitting at the baseline. That is why `flutter pub get` reports
+# `zh_Hant: N untranslated` every time, where N is however many keys the
+# file has. It is expected, and the number moves with every string added.
+arb-dir: lib/l10n
+template-arb-file: app_en.arb
+output-localization-file: app_localizations.dart
+output-dir: lib/l10n/generated
+nullable-getter: false

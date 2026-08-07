@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:agent_core/agent_core.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:local_agent_macos/features/settings/app_settings.dart';
 
@@ -82,6 +83,21 @@ void main() {
 
     expect(loaded.keepOrbOnTop, isFalse);
     expect(loaded.followAcrossSpaces, isTrue);
+  });
+
+  test('the answer style survives being written and read back', () {
+    const AppSettings written = AppSettings(answerStyle: AnswerStyle.steady);
+
+    expect(
+      AppSettings.fromJson(written.toJson()).answerStyle,
+      AnswerStyle.steady,
+    );
+    // A file written before this setting existed still opens, on the value
+    // the app already shipped.
+    expect(
+      AppSettings.fromJson(const <String, Object?>{}).answerStyle,
+      AnswerStyle.balanced,
+    );
   });
 }
 

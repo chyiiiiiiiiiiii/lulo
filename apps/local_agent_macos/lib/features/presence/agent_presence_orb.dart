@@ -4,6 +4,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
+import '../../l10n/generated/app_localizations.dart';
 import 'agent_presence_controller.dart';
 import 'agent_presence_fallback_painter.dart';
 import 'agent_presence_painter.dart';
@@ -18,6 +19,19 @@ typedef AgentPresenceShaderLoader = Future<ui.FragmentProgram> Function();
 /// Loads the bundled presence fragment program.
 Future<ui.FragmentProgram> loadAgentPresenceShader() =>
     ui.FragmentProgram.fromAsset('shaders/agent_presence.frag');
+
+/// How far the presence reaches, as a fraction of half its square.
+///
+/// The orb is drawn into a square but is not one, and on the desktop the rest
+/// of that square is the user's own screen. The shader's fades are written to
+/// reach zero here and the native click catcher draws its circle to the same
+/// bound, so beyond it nothing is tinted and nothing is caught.
+///
+/// Measured from a real-shader capture rather than read off the source: the
+/// halo used to carry 23/255 at 0.70 and was still visible at 0.95, which on
+/// the desktop read as a faint circle wrapped around the orb.
+/// See `integration_test/agent_presence_silhouette_test.dart`.
+const double agentPresenceSilhouetteFraction = 0.75;
 
 /// Observable rendering path used by integration evidence and focused tests.
 enum AgentPresenceRenderingPath {
@@ -361,7 +375,10 @@ final class _AgentPresenceOrbState extends State<AgentPresenceOrb>
         builder:
             (BuildContext context, AgentPresenceState state, Widget? child) {
               widget.onSemanticBuild?.call();
-              final String label = _semanticLabel(state);
+              final String label = _semanticLabel(
+                AppLocalizations.of(context),
+                state,
+              );
               return Semantics(
                 label: label,
                 container: true,
@@ -409,13 +426,13 @@ final class _AgentPresenceOrbState extends State<AgentPresenceOrb>
 
 enum _ShaderLoadPhase { pending, ready, fallback }
 
-String _semanticLabel(AgentPresenceState state) {
+String _semanticLabel(AppLocalizations words, AgentPresenceState state) {
   return switch (state) {
-    AgentPresenceState.idle => 'Agent ready',
-    AgentPresenceState.listening => 'Listening',
-    AgentPresenceState.thinking => 'Thinking',
-    AgentPresenceState.speaking => 'Speaking',
-    AgentPresenceState.working => 'Working',
-    AgentPresenceState.error => 'Attention needed',
+    AgentPresenceState.idle => words.presenceIdle,
+    AgentPresenceState.listening => words.presenceListening,
+    AgentPresenceState.thinking => words.presenceThinking,
+    AgentPresenceState.speaking => words.presenceSpeaking,
+    AgentPresenceState.working => words.presenceWorking,
+    AgentPresenceState.error => words.presenceError,
   };
 }

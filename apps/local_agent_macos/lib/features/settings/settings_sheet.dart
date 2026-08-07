@@ -1,11 +1,19 @@
+import 'dart:async';
+
+import 'package:agent_core/agent_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../l10n/generated/app_localizations.dart';
+import '../../platform/desktop_host_service.dart';
+import '../agent_profile/agent_profile_store.dart';
 import '../conversation/widgets/conversation_content_column.dart';
 import '../model/model_catalog.dart';
 import '../model/model_download_manager.dart';
 import '../voice/tts_voices.dart';
+import 'agent_profile_settings.dart';
 import 'app_settings.dart';
+import 'settings_section.dart';
 
 /// The app's own settings, shown over the conversation.
 ///
@@ -15,6 +23,7 @@ import 'app_settings.dart';
 final class SettingsSheet extends StatelessWidget {
   /// Creates the settings surface.
   const SettingsSheet({
+    required this.agentProfile,
     required this.settings,
     required this.onChanged,
     required this.onClose,
@@ -22,9 +31,14 @@ final class SettingsSheet extends StatelessWidget {
     required this.modelDownloads,
     required this.onDownloadModel,
     required this.onUseModel,
+    this.loginItem,
+    this.setLaunchAtLogin,
     this.catalog = modelCatalog,
     super.key,
   });
+
+  /// Who Lulo is and how it talks, read and written in place.
+  final AgentProfileStore agentProfile;
 
   /// Download state for the curated models, owned by the app.
   final ModelDownloadManager modelDownloads;
@@ -48,12 +62,26 @@ final class SettingsSheet extends StatelessWidget {
   /// Called with the whole of the new choices whenever one is changed.
   final ValueChanged<AppSettings> onChanged;
 
+  /// Whether macOS currently starts the app at login, or null on a surface
+  /// with no window host to ask — a test, or the app before it has one.
+  ///
+  /// Asked rather than stored: the registration is the system's and the user
+  /// can revoke it in System Settings while the app is not running, so a
+  /// remembered answer would eventually be a wrong one.
+  final Future<DesktopLoginItem> Function()? loginItem;
+
+  /// Asks macOS to start the app at login, or to stop, and reports what
+  /// actually resulted.
+  final Future<DesktopLoginItem> Function({required bool enabled})?
+  setLaunchAtLogin;
+
   /// Called when the user is finished.
   final VoidCallback onClose;
 
   @override
   Widget build(BuildContext context) {
     final ColorScheme colors = Theme.of(context).colorScheme;
+    final AppLocalizations words = AppLocalizations.of(context);
     return Material(
       key: const Key('settings-sheet'),
       color: colors.surface,
@@ -85,13 +113,13 @@ final class SettingsSheet extends StatelessWidget {
                 child: Row(
                   children: <Widget>[
                     Text(
-                      'Settings',
+                      words.settingsTitle,
                       style: Theme.of(context).textTheme.titleMedium,
                     ),
                     const Spacer(),
                     IconButton(
                       key: const Key('settings-close-button'),
-                      tooltip: 'Close settings',
+                      tooltip: words.closeSettings,
                       icon: const Icon(Icons.close_rounded),
                       onPressed: onClose,
                     ),
@@ -105,19 +133,14 @@ final class SettingsSheet extends StatelessWidget {
                       horizontal: conversationContentMargin,
                     ),
                     children: <Widget>[
-                      _Section(
-                        title: 'On the desktop',
+                      SettingsSection(
+                        title: words.sectionDesktop,
                         children: <Widget>[
                           SwitchListTile(
                             key: const Key('setting-keep-orb-on-top'),
                             value: settings.keepOrbOnTop,
-                            title: const Text(
-                              'Keep the orb above other windows',
-                            ),
-                            subtitle: const Text(
-                              'Off puts it in the normal window order, where other '
-                              'windows can cover it.',
-                            ),
+                            title: Text(words.keepOrbOnTop),
+                            subtitle: Text(words.keepOrbOnTopNote),
                             onChanged: (bool value) => onChanged(
                               settings.copyWith(keepOrbOnTop: value),
                             ),
@@ -125,28 +148,27 @@ final class SettingsSheet extends StatelessWidget {
                           SwitchListTile(
                             key: const Key('setting-follow-across-spaces'),
                             value: settings.followAcrossSpaces,
-                            title: const Text('Follow me between Spaces'),
-                            subtitle: const Text(
-                              'Off leaves the orb on the Space it was opened in.',
-                            ),
+                            title: Text(words.followAcrossSpaces),
+                            subtitle: Text(words.followAcrossSpacesNote),
                             onChanged: (bool value) => onChanged(
                               settings.copyWith(followAcrossSpaces: value),
                             ),
                           ),
                         ],
                       ),
-                      _Section(
-                        title: 'When it starts',
+                      SettingsSection(
+                        title: words.sectionStart,
                         children: <Widget>[
+                          if (loginItem != null && setLaunchAtLogin != null)
+                            _LaunchAtLoginSwitch(
+                              read: loginItem!,
+                              write: setLaunchAtLogin!,
+                            ),
                           SwitchListTile(
                             key: const Key('setting-open-on-launch'),
                             value: settings.openConversationOnLaunch,
-                            title: const Text(
-                              'Open the conversation on launch',
-                            ),
-                            subtitle: const Text(
-                              'Off rests as an orb until you summon it.',
-                            ),
+                            title: Text(words.openOnLaunch),
+                            subtitle: Text(words.openOnLaunchNote),
                             onChanged: (bool value) => onChanged(
                               settings.copyWith(
                                 openConversationOnLaunch: value,
@@ -155,8 +177,8 @@ final class SettingsSheet extends StatelessWidget {
                           ),
                         ],
                       ),
-                      _Section(
-                        title: 'The model it thinks with',
+                      SettingsSection(
+                        title: words.sectionModel,
                         children: <Widget>[
                           AnimatedBuilder(
                             animation: modelDownloads,
@@ -180,15 +202,13 @@ final class SettingsSheet extends StatelessWidget {
                             key: const Key('setting-model-path'),
                             title: Text(
                               settings.modelPath.isEmpty
-                                  ? 'No model chosen'
+                                  ? words.noModelChosen
                                   : settings.modelPath.split('/').last,
                             ),
                             subtitle: Text(
                               settings.modelPath.isEmpty
-                                  ? 'Lulo is answering from its built-in preview, '
-                                        'which says the same thing every time.'
-                                  : 'Loaded now. Choosing another takes a few '
-                                        'seconds to swap.',
+                                  ? words.previewNote
+                                  : words.modelLoadedNote,
                             ),
                             trailing: FilledButton.tonal(
                               key: const Key('setting-choose-model'),
@@ -200,21 +220,18 @@ final class SettingsSheet extends StatelessWidget {
                                   );
                                 }
                               },
-                              child: const Text('Choose…'),
+                              child: Text(words.chooseModel),
                             ),
                           ),
                         ],
                       ),
-                      _Section(
-                        title: 'The voice it speaks with',
+                      SettingsSection(
+                        title: words.sectionVoice,
                         children: <Widget>[
                           ListTile(
                             key: const Key('setting-tts-voice'),
-                            title: const Text('Voice'),
-                            subtitle: const Text(
-                              'Spoken answers use the resident local '
-                              'synthesizer.',
-                            ),
+                            title: Text(words.voiceLabel),
+                            subtitle: Text(words.voiceNote),
                             trailing: DropdownButton<String>(
                               key: const Key('setting-tts-voice-dropdown'),
                               value: ttsVoices.contains(settings.ttsVoice)
@@ -237,31 +254,55 @@ final class SettingsSheet extends StatelessWidget {
                           ),
                         ],
                       ),
-                      _Section(
-                        title: 'Taking turns',
+                      SettingsSection(
+                        title: words.sectionAnswerStyle,
+                        note: words.answerStyleNote,
+                        children: <Widget>[
+                          _AnswerStyleChoice(
+                            value: settings.answerStyle,
+                            onChanged: (AnswerStyle style) => onChanged(
+                              settings.copyWith(answerStyle: style),
+                            ),
+                          ),
+                        ],
+                      ),
+                      SettingsSection(
+                        title: words.sectionHearing,
+                        children: <Widget>[
+                          ListTile(
+                            key: const Key('setting-hearing-hold'),
+                            title: Text(words.hearingHoldTitle),
+                            subtitle: Text(words.hearingHoldNote),
+                          ),
+                          ListTile(
+                            key: const Key('setting-hearing-duplex'),
+                            title: Text(words.hearingDuplexTitle),
+                            subtitle: Text(words.hearingDuplexNote),
+                          ),
+                        ],
+                      ),
+                      AgentProfileSettings(store: agentProfile),
+                      SettingsSection(
+                        title: words.sectionTakingTurns,
                         children: <Widget>[
                           SwitchListTile(
                             key: const Key('setting-show-voice-evidence'),
                             value: settings.showVoiceEvidence,
-                            title: const Text('Show why it took the floor'),
-                            subtitle: const Text(
-                              'A running account under the conversation: what '
-                              'was ignored as an acknowledgement, what cut in, '
-                              'and what each turn cost.',
-                            ),
+                            title: Text(words.showVoiceEvidence),
+                            subtitle: Text(words.showVoiceEvidenceNote),
                             onChanged: (bool value) => onChanged(
                               settings.copyWith(showVoiceEvidence: value),
                             ),
                           ),
                         ],
                       ),
-                      _Section(
-                        title: 'Summoning',
-                        children: const <Widget>[
+                      SettingsSection(
+                        title: words.sectionSummoning,
+                        children: <Widget>[
                           ListTile(
-                            title: Text('Show or hide the conversation'),
-                            subtitle: Text('Anywhere on the Mac.'),
-                            trailing: Text('⌘⇧Space'),
+                            title: Text(words.showHideConversation),
+                            subtitle: Text(words.anywhereOnMac),
+                            trailing: const Text('⌘⇧Space'),
                           ),
                         ],
                       ),
@@ -273,32 +314,6 @@ final class SettingsSheet extends StatelessWidget {
           ),
         ),
       ),
-    );
-  }
-}
-
-final class _Section extends StatelessWidget {
-  const _Section({required this.title, required this.children});
-
-  final String title;
-  final List<Widget> children;
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: <Widget>[
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
-          child: Text(
-            title,
-            style: Theme.of(context).textTheme.labelLarge?.copyWith(
-              color: Theme.of(context).colorScheme.onSurfaceVariant,
-            ),
-          ),
-        ),
-        ...children,
-      ],
     );
   }
 }
@@ -324,6 +339,7 @@ final class _ModelRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final AppLocalizations words = AppLocalizations.of(context);
     final ModelInstallState state = downloads.stateOf(entry);
     if (state == ModelInstallState.downloading) {
       return ListTile(
@@ -340,12 +356,12 @@ final class _ModelRow extends StatelessWidget {
     final String? failure = downloads.failureOf(entry);
     return ListTile(
       title: Text(
-        entry.recommended ? '${entry.name} — recommended' : entry.name,
+        entry.recommended ? words.modelRecommended(entry.name) : entry.name,
       ),
       subtitle: failure == null
-          ? Text('${entry.description} $_sizeLabel.')
+          ? Text(words.modelSummary(entry.description(words), _sizeLabel))
           : Text(
-              'The download did not finish: $failure',
+              words.downloadFailed(failure),
               key: Key('model-failure-${entry.id}'),
               style: TextStyle(color: Theme.of(context).colorScheme.error),
             ),
@@ -359,13 +375,209 @@ final class _ModelRow extends StatelessWidget {
           ? FilledButton.tonal(
               key: Key('model-use-${entry.id}'),
               onPressed: onUse,
-              child: const Text('Use'),
+              child: Text(words.useModel),
             )
           : FilledButton.tonal(
               key: Key('model-download-${entry.id}'),
               onPressed: onDownload,
-              child: Text(failure == null ? 'Download' : 'Retry'),
+              child: Text(
+                failure == null ? words.downloadModel : words.retryDownload,
+              ),
             ),
+    );
+  }
+}
+
+/// How far the model may roam, as three named choices.
+///
+/// Named rather than numbered: temperature is a number nobody outside the
+/// model has the information to choose, and the two dials behind these move
+/// together because they are two halves of one decision.
+final class _AnswerStyleChoice extends StatelessWidget {
+  const _AnswerStyleChoice({required this.value, required this.onChanged});
+
+  final AnswerStyle value;
+  final ValueChanged<AnswerStyle> onChanged;
+
+  static ({String label, String note}) _describe(
+    AppLocalizations words,
+    AnswerStyle style,
+  ) => switch (style) {
+    AnswerStyle.steady => (
+      label: words.answerStyleSteady,
+      note: words.answerStyleSteadyNote,
+    ),
+    AnswerStyle.balanced => (
+      label: words.answerStyleBalanced,
+      note: words.answerStyleBalancedNote,
+    ),
+    AnswerStyle.inventive => (
+      label: words.answerStyleInventive,
+      note: words.answerStyleInventiveNote,
+    ),
+  };
+
+  @override
+  Widget build(BuildContext context) {
+    final AppLocalizations words = AppLocalizations.of(context);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Wrap(
+            spacing: 6,
+            children: <Widget>[
+              for (final AnswerStyle style in AnswerStyle.values)
+                ChoiceChip(
+                  key: Key('setting-answer-style-${style.name}'),
+                  label: Text(_describe(words, style).label),
+                  selected: style == value,
+                  onSelected: (bool _) => onChanged(style),
+                ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            _describe(words, value).note,
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// A switch that shows what macOS says, not what it was asked for.
+///
+/// The registration lives in the system, so this reads it rather than
+/// keeping a copy: the user can revoke it in System Settings while the app
+/// is not running, and a remembered answer would then be wrong with no way
+/// to notice. It is read again whenever the app comes back to the front,
+/// because the one thing this switch can tell the user to do is go to
+/// System Settings, and coming back to a sheet still showing the old answer
+/// is the same as the switch not working.
+///
+/// macOS answers with more than yes and no, and every other answer is shown
+/// rather than flattened into off. A switch that flips back a second later
+/// with nothing said is indistinguishable from a broken app.
+final class _LaunchAtLoginSwitch extends StatefulWidget {
+  const _LaunchAtLoginSwitch({required this.read, required this.write});
+
+  final Future<DesktopLoginItem> Function() read;
+  final Future<DesktopLoginItem> Function({required bool enabled}) write;
+
+  @override
+  State<_LaunchAtLoginSwitch> createState() => _LaunchAtLoginSwitchState();
+}
+
+final class _LaunchAtLoginSwitchState extends State<_LaunchAtLoginSwitch>
+    with WidgetsBindingObserver {
+  DesktopLoginItem? _status;
+  bool _asking = false;
+  bool _unreachable = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    unawaited(_refresh());
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // Back from System Settings, most likely — which is where this switch
+    // sends the user when macOS is holding the registration.
+    if (state == AppLifecycleState.resumed) {
+      unawaited(_refresh());
+    }
+  }
+
+  Future<void> _refresh() async {
+    await _ask(() => widget.read());
+  }
+
+  Future<void> _ask(Future<DesktopLoginItem> Function() call) async {
+    try {
+      final DesktopLoginItem status = await call();
+      if (mounted) {
+        setState(() {
+          _status = status;
+          _unreachable = false;
+        });
+      }
+    } on Object {
+      // The host can be gone, or the channel can fail. Swallowing it left
+      // the switch invisible forever with nothing said; the row stays and
+      // says it could not ask.
+      if (mounted) {
+        setState(() => _unreachable = true);
+      }
+    }
+  }
+
+  Future<void> _set({required bool enabled}) async {
+    if (_asking) {
+      // Two fast taps otherwise race, and the loser's answer can land last.
+      return;
+    }
+    setState(() => _asking = true);
+    await _ask(() => widget.write(enabled: enabled));
+    if (mounted) {
+      setState(() => _asking = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final AppLocalizations words = AppLocalizations.of(context);
+    final DesktopLoginItem? status = _status;
+    if (status == null && !_unreachable) {
+      // Nothing is drawn until the system has answered. A switch shown at a
+      // guess would be seen in the wrong position and then jump.
+      return const SizedBox.shrink();
+    }
+    final String? caveat = _unreachable
+        ? words.launchAtLoginFailed
+        : switch (status!) {
+            DesktopLoginItem.needsApproval => words.launchAtLoginNeedsApproval,
+            DesktopLoginItem.refused => words.launchAtLoginRefused,
+            DesktopLoginItem.unavailable => words.launchAtLoginUnavailable,
+            DesktopLoginItem.on || DesktopLoginItem.off => null,
+          };
+    // Nothing the user does here changes a refusal or an old macOS, so the
+    // switch is left unusable rather than inviting a tap that does nothing.
+    // The row stays visible either way: the setting exists, and why it is
+    // out of reach is the useful part.
+    final bool settable =
+        !_unreachable &&
+        status != DesktopLoginItem.refused &&
+        status != DesktopLoginItem.unavailable;
+    // A held registration reads as on, because that is what it is: macOS has
+    // it and is waiting for the user, and the subtitle is what stops that
+    // being a false promise. Showing it off instead makes the only way out
+    // of the state a tap asking to register a second time, which macOS
+    // answers with `kSMErrorAlreadyRegistered` — nothing moves, in either
+    // direction, forever.
+    final bool asked =
+        status == DesktopLoginItem.on ||
+        status == DesktopLoginItem.needsApproval;
+    return SwitchListTile(
+      key: const Key('setting-launch-at-login'),
+      value: asked,
+      title: Text(words.launchAtLogin),
+      subtitle: Text(caveat ?? words.launchAtLoginNote),
+      // Asked for by what it would become rather than by the switch's own
+      // position, so the two can never disagree about a pending state.
+      onChanged: settable ? (bool _) => unawaited(_set(enabled: !asked)) : null,
     );
   }
 }

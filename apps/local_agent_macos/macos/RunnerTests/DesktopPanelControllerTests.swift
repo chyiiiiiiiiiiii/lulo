@@ -231,6 +231,96 @@ final class DesktopPanelControllerTests: XCTestCase {
     )
   }
 
+  func testTheMenuBarSaysWhatTheAgentIsAndWhatItHasBeenDoing() {
+    // A menu holding show/hide and quit is a menu with no reason to be
+    // opened. Half of what a resident app is worth is in this menu, and it
+    // was empty.
+    let controller = Self.makeController()
+    let menu = MenuBarController(
+      panelController: controller,
+      statusBar: NSStatusBar()
+    )
+
+    menu.apply(
+      MenuBarController.State(
+        conversations: [
+          (id: "a", title: "週末計畫"),
+          (id: "b", title: "明天台中天氣如何"),
+          (id: "c", title: "how do I run the tests"),
+          (id: "d", title: "one too many"),
+        ],
+        modelName: "gemma-4-E4B-it",
+        activity: "Thinking…",
+        canStartVoice: true,
+        labels: MenuBarController.Labels(
+          show: "顯示 Lulo",
+          hide: "隱藏 Lulo",
+          talk: "跟 Lulo 說話",
+          recent: "最近",
+          quit: "結束 Lulo"
+        )
+      )
+    )
+
+    let titles = menu.itemsForTesting.map(\.title)
+    // The menu's own words come from Dart, so they follow the system language
+    // like everything else the user reads.
+    XCTAssertTrue(titles.contains("結束 Lulo"))
+    XCTAssertTrue(titles.contains("Thinking…"))
+    XCTAssertTrue(titles.contains("gemma-4-E4B-it"))
+    XCTAssertTrue(titles.contains("週末計畫"))
+    // A menu is a shortcut, not a browser: the whole list already exists
+    // inside the app.
+    XCTAssertFalse(
+      titles.contains("one too many"),
+      "The menu listed more conversations than it promises to"
+    )
+  }
+
+  func testChoosingAConversationFromTheMenuNamesTheRightOne() {
+    // The identifier travels on the item, so the handler never has to find
+    // the conversation again by title or by position — which is the kind of
+    // thing that survives every test and then opens the wrong one.
+    let controller = Self.makeController()
+    let menu = MenuBarController(
+      panelController: controller,
+      statusBar: NSStatusBar()
+    )
+    var chosen: [String] = []
+    menu.onConversationChosen = { chosen.append($0) }
+    menu.apply(
+      MenuBarController.State(
+        conversations: [(id: "a", title: "第一則"), (id: "b", title: "第二則")],
+        modelName: "",
+        activity: "",
+        canStartVoice: false
+      )
+    )
+
+    guard
+      let second = menu.itemsForTesting.first(where: { $0.title == "第二則" })
+    else {
+      return XCTFail("The menu did not list the second conversation")
+    }
+    _ = second.target?.perform(second.action, with: second)
+
+    XCTAssertEqual(chosen, ["b"])
+  }
+
+  func testAMenuWithNothingToSayStillShowsAndQuits() {
+    let controller = Self.makeController()
+    let menu = MenuBarController(
+      panelController: controller,
+      statusBar: NSStatusBar()
+    )
+
+    let titles = menu.itemsForTesting.map(\.title)
+    // The default labels stand in until Dart has said anything, so the menu
+    // is never a list of blanks.
+    XCTAssertTrue(titles.contains("Quit Lulo"))
+    XCTAssertTrue(titles.contains(where: { $0.hasSuffix("Lulo") }))
+  }
+
   func testAClickOnTheRestingOrbReachesTheCatcher() {
     // The window server, not AppKit, decides which window a click belongs to,
     // and for a window it can see through it decides on the drawn alpha rather
@@ -276,6 +366,31 @@ final class DesktopPanelControllerTests: XCTestCase {
       ),
       catcher.windowNumber,
       "The catcher took a click that was clear of the orb"
+    )
+
+    // Nor the ring between the body and the edge of the square. The catcher
+    // used to fill the whole square with its circle, so it owned every point
+    // within half a side of the centre while the orb is drawn to well under
+    // that: clicking a file on the desktop beside the orb summoned the
+    // conversation, and the tint the catcher has to draw to be there at all
+    // had nothing of the orb over it to hide under.
+    XCTAssertNotEqual(
+      NSWindow.windowNumber(
+        at: NSPoint(x: rect.midX + side / 2 * 0.85, y: rect.midY),
+        belowWindowWithWindowNumber: 0
+      ),
+      catcher.windowNumber,
+      "The catcher took a click on the desktop beside the orb"
+    )
+
+    // The body itself still answers, all the way to where it is solidly drawn.
+    XCTAssertEqual(
+      NSWindow.windowNumber(
+        at: NSPoint(x: rect.midX + side / 2 * 0.5, y: rect.midY),
+        belowWindowWithWindowNumber: 0
+      ),
+      catcher.windowNumber,
+      "A click on the orb's own body went through the catcher"
     )
   }
 

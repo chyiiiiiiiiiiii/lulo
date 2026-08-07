@@ -133,22 +133,116 @@ restoration, and the conversation's place is kept in memory only
 remembered one means macOS restores the orb's frame on the next launch and the
 conversation opens at orb size. See [presence.md](presence.md).
 
-## Deferred public profile experience
+Whether the app starts itself at login. This one is a switch on the sheet
+and still not a stored setting, which is the point: the registration is
+macOS's, not the app's. It survives a reinstall, and the user can revoke it
+in System Settings › General › Login Items while the app is not running to
+notice. A remembered copy would eventually claim something untrue about the
+machine, so `_LaunchAtLoginSwitch` asks `SMAppService` every time the sheet
+opens and shows what came back.
 
-The developer profile is deliberately configured by JSON first; see
-[agent-profile.md](agent-profile.md). A public release should expose the same
-typed schema through human controls rather than showing a raw system prompt:
+Five states, not two, because macOS answers with more than yes and no.
 
-- a short conversational first-run setup;
-- personality, language, voice and answer-length controls;
-- memory proposals that require confirmation by default;
-- source, global/project scope, edit, disable and delete actions per memory;
-- sensitive categories that are never saved automatically;
-- pause memory, export data and erase-all controls;
-- an advanced **Additional instructions** field for experienced users.
+`needsApproval` is a registration macOS holds until the user allows it in
+System Settings — and is also what it reports after they revoke consent
+there. It reads as **on**, with the subtitle replaced by where to go: that is
+what was asked for, and the subtitle is what stops it being a false promise.
+Showing it off was the first version and it deadlocked, because the only way
+out of the state was then a tap asking to register a second time, which macOS
+answers with `kSMErrorAlreadyRegistered`. Shown on, the same tap withdraws it.
 
-Automatic extraction and semantic retrieval remain disabled until those
-controls and their privacy review exist.
+`refused` is macOS declining this copy of the app — an invalid signature,
+which is what every ad-hoc-signed build from this repository gets, or a
+bundle it cannot find. Reading the status alone reports `notRegistered` there
+and would draw an ordinary off switch that silently does nothing when tapped.
+`unavailable` is only macOS 12: `SMAppService` is 13 and the deployment
+target is 12, so no copy of the app can help, where moving a refused one to
+Applications can. Both leave the switch visible and disabled — the setting
+exists, and why it is out of reach is the useful part.
+
+`LaunchAtLogin.reading(_:)` maps the status and `after(_:asking:status:)`
+maps a throwing register or unregister; both are pure and both are under
+test. The register and unregister calls themselves talk to a system daemon
+over XPC, which a unit test has no business waking up.
+
+## How far it may roam
+
+`AnswerStyle` is the one sampling dial a user has a reason to touch, named for
+what it does to an answer rather than for the number behind it. Temperature
+and nucleus probability move together because they are two halves of the same
+choice, and offering them separately would be offering a decision nobody
+outside the model has the information to make. `balanced` is exactly what the
+app shipped with — changing the default would change every existing user's
+answers, which is not what exposing a setting is for.
+
+It is **per generation, not per model**, on the Dart side: the sampler travels
+inside the request the host already receives, so `PigeonInferenceService`
+reads `AnswerStyle Function()` on each question. `LocalModelConfig` no longer
+carries temperature or topP for that reason — they were never properties of
+the model.
+
+Below the channel it is not that simple, and the first version of this feature
+shipped a sentence saying it was. LiteRT-LM takes the sampler once, in
+`ConversationConfig`; `sendMessageStream` has no argument for it. So a changed
+style **rebuilds the native conversation** and re-seeds it from history, the
+same treatment an edited profile already gets — one prefill, never a model
+load. Before that fix the runtime *refused* a changed sampler and failed every
+remaining turn in the conversation. See
+[model.md](model.md) › *What the model remembers*.
+
+## The language it is read in
+
+Nothing on this screen picks a language. `MaterialApp` is given
+`AppLocalizations.supportedLocales` and the system chooses; an unsupported one
+falls back to English. The strings are in `lib/l10n/app_en.arb` and
+`lib/l10n/app_zh.arb`, the latter Traditional because that is who this agent is
+for.
+
+This is separate from the language Lulo *answers* in, which is
+`AgentIdentity.locale` in the profile and defaults to `zh-TW`. A Mac in English
+with an agent answering in Chinese is a real configuration, not a mistake.
+
+## The profile, in the same sheet
+
+`AgentProfileSettings` puts the typed profile behind human controls rather
+than a raw system prompt: what Lulo is called and what it calls you, its tone
+and how much it says, the facts it remembers, the words it hears, and the
+user's own words for taking and yielding the floor.
+
+The words it hears are two lists and the order they appear in is an argument.
+`misheard` comes first — pairs of what was heard and what was said, applied
+as a substitution, so it always takes effect. `vocabulary` comes second — a
+hint to the recogniser, which `SpokenVocabularyBook` records changing the
+transcript by not one character. Somebody who has just been misheard should
+reach the one that works first, and the labels say which is which rather than
+both describing the same job.
+
+It writes the same file [agent-profile.md](agent-profile.md) documents, in the
+same schema, through `AgentProfileStore.save`. There is no second copy of the
+profile and no way for the two to disagree — and because the prompt, the
+recogniser and the endpointer all read `profileStore.current`, a change is in
+force on the next turn. The runtime rebuilds its conversation when the system
+message changes, so an edit mid-conversation is not stranded behind a KV cache
+holding the old one.
+
+Three things about it are load-bearing:
+
+- **`AgentProfile.copyWith` rebuilds `floorControl`** rather than carrying it
+  over. It is derived from `turnTaking`, and carrying it would save the word
+  and go on ignoring it.
+- **`encodeAgentProfile` writes every field**, including the ones no screen
+  shows. The decoder reads a missing list as empty rather than as its default, with `vocabulary` the one exception: absent keeps the built-in terms and an explicit `[]` is believed, because reading both as empty once stripped all ten of them from every hand-written profile.
+- **Text fields commit on submit and on losing focus**, not per keystroke.
+  Each save rewrites the file.
+
+A memory added here is always `personal`. A memory with no triggers is only
+ever eligible when it is personal or a preference, so any other kind offered
+here would be saved and then never used.
+
+Still deferred: memory proposals that require confirmation, per-memory scope
+and source, sensitive categories that are never saved automatically, export
+and erase-all. Automatic extraction and semantic retrieval remain disabled
+until those controls and their privacy review exist.
 
 ## Traps
 

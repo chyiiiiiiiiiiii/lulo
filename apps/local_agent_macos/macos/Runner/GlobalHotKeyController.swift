@@ -111,7 +111,16 @@ final class HotKeyHoldSplitter {
 final class GlobalHotKeyController: GlobalHotKeyRegistering {
   private let backend: HotKeyBackend
   private var registration: HotKeyRegistration?
-  private var nextID: UInt32 = 1
+
+  /// The next hot key id, shared by every controller in the process.
+  ///
+  /// Carbon's id space is global: a registration is addressed by
+  /// `(signature, id)`, every controller here uses the same signature, and
+  /// `CarbonHotKeyCallback.route` accepts on exactly that pair. A per-
+  /// instance counter meant a second controller minted id 1 again and its
+  /// handler answered for the first controller's key — which is how adding
+  /// a dictation key silently took over ⌘⇧Space.
+  private static var nextID: UInt32 = 1
 
   init(backend: HotKeyBackend) {
     self.backend = backend
@@ -166,10 +175,11 @@ final class GlobalHotKeyController: GlobalHotKeyRegistering {
     handler: @escaping () -> Void,
     releaseHandler: (() -> Void)?
   ) throws -> HotKeyRegistration {
-    defer { nextID &+= 1 }
+    let id = Self.nextID
+    defer { Self.nextID &+= 1 }
     return try backend.register(
       key,
-      id: nextID,
+      id: id,
       handler: handler,
       releaseHandler: releaseHandler
     )

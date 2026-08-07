@@ -131,4 +131,15 @@ abstract interface class VoiceService {
   /// The decision itself is native — the endpointer runs on a 50ms tick in
   /// the audio path — so this is the only way the profile reaches it.
   Future<void> useUnfinishedEndings(List<String> endings);
+
+  /// Tells the recogniser the words this user says that it would otherwise
+  /// spell as something else.
+  ///
+  /// Contextual biasing, which happens before audio is decoded rather than
+  /// repairing a name afterwards. Read that as where it acts, not as
+  /// whether it works: `SpokenVocabularyBook` carries a measurement of a
+  /// thirty-two term bias changing the transcript by not one character, and
+  /// `AgentProfile.misheard` exists because a hint can do nothing where a
+  /// substitution cannot.
+  Future<void> useSpokenVocabulary(List<String> terms);
 }

@@ -43,6 +43,47 @@ final class RecordingConversationStorageService
   @override
   Future<void> deleteConversation(ConversationId conversationId) async {}
 
+  /// Every query the fake was searched with, in order.
+  final List<String> searches = <String>[];
+
+  @override
+  Future<List<ConversationSummary>> searchConversations(String query) async {
+    searches.add(query);
+    return const <ConversationSummary>[];
+  }
+
+  /// Every rename the fake was asked for, newest last.
+  final List<({ConversationId id, String title})> renames =
+      <({ConversationId id, String title})>[];
+
+  /// Every pin change the fake was asked for, newest last.
+  final List<({ConversationId id, bool pinned})> pins =
+      <({ConversationId id, bool pinned})>[];
+
+  @override
+  Future<void> renameConversation(
+    ConversationId conversationId,
+    String title,
+  ) async {
+    renames.add((id: conversationId, title: title));
+  }
+
+  @override
+  Future<void> setConversationPinned(
+    ConversationId conversationId, {
+    required bool pinned,
+  }) async {
+    pins.add((id: conversationId, pinned: pinned));
+  }
+
+  /// Every conversation taken back to its last question, in order.
+  final List<ConversationId> droppedFromLastQuestion = <ConversationId>[];
+
+  @override
+  Future<void> dropFromLastQuestion(ConversationId conversationId) async {
+    droppedFromLastQuestion.add(conversationId);
+  }
+
   @override
   Future<void> saveTerminalAssistantTurn(
     Turn turn,

@@ -19,6 +19,59 @@ final class AgentProfileDecodeResult {
   final String? error;
 }
 
+/// Writes [profile] back out in the schema [decodeAgentProfile] reads.
+///
+/// Every field is written, including the ones no screen shows. The decoder
+/// reads a missing list as empty rather than as its default, so anything
+/// omitted here is silently dropped the first time the user changes
+/// something else. `vocabulary` is the one exception — absent keeps the
+/// built-in terms, `[]` is believed — and it is an exception precisely
+/// because omitting it once stripped all ten of them.
+Map<String, Object?> encodeAgentProfile(AgentProfile profile) {
+  return <String, Object?>{
+    'schemaVersion': profile.schemaVersion,
+    'identity': <String, Object?>{
+      'agentName': profile.identity.agentName,
+      'userName': profile.identity.userName,
+      'locale': profile.identity.locale,
+    },
+    'personality': <String, Object?>{
+      'tone': profile.personality.tone,
+      'responseLength': profile.personality.responseLength.name,
+      'admitUncertainty': profile.personality.admitUncertainty,
+      'leadWithAnswer': profile.personality.leadWithAnswer,
+    },
+    'voiceBehavior': <String, Object?>{
+      'avoidMarkdown': profile.voiceBehavior.avoidMarkdown,
+      'avoidReadingUrls': profile.voiceBehavior.avoidReadingUrls,
+      'avoidLongLists': profile.voiceBehavior.avoidLongLists,
+      'preferNaturalShortSentences':
+          profile.voiceBehavior.preferNaturalShortSentences,
+    },
+    'turnTaking': <String, Object?>{
+      'acknowledgements': <String>[...profile.turnTaking.acknowledgements],
+      'corrections': <String>[...profile.turnTaking.corrections],
+      'unfinished': <String>[...profile.turnTaking.unfinished],
+    },
+    'memories': <Object?>[
+      for (final AgentMemory memory in profile.memories)
+        <String, Object?>{
+          'id': memory.id,
+          'kind': memory.kind.name,
+          'content': memory.content,
+          'triggers': <String>[...memory.triggers],
+          'enabled': memory.enabled,
+        },
+    ],
+    'vocabulary': <String>[...profile.vocabulary],
+    'misheard': <Map<String, Object?>>[
+      for (final MisheardWord word in profile.misheard)
+        <String, Object?>{'heard': word.heard, 'meant': word.meant},
+    ],
+    'additionalInstructions': <String>[...profile.additionalInstructions],
+  };
+}
+
 /// Defensively decodes the developer-authored schema without throwing.
 AgentProfileDecodeResult decodeAgentProfile(Object? json) {
   if (json is! Map<String, Object?>) {
@@ -104,7 +157,16 @@ AgentProfileDecodeResult decodeAgentProfile(Object? json) {
         unfinished: _strings(turns['unfinished']),
       ),
       memories: memories,
-      vocabulary: _strings(json['vocabulary']),
+      // Absent and empty are different answers. A file that never mentions
+      // the vocabulary has said nothing about it and keeps the built-in
+      // terms, which two places downstream cannot invent; a file that writes
+      // `[]` has said it wants no biasing and is believed. Reading both as
+      // empty stripped all ten terms from every hand-written profile, which
+      // is the exact failure builtInVocabulary exists to prevent.
+      vocabulary: json.containsKey('vocabulary')
+          ? _strings(json['vocabulary'])
+          : defaults.vocabulary,
+      misheard: _misheard(json['misheard']),
       additionalInstructions: _strings(json['additionalInstructions']),
     ),
     skippedMemoryIds: skipped,
@@ -129,3 +191,31 @@ AgentResponseLength _responseLength(Object? value) =>
 
 AgentMemoryKind _memoryKind(Object? value) =>
     AgentMemoryKind.values.asNameMap()[value] ?? AgentMemoryKind.personal;
+
+/// Corrections the user has taught the recogniser, ignoring malformed rows.
+///
+/// A row missing either half is dropped rather than read as an empty
+/// string: an empty `heard` would match between every pair of characters in
+/// every transcript, so one bad row in a hand-edited file would rewrite
+/// everything the user says.
+List<MisheardWord> _misheard(Object? value) {
+  if (value is! List<Object?>) {
+    return const <MisheardWord>[];
+  }
+  final List<MisheardWord> words = <MisheardWord>[];
+  for (final Object? entry in value) {
+    if (entry is! Map<Object?, Object?>) {
+      continue;
+    }
+    final Object? heard = entry['heard'];
+    final Object? meant = entry['meant'];
+    if (heard is! String || meant is! String) {
+      continue;
+    }
+    final MisheardWord word = MisheardWord(heard: heard, meant: meant);
+    if (word.isUsable) {
+      words.add(word);
+    }
+  }
+  return words;
+}

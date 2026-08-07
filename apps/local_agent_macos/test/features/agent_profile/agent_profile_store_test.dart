@@ -1,7 +1,9 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:agent_core/agent_core.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:local_agent_macos/features/agent_profile/agent_profile_codec.dart';
 import 'package:local_agent_macos/features/agent_profile/agent_profile_store.dart';
 
 void main() {
@@ -106,6 +108,69 @@ void main() {
     await Future<void>.delayed(const Duration(milliseconds: 100));
 
     expect(store.revision.value, disposedRevision);
+  });
+
+  group('saving from the app', () {
+    test('a saved profile is on disk and in force at once', () async {
+      final FileAgentProfileStore store = FileAgentProfileStore(
+        file: file,
+        watch: false,
+      );
+      addTearDown(store.dispose);
+      await store.load();
+      final int before = store.revision.value;
+
+      await store.save(
+        AgentProfile(
+          identity: const AgentIdentity(agentName: '露露', userName: 'Yii'),
+          turnTaking: const TurnTakingWords(acknowledgements: <String>['蛤']),
+        ),
+      );
+
+      // In force immediately rather than after the watcher notices. Watching
+      // is off in release builds, and where it is on the debounce would leave
+      // the screen showing the old profile for a quarter of a second after
+      // the user changed it.
+      expect(store.current.identity.agentName, '露露');
+      expect(store.current.turnTaking.acknowledgements, <String>['蛤']);
+      expect(store.revision.value, greaterThan(before));
+
+      // And it is the file the developer edits by hand, still readable by
+      // the same decoder.
+      final AgentProfileDecodeResult reread = decodeAgentProfile(
+        jsonDecode(await file.readAsString()),
+      );
+      expect(reread.error, isNull);
+      expect(reread.profile, store.current);
+    });
+
+    test('saving into a directory that is gone still works', () async {
+      // The user can delete Application Support between launches, and losing
+      // a preference is not a reason to fail the save that follows.
+      final File nested = File('${directory.path}/gone/agent_profile.json');
+      final FileAgentProfileStore store = FileAgentProfileStore(
+        file: nested,
+        watch: false,
+      );
+      addTearDown(store.dispose);
+      await store.load();
+
+      await store.save(AgentProfile.builtIn());
+
+      expect(nested.existsSync(), isTrue);
+    });
+
+    test('a disposed store does not write', () async {
+      final FileAgentProfileStore store = FileAgentProfileStore(
+        file: file,
+        watch: false,
+      );
+      await store.load();
+      await store.dispose();
+
+      await expectLater(store.save(AgentProfile.builtIn()), throwsStateError);
+      expect(file.existsSync(), isFalse);
+    });
   });
 }
 

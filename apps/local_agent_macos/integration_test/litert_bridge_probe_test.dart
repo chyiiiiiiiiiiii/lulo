@@ -26,8 +26,6 @@ void main() {
           modelId: 'gemma-4-E4B-it',
           modelPath: _modelPath,
           contextSize: 4096,
-          temperature: 0.7,
-          topP: 0.95,
           maxTokens: 48,
           seed: 7,
         ),

@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:local_agent_macos/features/presence/desktop_orb_surface.dart';
+import 'package:local_agent_macos/l10n/generated/app_localizations.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -20,6 +21,8 @@ void main() {
 
     await tester.pumpWidget(
       MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
         home: RepaintBoundary(
           key: const Key('orb-surface'),
           child: DesktopOrbSurface(onSummon: () {}),
@@ -75,6 +78,8 @@ void main() {
     final List<Offset> moves = <Offset>[];
     await tester.pumpWidget(
       MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
         home: DesktopOrbSurface(
           onSummon: () => summons += 1,
           onDragBy: moves.add,

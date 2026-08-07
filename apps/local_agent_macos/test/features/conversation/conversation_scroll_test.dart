@@ -2,6 +2,7 @@ import 'package:agent_core/agent_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:local_agent_macos/features/conversation/widgets/conversation_list.dart';
+import 'package:local_agent_macos/l10n/generated/app_localizations.dart';
 
 void main() {
   testWidgets('the conversation follows new answers to the bottom', (
@@ -191,6 +192,8 @@ final class _Conversation {
   final ValueNotifier<Turn?> activeTurn = ValueNotifier<Turn?>(null);
 
   Widget surface() => MaterialApp(
+    localizationsDelegates: AppLocalizations.localizationsDelegates,
+    supportedLocales: AppLocalizations.supportedLocales,
     home: Scaffold(
       body: SizedBox(
         height: 300,

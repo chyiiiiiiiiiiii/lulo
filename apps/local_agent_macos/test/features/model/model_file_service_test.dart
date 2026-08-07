@@ -23,7 +23,7 @@ void main() {
   const ModelCatalogEntry entry = ModelCatalogEntry(
     id: 'test-model',
     name: 'A test model',
-    description: 'Small enough to hold in one hand.',
+    descriptionKey: ModelDescription.balanced,
     fileName: 'test-model.litertlm',
     url: 'https://example.invalid/test-model.litertlm',
     sizeBytes: 10,
@@ -120,7 +120,7 @@ void main() {
     final ModelCatalogEntry pinned = ModelCatalogEntry(
       id: 'test-model',
       name: 'A test model',
-      description: 'Small enough to hold in one hand.',
+      descriptionKey: ModelDescription.balanced,
       fileName: 'test-model.litertlm',
       url: 'https://example.invalid/test-model.litertlm',
       sizeBytes: 10,
@@ -168,7 +168,7 @@ void main() {
       final ModelCatalogEntry pinned = ModelCatalogEntry(
         id: 'test-model',
         name: 'A test model',
-        description: 'Small enough to hold in one hand.',
+        descriptionKey: ModelDescription.balanced,
         fileName: 'test-model.litertlm',
         url: 'https://example.invalid/test-model.litertlm',
         sizeBytes: 10,
@@ -233,7 +233,7 @@ void main() {
             const ModelCatalogEntry(
               id: 'test-model',
               name: 'A test model',
-              description: 'Small enough to hold in one hand.',
+              descriptionKey: ModelDescription.balanced,
               fileName: 'test-model.litertlm',
               url: 'https://example.invalid/test-model.litertlm',
               sizeBytes: 10,
@@ -262,7 +262,7 @@ void main() {
             ModelCatalogEntry(
               id: 'test-model',
               name: 'A test model',
-              description: 'Small enough to hold in one hand.',
+              descriptionKey: ModelDescription.balanced,
               fileName: 'test-model.litertlm',
               url: 'https://example.invalid/test-model.litertlm',
               sizeBytes: 10,

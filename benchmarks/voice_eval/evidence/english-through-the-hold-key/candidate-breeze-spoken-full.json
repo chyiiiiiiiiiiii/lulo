@@ -1,0 +1,124 @@
+{
+  "schemaVersion": 1,
+  "runId": "breeze-spoken-full-1786027732",
+  "corpusId": "en-spoken-v1",
+  "kind": "transcript",
+  "adapter": {
+    "name": "breeze-spoken-full",
+    "version": "Kenji8000/Breeze-ASR-25-mlx language=zh"
+  },
+  "cases": [
+    {
+      "caseId": "spoken-run-tests",
+      "rawTranscript": "How do I run the test in this project?",
+      "refinedTranscript": null,
+      "partialEvents": [],
+      "finalAtMs": 1601
+    },
+    {
+      "caseId": "spoken-widget-question",
+      "rawTranscript": "What is the difference between a stateless and a stateful widget?",
+      "refinedTranscript": null,
+      "partialEvents": [],
+      "finalAtMs": 2027
+    },
+    {
+      "caseId": "spoken-litert",
+      "rawTranscript": "Can you explain what the LiteRT runtime does?",
+      "refinedTranscript": null,
+      "partialEvents": [],
+      "finalAtMs": 1289
+    },
+    {
+      "caseId": "spoken-commits",
+      "rawTranscript": "Show me the latest commits on the main branch.",
+      "refinedTranscript": null,
+      "partialEvents": [],
+      "finalAtMs": 1410
+    },
+    {
+      "caseId": "spoken-download-failed",
+      "rawTranscript": "I think the download failed, can you try again?",
+      "refinedTranscript": null,
+      "partialEvents": [],
+      "finalAtMs": 1827
+    },
+    {
+      "caseId": "spoken-remind-mic",
+      "rawTranscript": "Remind me to check the microphone permissions later.",
+      "refinedTranscript": null,
+      "partialEvents": [],
+      "finalAtMs": 1528
+    },
+    {
+      "caseId": "spoken-dart-test",
+      "rawTranscript": "Dark text is falling on the second cast.",
+      "refinedTranscript": null,
+      "partialEvents": [],
+      "finalAtMs": 1279
+    },
+    {
+      "caseId": "spoken-settings-voice",
+      "rawTranscript": "Open the settings and turn the voice off.",
+      "refinedTranscript": null,
+      "partialEvents": [],
+      "finalAtMs": 1287
+    },
+    {
+      "caseId": "spoken-restart",
+      "rawTranscript": "Can you actually can you show me the last three commits instead?",
+      "refinedTranscript": null,
+      "partialEvents": [],
+      "finalAtMs": 1330
+    },
+    {
+      "caseId": "spoken-filler",
+      "rawTranscript": "So, I want to know why the download keeps falling.",
+      "refinedTranscript": null,
+      "partialEvents": [],
+      "finalAtMs": 1329
+    },
+    {
+      "caseId": "spoken-vocabulary",
+      "rawTranscript": "Does Gemma run through LiteRT or through MLX on this Mac?",
+      "refinedTranscript": null,
+      "partialEvents": [],
+      "finalAtMs": 1427
+    },
+    {
+      "caseId": "spoken-tooling",
+      "rawTranscript": "Open Xcode and run the sweep test, then tell me what Dart test says.",
+      "refinedTranscript": null,
+      "partialEvents": [],
+      "finalAtMs": 1382
+    },
+    {
+      "caseId": "spoken-numbers",
+      "rawTranscript": "Flutter 3.44.1 and again has 21 steps.",
+      "refinedTranscript": null,
+      "partialEvents": [],
+      "finalAtMs": 1353
+    },
+    {
+      "caseId": "spoken-short",
+      "rawTranscript": "Stop",
+      "refinedTranscript": null,
+      "partialEvents": [],
+      "finalAtMs": 1085
+    },
+    {
+      "caseId": "spoken-code-switch-out",
+      "rawTranscript": "I think the 語音 part is broken, not a model.",
+      "refinedTranscript": null,
+      "partialEvents": [],
+      "finalAtMs": 1389
+    },
+    {
+      "caseId": "spoken-long-pause",
+      "rawTranscript": "The thing I actually want is a way to tell which recognizer is listening.",
+      "refinedTranscript": null,
+      "partialEvents": [],
+      "finalAtMs": 1397
+    }
+  ]
+}

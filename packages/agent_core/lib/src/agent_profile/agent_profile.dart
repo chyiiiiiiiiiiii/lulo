@@ -1,4 +1,5 @@
 import '../voice/floor_control.dart';
+import 'misheard_word.dart';
 
 /// How much detail Lulo should provide unless the question requires more.
 enum AgentResponseLength {
@@ -14,7 +15,7 @@ enum AgentResponseLength {
 
 /// The stable names and language used to address each other.
 final class AgentIdentity {
-  /// Creates the stable names and locale used by prompt composition.
+  /// Creates the stable names and the user's stated locale.
   const AgentIdentity({
     this.agentName = 'Lulo',
     this.userName = '',
@@ -28,6 +29,19 @@ final class AgentIdentity {
   final String userName;
 
   /// BCP-47 locale for the user's preferred language and region.
+  ///
+  /// **Nothing reads this.** The language of both the instructions and the
+  /// answer is taken from the question itself, in `composeAgentPrompt`, and
+  /// it has to be: an English preamble in front of a Chinese question turns
+  /// the reply English however plainly the preamble asks otherwise, because
+  /// on a model this size the instruction is the strongest signal in the
+  /// prompt. That is pinned by `the instruction is written in the language of
+  /// the question` in the app's `pigeon_inference_service_test.dart`.
+  ///
+  /// Kept because the voice path will need it. There the recogniser is
+  /// monolingual — one locale chosen at `begin()` — so a transcript's script
+  /// says what the recogniser was set to, not what the user spoke, and the
+  /// question cannot be asked what language it is in.
   final String locale;
 
   @override
@@ -123,6 +137,15 @@ final class VoiceResponseBehavior {
 /// away. Left to a profile file, they existed only on the machine of whoever
 /// had written one — which is how a check for them passed on one developer's
 /// disk and could never pass anywhere else.
+///
+/// The first of those two was a claim this sentence made and the code did
+/// not keep: the profile reached the refiner and stopped there, while the
+/// recogniser ran off a hardcoded list of its own. It is wired now, through
+/// `VoiceHostApi.useSpokenVocabulary`. Do not read that as an accuracy win —
+/// `SpokenVocabularyBook` records a measurement where a thirty-two term bias
+/// changed the transcript by not one character, and nothing since has shown
+/// otherwise. What is fixed is that the setting now reaches the thing it
+/// names.
 ///
 /// Deliberately short. Contextual biasing trades general accuracy for the
 /// terms listed, so this is the vocabulary of the product, not a dictionary;
@@ -266,6 +289,7 @@ final class AgentProfile {
     this.turnTaking = const TurnTakingWords(),
     List<AgentMemory> memories = const <AgentMemory>[],
     List<String> vocabulary = builtInVocabulary,
+    List<MisheardWord> misheard = const <MisheardWord>[],
     List<String> additionalInstructions = const <String>[],
   }) : floorControl = FloorControl(
          alsoAcknowledgements: turnTaking.acknowledgements,
@@ -273,12 +297,46 @@ final class AgentProfile {
        ),
        memories = List<AgentMemory>.unmodifiable(memories),
        vocabulary = List<String>.unmodifiable(vocabulary),
+       misheard = List<MisheardWord>.unmodifiable(misheard),
        additionalInstructions = List<String>.unmodifiable(
          additionalInstructions,
        );
 
   /// Creates Lulo's safe profile when no valid local file is available.
   factory AgentProfile.builtIn() => AgentProfile();
+
+  /// Returns a copy with the named parts replaced.
+  ///
+  /// Every edit made from settings rebuilds the whole profile, and the screen
+  /// shows less of it than the file holds — so what is not named here has to
+  /// come through untouched, or changing one thing would silently drop
+  /// another. [floorControl] is rebuilt rather than carried over, because it
+  /// is derived from [turnTaking] and carrying it would save a word and go on
+  /// ignoring it.
+  AgentProfile copyWith({
+    int? schemaVersion,
+    AgentIdentity? identity,
+    AgentPersonality? personality,
+    VoiceResponseBehavior? voiceBehavior,
+    TurnTakingWords? turnTaking,
+    List<AgentMemory>? memories,
+    List<String>? vocabulary,
+    List<MisheardWord>? misheard,
+    List<String>? additionalInstructions,
+  }) {
+    return AgentProfile(
+      schemaVersion: schemaVersion ?? this.schemaVersion,
+      identity: identity ?? this.identity,
+      personality: personality ?? this.personality,
+      voiceBehavior: voiceBehavior ?? this.voiceBehavior,
+      turnTaking: turnTaking ?? this.turnTaking,
+      memories: memories ?? this.memories,
+      vocabulary: vocabulary ?? this.vocabulary,
+      misheard: misheard ?? this.misheard,
+      additionalInstructions:
+          additionalInstructions ?? this.additionalInstructions,
+    );
+  }
 
   /// Schema version of the decoded profile.
   final int schemaVersion;
@@ -308,6 +366,15 @@ final class AgentProfile {
   /// Terms available to later ASR and transcript-refinement slices.
   final List<String> vocabulary;
 
+  /// Words this recogniser gets wrong for this user, and what they were.
+  ///
+  /// Distinct from [vocabulary], which is a hint: it asks the recogniser to
+  /// lean towards a word and the recogniser may do nothing with it — and on
+  /// the corpus measured in `SpokenVocabularyBook`, did nothing at all.
+  /// These are substitutions, applied to the transcript after the fact, and
+  /// they put back exactly what the user said should have been there.
+  final List<MisheardWord> misheard;
+
   /// Developer-authored instructions appended after bounded memories.
   final List<String> additionalInstructions;
 
@@ -321,6 +388,7 @@ final class AgentProfile {
       other.turnTaking == turnTaking &&
       _listEquals(other.memories, memories) &&
       _listEquals(other.vocabulary, vocabulary) &&
+      _listEquals(other.misheard, misheard) &&
       _listEquals(other.additionalInstructions, additionalInstructions);
 
   @override
@@ -332,6 +400,7 @@ final class AgentProfile {
     turnTaking,
     Object.hashAll(memories),
     Object.hashAll(vocabulary),
+    Object.hashAll(misheard),
     Object.hashAll(additionalInstructions),
   );
 }

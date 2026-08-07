@@ -21,8 +21,62 @@ abstract interface class AgentProfileStore {
   /// Loads the initial snapshot and starts watching when configured.
   Future<void> load();
 
+  /// Writes [profile] out and puts it in force.
+  ///
+  /// The file stays the single source of truth — this is the same file a
+  /// developer edits by hand, in the same schema — so there is no second copy
+  /// of the profile anywhere and no way for the two to disagree.
+  Future<void> save(AgentProfile profile);
+
   /// Stops watching and releases resources.
   Future<void> dispose();
+}
+
+/// A profile that lives only as long as the app runs.
+///
+/// For the deterministic preview and for widget tests, which must not write
+/// into the profile the user actually talks to.
+final class InMemoryAgentProfileStore implements AgentProfileStore {
+  /// Creates a store starting from [profile], or the built-in one.
+  InMemoryAgentProfileStore([AgentProfile? profile])
+    : _current = profile ?? AgentProfile.builtIn();
+
+  AgentProfile _current;
+  final ValueNotifier<int> _revision = ValueNotifier<int>(0);
+  bool _disposed = false;
+
+  @override
+  AgentProfile get current => _current;
+
+  @override
+  ValueListenable<int> get revision => _revision;
+
+  @override
+  String? get error => null;
+
+  @override
+  Future<void> load() async {}
+
+  @override
+  Future<void> save(AgentProfile profile) async {
+    if (_disposed) {
+      throw StateError('The agent profile store is disposed.');
+    }
+    if (profile == _current) {
+      return;
+    }
+    _current = profile;
+    _revision.value += 1;
+  }
+
+  @override
+  Future<void> dispose() async {
+    if (_disposed) {
+      return;
+    }
+    _disposed = true;
+    _revision.dispose();
+  }
 }
 
 /// A defensive profile store backed by one JSON file.
@@ -70,6 +124,25 @@ final class FileAgentProfileStore implements AgentProfileStore {
       _loaded = true;
       _events = file.parent.watch().listen(_onEvent);
     }
+  }
+
+  @override
+  Future<void> save(AgentProfile profile) async {
+    if (_disposed) {
+      throw StateError('The agent profile store is disposed.');
+    }
+    if (!file.parent.existsSync()) {
+      await file.parent.create(recursive: true);
+    }
+    // Indented, because this is still a file someone opens in an editor.
+    await file.writeAsString(
+      '${const JsonEncoder.withIndent('  ').convert(encodeAgentProfile(profile))}\n',
+      flush: true,
+    );
+    // In force now rather than when the watcher notices. Watching is off in
+    // release builds entirely, and where it is on the debounce would leave
+    // the user looking at the setting they just changed, unchanged.
+    _replace(profile: profile, error: null);
   }
 
   void _onEvent(FileSystemEvent event) {

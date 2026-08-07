@@ -51,6 +51,22 @@ final class ConversationRepository {
   Future<List<Turn>> loadTurns(ConversationId conversationId) =>
       _storageService.loadTurns(conversationId);
 
+  /// Every stored conversation containing [query], most recent first.
+  Future<List<ConversationSummary>> searchConversations(String query) =>
+      _storageService.searchConversations(query);
+
+  /// Gives [conversationId] a name of the user's own.
+  Future<void> renameConversation(
+    ConversationId conversationId,
+    String title,
+  ) => _storageService.renameConversation(conversationId, title);
+
+  /// Keeps [conversationId] at the top of the list, or lets it go.
+  Future<void> setConversationPinned(
+    ConversationId conversationId, {
+    required bool pinned,
+  }) => _storageService.setConversationPinned(conversationId, pinned: pinned);
+
   /// Turns runs the last process did not finish into the turns they were.
   ///
   /// Call once at startup, before anything reads a conversation. On a clean
@@ -110,6 +126,19 @@ final class ConversationRepository {
       }
     }
     await _storageService.deleteConversation(conversationId);
+    await _inferenceService.releaseSession(conversationId);
+  }
+
+  /// Takes [conversationId] back to before its last question.
+  ///
+  /// The runtime is told as well as the store, for the reason
+  /// [deleteConversation] tells it: it holds a live conversation per session
+  /// id, and that session's KV cache still contains the question and the
+  /// answer being replaced. Left alone, the retry would be conditioned on the
+  /// answer the user just rejected and would see the question asked twice.
+  /// Released, the next generation re-seeds from the history it is handed.
+  Future<void> dropFromLastQuestion(ConversationId conversationId) async {
+    await _storageService.dropFromLastQuestion(conversationId);
     await _inferenceService.releaseSession(conversationId);
   }
 

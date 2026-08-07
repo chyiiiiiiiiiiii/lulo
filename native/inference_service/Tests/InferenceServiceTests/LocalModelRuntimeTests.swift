@@ -107,6 +107,74 @@ final class LocalModelRuntimeTests: XCTestCase {
     XCTAssertEqual(finalLoadRequestCount, 1)
   }
 
+  func testAChangedSamplerRebuildsTheConversationInsteadOfRefusing()
+    async throws
+  {
+    // The sampler is not part of a message — LiteRT-LM takes it once, in
+    // ConversationConfig, and `sendMessageStream` has no argument for it. So
+    // a session that has already answered cannot be handed a new one, and
+    // until the answer style became a setting nothing ever tried: the app
+    // sent the same three numbers forever, and the guard below never fired.
+    //
+    // Refusing is the wrong answer to that. It fails the turn the user just
+    // asked, and every turn after it in that conversation. Rebuilding the
+    // conversation is right, and costs one prefill of the history rather
+    // than a model load — the same trade the system instruction already
+    // makes two branches above.
+    let harness = try await makeLiteRTLMBackendHarness()
+    defer { try? FileManager.default.removeItem(at: harness.modelDirectory) }
+    func ask(
+      _ id: String,
+      temperature: Double
+    ) -> RuntimeGenerationRequest {
+      RuntimeGenerationRequest(
+        generationId: id,
+        sessionId: "session-7",
+        prompt: "Hello",
+        context: [],
+        history: [],
+        temperature: temperature,
+        topP: 0.9,
+        maxTokens: 16,
+        seed: 7
+      )
+    }
+
+    _ = try await harness.backend.startGeneration(ask("g1", temperature: 0.2))
+    await harness.driver.waitForGenerationCall()
+    await harness.driver.finishGeneration()
+    await harness.events.waitForCount(2)
+
+    // The user picks a different answer style and asks again.
+    let second = try await harness.backend.startGeneration(
+      ask("g2", temperature: 1)
+    )
+
+    XCTAssertTrue(
+      second.accepted,
+      "A style the user changed failed the next question instead of applying"
+    )
+    // waitForGenerationCall returns at once when any call has been recorded,
+    // so this waits for the second one specifically.
+    var requests = await harness.driver.generationRequests
+    for _ in 0..<200 where requests.count < 2 {
+      try await Task.sleep(nanoseconds: 2_000_000)
+      requests = await harness.driver.generationRequests
+    }
+    XCTAssertEqual(requests.count, 2, "The second question never ran")
+    XCTAssertEqual(
+      requests.last?.sampler.temperature,
+      1,
+      "The new sampler never reached the driver"
+    )
+    let loads = await harness.driver.loadRequests.count
+    XCTAssertEqual(
+      loads,
+      1,
+      "Changing how an answer sounds reloaded the model"
+    )
+  }
+
   func testLiteRTLMBackendStartsPromptlyAndEmitsOrderedEvents() async throws {
     let harness = try await makeLiteRTLMBackendHarness()
     defer { try? FileManager.default.removeItem(at: harness.modelDirectory) }

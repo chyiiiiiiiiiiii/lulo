@@ -9,6 +9,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:local_agent_macos/features/conversation/widgets/completed_turn.dart';
 import 'package:local_agent_macos/features/voice/voice_turn_hud.dart';
 import 'package:local_agent_macos/features/voice/voice_turn_log.dart';
+import 'package:local_agent_macos/l10n/generated/app_localizations.dart';
 
 /// Draws the doubt mark to `build/shots/heard-doubt.png` so a change to it
 /// can be looked at rather than only asserted.
@@ -48,6 +49,8 @@ void main() {
 
     await tester.pumpWidget(
       MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
         theme: ThemeData(
           fontFamily: 'Arial Unicode',
           colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF6B7CFF)),
@@ -107,6 +110,8 @@ void main() {
 
     await tester.pumpWidget(
       MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
         theme: ThemeData(
           fontFamily: 'Arial Unicode',
           colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF6B7CFF)),

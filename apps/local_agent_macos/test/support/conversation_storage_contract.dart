@@ -271,4 +271,269 @@ void runConversationStorageContract({
 
     expect((await store.loadUnfinishedRuns()).single.conversationId, other);
   });
+
+  group('taking a conversation back to its last question', () {
+    setUp(() async {
+      await store.saveUserTurn(conversation, userTurn('first question'));
+      await store.saveTerminalAssistantTurn(
+        assistantTurn('first answer'),
+        generationFor(conversation),
+      );
+      await store.saveUserTurn(conversation, userTurn('second question'));
+      await store.saveTerminalAssistantTurn(
+        assistantTurn('second answer'),
+        generationFor(conversation, 2),
+      );
+    });
+
+    test('the question and its answer both go', () async {
+      await store.dropFromLastQuestion(conversation);
+
+      expect(
+        (await store.loadTurns(conversation)).map((Turn t) => t.text).toList(),
+        <String>['first question', 'first answer'],
+      );
+    });
+
+    test('an answer the view never showed goes with them', () async {
+      // A cancelled answer with nothing in it is stored and deliberately kept
+      // off the screen. A retry that counted the turns it could see would cut
+      // above this row and leave it behind, to surface at the next launch
+      // under an answer to a question it never belonged to.
+      await store.saveUserTurn(conversation, userTurn('third question'));
+      await store.saveTerminalAssistantTurn(
+        assistantTurn('', TurnStatus.cancelled),
+        generationFor(conversation, 3),
+      );
+
+      await store.dropFromLastQuestion(conversation);
+
+      expect(
+        (await store.loadTurns(conversation)).map((Turn t) => t.text).toList(),
+        <String>[
+          'first question',
+          'first answer',
+          'second question',
+          'second answer',
+        ],
+      );
+    });
+
+    test('another conversation is untouched', () async {
+      await store.saveUserTurn(other, userTurn('elsewhere'));
+
+      await store.dropFromLastQuestion(conversation);
+
+      expect(
+        (await store.loadTurns(other)).single.text,
+        'elsewhere',
+        reason: 'a retry in one conversation reached into another',
+      );
+    });
+
+    test('a conversation with nothing said in it is left alone', () async {
+      await store.dropFromLastQuestion(other);
+
+      expect(await store.loadTurns(other), isEmpty);
+      expect(await store.loadTurns(conversation), hasLength(4));
+    });
+  });
+
+  group('finding a conversation again', () {
+    setUp(() async {
+      await store.saveUserTurn(conversation, userTurn('明天台中天氣如何'));
+      await store.saveTerminalAssistantTurn(
+        assistantTurn('明天多雲，傍晚有陣雨。'),
+        generationFor(conversation),
+      );
+      await store.saveUserTurn(other, userTurn('how do I run the tests'));
+      await store.saveTerminalAssistantTurn(
+        assistantTurn('Use dart run tool/verify.dart.'),
+        generationFor(other, 2),
+      );
+    });
+
+    test('a word from the question finds it', () async {
+      expect(
+        (await store.searchConversations(
+          '台中',
+        )).map((ConversationSummary c) => c.id),
+        <ConversationId>[conversation],
+      );
+    });
+
+    test('a word only the answer contains finds it too', () async {
+      // The title is the first question, so searching titles alone would
+      // lose every conversation the user remembers by what it told them.
+      expect(
+        (await store.searchConversations(
+          '陣雨',
+        )).map((ConversationSummary c) => c.id),
+        <ConversationId>[conversation],
+      );
+    });
+
+    test('an accented word matches itself', () async {
+      // SQLite folds case for ASCII only and has no ICU here, so the stores
+      // agree on exact matching beyond it rather than one of them quietly
+      // being cleverer than the other.
+      await store.saveUserTurn(conversation, userTurn('CAFÉ crème'));
+
+      expect(await store.searchConversations('CAFÉ'), hasLength(1));
+      expect(await store.searchConversations('café'), isEmpty);
+    });
+
+    test('Latin matches regardless of case', () async {
+      expect(
+        (await store.searchConversations(
+          'VERIFY',
+        )).map((ConversationSummary c) => c.id),
+        <ConversationId>[other],
+      );
+    });
+
+    test('a substring matches, because Chinese has no word breaks', () async {
+      // Whole-word search is why full-text indexes are the wrong tool here:
+      // 「台中天氣」 has no spaces to tokenize on.
+      expect(await store.searchConversations('中天'), hasLength(1));
+    });
+
+    test('a blank query is not a search', () async {
+      expect(
+        (await store.searchConversations('   ')).length,
+        (await store.listConversations()).length,
+      );
+    });
+
+    test('nothing matching is an empty list, not an error', () async {
+      expect(await store.searchConversations('無關的字'), isEmpty);
+    });
+
+    test('a conversation is listed once however often it matches', () async {
+      expect(await store.searchConversations('明天'), hasLength(1));
+    });
+  });
+
+  group('what the user decides about a conversation', () {
+    setUp(() async {
+      await store.saveUserTurn(conversation, userTurn('第一句話'));
+      await store.saveUserTurn(other, userTurn('另一則'));
+    });
+
+    test('a renamed conversation keeps its new name', () async {
+      await store.renameConversation(conversation, '週末計畫');
+
+      expect(
+        (await store.listConversations())
+            .firstWhere((ConversationSummary c) => c.id == conversation)
+            .title,
+        '週末計畫',
+      );
+    });
+
+    test('clearing the name goes back to the first thing said', () async {
+      // The derived title is not lost when one is set over it, so undoing a
+      // rename needs no second copy of what the user originally said.
+      await store.renameConversation(conversation, '週末計畫');
+      await store.renameConversation(conversation, '   ');
+
+      expect(
+        (await store.listConversations())
+            .firstWhere((ConversationSummary c) => c.id == conversation)
+            .title,
+        '第一句話',
+      );
+    });
+
+    test('a pinned conversation comes first however old it is', () async {
+      // `other` was spoken in most recently, so it heads the list until the
+      // older one is pinned.
+      expect((await store.listConversations()).first.id, other);
+
+      await store.setConversationPinned(conversation, pinned: true);
+
+      final List<ConversationSummary> listed = await store.listConversations();
+      expect(listed.first.id, conversation);
+      expect(listed.first.isPinned, isTrue);
+      expect(listed.last.isPinned, isFalse);
+    });
+
+    test('unpinning returns it to where recency puts it', () async {
+      await store.setConversationPinned(conversation, pinned: true);
+      await store.setConversationPinned(conversation, pinned: false);
+
+      expect((await store.listConversations()).first.id, other);
+    });
+
+    test('the newest pin leads among the pinned', () async {
+      // Pinned in the order that contradicts recency, and in the same
+      // millisecond. Pinning the more recent one second would agree with
+      // recency and the assertion could not fail either way.
+      await store.setConversationPinned(other, pinned: true);
+      await store.setConversationPinned(conversation, pinned: true);
+
+      expect((await store.listConversations()).first.id, conversation);
+    });
+
+    test('the name the user gave is searchable', () async {
+      // The list shows that name. Typing it and getting nothing back reads
+      // as a broken search.
+      await store.renameConversation(conversation, '週末計畫');
+
+      expect(
+        (await store.searchConversations(
+          '週末',
+        )).map((ConversationSummary c) => c.id),
+        <ConversationId>[conversation],
+      );
+    });
+
+    test('emptying a conversation takes it off the list', () async {
+      await store.dropFromLastQuestion(conversation);
+
+      expect(
+        (await store.listConversations()).map((ConversationSummary c) => c.id),
+        isNot(contains(conversation)),
+      );
+    });
+
+    test('emptying a conversation forgets what was decided about it', () async {
+      await store.renameConversation(conversation, '週末計畫');
+      await store.setConversationPinned(conversation, pinned: true);
+      await store.dropFromLastQuestion(conversation);
+      await store.saveUserTurn(conversation, userTurn('第一句話'));
+
+      final ConversationSummary reborn = (await store.listConversations())
+          .firstWhere((ConversationSummary c) => c.id == conversation);
+      expect(reborn.title, '第一句話');
+      expect(reborn.isPinned, isFalse);
+    });
+
+    test('searching keeps the name and the pin', () async {
+      await store.renameConversation(conversation, '週末計畫');
+      await store.setConversationPinned(conversation, pinned: true);
+
+      final List<ConversationSummary> found = await store.searchConversations(
+        '第一句',
+      );
+      expect(found.single.title, '週末計畫');
+      expect(found.single.isPinned, isTrue);
+    });
+
+    test(
+      'forgetting a conversation forgets what was decided about it',
+      () async {
+        await store.renameConversation(conversation, '週末計畫');
+        await store.setConversationPinned(conversation, pinned: true);
+
+        await store.deleteConversation(conversation);
+        await store.saveUserTurn(conversation, userTurn('第一句話'));
+
+        final ConversationSummary reborn = (await store.listConversations())
+            .firstWhere((ConversationSummary c) => c.id == conversation);
+        expect(reborn.title, '第一句話');
+        expect(reborn.isPinned, isFalse);
+      },
+    );
+  });
 }

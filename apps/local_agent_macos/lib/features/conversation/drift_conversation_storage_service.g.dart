@@ -1318,17 +1318,313 @@ class RunRowsCompanion extends UpdateCompanion<RunRow> {
   }
 }
 
+class $ConversationMetaRowsTable extends ConversationMetaRows
+    with TableInfo<$ConversationMetaRowsTable, ConversationMetaRow> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $ConversationMetaRowsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _conversationIdMeta = const VerificationMeta(
+    'conversationId',
+  );
+  @override
+  late final GeneratedColumn<String> conversationId = GeneratedColumn<String>(
+    'conversation_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _titleMeta = const VerificationMeta('title');
+  @override
+  late final GeneratedColumn<String> title = GeneratedColumn<String>(
+    'title',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _pinnedAtMsMeta = const VerificationMeta(
+    'pinnedAtMs',
+  );
+  @override
+  late final GeneratedColumn<int> pinnedAtMs = GeneratedColumn<int>(
+    'pinned_at_ms',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [conversationId, title, pinnedAtMs];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'conversation_meta_rows';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<ConversationMetaRow> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('conversation_id')) {
+      context.handle(
+        _conversationIdMeta,
+        conversationId.isAcceptableOrUnknown(
+          data['conversation_id']!,
+          _conversationIdMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_conversationIdMeta);
+    }
+    if (data.containsKey('title')) {
+      context.handle(
+        _titleMeta,
+        title.isAcceptableOrUnknown(data['title']!, _titleMeta),
+      );
+    }
+    if (data.containsKey('pinned_at_ms')) {
+      context.handle(
+        _pinnedAtMsMeta,
+        pinnedAtMs.isAcceptableOrUnknown(
+          data['pinned_at_ms']!,
+          _pinnedAtMsMeta,
+        ),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {conversationId};
+  @override
+  ConversationMetaRow map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return ConversationMetaRow(
+      conversationId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}conversation_id'],
+      )!,
+      title: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}title'],
+      ),
+      pinnedAtMs: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}pinned_at_ms'],
+      ),
+    );
+  }
+
+  @override
+  $ConversationMetaRowsTable createAlias(String alias) {
+    return $ConversationMetaRowsTable(attachedDatabase, alias);
+  }
+}
+
+class ConversationMetaRow extends DataClass
+    implements Insertable<ConversationMetaRow> {
+  /// The conversation these decisions belong to.
+  final String conversationId;
+
+  /// The name the user gave it, or null to keep the derived one.
+  final String? title;
+
+  /// When it was pinned, or null if it is not.
+  ///
+  /// A time rather than a flag so that pinned conversations keep an order of
+  /// their own — most recently pinned first — instead of falling back to a
+  /// recency the user pinned them to escape.
+  final int? pinnedAtMs;
+  const ConversationMetaRow({
+    required this.conversationId,
+    this.title,
+    this.pinnedAtMs,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['conversation_id'] = Variable<String>(conversationId);
+    if (!nullToAbsent || title != null) {
+      map['title'] = Variable<String>(title);
+    }
+    if (!nullToAbsent || pinnedAtMs != null) {
+      map['pinned_at_ms'] = Variable<int>(pinnedAtMs);
+    }
+    return map;
+  }
+
+  ConversationMetaRowsCompanion toCompanion(bool nullToAbsent) {
+    return ConversationMetaRowsCompanion(
+      conversationId: Value(conversationId),
+      title: title == null && nullToAbsent
+          ? const Value.absent()
+          : Value(title),
+      pinnedAtMs: pinnedAtMs == null && nullToAbsent
+          ? const Value.absent()
+          : Value(pinnedAtMs),
+    );
+  }
+
+  factory ConversationMetaRow.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return ConversationMetaRow(
+      conversationId: serializer.fromJson<String>(json['conversationId']),
+      title: serializer.fromJson<String?>(json['title']),
+      pinnedAtMs: serializer.fromJson<int?>(json['pinnedAtMs']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'conversationId': serializer.toJson<String>(conversationId),
+      'title': serializer.toJson<String?>(title),
+      'pinnedAtMs': serializer.toJson<int?>(pinnedAtMs),
+    };
+  }
+
+  ConversationMetaRow copyWith({
+    String? conversationId,
+    Value<String?> title = const Value.absent(),
+    Value<int?> pinnedAtMs = const Value.absent(),
+  }) => ConversationMetaRow(
+    conversationId: conversationId ?? this.conversationId,
+    title: title.present ? title.value : this.title,
+    pinnedAtMs: pinnedAtMs.present ? pinnedAtMs.value : this.pinnedAtMs,
+  );
+  ConversationMetaRow copyWithCompanion(ConversationMetaRowsCompanion data) {
+    return ConversationMetaRow(
+      conversationId: data.conversationId.present
+          ? data.conversationId.value
+          : this.conversationId,
+      title: data.title.present ? data.title.value : this.title,
+      pinnedAtMs: data.pinnedAtMs.present
+          ? data.pinnedAtMs.value
+          : this.pinnedAtMs,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('ConversationMetaRow(')
+          ..write('conversationId: $conversationId, ')
+          ..write('title: $title, ')
+          ..write('pinnedAtMs: $pinnedAtMs')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(conversationId, title, pinnedAtMs);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is ConversationMetaRow &&
+          other.conversationId == this.conversationId &&
+          other.title == this.title &&
+          other.pinnedAtMs == this.pinnedAtMs);
+}
+
+class ConversationMetaRowsCompanion
+    extends UpdateCompanion<ConversationMetaRow> {
+  final Value<String> conversationId;
+  final Value<String?> title;
+  final Value<int?> pinnedAtMs;
+  final Value<int> rowid;
+  const ConversationMetaRowsCompanion({
+    this.conversationId = const Value.absent(),
+    this.title = const Value.absent(),
+    this.pinnedAtMs = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  ConversationMetaRowsCompanion.insert({
+    required String conversationId,
+    this.title = const Value.absent(),
+    this.pinnedAtMs = const Value.absent(),
+    this.rowid = const Value.absent(),
+  }) : conversationId = Value(conversationId);
+  static Insertable<ConversationMetaRow> custom({
+    Expression<String>? conversationId,
+    Expression<String>? title,
+    Expression<int>? pinnedAtMs,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (conversationId != null) 'conversation_id': conversationId,
+      if (title != null) 'title': title,
+      if (pinnedAtMs != null) 'pinned_at_ms': pinnedAtMs,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  ConversationMetaRowsCompanion copyWith({
+    Value<String>? conversationId,
+    Value<String?>? title,
+    Value<int?>? pinnedAtMs,
+    Value<int>? rowid,
+  }) {
+    return ConversationMetaRowsCompanion(
+      conversationId: conversationId ?? this.conversationId,
+      title: title ?? this.title,
+      pinnedAtMs: pinnedAtMs ?? this.pinnedAtMs,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (conversationId.present) {
+      map['conversation_id'] = Variable<String>(conversationId.value);
+    }
+    if (title.present) {
+      map['title'] = Variable<String>(title.value);
+    }
+    if (pinnedAtMs.present) {
+      map['pinned_at_ms'] = Variable<int>(pinnedAtMs.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('ConversationMetaRowsCompanion(')
+          ..write('conversationId: $conversationId, ')
+          ..write('title: $title, ')
+          ..write('pinnedAtMs: $pinnedAtMs, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$ConversationDatabase extends GeneratedDatabase {
   _$ConversationDatabase(QueryExecutor e) : super(e);
   $ConversationDatabaseManager get managers =>
       $ConversationDatabaseManager(this);
   late final $TurnRowsTable turnRows = $TurnRowsTable(this);
   late final $RunRowsTable runRows = $RunRowsTable(this);
+  late final $ConversationMetaRowsTable conversationMetaRows =
+      $ConversationMetaRowsTable(this);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
   @override
-  List<DatabaseSchemaEntity> get allSchemaEntities => [turnRows, runRows];
+  List<DatabaseSchemaEntity> get allSchemaEntities => [
+    turnRows,
+    runRows,
+    conversationMetaRows,
+  ];
 }
 
 typedef $$TurnRowsTableCreateCompanionBuilder =
@@ -1926,6 +2222,188 @@ typedef $$RunRowsTableProcessedTableManager =
       RunRow,
       PrefetchHooks Function()
     >;
+typedef $$ConversationMetaRowsTableCreateCompanionBuilder =
+    ConversationMetaRowsCompanion Function({
+      required String conversationId,
+      Value<String?> title,
+      Value<int?> pinnedAtMs,
+      Value<int> rowid,
+    });
+typedef $$ConversationMetaRowsTableUpdateCompanionBuilder =
+    ConversationMetaRowsCompanion Function({
+      Value<String> conversationId,
+      Value<String?> title,
+      Value<int?> pinnedAtMs,
+      Value<int> rowid,
+    });
+
+class $$ConversationMetaRowsTableFilterComposer
+    extends Composer<_$ConversationDatabase, $ConversationMetaRowsTable> {
+  $$ConversationMetaRowsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get conversationId => $composableBuilder(
+    column: $table.conversationId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get title => $composableBuilder(
+    column: $table.title,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get pinnedAtMs => $composableBuilder(
+    column: $table.pinnedAtMs,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$ConversationMetaRowsTableOrderingComposer
+    extends Composer<_$ConversationDatabase, $ConversationMetaRowsTable> {
+  $$ConversationMetaRowsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get conversationId => $composableBuilder(
+    column: $table.conversationId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get title => $composableBuilder(
+    column: $table.title,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get pinnedAtMs => $composableBuilder(
+    column: $table.pinnedAtMs,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$ConversationMetaRowsTableAnnotationComposer
+    extends Composer<_$ConversationDatabase, $ConversationMetaRowsTable> {
+  $$ConversationMetaRowsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get conversationId => $composableBuilder(
+    column: $table.conversationId,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get title =>
+      $composableBuilder(column: $table.title, builder: (column) => column);
+
+  GeneratedColumn<int> get pinnedAtMs => $composableBuilder(
+    column: $table.pinnedAtMs,
+    builder: (column) => column,
+  );
+}
+
+class $$ConversationMetaRowsTableTableManager
+    extends
+        RootTableManager<
+          _$ConversationDatabase,
+          $ConversationMetaRowsTable,
+          ConversationMetaRow,
+          $$ConversationMetaRowsTableFilterComposer,
+          $$ConversationMetaRowsTableOrderingComposer,
+          $$ConversationMetaRowsTableAnnotationComposer,
+          $$ConversationMetaRowsTableCreateCompanionBuilder,
+          $$ConversationMetaRowsTableUpdateCompanionBuilder,
+          (
+            ConversationMetaRow,
+            BaseReferences<
+              _$ConversationDatabase,
+              $ConversationMetaRowsTable,
+              ConversationMetaRow
+            >,
+          ),
+          ConversationMetaRow,
+          PrefetchHooks Function()
+        > {
+  $$ConversationMetaRowsTableTableManager(
+    _$ConversationDatabase db,
+    $ConversationMetaRowsTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$ConversationMetaRowsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$ConversationMetaRowsTableOrderingComposer(
+                $db: db,
+                $table: table,
+              ),
+          createComputedFieldComposer: () =>
+              $$ConversationMetaRowsTableAnnotationComposer(
+                $db: db,
+                $table: table,
+              ),
+          updateCompanionCallback:
+              ({
+                Value<String> conversationId = const Value.absent(),
+                Value<String?> title = const Value.absent(),
+                Value<int?> pinnedAtMs = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => ConversationMetaRowsCompanion(
+                conversationId: conversationId,
+                title: title,
+                pinnedAtMs: pinnedAtMs,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String conversationId,
+                Value<String?> title = const Value.absent(),
+                Value<int?> pinnedAtMs = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => ConversationMetaRowsCompanion.insert(
+                conversationId: conversationId,
+                title: title,
+                pinnedAtMs: pinnedAtMs,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$ConversationMetaRowsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$ConversationDatabase,
+      $ConversationMetaRowsTable,
+      ConversationMetaRow,
+      $$ConversationMetaRowsTableFilterComposer,
+      $$ConversationMetaRowsTableOrderingComposer,
+      $$ConversationMetaRowsTableAnnotationComposer,
+      $$ConversationMetaRowsTableCreateCompanionBuilder,
+      $$ConversationMetaRowsTableUpdateCompanionBuilder,
+      (
+        ConversationMetaRow,
+        BaseReferences<
+          _$ConversationDatabase,
+          $ConversationMetaRowsTable,
+          ConversationMetaRow
+        >,
+      ),
+      ConversationMetaRow,
+      PrefetchHooks Function()
+    >;
 
 class $ConversationDatabaseManager {
   final _$ConversationDatabase _db;
@@ -1934,4 +2412,6 @@ class $ConversationDatabaseManager {
       $$TurnRowsTableTableManager(_db, _db.turnRows);
   $$RunRowsTableTableManager get runRows =>
       $$RunRowsTableTableManager(_db, _db.runRows);
+  $$ConversationMetaRowsTableTableManager get conversationMetaRows =>
+      $$ConversationMetaRowsTableTableManager(_db, _db.conversationMetaRows);
 }

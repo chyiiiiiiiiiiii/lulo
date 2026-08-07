@@ -201,6 +201,34 @@ operation's cancellation would write its terminal turn back afterwards, and in
 this schema rows *are* the conversation — the one just deleted would stand
 back up as a ghost with a blank title.
 
+## Asking again
+
+`regenerateLastAnswer` asks the last question again in place of the answer it
+already has; `reviseLastQuestion` replaces the question first. The model runs
+on this machine and is small enough to be wrong in ways a second attempt
+fixes, so this is not a convenience — without it the only way past a bad
+answer is to type the question out again, which leaves the bad one in the
+conversation and in the model's own history.
+
+Three things remember the answer being replaced, and all three have to let go:
+
+1. **The screen.** The projection is cut back to before the last question,
+   which `submit` then re-appends.
+2. **The store.** `dropFromLastQuestion` deletes the question row and
+   everything after it. Named by what it means rather than taking a count of
+   turns: the view hides an answer that was cancelled before it said anything
+   while the store keeps it, so a position counted from the screen is not a
+   position in the store. The last question is the same turn in both.
+3. **The runtime.** `ConversationRepository.dropFromLastQuestion` also calls
+   `releaseSession`, for the same reason `deleteConversation` does — LiteRT-LM
+   holds a live conversation per session id, and its KV cache still contains
+   the rejected answer. Left alone the retry would be conditioned on the very
+   thing it is replacing, and the model would see the question asked twice.
+
+Only the newest exchange is retryable. Replacing an answer in the middle would
+leave every answer after it standing on a question that never got that reply,
+and nothing in this schema could represent that.
+
 ## Storage: one table, no second copy of the truth
 
 `TurnRows` is the only table. A conversation is whatever rows share a

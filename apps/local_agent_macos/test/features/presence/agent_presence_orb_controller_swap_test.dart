@@ -7,6 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:local_agent_macos/features/presence/agent_presence_controller.dart';
 import 'package:local_agent_macos/features/presence/agent_presence_orb.dart';
 import 'package:local_agent_macos/features/presence/agent_presence_state.dart';
+import 'package:local_agent_macos/l10n/generated/app_localizations.dart';
 
 /// Hues the shader assigns to each state, in degrees.
 const double _speakingHue = 205;
@@ -40,6 +41,8 @@ void main() {
     Future<void> pumpWith(AgentPresenceController controller) async {
       await tester.pumpWidget(
         MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
           home: ColoredBox(
             color: const Color(0xFF000000),
             child: Center(
@@ -105,6 +108,8 @@ void main() {
 
     await tester.pumpWidget(
       MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
         home: ColoredBox(
           color: const Color(0xFF000000),
           child: Center(

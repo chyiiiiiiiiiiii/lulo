@@ -12,11 +12,113 @@ import 'package:pigeon/pigeon.dart';
 )
 enum HostGenerationEventType { started, delta, completed, cancelled, failed }
 
+/// Whether the app starts itself when the user logs in.
+///
+/// Read from the system rather than remembered, because it is the system's
+/// state and not the app's: macOS keeps it across reinstalls, and the user
+/// can revoke it in System Settings without the app being running to notice.
+/// A stored copy would sooner or later claim something untrue about the
+/// machine.
+enum HostLoginItemStatus {
+  /// The app does not start itself.
+  off,
+
+  /// The app starts itself at login.
+  on,
+
+  /// macOS has the registration but is waiting for the user to allow it in
+  /// System Settings. Neither on nor off, and the difference matters: this
+  /// is the state a switch that silently flipped back would be lying about.
+  needsApproval,
+
+  /// macOS refused this copy of the app: the signature is not one it will
+  /// accept, or it could not find the bundle where it expected. Distinct
+  /// from [needsApproval], which the user can fix, and from [unavailable],
+  /// which no copy of the app could fix.
+  refused,
+
+  /// This macOS cannot do it at all. `SMAppService` is macOS 13 and the
+  /// deployment target is 12.
+  unavailable,
+}
+
 /// How the desktop window is currently presented.
 ///
 /// The window is always on screen. In [orb] it is a small transparent presence
 /// on the desktop; in [expanded] it is the full conversation surface.
 enum HostPresentationMode { orb, expanded }
+
+/// One conversation as the menu bar lists it.
+class HostMenuConversation {
+  HostMenuConversation({required this.conversationId, required this.title});
+
+  /// Which conversation to open when the item is chosen.
+  final String conversationId;
+
+  /// What the item is called.
+  final String title;
+}
+
+/// Every word the status-bar menu shows that is not a conversation title.
+class HostMenuBarLabels {
+  HostMenuBarLabels({
+    required this.show,
+    required this.hide,
+    required this.talk,
+    required this.recent,
+    required this.quit,
+    required this.activity,
+  });
+
+  /// Brings the conversation forward.
+  final String show;
+
+  /// Puts it away.
+  final String hide;
+
+  /// Starts talking.
+  final String talk;
+
+  /// Heads the list of recent conversations.
+  final String recent;
+
+  /// Ends the app.
+  final String quit;
+
+  /// What the agent is doing, empty when there is nothing to say.
+  final String activity;
+}
+
+/// What the menu bar is currently showing.
+///
+/// Pushed rather than pulled: the menu is built by AppKit at the moment it
+/// opens, and asking Dart for the list then would mean opening a menu that is
+/// empty until an answer arrives.
+class HostMenuBarState {
+  HostMenuBarState({
+    required this.conversations,
+    required this.modelName,
+    required this.canStartVoice,
+    required this.labels,
+  });
+
+  /// The menu's own words, already in the user's language.
+  ///
+  /// Sent rather than written natively: the rest of the interface follows the
+  /// system language through `AppLocalizations`, and there is none of that on
+  /// the AppKit side. A menu that stayed English on a Chinese Mac would be the
+  /// one part of the app that did not.
+  final HostMenuBarLabels labels;
+
+  /// The most recent conversations, in the order they should be listed.
+  final List<HostMenuConversation> conversations;
+
+  /// What the agent is thinking with, or empty while it is the preview.
+  final String modelName;
+
+  /// Whether voice can be started from the menu at all.
+  final bool canStartVoice;
+}
 
 enum HostFailureCode {
   modelNotInstalled,
@@ -254,6 +356,19 @@ abstract class DesktopHostApi {
   @async
   String chooseModelFile(HostRequest request);
 
+  /// Asks the user where to write [contents], and writes it there.
+  ///
+  /// Returns the path written, or empty if the user backed out. The write
+  /// happens natively for the same reason the chooser does: a sandboxed app
+  /// may write where a save panel says and nowhere else, so handing the path
+  /// back to Dart to write to would land outside the grant the panel gave.
+  @async
+  String saveTextFile(
+    HostRequest request,
+    String suggestedName,
+    String contents,
+  );
+
   /// Applies the user's choices about how the resting orb behaves.
   ///
   /// Held natively rather than consulted per change of form, because the
@@ -287,6 +402,22 @@ abstract class DesktopHostApi {
     HostRequest request,
     HostPresentationMode mode,
   );
+
+  /// Tells the menu bar what to show the next time it is opened.
+  void setMenuBarState(HostRequest request, HostMenuBarState state);
+
+  /// Whether the app currently starts itself when the user logs in.
+  @async
+  HostLoginItemStatus loginItemStatus(HostRequest request);
+
+  /// Asks macOS to start the app at login, or to stop.
+  ///
+  /// Returns the status that actually resulted, which is not always the one
+  /// asked for — macOS may hold the registration pending the user's approval
+  /// in System Settings. The caller shows what came back rather than what it
+  /// requested.
+  @async
+  HostLoginItemStatus setLaunchAtLogin(HostRequest request, bool enabled);
 }
 
 @FlutterApi()
@@ -294,6 +425,12 @@ abstract class DesktopHostEventApi {
   void onGenerationEvent(HostGenerationEvent event);
 
   void onPresentationModeChanged(HostPresentationMode mode);
+
+  /// The user chose a conversation from the menu bar.
+  void onMenuBarConversationChosen(String conversationId);
+
+  /// The user asked for voice from the menu bar.
+  void onMenuBarVoiceRequested();
 
   /// Asks the app to change form, rather than telling it that it already did.
   ///

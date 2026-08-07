@@ -58,6 +58,35 @@ restores the built-in profile.
 
 `responseLength` accepts `concise`, `balanced` or `detailed`. A memory
 `kind` is `personal`, `preference`, `project` or `vocabulary`.
+
+`vocabulary` is the one list with two consumers and they work at different
+moments. The transcript refiner reads it in Dart and refuses to edit those
+words away — a repair after the fact. The recogniser is biased towards them
+before any audio is decoded, which is Apple's `contextualStrings`; that is
+native, so the profile is pushed across through
+`VoiceHostApi.useSpokenVocabulary` when the ears open and again whenever the
+list changes. It was pushed nowhere at all until recently: this file claimed
+the recogniser leaned on the profile while the recogniser in fact ran off a
+hardcoded list of its own, and the only vocabulary it ever learned came from
+the agent's own spoken answers.
+
+`misheard` is the other half of the same problem and the half that works.
+`vocabulary` asks the recogniser to lean towards a word and it may do
+nothing with the request; `misheard` holds `heard → meant` pairs and
+`DeterministicTranscriptRefiner` substitutes them, so a word the user has
+corrected once is corrected every time after. It runs **after** the
+vocabulary casing pass — whatever runs last wins, and with the order the
+other way a term typed into `vocabulary` in the wrong case silently undid a
+correction. Word breaks are checked per end rather than for the rule as a
+whole, or 「台中 weather」 and every other mixed-script rule would fire inside
+longer words. A row missing either half is dropped when the file is read: an
+empty `heard` matches between every pair of characters, so one bad row in a
+hand-edited profile would rewrite everything the user says.
+
+Do not read the wiring as an accuracy win. `SpokenVocabularyBook` carries a
+measurement where a thirty-two term bias changed the transcript by not one
+character, and nothing since has shown otherwise. What was broken and is now
+fixed is that the setting reaches the thing it names.
 Unknown fields are ignored. Invalid memories are skipped independently.
 
 ## The words you take and yield the floor with

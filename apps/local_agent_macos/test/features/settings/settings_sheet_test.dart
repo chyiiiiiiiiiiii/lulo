@@ -1,13 +1,16 @@
 import 'dart:io';
 
+import 'package:agent_core/agent_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:local_agent_macos/features/agent_profile/agent_profile_store.dart';
 import 'package:local_agent_macos/features/model/model_catalog.dart';
 import 'package:local_agent_macos/features/model/model_download_manager.dart';
 import 'package:local_agent_macos/features/model/model_file_service.dart';
 import 'package:local_agent_macos/features/settings/app_settings.dart';
 import 'package:local_agent_macos/features/settings/settings_sheet.dart';
+import 'package:local_agent_macos/l10n/generated/app_localizations.dart';
 
 void main() {
   final ModelDownloadManager downloads = ModelDownloadManager(
@@ -19,7 +22,10 @@ void main() {
   tearDownAll(downloads.dispose);
 
   Widget sheet({required VoidCallback onClose}) => MaterialApp(
+    localizationsDelegates: AppLocalizations.localizationsDelegates,
+    supportedLocales: AppLocalizations.supportedLocales,
     home: SettingsSheet(
+      agentProfile: InMemoryAgentProfileStore(),
       settings: const AppSettings(),
       onChanged: (AppSettings _) {},
       onChooseModel: () async => '',
@@ -54,5 +60,64 @@ void main() {
     // above, so the title has nothing to clear and sits at the content
     // margin.
     expect(tester.getTopLeft(find.text('Settings')).dx, 24);
+  });
+
+  testWidgets('the settings say which way in hears which language', (
+    WidgetTester tester,
+  ) async {
+    // Two of the three ways in hear English and the always-listening one
+    // pins a locale for the whole session. Nothing on screen said so, which
+    // left "it did not understand me" looking like a broken agent rather
+    // than the wrong button.
+    await tester.pumpWidget(sheet(onClose: () {}));
+    await tester.pump();
+
+    await tester.dragUntilVisible(
+      find.byKey(const Key('setting-hearing-duplex')),
+      find.byType(ListView),
+      const Offset(0, -160),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('setting-hearing-hold')), findsOneWidget);
+    expect(find.byKey(const Key('setting-hearing-duplex')), findsOneWidget);
+  });
+
+  testWidgets('the answer style is three named choices, not a number', (
+    WidgetTester tester,
+  ) async {
+    // temperature is a number nobody outside the model has the information
+    // to choose. What a user knows is whether they want the same answer
+    // twice or a different one.
+    AppSettings settings = const AppSettings();
+    await tester.pumpWidget(
+      MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: SettingsSheet(
+          agentProfile: InMemoryAgentProfileStore(),
+          settings: settings,
+          onChanged: (AppSettings next) => settings = next,
+          onChooseModel: () async => '',
+          onClose: () {},
+          modelDownloads: downloads,
+          onDownloadModel: (ModelCatalogEntry _) {},
+          onUseModel: (ModelCatalogEntry _) {},
+        ),
+      ),
+    );
+    await tester.pump();
+    expect(settings.answerStyle, AnswerStyle.balanced);
+
+    await tester.dragUntilVisible(
+      find.byKey(const Key('setting-answer-style-inventive')),
+      find.byType(ListView),
+      const Offset(0, -160),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('setting-answer-style-inventive')));
+    await tester.pump();
+
+    expect(settings.answerStyle, AnswerStyle.inventive);
   });
 }

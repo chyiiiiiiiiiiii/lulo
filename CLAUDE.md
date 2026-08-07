@@ -16,7 +16,119 @@ Turn-taking is decided by the words, not their length. `FloorControl` (`agent_co
 
 The turn latency is measured, not guessed. `AgentPromptContext` splits into a `systemInstruction` prefilled once per conversation and a `turnInstruction` read again with every question: sending the stable half inside every user message re-prefilled it every turn, measured in the app at 1648ms to the first token against 362ms for a settled Chinese turn, and at nothing at all in English — Han costs several tokens a character where English costs a fraction of one, so prompt cost measured in English says nothing about prompt cost in Chinese. `VoiceTurnLatency` and two adapter log lines now account for one turn end to end. Before changing the endpointer's 0.8s or the prompt's shape, read `docs/decisions/voice-turn-latency.md` — the corpus has mid-sentence pauses of 1.02s, and Smart Turn v3.2 was measured and does not separate them.
 
-Next up: tool calling with a permission layer. There is no tool calling today.
+An answer is something the user can act on, not only read. Every turn carries
+copy, the newest answer carries `重新回答`, and the newest question carries an
+in-place rewrite — a model this size is wrong in ways a second attempt fixes,
+and without these the only way past a bad answer was to type the question
+again. Three things remember the answer being replaced and all three have to
+let go: the projection, the store (`dropFromLastQuestion`, named by what it
+means because the view hides an empty cancelled turn the store keeps, so a
+position counted from the screen is not a position in the store), and the
+runtime, whose KV cache still holds it — `ConversationRepository` releases the
+session for the same reason `deleteConversation` does. Only the newest
+exchange is retryable. See `docs/features/conversation.md`.
+
+The profile is editable from the app. `AgentProfileSettings` writes the same
+`agent_profile.json` in the same schema through `AgentProfileStore.save`, so
+there is no second copy — and the prompt, the recogniser and the endpointer
+all read `profileStore.current`, so an edit is in force on the next turn.
+Two things are load-bearing: `AgentProfile.copyWith` rebuilds `floorControl`
+rather than carrying it over, because it is derived from `turnTaking` and
+carrying it would save the word and go on ignoring it; and
+`encodeAgentProfile` writes every field, because the decoder reads a missing
+list as empty. With no model installed the app opens on `FirstRun` rather than
+on a conversation the built-in preview would answer with the same sentence
+every time.
+
+The orb ends inside its own square. `agentPresenceSilhouetteFraction` is 0.75
+and the native click catcher fills 0.62, both measured from a real-shader
+capture that `verify.dart` re-runs: the halo used to paint 23/255 at 0.70 and
+was still visible at 0.95, which on the desktop read as a faint circle wrapped
+around the orb, and the catcher used to take every click within half a side of
+the centre. See `docs/features/presence.md`.
+
+Which language works depends on the way in, not on the language.
+`docs/features/voice.md` › *What each path hears* is the one place the three
+are measured beside each other: typing has no disadvantage, holding the key
+works in both and is worse in English (3.8% heard CER against 1.6%), and the
+full-duplex path pins one locale for the whole session and has never been
+measured in English at all. The English problem is an interface question
+before it is a model one.
+
+The interface speaks whatever the Mac speaks. Every user-facing string lives
+in `lib/l10n/app_en.arb` and `lib/l10n/app_zh.arb` (Traditional) and is reached
+through `AppLocalizations.of(context)`; `MaterialApp` takes the system locale
+and falls back to English. Before this the conversation was in Chinese and the
+settings sheet was in English, which is not a language but two halves of an app
+written by whoever happened to be typing. A widget test that renders a string
+must install `AppLocalizations.localizationsDelegates`, and one that asserts a
+particular string must pin `locale:` — the harness's default is English and a
+test that takes it is asserting the harness's language. `app_zh_Hant.arb` is
+empty on purpose and inherits everything from `app_zh.arb`: it exists so that
+zh-Hant is in `supportedLocales`, because the resolved locale is what picks the
+CJK font and a bare `zh` renders Simplified punctuation — a centred 「，」 with a
+gap after it. `flutter pub get` reporting `zh_Hant: N untranslated` is that file
+working as intended — N is however many keys `app_zh.arb` has, and it moves
+with every string added.
+
+There is no tool calling, and that is now a measured decision rather than a
+gap. Probed against the real model with a clock tool registered, gemma-4-E4B
+called it 5 times out of 5 with no system message and **0 times out of 5**
+under this app's own system instruction — either language, either
+temperature, and still 0 when a further paragraph ordered it to use the
+tool. It invents a confident wrong time instead, in an app whose core
+instruction says 不捏造資訊. Telling it the time in the prompt answers 5/5 in
+Chinese and 3/5 in English, so `composeAgentPrompt` takes
+a `now` and puts the clock in the **turn** half, where it costs nothing the
+turn was not already paying. Read `docs/decisions/tool-calling-readiness.md`
+before building on tool calling: the probe is checked in and skipped by
+default, and the thing that would actually fix it — constrained decoding —
+is missing from the vendored runtime.
+
+Two settings that named something they did not reach now reach it.
+`AgentProfile.vocabulary` documented itself as biasing the recogniser while
+only ever reaching the text refiner — the recogniser ran off a hardcoded
+list, and the only words it learned came from the agent's own answers; it
+crosses the boundary now through `VoiceHostApi.useSpokenVocabulary`, and
+Settings can edit it, which it could not before. Read that as a setting
+reaching its target and not as an accuracy win: `SpokenVocabularyBook`
+records a bias of thirty-two terms changing the transcript by not one
+character. Separately, the app called itself resident and was not there
+after a restart, because nothing asked macOS to start it; `LaunchAtLogin`
+does now. It is deliberately absent from `AppSettings` — the registration
+belongs to macOS, survives reinstalls, and can be revoked in System Settings
+while the app is not running, so it is read back rather than remembered, in
+four states rather than two.
+
+A word it keeps mishearing can be taught once. `AgentProfile.misheard` holds
+`MisheardWord(heard, meant)` pairs and `DeterministicTranscriptRefiner`
+applies them, so 「Dark text」 becomes 「Dart test」 in the question that
+actually gets asked. Deliberately a substitution rather than another entry in
+`vocabulary`: that list is a hint to the recogniser and the hint was measured
+doing nothing, while a substitution cannot fail the same way. Three things
+are load-bearing and each is pinned by a test — corrections run **after** the
+vocabulary casing pass, because whatever runs last wins and a term typed into
+the vocabulary list in the wrong case otherwise undid the correction; word
+breaks are checked **per end**, because a rule requiring Latin at both ends
+skipped the check entirely for 「台中 weather」 and every other mixed-script
+rule this app is actually for; and matching walks graphemes, because indexing
+code units moved a combining accent onto the replacement.
+
+Speaking into the clipboard was built and taken back out, and
+`docs/decisions/dictation-cannot-share-the-tap.md` is the reason. A hold-to-
+dictate key cannot carve a mode out of the conversation's microphone tap:
+that tap serves a live endpointer, a voice-activity detector and a
+half-duplex mute, and every guard added for dictation broke one of them —
+skipping the VAD froze `lastVoice` and made the endpointer fire *sooner*,
+submitting a truncated question mid-dictation, and letting dictation past
+the mute recorded the agent's own voice in the one mode with no echo
+canceller. The next attempt needs its own `AVAudioEngine`. Three fixes from
+that work were kept because they stand alone: `GlobalHotKeyController.nextID`
+is now `static` (it was per-instance, and Carbon routes on `(signature, id)`
+with one shared signature, so any second hotkey silently answered for the
+first), `sweepHeldClips` deletes held-speech recordings after an hour, and
+`transcribeHeld` returns `String?` so "no recogniser" stays distinct from
+"heard nothing".
 
 Toolchain is pinned by CI: Flutter **3.44.1** stable, Dart SDK `^3.12.0`.
 
@@ -28,6 +140,7 @@ Native Dart **pub workspace** (`workspace:` in the root `pubspec.yaml`), not mel
 |---|---|
 | `packages/agent_core` | Pure Dart. Contracts and logic. **Must never import Flutter.** Uses `package:test`. |
 | `apps/local_agent_macos` | Flutter macOS app. Uses `flutter_test` / `integration_test`. |
+| `apps/local_agent_macos/lib/l10n` | The UI's own words. `*.arb` are edited; `generated/` is written by `flutter pub get` and committed, like the drift output beside it. |
 | `tool/verify.dart` | The quality gate. |
 | `.github/workflows/ci.yml` | Runs `dart tool/verify.dart` on macOS. |
 
@@ -61,8 +174,10 @@ Before the first step it deletes the previously built app bundle, because `flutt
 12. `flutter test test/features/presence/agent_presence_frame_metrics_test.dart`
 13. `flutter test` in `apps/local_agent_macos`
 14. `flutter test integration_test/conversation_vertical_slice_test.dart -d macos` — launches a real window; hangs if the **current Space is another app's full-screen Space** (switch to a normal desktop first)
+14a. `flutter test integration_test/agent_presence_silhouette_test.dart -d macos` — runs the real shader and reads the orb's alpha back per ring, so nothing of the presence survives past `agentPresenceSilhouetteFraction` onto the user's desktop. Also launches a real window
 15. `flutter build macos --profile`
 16. `dart tool/verify_litert_app_bundle.dart <bundle>` — static checks that the profile build still carries the LiteRT-LM dylib, its `@rpath`, and a valid signature. The bundle path is resolved from `PRODUCT_NAME` rather than hard-coded, and a path that cannot be resolved is reported as a failing step rather than a skipped one
+16a. `dart apps/local_agent_macos/tool/verify_release_entitlements.dart` — the shipped build's entitlements. The gate builds `--profile`, which signs with `DebugProfile.entitlements`, so nothing else here ever looks at the file a released app is actually signed with; a capability granted there and not in Release fails only in the build nobody tests. It also rejects `--` inside an XML comment, which `plutil` and `codesign` accept and every strict parser refuses
 17. `xcodebuild test` (RunnerTests) via `Runner.xcworkspace`, derived data in `../build/macos_window_tests` — the macOS window tests. Deliberately not Flutter's own build directory: two build systems over one Products directory delete each other's outputs
 18. `swift test` in `native/inference_service`
 

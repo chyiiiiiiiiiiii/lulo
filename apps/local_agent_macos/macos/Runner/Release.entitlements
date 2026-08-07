@@ -6,7 +6,18 @@
 	<true/>
 	<key>com.apple.security.device.audio-input</key>
 	<true/>
-	<key>com.apple.security.files.user-selected.read-only</key>
+	<key>com.apple.security.files.user-selected.read-write</key>
+	<true/>
+	<!-- The voice is a separate process reached over http://127.0.0.1:46557,
+	     and the App Sandbox requires this even for loopback. Without it a
+	     release build hears and thinks and never speaks, and it fails
+	     quietly: speakThroughSidecar returns false and the sentence is
+	     skipped. The gate cannot catch this because it builds the profile
+	     configuration, which signs with DebugProfile.entitlements.
+	     (Spell no flag here with two dashes: XML forbids them inside a
+	     comment, and a strict parser then rejects the whole file even
+	     though plutil accepts it.) -->
+	<key>com.apple.security.network.client</key>
 	<true/>
 </dict>
 </plist>

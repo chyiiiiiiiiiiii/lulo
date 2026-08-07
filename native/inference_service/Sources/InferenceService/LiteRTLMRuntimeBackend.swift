@@ -141,6 +141,13 @@ actor SystemLiteRTLMRuntimeDriver: LiteRTLMRuntimeDriving {
   /// the user has since edited can be noticed rather than silently ignored.
   private var systemInstructions: [String: String] = [:]
 
+  /// The sampler each live conversation was constructed with.
+  ///
+  /// Distinct from `sessionSamplers`, which records what the session has most
+  /// recently been *asked* for: the two differ exactly when the user has
+  /// changed the answer style and the conversation has not been rebuilt yet.
+  private var conversationSamplers: [String: LiteRTLMSamplerFingerprint] = [:]
+
   func load(_ request: LiteRTLMDriverLoadRequest) async throws {
     try FileManager.default.createDirectory(
       atPath: request.cacheDirectory,
@@ -163,6 +170,7 @@ actor SystemLiteRTLMRuntimeDriver: LiteRTLMRuntimeDriving {
     self.engine = engine
     conversations.removeAll()
     systemInstructions.removeAll()
+    conversationSamplers.removeAll()
   }
 
   func generate(
@@ -174,13 +182,20 @@ actor SystemLiteRTLMRuntimeDriver: LiteRTLMRuntimeDriving {
     }
     try Task.checkCancellation()
     let conversation: Conversation
-    // A profile the user has edited is a different system message, and the
-    // KV cache holding the old one cannot be amended in place. Rebuilding
-    // the conversation is the only honest answer, and it costs one prefill
-    // of the history — which is what every turn used to cost anyway.
-    let stale =
+    // A profile the user has edited is a different system message, and an
+    // answer style they have changed is a different sampler. Neither can be
+    // amended inside a prefilled KV cache — the sampler is fixed in
+    // ConversationConfig and `sendMessageStream` has no argument for it — so
+    // rebuilding the conversation is the only honest answer to either. It
+    // costs one prefill of the history, which is what every turn used to
+    // cost anyway, and never a model load.
+    let staleInstruction =
       systemInstructions[request.sessionId] != nil
       && systemInstructions[request.sessionId] != request.systemInstruction
+    let staleSampler =
+      conversationSamplers[request.sessionId] != nil
+      && conversationSamplers[request.sessionId] != request.sampler
+    let stale = staleInstruction || staleSampler
     if let existing = conversations[request.sessionId], !stale {
       conversation = existing
     } else {
@@ -210,6 +225,9 @@ actor SystemLiteRTLMRuntimeDriver: LiteRTLMRuntimeDriving {
       )
       conversations[request.sessionId] = conversation
       systemInstructions[request.sessionId] = request.systemInstruction
+      // What this conversation was actually built with, so the next turn can
+      // tell whether it still matches what the user has chosen.
+      conversationSamplers[request.sessionId] = request.sampler
     }
     try Task.checkCancellation()
     let context: [String: Any] = request.extraContext
@@ -229,6 +247,7 @@ actor SystemLiteRTLMRuntimeDriver: LiteRTLMRuntimeDriving {
 
   func resetSession(sessionId: String) async throws {
     systemInstructions.removeValue(forKey: sessionId)
+    conversationSamplers.removeValue(forKey: sessionId)
     if let conversation = conversations.removeValue(forKey: sessionId) {
       try conversation.cancel()
     }
@@ -240,6 +259,7 @@ actor SystemLiteRTLMRuntimeDriver: LiteRTLMRuntimeDriving {
     }
     conversations.removeAll()
     systemInstructions.removeAll()
+    conversationSamplers.removeAll()
     engine = nil
   }
 }
@@ -427,13 +447,18 @@ public actor LiteRTLMRuntimeBackend: RuntimeBackend {
       generation,
       contextSize: loadedModel.contextSize
     )
-    if let sampler = sessionSamplers[generation.sessionId] {
-      guard sampler == request.sampler else {
-        throw RuntimeBoundaryError.generationFailed
-      }
-    } else {
-      sessionSamplers[generation.sessionId] = request.sampler
-    }
+    // A sampler the user changed is not an error. LiteRT-LM takes the sampler
+    // once, in ConversationConfig — `sendMessageStream` has no argument for
+    // it — so a session that has already answered cannot simply be handed a
+    // new one. Refusing was safe while the app sent the same three numbers
+    // forever; it stopped being safe the moment the answer style became a
+    // setting, because refusing fails the turn the user just asked and every
+    // turn after it in that conversation.
+    //
+    // So it is recorded here and acted on where the conversation is built,
+    // which rebuilds and re-seeds from history — one prefill, not a model
+    // load. The same trade the system instruction already makes.
+    sessionSamplers[generation.sessionId] = request.sampler
 
     let token = nextGenerationToken
     nextGenerationToken &+= 1

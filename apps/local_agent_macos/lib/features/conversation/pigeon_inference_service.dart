@@ -14,8 +14,6 @@ final class LocalModelConfig {
     required this.modelId,
     required this.modelPath,
     required this.contextSize,
-    required this.temperature,
-    required this.topP,
     required this.maxTokens,
     required this.seed,
   });
@@ -28,12 +26,6 @@ final class LocalModelConfig {
 
   /// Maximum native context size.
   final int contextSize;
-
-  /// Sampling temperature.
-  final double temperature;
-
-  /// Nucleus-sampling probability.
-  final double topP;
 
   /// Maximum generated tokens.
   final int maxTokens;
@@ -49,12 +41,23 @@ final class PigeonInferenceService implements InferenceService {
     required this._desktopHostService,
     required this._config,
     AgentContextProvider? agentContext,
+    AnswerStyle Function()? answerStyle,
   }) : _agentContext =
-           agentContext ?? ProfileAgentContextProvider(AgentProfile.builtIn);
+           agentContext ?? ProfileAgentContextProvider(AgentProfile.builtIn),
+       _answerStyle = answerStyle ?? _balanced;
+
+  static AnswerStyle _balanced() => AnswerStyle.balanced;
 
   final DesktopHostService _desktopHostService;
   final LocalModelConfig _config;
   final AgentContextProvider _agentContext;
+
+  /// How far the model may roam, read again for every generation.
+  ///
+  /// A function rather than a value because the user can change it while the
+  /// model stays loaded: the sampler travels in the request the host already
+  /// receives, so this costs nothing and never reloads anything.
+  final AnswerStyle Function() _answerStyle;
   int _nextGeneration = 0;
 
   @override
@@ -85,6 +88,9 @@ final class PigeonInferenceService implements InferenceService {
     operation = _PigeonGenerationOperation(
       host: _desktopHostService,
       config: _config,
+      // Read here rather than held, so a style the user changes mid-session
+      // applies to the next question without reloading anything.
+      style: _answerStyle(),
       request: request,
       generationId: generationId,
       controller: controller,
@@ -243,10 +249,12 @@ final class _PigeonGenerationOperation {
     required this.agentContext,
     required this.onSessionStarted,
     required this.onFinished,
+    required this.style,
   });
 
   final DesktopHostService host;
   final LocalModelConfig config;
+  final AnswerStyle style;
   final GenerationRequest request;
   final GenerationId generationId;
   final StreamController<GenerationEvent> controller;
@@ -288,8 +296,8 @@ final class _PigeonGenerationOperation {
             for (final Turn turn in request.history)
               DesktopConversationTurn(role: turn.role, text: turn.text),
           ],
-          temperature: config.temperature,
-          topP: config.topP,
+          temperature: style.temperature,
+          topP: style.topP,
           maxTokens: config.maxTokens,
           seed: config.seed,
         ),

@@ -677,6 +677,31 @@ void main() {
   );
 
   test(
+    'asking the last question again releases the runtime session too',
+    () async {
+      // The store is only half of what remembers the answer being replaced.
+      // The runtime keeps a live conversation per session id, and its KV
+      // cache still holds the question and the answer the user just rejected
+      // — so the retry would be conditioned on the very thing it is meant to
+      // replace, and the model would see the question asked twice. Releasing
+      // makes the next generation re-seed from the truncated history.
+      final RecordingConversationStorageService storage =
+          RecordingConversationStorageService();
+      final ControlledInferenceService inference = ControlledInferenceService();
+      final ConversationRepository repository = ConversationRepository(
+        storageService: storage,
+        inferenceService: inference,
+      );
+
+      await repository.dropFromLastQuestion(conversationId);
+
+      expect(storage.droppedFromLastQuestion, <ConversationId>[conversationId]);
+      expect(inference.releasedSessions, <ConversationId>[conversationId]);
+      await inference.dispose();
+    },
+  );
+
+  test(
     'forgetting a conversation releases the runtime session it held',
     () async {
       // Deleting only ever removed rows. The runtime keeps one live LiteRT-LM

@@ -5,6 +5,64 @@ import 'package:flutter/foundation.dart';
 import '../generated/desktop_host_api.g.dart';
 
 /// App-facing contract for the typed macOS host boundary.
+/// Every word the status-bar menu shows that is not a conversation title.
+///
+/// Carried across rather than written natively: the rest of the interface
+/// follows the system language and there are no localizations on the AppKit
+/// side, so a menu that composed its own titles would be the one part of the
+/// app that stayed English on a Chinese Mac.
+final class DesktopMenuBarLabels {
+  /// Creates the menu's words, already in the user's language.
+  const DesktopMenuBarLabels({
+    required this.show,
+    required this.hide,
+    required this.talk,
+    required this.recent,
+    required this.quit,
+    required this.activity,
+  });
+
+  /// Brings the conversation forward.
+  final String show;
+
+  /// Puts it away.
+  final String hide;
+
+  /// Starts talking.
+  final String talk;
+
+  /// Heads the list of recent conversations.
+  final String recent;
+
+  /// Ends the app.
+  final String quit;
+
+  /// What the agent is doing, empty when there is nothing to say.
+  final String activity;
+}
+
+/// What the agent is doing, as the status-bar menu says it.
+enum DesktopAgentActivity {
+  /// Waiting to be asked something.
+  idle,
+
+  /// The microphone is open.
+  listening,
+
+  /// An answer is being produced.
+  thinking,
+
+  /// An answer is being read aloud.
+  speaking,
+
+  /// Something is running that is neither of the above.
+  working,
+
+  /// Something needs the user.
+  error,
+}
+
+/// The whole native boundary the conversation feature talks to.
 abstract interface class DesktopHostService implements DesktopPresentationHost {
   /// Current schema shared by Dart and the generated host bridge.
   static const int schemaVersion = 2;
@@ -399,6 +457,35 @@ final class DesktopGenerationEvent {
   final String? message;
 }
 
+/// Whether the app starts itself when the user logs in.
+///
+/// Read from the system every time rather than remembered. The registration
+/// belongs to macOS — it survives reinstalls, and the user can revoke it in
+/// System Settings without this app running to notice — so a stored copy
+/// would eventually claim something untrue about the machine.
+enum DesktopLoginItem {
+  /// The app does not start itself.
+  off,
+
+  /// The app starts itself at login.
+  on,
+
+  /// macOS holds the registration and is waiting for the user to allow it in
+  /// System Settings. Shown as its own state because a switch that flipped
+  /// back with no explanation would read as a bug in the app.
+  needsApproval,
+
+  /// macOS refused this copy of the app — a signature it will not accept,
+  /// or a bundle it could not find. The user cannot fix it from here, and
+  /// showing it as plain [off] is how they end up tapping a switch that
+  /// silently does nothing.
+  refused,
+
+  /// This macOS cannot do it at all: `SMAppService` is macOS 13 and the
+  /// deployment target is 12. Unlike [refused], no copy of the app helps.
+  unavailable,
+}
+
 /// The narrow desktop-window capability the app shell needs.
 ///
 /// Declared separately from [DesktopHostService] so the shell can depend on the
@@ -417,15 +504,55 @@ abstract interface class DesktopPresentationHost {
   /// Asks the host to present the window in [mode].
   Future<void> setPresentation(DesktopPresentation mode);
 
+  /// Whether the app currently starts itself when the user logs in.
+  Future<DesktopLoginItem> loginItem();
+
+  /// Asks macOS to start the app at login, or to stop.
+  ///
+  /// Returns what actually resulted, which is not always what was asked for:
+  /// macOS can hold the registration pending the user's approval. Callers
+  /// show what came back rather than what they requested.
+  Future<DesktopLoginItem> setLaunchAtLogin({required bool enabled});
+
   /// Drags the window by [delta], in logical points.
   Future<void> moveWindowBy(Offset delta);
 
   /// Requests from the menu bar to show the app's settings.
   Stream<void> get settingsRequests;
 
+  /// Conversations the user chose from the status-bar menu.
+  Stream<ConversationId> get menuConversationRequests;
+
+  /// Requests to start talking, made from the status-bar menu.
+  Stream<void> get menuVoiceRequests;
+
+  /// Tells the status-bar menu what to show the next time it opens.
+  ///
+  /// Pushed rather than pulled: AppKit builds the menu at the moment it is
+  /// opened, so a menu that asked across the channel then would be empty
+  /// until an answer arrived.
+  Future<void> setMenuBarState({
+    required List<({ConversationId id, String title})> conversations,
+    required String modelName,
+    required DesktopAgentActivity activity,
+    required bool canStartVoice,
+    required DesktopMenuBarLabels labels,
+  });
+
   /// Asks the user for a model file, returning its path or empty when they
   /// keep what they had.
   Future<String> chooseModelFile();
+
+  /// Asks the user where to write [contents] and writes it there.
+  ///
+  /// Returns the path written, or empty if they backed out. Written natively
+  /// because a sandboxed app may write where a save panel says and nowhere
+  /// else — handing the path back here to write to would land outside the
+  /// grant the panel gave.
+  Future<String> saveTextFile({
+    required String suggestedName,
+    required String contents,
+  });
 
   /// Applies the user's choices about how the resting orb behaves.
   Future<void> setWindowBehaviour({

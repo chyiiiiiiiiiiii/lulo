@@ -176,8 +176,12 @@ void main() {
   float coreDensity = 1.0 - smoothstep(-0.50, -0.05, signedDistance);
   density = max(density, coreDensity * (0.80 + cloudField * 0.20));
 
+  // A rim that hugs the vapour rather than an ambient disc around it. Reaching
+  // to the edge of the square made this the only thing still painting past the
+  // body, and on the desktop a wide, even, barely-there field does not read as
+  // light coming off the orb — it reads as a faint circle wrapped around it.
   float haloAlpha =
-      (1.0 - smoothstep(fieldRadius - 0.05, 1.02, radius)) *
+      (1.0 - smoothstep(fieldRadius - 0.05, fieldRadius + 0.12, radius)) *
       (0.10 + cloudField * 0.13);
   haloAlpha *=
       0.55 +
@@ -186,8 +190,11 @@ void main() {
       uAmplitude * 0.08;
 
   float alpha = clamp(max(density, haloAlpha), 0.0, 1.0);
-  // Fade the outermost ring to nothing so there is no window-shaped seam.
-  alpha *= 1.0 - smoothstep(0.86, 1.04, radius);
+  // End the presence inside its own square. Everything past this is the user's
+  // desktop: nothing may survive there, neither a seam nor a tail too faint to
+  // name. The bound is agentPresenceSilhouetteFraction, which the native click
+  // catcher is sized from as well.
+  alpha *= 1.0 - smoothstep(0.68, 0.75, radius);
 
   vec3 graphite = vec3(0.025, 0.031, 0.052);
   vec3 idleColor = vec3(0.25, 0.29, 0.50);

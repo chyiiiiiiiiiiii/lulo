@@ -1,0 +1,294 @@
+import LiteRTLM
+import XCTest
+
+@testable import InferenceService
+
+/// Whether gemma-4-E4B decides to call a tool when it needs one, and whether
+/// being told the answer instead beats asking it to fetch one.
+///
+/// `CLAUDE.md` said "next up: tool calling with a permission layer" for a
+/// long time. This is the measurement underneath that, taken before
+/// designing anything on top of it. The tool is registered through the
+/// vendored `ConversationConfig(tools:)`, so a call that never happens is
+/// the model declining rather than the plumbing failing.
+///
+/// Every condition in one run, from one artifact, at the sampler settings
+/// the app actually uses — an earlier version of this file was edited
+/// between runs and left a table in
+/// `docs/decisions/tool-calling-readiness.md` that it could no longer
+/// reproduce. If you change the conditions, re-run everything and rewrite
+/// the whole table, not the row you were looking at.
+///
+/// Skipped unless `REAL_GEMMA_MODEL_PATH` names an installed model, because
+/// it is several minutes of real inference:
+///
+/// ```sh
+/// REAL_GEMMA_MODEL_PATH="…/Lulo/models/gemma-4-E4B-it.litertlm" \
+///   swift test --filter ToolCallProbeTests
+/// ```
+final class ToolCallProbeTests: XCTestCase {
+  /// A string no model produces by accident, so its presence is proof the
+  /// tool body ran rather than that the answer merely looked plausible.
+  static let sentinel = "TOOL-RAN-4718"
+
+  /// The clock the model is offered.
+  struct ClockTool: Tool {
+    static let name = "get_current_time"
+    static let description = "Returns the current time on this computer."
+    init() {}
+    func run() async throws -> Any { ["time": ToolCallProbeTests.sentinel] }
+  }
+
+  /// How many times each condition is asked.
+  ///
+  /// Sampling is stochastic, so one call and one refusal are the same
+  /// observation until they are repeated. Every condition gets the same
+  /// number, so the denominators in the table are comparable.
+  static let attempts = 5
+
+  /// What the app really sends in Chinese, from `composeAgentPrompt` with
+  /// the built-in profile. Pasted rather than abbreviated: the first version
+  /// of this probe used the opening block alone, about half of it, while the
+  /// decision doc drew conclusions about preface *length*.
+  ///
+  /// Regenerate with `dart run tool/dump_preface.dart` in `agent_core`.
+  static let chinesePreface = """
+    [核心人格]
+    你是 Lulo，在使用者電腦上運作的私人助手。
+    用臺灣繁體中文回答，親近但不裝熟。
+    先回答核心；不確定時坦白說明，不捏造資訊。
+
+    [語音回答方式]
+    這是用說的，不是用寫的。
+    回答控制在三句話以內；講完核心就停，細節等使用者追問再說。
+    不要使用 Markdown。
+    不要朗讀完整 URL。
+    避免冗長條列。
+    使用適合自然朗讀的短句。
+
+    [使用者偏好]
+    回答長度：簡潔。
+    """
+
+  /// The same, for a question asked in English.
+  static let englishPreface = """
+    [Core identity]
+    You are Lulo, a private assistant running on the user’s computer.
+    Answer in natural spoken English. Be warm without pretending familiarity.
+    Lead with the answer; state uncertainty honestly and never invent facts.
+
+    [Spoken response]
+    This is being spoken aloud, not written.
+    Answer in three sentences or fewer; stop after the core of it and leave the detail for the user to ask about.
+    Do not use Markdown.
+    Do not read full URLs aloud.
+    Avoid long lists.
+    Use short sentences that sound natural when spoken.
+
+    [User preferences]
+    Answer length: concise.
+    """
+
+  /// The Chinese preface with one paragraph added about tools, to separate
+  /// "the model will not call tools" from "nobody told it to".
+  static let toolAwarePreface =
+    chinesePreface + """
+
+
+    [工具]
+    你有工具可以用。需要目前時間、日期這類你無法知道的資訊時，
+    一定要呼叫工具取得，不要自己猜。
+    """
+
+  /// The turn instruction `composeAgentPrompt` now produces, with the clock
+  /// in it. This is the alternative being measured against the tool.
+  static let toldChinese = """
+    [現在]
+    現在是 2026 年 8 月 7 日（星期五）02:53。
+
+    [問題]
+    現在幾點？
+    """
+
+  static let toldEnglish = """
+    [Now]
+    It is Friday, 7 August 2026, 02:53.
+
+    [Question]
+    What time is it?
+    """
+
+  /// The app's own sampler settings, from `AnswerStyle` and
+  /// `LiteRTLMRuntimeBackend`. Temperature alone is not the app's style —
+  /// nucleus probability moves with it, and top-k is the backend's.
+  struct Style {
+    let name: String
+    let temperature: Float
+    let topP: Float
+    static let balanced = Style(name: "balanced", temperature: 0.7, topP: 0.95)
+    static let steady = Style(name: "steady", temperature: 0.2, topP: 0.9)
+  }
+
+  /// One thing asked of the model, one way.
+  struct Condition {
+    let label: String
+    let systemMessage: String?
+    let prompt: String
+    let style: Style
+    /// Whether the clock is in the prompt. A told turn is right when it
+    /// reads the clock back; a tool turn is right when the sentinel returns.
+    let told: Bool
+  }
+
+  private func ask(
+    _ condition: Condition,
+    modelPath: String,
+    seed: Int
+  ) async throws -> String {
+    let engine = Engine(
+      engineConfig: try EngineConfig(
+        modelPath: modelPath,
+        backend: .cpu(threadCount: nil)
+      )
+    )
+    try await engine.initialize()
+    let conversation = try await engine.createConversation(
+      with: ConversationConfig(
+        systemMessage: condition.systemMessage.map { Message($0) },
+        tools: [ClockTool()],
+        samplerConfig: try SamplerConfig(
+          topK: 40,
+          topP: condition.style.topP,
+          temperature: condition.style.temperature,
+          seed: seed
+        )
+      )
+    )
+    var reply = ""
+    for try await chunk in conversation.sendMessageStream(
+      Message(condition.prompt)
+    ) {
+      reply += chunk.toString
+    }
+    return reply
+  }
+
+  /// Whether [reply] answered rather than invented.
+  ///
+  /// Scored on the minute rather than on a spelling of the clock. The model
+  /// writes the same answer as `02:53`, `2:53`, 「凌晨兩點五十三分」 and
+  /// 「兩點多一點」-with-the-digits, and an exact-string check marks most of
+  /// those wrong. Two earlier versions of this probe did exactly that and
+  /// understated the told column both times — the second time after the
+  /// decision doc had already written the lesson down.
+  ///
+  /// Fifty-three minutes past is not something an invented time lands on
+  /// often: a hallucinated clock has sixty minutes to choose from, so across
+  /// five attempts this admits a false positive at a rate worth accepting
+  /// for a check that no longer misses the real answers.
+  static func answered(_ reply: String, told: Bool) -> Bool {
+    if reply.contains(sentinel) {
+      return true
+    }
+    guard told else {
+      return false
+    }
+    let minute = ["53", "五十三"]
+    return minute.contains { reply.contains($0) }
+  }
+
+  func testWhetherGemmaCallsAToolOrShouldJustBeTold() async throws {
+    let environment = ProcessInfo.processInfo.environment
+    guard let modelPath = environment["REAL_GEMMA_MODEL_PATH"] else {
+      throw XCTSkip("Set REAL_GEMMA_MODEL_PATH to run the tool-call probe.")
+    }
+
+    let conditions: [Condition] = [
+      // Asking the model to fetch it.
+      Condition(
+        label: "tool zh/no-system-message",
+        systemMessage: nil,
+        prompt: "現在幾點？",
+        style: .balanced,
+        told: false
+      ),
+      Condition(
+        label: "tool zh/app-preface",
+        systemMessage: Self.chinesePreface,
+        prompt: "現在幾點？",
+        style: .balanced,
+        told: false
+      ),
+      Condition(
+        label: "tool zh/app-preface @steady",
+        systemMessage: Self.chinesePreface,
+        prompt: "現在幾點？",
+        style: .steady,
+        told: false
+      ),
+      Condition(
+        label: "tool zh/preface names the tool",
+        systemMessage: Self.toolAwarePreface,
+        prompt: "現在幾點？",
+        style: .balanced,
+        told: false
+      ),
+      Condition(
+        label: "tool en/no-system-message",
+        systemMessage: nil,
+        prompt: "What time is it right now?",
+        style: .balanced,
+        told: false
+      ),
+      Condition(
+        label: "tool en/app-preface",
+        systemMessage: Self.englishPreface,
+        prompt: "What time is it right now?",
+        style: .balanced,
+        told: false
+      ),
+      // Telling it instead.
+      Condition(
+        label: "told zh/app-preface",
+        systemMessage: Self.chinesePreface,
+        prompt: Self.toldChinese,
+        style: .balanced,
+        told: true
+      ),
+      Condition(
+        label: "told zh/app-preface @steady",
+        systemMessage: Self.chinesePreface,
+        prompt: Self.toldChinese,
+        style: .steady,
+        told: true
+      ),
+      Condition(
+        label: "told en/app-preface",
+        systemMessage: Self.englishPreface,
+        prompt: Self.toldEnglish,
+        style: .balanced,
+        told: true
+      ),
+    ]
+
+    for condition in conditions {
+      var right = 0
+      var last = ""
+      for attempt in 0..<Self.attempts {
+        // A fixed seed would repeat one sample rather than draw five.
+        last = try await ask(
+          condition,
+          modelPath: modelPath,
+          seed: attempt + 1
+        )
+        if Self.answered(last, told: condition.told) {
+          right += 1
+        }
+      }
+      print(
+        "PROBE \(condition.label): \(right)/\(Self.attempts) — last: "
+          + last.replacingOccurrences(of: "\n", with: " ")
+      )
+    }
+  }
+}

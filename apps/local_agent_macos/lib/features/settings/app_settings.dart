@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:agent_core/agent_core.dart';
 import 'package:flutter/foundation.dart';
 
 /// What the user has chosen about how the agent sits on their desktop.
@@ -17,6 +18,7 @@ final class AppSettings {
     this.modelPath = '',
     this.ttsVoice = 'ryan',
     this.showVoiceEvidence = false,
+    this.answerStyle = AnswerStyle.balanced,
   });
 
   /// Reads settings written by [toJson], ignoring anything unrecognised.
@@ -45,6 +47,9 @@ final class AppSettings {
         json['showVoiceEvidence'],
         defaults.showVoiceEvidence,
       ),
+      answerStyle:
+          AnswerStyle.values.asNameMap()[json['answerStyle']] ??
+          defaults.answerStyle,
     );
   }
 
@@ -66,6 +71,12 @@ final class AppSettings {
   /// Who speaks the answers aloud, by the resident synthesizer's voice name.
   final String ttsVoice;
 
+  /// How far the model may roam when it answers.
+  ///
+  /// Applied to the next question rather than by reloading the model: the
+  /// sampler travels in the request the host already receives.
+  final AnswerStyle answerStyle;
+
   /// Whether the conversation shows why the agent took or yielded the floor.
   ///
   /// Off by default: it is an instrument for tuning turn-taking, not
@@ -80,6 +91,7 @@ final class AppSettings {
     String? modelPath,
     String? ttsVoice,
     bool? showVoiceEvidence,
+    AnswerStyle? answerStyle,
   }) {
     return AppSettings(
       keepOrbOnTop: keepOrbOnTop ?? this.keepOrbOnTop,
@@ -89,6 +101,7 @@ final class AppSettings {
       modelPath: modelPath ?? this.modelPath,
       ttsVoice: ttsVoice ?? this.ttsVoice,
       showVoiceEvidence: showVoiceEvidence ?? this.showVoiceEvidence,
+      answerStyle: answerStyle ?? this.answerStyle,
     );
   }
 
@@ -100,6 +113,7 @@ final class AppSettings {
     'modelPath': modelPath,
     'ttsVoice': ttsVoice,
     'showVoiceEvidence': showVoiceEvidence,
+    'answerStyle': answerStyle.name,
   };
 
   @override
@@ -110,7 +124,8 @@ final class AppSettings {
       other.openConversationOnLaunch == openConversationOnLaunch &&
       other.modelPath == modelPath &&
       other.ttsVoice == ttsVoice &&
-      other.showVoiceEvidence == showVoiceEvidence;
+      other.showVoiceEvidence == showVoiceEvidence &&
+      other.answerStyle == answerStyle;
 
   @override
   int get hashCode => Object.hash(
@@ -120,6 +135,7 @@ final class AppSettings {
     modelPath,
     ttsVoice,
     showVoiceEvidence,
+    answerStyle,
   );
 
   @override

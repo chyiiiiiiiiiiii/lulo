@@ -1,0 +1,111 @@
+{
+  "schemaVersion": 1,
+  "corpusId": "en-synthetic-v1",
+  "locale": "en-US",
+  "cases": [
+    {
+      "id": "en-run-tests",
+      "category": "english",
+      "prompt": "How do I run the tests in this project?",
+      "expectedTranscript": "How do I run the tests in this project?",
+      "audioPath": "audio/en/en-run-tests.wav",
+      "tags": [
+        "english",
+        "synthetic"
+      ],
+      "expectedPausesMs": [],
+      "notes": "macOS `say -v Samantha`, 2144 ms."
+    },
+    {
+      "id": "en-widget-question",
+      "category": "english",
+      "prompt": "What is the difference between a stateless and a stateful widget?",
+      "expectedTranscript": "What is the difference between a stateless and a stateful widget?",
+      "audioPath": "audio/en/en-widget-question.wav",
+      "tags": [
+        "english",
+        "synthetic"
+      ],
+      "expectedPausesMs": [],
+      "notes": "macOS `say -v Samantha`, 3102 ms."
+    },
+    {
+      "id": "en-litert",
+      "category": "english",
+      "prompt": "Can you explain what the LiteRT runtime does?",
+      "expectedTranscript": "Can you explain what the LiteRT runtime does?",
+      "audioPath": "audio/en/en-litert.wav",
+      "tags": [
+        "english",
+        "synthetic"
+      ],
+      "expectedPausesMs": [],
+      "notes": "macOS `say -v Samantha`, 2681 ms."
+    },
+    {
+      "id": "en-commits",
+      "category": "english",
+      "prompt": "Show me the latest commits on the main branch.",
+      "expectedTranscript": "Show me the latest commits on the main branch.",
+      "audioPath": "audio/en/en-commits.wav",
+      "tags": [
+        "english",
+        "synthetic"
+      ],
+      "expectedPausesMs": [],
+      "notes": "macOS `say -v Samantha`, 2296 ms."
+    },
+    {
+      "id": "en-download-failed",
+      "category": "english",
+      "prompt": "I think the download failed. Can you try again?",
+      "expectedTranscript": "I think the download failed. Can you try again?",
+      "audioPath": "audio/en/en-download-failed.wav",
+      "tags": [
+        "english",
+        "synthetic"
+      ],
+      "expectedPausesMs": [],
+      "notes": "macOS `say -v Samantha`, 2817 ms."
+    },
+    {
+      "id": "en-remind-mic",
+      "category": "english",
+      "prompt": "Remind me to check the microphone permissions later.",
+      "expectedTranscript": "Remind me to check the microphone permissions later.",
+      "audioPath": "audio/en/en-remind-mic.wav",
+      "tags": [
+        "english",
+        "synthetic"
+      ],
+      "expectedPausesMs": [],
+      "notes": "macOS `say -v Samantha`, 2700 ms."
+    },
+    {
+      "id": "en-dart-test",
+      "category": "english",
+      "prompt": "Dart test is failing on the second case.",
+      "expectedTranscript": "Dart test is failing on the second case.",
+      "audioPath": "audio/en/en-dart-test.wav",
+      "tags": [
+        "english",
+        "synthetic"
+      ],
+      "expectedPausesMs": [],
+      "notes": "macOS `say -v Samantha`, 2213 ms."
+    },
+    {
+      "id": "en-settings-voice",
+      "category": "english",
+      "prompt": "Open the settings and turn the voice off.",
+      "expectedTranscript": "Open the settings and turn the voice off.",
+      "audioPath": "audio/en/en-settings-voice.wav",
+      "tags": [
+        "english",
+        "synthetic"
+      ],
+      "expectedPausesMs": [],
+      "notes": "macOS `say -v Samantha`, 2048 ms."
+    }
+  ]
+}

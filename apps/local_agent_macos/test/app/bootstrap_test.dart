@@ -190,6 +190,9 @@ final class _InterruptedRunStorage implements ConversationStorageService {
   String? recoveredText;
 
   @override
+  Future<void> dropFromLastQuestion(ConversationId conversationId) async {}
+
+  @override
   Future<List<RunRecord>> loadUnfinishedRuns() async => <RunRecord>[
     RunRecord(
       id: const GenerationId('died'),
@@ -233,4 +236,20 @@ final class _InterruptedRunStorage implements ConversationStorageService {
 
   @override
   Future<void> deleteConversation(ConversationId conversationId) async {}
+
+  @override
+  Future<List<ConversationSummary>> searchConversations(String query) async =>
+      const <ConversationSummary>[];
+
+  @override
+  Future<void> renameConversation(
+    ConversationId conversationId,
+    String title,
+  ) async {}
+
+  @override
+  Future<void> setConversationPinned(
+    ConversationId conversationId, {
+    required bool pinned,
+  }) async {}
 }

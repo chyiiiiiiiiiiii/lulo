@@ -65,6 +65,13 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
   )
   private var vocabularyRefresh: Task<Void, Never>?
 
+  /// The vocabulary the analyzer was last actually given.
+  ///
+  /// Kept so a scheduled refresh can tell whether anything changed since.
+  /// Cleared with the session, because a new analyzer starts with none.
+  private var appliedVocabulary: [String] = []
+
+
   /// What the microphone heard during a hotkey hold, kept for the
   /// recogniser evaluation.
   private let heldSpeech = HeldSpeechCaptureBox()
@@ -449,13 +456,21 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
       try? await Task.sleep(for: .seconds(2))
       self.vocabularyRefresh = nil
       guard let analyzer = self.session?.analyzer else { return }
+      let terms = self.vocabulary.all
+      // Replacing the recogniser's context costs it, and by the time this
+      // fires the list is often the one already in force: opening the ears
+      // pushes the profile across and `begin()` applies it, which used to
+      // arm this timer to apply the identical list again two seconds later,
+      // once per session for nothing.
+      guard terms != self.appliedVocabulary else { return }
       let context = AnalysisContext()
-      context.contextualStrings[.general] = self.vocabulary.all
+      context.contextualStrings[.general] = terms
       do {
         try await analyzer.setContext(context)
+        self.appliedVocabulary = terms
         NSLog(
           "Lulo voice: listening for %d terms",
-          self.vocabulary.all.count
+          terms.count
         )
       } catch {
         NSLog(
@@ -561,13 +576,41 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
   private func recognizeHeldClip(_ clip: HeldSpeechClip) {
     let terms = vocabulary.all
     Task { @MainActor in
-      let heard: String
+      var heard: String?
       if let url = await Self.writeHeldClip(clip) {
         heard = await Self.transcribeHeld(url, terms: terms)
-      } else {
-        heard = ""
       }
-      self.emit(.heldTranscript, text: heard)
+      // The conversation treats unreachable and heard-nothing alike: either
+      // way the streamed transcript stands.
+      self.emit(.heldTranscript, text: heard ?? "")
+    }
+  }
+
+  /// Deletes held-speech WAVs older than an hour.
+  ///
+  /// These are recordings of somebody's voice. They were written to be
+  /// re-listened to while recognisers were being compared, and nothing ever
+  /// removed them, so they accumulated for as long as the machine ran. An
+  /// hour is long enough to still have the clip that just went wrong.
+  nonisolated private static func sweepHeldClips() {
+    let manager = FileManager.default
+    let directory = manager.temporaryDirectory
+    guard
+      let entries = try? manager.contentsOfDirectory(
+        at: directory,
+        includingPropertiesForKeys: [.contentModificationDateKey]
+      )
+    else {
+      return
+    }
+    let cutoff = Date().addingTimeInterval(-3600)
+    for entry in entries where entry.lastPathComponent.hasPrefix("lulo-held-") {
+      let modified = try? entry.resourceValues(
+        forKeys: [.contentModificationDateKey]
+      ).contentModificationDate
+      if let modified, modified < cutoff {
+        try? manager.removeItem(at: entry)
+      }
     }
   }
 
@@ -575,6 +618,8 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
   /// Apple heard, kept so recognisers can be judged on real utterances.
   private static func writeHeldClip(_ clip: HeldSpeechClip) async -> URL? {
     await Task.detached(priority: .userInitiated) { () -> URL? in
+      // Off the main thread, alongside the write that needs it anyway.
+      Self.sweepHeldClips()
       let url = FileManager.default.temporaryDirectory
         .appendingPathComponent(
           String(format: "lulo-held-%.0f.wav", Date().timeIntervalSince1970)
@@ -618,13 +663,20 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
 
   /// What the batch recogniser heard in [url], or empty when it could not
   /// answer.
+  /// The batch recogniser's answer, or nil when it could not be reached.
+  ///
+  /// Nil and empty are different answers, even though this caller treats
+  /// them alike: the streamed transcript stands either way. They are kept
+  /// apart because "the recogniser is not running" and "the recogniser
+  /// heard nothing" are different things to tell anyone who asks, and
+  /// collapsing them at the boundary loses that for good.
   private static func transcribeHeld(
     _ url: URL,
     terms: [String]
-  ) async -> String {
+  ) async -> String? {
     guard let endpoint = URL(string: "http://127.0.0.1:46558/transcribe")
     else {
-      return ""
+      return nil
     }
     var request = URLRequest(url: endpoint)
     request.httpMethod = "POST"
@@ -640,7 +692,7 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
         payload["ok"] as? Bool == true,
         let text = payload["text"] as? String
       else {
-        return ""
+        return nil
       }
       NSLog("Lulo ptt: batch recogniser heard %d chars", text.count)
       return text
@@ -649,7 +701,7 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
         "Lulo ptt: batch recogniser unreachable (%@)",
         String(describing: error)
       )
-      return ""
+      return nil
     }
   }
 
@@ -659,6 +711,19 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
   ) {
     turn.unfinishedEndings = endings
     NSLog("Lulo voice: %d unfinished endings from the profile", endings.count)
+    completion(.success(()))
+  }
+
+  func useSpokenVocabulary(
+    terms: [String],
+    completion: @escaping (Result<Void, Error>) -> Void
+  ) {
+    vocabulary.adopt(terms)
+    NSLog("Lulo voice: %d vocabulary terms from the profile", terms.count)
+    // Through the same debounce as a term learned from an answer, so a
+    // profile saved keystroke by keystroke costs one context update rather
+    // than one per letter.
+    scheduleVocabularyRefresh()
     completion(.success(()))
   }
 
@@ -734,9 +799,11 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
     // a name for it (LiveKit calls them keyterms, most vendors call it
     // contextual biasing) and Apple's is contextualStrings.
     let context = AnalysisContext()
-    context.contextualStrings[.general] = vocabulary.all
+    let terms = vocabulary.all
+    context.contextualStrings[.general] = terms
     let analyzer = SpeechAnalyzer(modules: [transcriber])
     try await analyzer.setContext(context)
+    appliedVocabulary = terms
     guard
       let analyzerFormat = await SpeechAnalyzer.bestAvailableAudioFormat(
         compatibleWith: [transcriber]
@@ -1134,6 +1201,10 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
       resultsTask.cancel()
     }
     self.session = nil
+    // The next session builds a new analyzer, which starts with no context
+    // of its own. Leaving this set would let the refresh decide the terms
+    // were already in force and skip applying them to it.
+    appliedVocabulary = []
   }
 
   /// The device changed under the running engine: rebuild on the settled
@@ -1317,6 +1388,13 @@ final class HeldSpeechCaptureBox: @unchecked Sendable {
   private var rate: Double = 0
   private var active = false
 
+  /// Starts a hold, discarding anything left from the last one.
+  ///
+  /// Unconditional on purpose. Carbon does not guarantee a release event
+  /// when the modifiers are lifted before the key, so a hold can end without
+  /// anyone being told; resetting here is the only thing that recovers from
+  /// it. A caller that needs to tell key-repeat from a fresh press has to
+  /// say so at the call site, the way `HotKeyHoldSplitter` does.
   func begin() {
     lock.lock()
     defer { lock.unlock() }
@@ -1369,6 +1447,7 @@ struct SpokenVocabularyBook {
   static let capacity = 40
 
   private let seeds: [String]
+  private var adopted: [String] = []
   private var learned: [String] = []
   private var known: Set<String>
 
@@ -1377,8 +1456,54 @@ struct SpokenVocabularyBook {
     self.known = Set(seeds.map { $0.lowercased() })
   }
 
-  /// Every term the recogniser should lean towards, seeds first.
-  var all: [String] { seeds + learned }
+  /// Every term the recogniser should lean towards, the user's own first.
+  ///
+  /// The user's words outrank the seeds because the seeds are a guess made
+  /// by whoever wrote the app and the adopted list is what the person doing
+  /// the talking actually typed. Biasing trades general accuracy for the
+  /// length of the list, so the order is the priority and each word appears
+  /// once: the app's own built-in vocabulary and this file's seed list were
+  /// written separately and overlap on nine terms, which on a fresh install
+  /// is a fifth of the list saying the same words twice.
+  var all: [String] {
+    let mine = Set(adopted.map { $0.lowercased() })
+    return adopted + seeds.filter { !mine.contains($0.lowercased()) } + learned
+  }
+
+  /// Takes [terms] as the user's vocabulary, replacing whatever was there.
+  ///
+  /// Replaces rather than adds: the agent profile is a watched file, so what
+  /// it says now is the whole answer and a word the user deleted has to stop
+  /// being listened for. What was learned from answers otherwise survives —
+  /// that is this conversation's own context, not a setting.
+  mutating func adopt(_ terms: [String]) {
+    var seen = Set<String>()
+    adopted = terms.compactMap { term -> String? in
+      let trimmed = term.trimmingCharacters(in: .whitespacesAndNewlines)
+      guard !trimmed.isEmpty else { return nil }
+      return seen.insert(trimmed.lowercased()).inserted ? trimmed : nil
+    }
+    if adopted.count > Self.capacity {
+      // Bounded for the same reason `learned` is, and said out loud rather
+      // than trimmed in silence: a profile long enough to hit this is one
+      // somebody hand-edited, and a list that quietly stops at forty looks
+      // from the outside like biasing that stopped working.
+      NSLog(
+        "Lulo voice: profile lists %d terms, biasing towards the first %d",
+        adopted.count,
+        Self.capacity
+      )
+      adopted = Array(adopted.prefix(Self.capacity))
+      seen = Set(adopted.map { $0.lowercased() })
+    }
+    // A word the user has now listed is no longer one to have learned:
+    // leaving it in both would list it twice, and evicting it from `learned`
+    // later would drop the key that adoption is also relying on.
+    learned.removeAll { seen.contains($0.lowercased()) }
+    // Rebuilt rather than inserted into, or a term dropped from the profile
+    // would stay unlearnable for the rest of the process.
+    known = Set((adopted + seeds + learned).map { $0.lowercased() })
+  }
 
   /// Learns the Latin phrases of [text]; true when anything was new.
   mutating func learn(from text: String) -> Bool {

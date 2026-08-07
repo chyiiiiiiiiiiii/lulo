@@ -1,3 +1,5 @@
+import '../agent_profile/misheard_word.dart';
+
 /// Result status of one finalized-transcript refinement attempt.
 enum TranscriptRefinementStatus {
   /// The refiner selected the raw transcript without a change.
@@ -26,6 +28,15 @@ enum TranscriptEditKind {
 
   /// Configured vocabulary casing changed.
   vocabulary,
+
+  /// A substitution the user taught after the recogniser got it wrong.
+  ///
+  /// Its own kind rather than reported as [vocabulary]. The edit kind is
+  /// written to the conversation store, so a wrong one is wrong durably —
+  /// and these two are not the same thing: one is a casing rule about a
+  /// product name, the other is what a person said this transcript should
+  /// have been.
+  correction,
 }
 
 /// Privacy-safe reason a proposal was rejected.
@@ -83,7 +94,9 @@ final class TranscriptRefinementRequest {
     required this.locale,
     required List<String> protectedVocabulary,
     required this.deadline,
-  }) : protectedVocabulary = List<String>.unmodifiable(protectedVocabulary);
+    List<MisheardWord> misheard = const <MisheardWord>[],
+  }) : protectedVocabulary = List<String>.unmodifiable(protectedVocabulary),
+       misheard = List<MisheardWord>.unmodifiable(misheard);
 
   /// Exact final recognizer output.
   final String rawTranscript;
@@ -93,6 +106,9 @@ final class TranscriptRefinementRequest {
 
   /// Vocabulary tokens whose identity must remain stable.
   final List<String> protectedVocabulary;
+
+  /// Corrections the user has already made once, to be made again.
+  final List<MisheardWord> misheard;
 
   /// Maximum caller-approved refinement time.
   final Duration deadline;

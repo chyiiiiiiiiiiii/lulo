@@ -33,7 +33,11 @@ void main() {
       await tester.pump(const Duration(milliseconds: 400));
       await tester.pump();
 
-      expect(find.text('Start a conversation'), findsOneWidget);
+      // By key rather than by text: the interface follows the system's
+      // language now, and this runs on whichever Mac happens to be running
+      // it. A string assertion here would pass in one country and fail in
+      // the next.
+      expect(find.byKey(const Key('conversation-empty')), findsOneWidget);
       expect(find.byKey(const Key('agent-presence-fallback')), findsOneWidget);
 
       await tester.enterText(
@@ -54,7 +58,7 @@ void main() {
       await tester.tap(find.byKey(const Key('conversation-stop-button')));
       await tester.pump();
 
-      expect(find.text('Response stopped'), findsOneWidget);
+      expect(find.byKey(const Key('turn-status')), findsOneWidget);
       expect(find.textContaining('Local inference'), findsOneWidget);
       // The composer's button follows canSubmit a frame or two behind the
       // cancellation; waited on rather than assumed, like everything else
@@ -92,7 +96,7 @@ void main() {
         ),
         findsOneWidget,
       );
-      expect(find.text('Response stopped'), findsOneWidget);
+      expect(find.byKey(const Key('turn-status')), findsOneWidget);
       // The streaming bubble renders the same Markdown as a completed one
       // now, so two markdown bubbles exist while the second response is
       // still arriving — completion is the composer offering submission

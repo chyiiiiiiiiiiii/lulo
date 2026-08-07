@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:local_agent_macos/features/conversation/conversation_repository.dart';
 import 'package:local_agent_macos/features/conversation/conversation_view.dart';
 import 'package:local_agent_macos/features/conversation/conversation_view_model.dart';
+import 'package:local_agent_macos/l10n/generated/app_localizations.dart';
 
 import '../../support/controlled_inference_service.dart';
 import '../../support/recording_conversation_storage_service.dart';
@@ -14,6 +15,8 @@ void main() {
   ) async {
     await tester.pumpWidget(
       MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
         home: MediaQuery(
           data: const MediaQueryData(disableAnimations: true),
           child: ConversationView(viewModelFactory: _viewModel),

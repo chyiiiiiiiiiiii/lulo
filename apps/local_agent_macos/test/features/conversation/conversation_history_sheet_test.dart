@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:local_agent_macos/features/conversation/conversation_storage_service.dart';
 import 'package:local_agent_macos/features/conversation/widgets/conversation_history_sheet.dart';
+import 'package:local_agent_macos/l10n/generated/app_localizations.dart';
 
 void main() {
   const ConversationId yesterday = ConversationId('conversation-yesterday');
@@ -29,6 +30,8 @@ void main() {
     ValueChanged<ConversationId>? onDelete,
     VoidCallback? onClose,
   }) => MaterialApp(
+    localizationsDelegates: AppLocalizations.localizationsDelegates,
+    supportedLocales: AppLocalizations.supportedLocales,
     home: ConversationHistorySheet(
       conversations: conversations ?? stored,
       onOpen: onOpen ?? (ConversationId _) {},
@@ -77,7 +80,11 @@ void main() {
     await tester.pumpWidget(sheet(onDelete: deleted.add));
     await tester.pump();
 
+    // Behind the row's menu rather than a third icon on the row itself.
+    await tester.tap(find.byKey(Key('conversation-menu-${older.value}')));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(Key('conversation-delete-${older.value}')));
+    await tester.pumpAndSettle();
 
     expect(deleted, <ConversationId>[older]);
   });

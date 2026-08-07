@@ -229,4 +229,147 @@ void main() {
     expect(result.instruction, isNot(contains('額額額額額額額額額額額額額額額額額額額額')));
     expect(result.instruction, contains('不確定時坦白說明'));
   });
+
+  // Asked the time with nothing in the prompt to answer from, gemma-4-E4B
+  // does not say it cannot know — it invents one. Probed against the real
+  // model with a clock tool registered and the instruction this app really
+  // sends, it called the tool 0 times out of 5 and made the answer up every
+  // time. A wrong answer that sounds certain is worse than no answer, so
+  // the clock is told rather than fetched.
+  // See `docs/decisions/tool-calling-readiness.md`.
+  test('the current time reaches the model without being asked for', () {
+    final AgentProfile profile = AgentProfile(
+      identity: const AgentIdentity(userName: 'Yii'),
+    );
+
+    final AgentPromptContext result = composeAgentPrompt(
+      profile: profile,
+      prompt: '現在幾點？',
+      now: DateTime(2026, 8, 7, 2, 53),
+    );
+
+    // The turn half, not the stable half. The system instruction is
+    // prefilled once per conversation and a clock in it would rebuild the
+    // whole prompt every turn — the 1648ms that
+    // `docs/decisions/voice-turn-latency.md` measured and removed.
+    expect(result.systemInstruction, isNot(contains('2026')));
+    expect(result.turnInstruction, contains('[現在]'));
+    expect(result.turnInstruction, contains('2026 年 8 月 7 日'));
+    expect(result.turnInstruction, contains('星期五'));
+    expect(result.turnInstruction, contains('02:53'));
+
+    // Still last, so the question is the most recent thing the model read.
+    expect(result.turnInstruction, endsWith('[問題]\n現在幾點？'));
+  });
+
+  // The one invariant the whole shape rests on. The clock is in the turn
+  // half so the stable half can be prefilled once per conversation; a clock
+  // that reached the stable half would expire between every question and
+  // rebuild the prompt every turn, which
+  // `docs/decisions/voice-turn-latency.md` measured at 1648ms against 362ms.
+  // The existing guard only asserted the system half has no '2026' in it,
+  // which passes for every year but one.
+  test('two turns minutes apart are prefilled from the same text', () {
+    final AgentProfile profile = AgentProfile(
+      identity: const AgentIdentity(userName: 'Yii'),
+    );
+
+    final AgentPromptContext first = composeAgentPrompt(
+      profile: profile,
+      prompt: '現在幾點？',
+      now: DateTime(2026, 8, 7, 2, 53),
+    );
+    final AgentPromptContext later = composeAgentPrompt(
+      profile: profile,
+      prompt: '現在幾點？',
+      now: DateTime(2027, 1, 1, 23, 8),
+    );
+
+    expect(first.systemInstruction, later.systemInstruction);
+    expect(first.turnInstruction, isNot(later.turnInstruction));
+  });
+
+  // A UTC clock rendered as if it were the wall clock is a confidently wrong
+  // time, which is the failure the parameter exists to remove. The codebase
+  // already has `_now().toUtc()` in it, so a caller could reach for one.
+  test('a clock that is not the wall clock is refused', () {
+    expect(
+      () => composeAgentPrompt(
+        profile: AgentProfile(identity: const AgentIdentity(userName: 'Yii')),
+        prompt: '現在幾點？',
+        now: DateTime.utc(2026, 8, 7, 2, 53),
+      ),
+      throwsA(isA<AssertionError>()),
+    );
+  });
+
+  test('the clock is written in the language of the question', () {
+    final AgentPromptContext result = composeAgentPrompt(
+      profile: AgentProfile(identity: const AgentIdentity(userName: 'Yii')),
+      prompt: 'What time is it?',
+      now: DateTime(2026, 8, 7, 14, 5),
+    );
+
+    expect(result.turnInstruction, contains('[Now]'));
+    expect(result.turnInstruction, contains('Friday, 7 August 2026'));
+    expect(result.turnInstruction, contains('14:05'));
+  });
+
+  // A caller that has no clock to offer must not be given a made-up one:
+  // silence is honest, an invented timestamp is not.
+  test('a turn composed without a clock says nothing about the time', () {
+    final AgentPromptContext result = composeAgentPrompt(
+      profile: AgentProfile(identity: const AgentIdentity(userName: 'Yii')),
+      prompt: '現在幾點？',
+    );
+
+    expect(result.turnInstruction, isNot(contains('[現在]')));
+    expect(result.turnInstruction, '[問題]\n現在幾點？');
+  });
+
+  // An English instruction with a Chinese sentence in it, in a composer
+  // whose own comment says a small model answers in the language it was
+  // instructed in. The built-in tone is a Chinese phrase and was being
+  // rendered raw into both languages, so every English prompt this app sent
+  // carried 「Tone: 親近但不裝熟.」 — including the one the tool-calling
+  // measurement was taken against.
+  test('an English instruction is written only in English', () {
+    final AgentPromptContext result = composeAgentPrompt(
+      profile: AgentProfile(identity: const AgentIdentity(userName: 'Yii')),
+      prompt: 'What time is it?',
+    );
+
+    expect(
+      result.systemInstruction,
+      isNot(matches(RegExp(r'[\u4e00-\u9fff]'))),
+    );
+  });
+
+  test('a tone the user wrote is sent as they wrote it', () {
+    // Skipping the built-in default must not swallow a tone somebody chose.
+    final AgentPromptContext result = composeAgentPrompt(
+      profile: AgentProfile(
+        personality: const AgentPersonality(tone: 'blunt and terse'),
+      ),
+      prompt: 'What time is it?',
+    );
+
+    expect(result.systemInstruction, contains('blunt and terse'));
+  });
+
+  test('the built-in tone is still said once, in the right language', () {
+    // Dropped from the preferences block because the core-identity block
+    // already says it — not because it stopped being true.
+    final AgentPromptContext chinese = composeAgentPrompt(
+      profile: AgentProfile(),
+      prompt: '現在幾點？',
+    );
+
+    expect(chinese.systemInstruction, contains('親近但不裝熟'));
+    expect(
+      '親近但不裝熟'.allMatches(chinese.systemInstruction).length,
+      1,
+      reason: 'said twice is one instruction competing with itself',
+    );
+  });
 }

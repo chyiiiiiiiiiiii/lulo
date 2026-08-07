@@ -1,10 +1,24 @@
+import '../../l10n/generated/app_localizations.dart';
+
+/// Which of the written descriptions belongs to a model.
+///
+/// A key rather than the sentence itself: the catalogue is a const list and
+/// the sentence has to be read in whatever language the Mac is set to.
+enum ModelDescription {
+  /// The larger model: the strongest answers this family offers.
+  balanced,
+
+  /// The smaller model: quicker, and simpler in what it says.
+  light,
+}
+
 /// One model the app knows how to fetch and think with.
 final class ModelCatalogEntry {
   /// Describes one downloadable model.
   const ModelCatalogEntry({
     required this.id,
     required this.name,
-    required this.description,
+    required this.descriptionKey,
     required this.fileName,
     required this.url,
     required this.sizeBytes,
@@ -18,8 +32,8 @@ final class ModelCatalogEntry {
   /// What the settings call it.
   final String name;
 
-  /// One sentence on why someone would pick it.
-  final String description;
+  /// Which written description belongs to this model.
+  final ModelDescription descriptionKey;
 
   /// The file's name once installed.
   final String fileName;
@@ -42,6 +56,16 @@ final class ModelCatalogEntry {
   final bool recommended;
 }
 
+/// The one model a first launch is offered.
+///
+/// The first launch has exactly one decision to make and offering a list
+/// would turn it into a comparison nobody arriving is equipped to make. The
+/// rest of the catalogue is in settings, for later.
+ModelCatalogEntry get recommendedModel => modelCatalog.firstWhere(
+  (ModelCatalogEntry entry) => entry.recommended,
+  orElse: () => modelCatalog.first,
+);
+
 /// The models the settings offer, the recommended one first.
 ///
 /// Curated rather than fetched: each entry's size is pinned here, and a list
@@ -51,9 +75,7 @@ const List<ModelCatalogEntry> modelCatalog = <ModelCatalogEntry>[
   ModelCatalogEntry(
     id: 'gemma-4-E4B-it',
     name: 'Gemma 4 E4B',
-    description:
-        'The balanced choice: strongest answers this laptop-sized '
-        'model family offers.',
+    descriptionKey: ModelDescription.balanced,
     fileName: 'gemma-4-E4B-it.litertlm',
     url:
         'https://huggingface.co/litert-community/gemma-4-E4B-it-litert-lm/'
@@ -65,9 +87,7 @@ const List<ModelCatalogEntry> modelCatalog = <ModelCatalogEntry>[
   ModelCatalogEntry(
     id: 'gemma-4-E2B-it',
     name: 'Gemma 4 E2B',
-    description:
-        'The light choice: quicker to fetch and to answer, with '
-        'simpler answers.',
+    descriptionKey: ModelDescription.light,
     fileName: 'gemma-4-E2B-it.litertlm',
     url:
         'https://huggingface.co/litert-community/gemma-4-E2B-it-litert-lm/'
@@ -76,3 +96,12 @@ const List<ModelCatalogEntry> modelCatalog = <ModelCatalogEntry>[
     sha256: '181938105e0eefd105961417e8da75903eacda102c4fce9ce90f50b97139a63c',
   ),
 ];
+
+/// Reads a model's written description in the language the Mac is set to.
+extension ModelCatalogEntryText on ModelCatalogEntry {
+  /// What this model is, in words, for [words]' language.
+  String description(AppLocalizations words) => switch (descriptionKey) {
+    ModelDescription.balanced => words.modelDescriptionBalanced,
+    ModelDescription.light => words.modelDescriptionLight,
+  };
+}

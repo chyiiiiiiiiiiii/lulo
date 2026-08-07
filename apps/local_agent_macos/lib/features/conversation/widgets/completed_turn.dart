@@ -1,61 +1,328 @@
+import 'dart:async';
+
 import 'package:agent_core/agent_core.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+
+import '../../../l10n/generated/app_localizations.dart';
 
 /// A terminal user or assistant turn.
-final class CompletedTurn extends StatelessWidget {
+final class CompletedTurn extends StatefulWidget {
   /// Creates a terminal turn presentation.
-  const CompletedTurn({required this.turn, super.key});
+  const CompletedTurn({
+    required this.turn,
+    this.onRegenerate,
+    this.onRevise,
+    super.key,
+  });
+
+  /// Asks this answer to be produced again, or null where it cannot be.
+  ///
+  /// Only the newest answer carries this: replacing one in the middle would
+  /// leave every answer after it standing on a question that no longer got
+  /// that reply.
+  final VoidCallback? onRegenerate;
+
+  /// Asks this question again as the given text, or null where it cannot be.
+  final ValueChanged<String>? onRevise;
+
+  /// How long the turn says it has been copied.
+  ///
+  /// Long enough to be read by someone whose eyes were on the text they just
+  /// took, short enough that it is gone before it becomes part of the answer.
+  static const Duration copiedNoticeDuration = Duration(milliseconds: 1600);
 
   /// The turn to present.
   final Turn turn;
 
   @override
+  State<CompletedTurn> createState() => _CompletedTurnState();
+}
+
+final class _CompletedTurnState extends State<CompletedTurn> {
+  Timer? _copiedNotice;
+  bool _copied = false;
+  TextEditingController? _revision;
+
+  @override
+  void dispose() {
+    _copiedNotice?.cancel();
+    _revision?.dispose();
+    super.dispose();
+  }
+
+  void _beginRevision() {
+    setState(() {
+      _revision = TextEditingController(text: widget.turn.text)
+        ..selection = TextSelection.collapsed(offset: widget.turn.text.length);
+    });
+  }
+
+  void _endRevision() {
+    final TextEditingController? revision = _revision;
+    setState(() => _revision = null);
+    revision?.dispose();
+  }
+
+  void _submitRevision() {
+    final String text = _revision?.text.trim() ?? '';
+    if (text.isEmpty) {
+      return;
+    }
+    final ValueChanged<String>? onRevise = widget.onRevise;
+    _endRevision();
+    onRevise?.call(text);
+  }
+
+  Future<void> _copy() async {
+    await Clipboard.setData(ClipboardData(text: widget.turn.text));
+    if (!mounted) {
+      return;
+    }
+    setState(() => _copied = true);
+    _copiedNotice?.cancel();
+    _copiedNotice = Timer(CompletedTurn.copiedNoticeDuration, () {
+      if (mounted) {
+        setState(() => _copied = false);
+      }
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final AppLocalizations words = AppLocalizations.of(context);
+    final Turn turn = widget.turn;
     final bool isUser = turn.role == TurnRole.user;
     final String? statusLabel = switch (turn.status) {
-      TurnStatus.failed => 'Response failed',
-      TurnStatus.cancelled => 'Response stopped',
-      TurnStatus.interrupted => 'Response interrupted',
+      TurnStatus.failed => words.turnFailed,
+      TurnStatus.cancelled => words.turnStopped,
+      TurnStatus.interrupted => words.turnInterrupted,
       TurnStatus.completed || TurnStatus.streaming => null,
     };
     return Semantics(
-      label: isUser ? 'You' : 'Assistant',
+      label: isUser ? words.roleYou : words.roleAssistant,
       child: Align(
         alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
-        child: Container(
-          constraints: const BoxConstraints(maxWidth: 720),
-          margin: const EdgeInsets.symmetric(vertical: 6),
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-          decoration: BoxDecoration(
-            color: isUser
-                ? Theme.of(context).colorScheme.primaryContainer
-                : Theme.of(context).colorScheme.surfaceContainerHighest,
-            borderRadius: BorderRadius.circular(18),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+        child: Column(
+          crossAxisAlignment: isUser
+              ? CrossAxisAlignment.end
+              : CrossAxisAlignment.start,
+          children: <Widget>[
+            Container(
+              constraints: const BoxConstraints(maxWidth: 720),
+              margin: const EdgeInsets.only(top: 6),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              decoration: BoxDecoration(
+                color: isUser
+                    ? Theme.of(context).colorScheme.primaryContainer
+                    : Theme.of(context).colorScheme.surfaceContainerHighest,
+                borderRadius: BorderRadius.circular(18),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  if (_revision != null)
+                    _Revision(
+                      controller: _revision!,
+                      onSubmit: _submitRevision,
+                      onCancel: _endRevision,
+                    )
+                  else if (isUser)
+                    SelectableText(turn.text)
+                  else
+                    TerminalMarkdown(turn.text),
+                  if (HeardConfidence.isDoubtful(
+                    turn.voiceInput?.heardConfidence,
+                  ))
+                    _HeardDoubt(score: turn.voiceInput!.heardConfidence!),
+                  if (statusLabel != null) ...<Widget>[
+                    const SizedBox(height: 8),
+                    Text(
+                      statusLabel,
+                      key: const Key('turn-status'),
+                      style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                        color: turn.status == TurnStatus.failed
+                            ? Theme.of(context).colorScheme.error
+                            : Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            if (_revision == null)
+              _TurnActions(
+                copied: _copied,
+                onCopy: _copy,
+                onRegenerate: widget.onRegenerate,
+                onRevise: widget.onRevise == null ? null : _beginRevision,
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// What can be done with a turn, under the turn.
+///
+/// Quiet by default and brighter under the pointer: this sits beneath every
+/// turn in the scrollback, so at full contrast it would be a row of buttons
+/// competing with the conversation itself. It stays in the tree rather than
+/// appearing on hover, because a control that only exists while the mouse is
+/// over it does not exist at all for VoiceOver or the keyboard.
+final class _TurnActions extends StatefulWidget {
+  const _TurnActions({
+    required this.copied,
+    required this.onCopy,
+    this.onRegenerate,
+    this.onRevise,
+  });
+
+  final bool copied;
+  final Future<void> Function() onCopy;
+  final VoidCallback? onRegenerate;
+  final VoidCallback? onRevise;
+
+  @override
+  State<_TurnActions> createState() => _TurnActionsState();
+}
+
+final class _TurnActionsState extends State<_TurnActions> {
+  bool _hovered = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final ColorScheme colors = Theme.of(context).colorScheme;
+    final AppLocalizations words = AppLocalizations.of(context);
+    Widget action(String key, String tooltip, IconData icon, VoidCallback go) {
+      return IconButton(
+        key: Key(key),
+        tooltip: tooltip,
+        iconSize: 15,
+        visualDensity: VisualDensity.compact,
+        constraints: const BoxConstraints.tightFor(width: 28, height: 28),
+        padding: EdgeInsets.zero,
+        color: colors.onSurfaceVariant,
+        icon: Icon(icon),
+        onPressed: go,
+      );
+    }
+
+    final VoidCallback? onRegenerate = widget.onRegenerate;
+    final VoidCallback? onRevise = widget.onRevise;
+    return MouseRegion(
+      onEnter: (_) => setState(() => _hovered = true),
+      onExit: (_) => setState(() => _hovered = false),
+      child: AnimatedOpacity(
+        opacity: _hovered || widget.copied ? 1 : 0.35,
+        duration: const Duration(milliseconds: 140),
+        child: Padding(
+          padding: const EdgeInsets.only(top: 2, left: 4, right: 4),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
             children: <Widget>[
-              if (isUser)
-                SelectableText(turn.text)
-              else
-                TerminalMarkdown(turn.text),
-              if (HeardConfidence.isDoubtful(turn.voiceInput?.heardConfidence))
-                _HeardDoubt(score: turn.voiceInput!.heardConfidence!),
-              if (statusLabel != null) ...<Widget>[
-                const SizedBox(height: 8),
-                Text(
-                  statusLabel,
-                  style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                    color: turn.status == TurnStatus.failed
-                        ? Theme.of(context).colorScheme.error
-                        : Theme.of(context).colorScheme.onSurfaceVariant,
+              action(
+                'turn-copy-button',
+                words.copyTooltip,
+                Icons.copy_rounded,
+                () => unawaited(widget.onCopy()),
+              ),
+              if (onRegenerate != null)
+                action(
+                  'turn-regenerate-button',
+                  words.regenerateTooltip,
+                  Icons.refresh_rounded,
+                  onRegenerate,
+                ),
+              if (onRevise != null)
+                action(
+                  'turn-revise-button',
+                  words.reviseTooltip,
+                  Icons.edit_outlined,
+                  onRevise,
+                ),
+              if (widget.copied)
+                Padding(
+                  key: const Key('turn-copied'),
+                  padding: const EdgeInsets.only(left: 2),
+                  child: Text(
+                    words.copiedNotice,
+                    style: Theme.of(
+                      context,
+                    ).textTheme.labelSmall?.copyWith(color: colors.primary),
                   ),
                 ),
-              ],
             ],
           ),
         ),
       ),
+    );
+  }
+}
+
+/// A question being rewritten, in the place the question was.
+///
+/// Edited where it sits rather than sent back to the composer: the composer
+/// is where a new question is written, and a user watching their words appear
+/// down there has been given no reason to believe the one up here is going
+/// away. Escape backs out, because that is what Escape does everywhere else
+/// in this app.
+final class _Revision extends StatelessWidget {
+  const _Revision({
+    required this.controller,
+    required this.onSubmit,
+    required this.onCancel,
+  });
+
+  final TextEditingController controller;
+  final VoidCallback onSubmit;
+  final VoidCallback onCancel;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: <Widget>[
+        CallbackShortcuts(
+          bindings: <ShortcutActivator, VoidCallback>{
+            const SingleActivator(LogicalKeyboardKey.escape): onCancel,
+          },
+          child: TextField(
+            key: const Key('turn-revise-field'),
+            controller: controller,
+            autofocus: true,
+            maxLines: null,
+            style: Theme.of(context).textTheme.bodyMedium,
+            decoration: const InputDecoration(
+              isDense: true,
+              border: InputBorder.none,
+              contentPadding: EdgeInsets.zero,
+            ),
+            onSubmitted: (String _) => onSubmit(),
+          ),
+        ),
+        const SizedBox(height: 6),
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            TextButton(
+              key: const Key('turn-revise-cancel'),
+              onPressed: onCancel,
+              child: Text(AppLocalizations.of(context).reviseCancel),
+            ),
+            const SizedBox(width: 4),
+            // Filled rather than tonal: this sits inside the question's own
+            // container, and a tonal button there is the same colour as the
+            // bubble behind it.
+            FilledButton(
+              key: const Key('turn-revise-submit'),
+              onPressed: onSubmit,
+              child: Text(AppLocalizations.of(context).reviseSubmit),
+            ),
+          ],
+        ),
+      ],
     );
   }
 }
@@ -76,10 +343,12 @@ final class _HeardDoubt extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final Color colour = Theme.of(context).colorScheme.onSurfaceVariant;
+    final AppLocalizations words = AppLocalizations.of(context);
     return Tooltip(
-      message:
-          'The weakest word scored ${score.toStringAsFixed(2)}; anything '
-          'under ${HeardConfidence.trusted.toStringAsFixed(2)} is marked.',
+      message: words.heardDoubtTooltip(
+        score.toStringAsFixed(2),
+        HeardConfidence.trusted.toStringAsFixed(2),
+      ),
       child: Padding(
         key: const Key('heard-doubt'),
         padding: const EdgeInsets.only(top: 6),
@@ -89,7 +358,7 @@ final class _HeardDoubt extends StatelessWidget {
             Icon(Icons.graphic_eq, size: 13, color: colour),
             const SizedBox(width: 5),
             Text(
-              'Not sure it heard this right',
+              words.heardDoubtLabel,
               style: Theme.of(
                 context,
               ).textTheme.labelSmall?.copyWith(color: colour),

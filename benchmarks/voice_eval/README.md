@@ -63,6 +63,46 @@ dart run tool/evaluate.dart --corpus corpus/zh-TW-v1.json \
 Two runs of it are checked in under `evidence/batch-asr-candidates/`; see
 [../../docs/decisions/batch-asr-candidates.md](../../docs/decisions/batch-asr-candidates.md).
 
+The corpus and the decode language are optional trailing arguments, because
+`ears.py` pins `language="zh"` and "can this model hear English" is a
+different question from "can the shipped configuration hear English":
+
+```sh
+python3 tool/say_english_corpus.py          # regenerates the WAVs
+~/dev/lulo-tts/.venv-ears/bin/python tool/asr_probe.py \
+  Kenji8000/Breeze-ASR-25-mlx breeze-zh /tmp/breeze-en.json \
+  corpus/en-synthetic-v1.json zh
+```
+
+`corpus/en-synthetic-v1.json` is macOS `say` output rather than a person, so
+unlike the zh-TW corpus its audio is a function of the manifest and is
+regenerated instead of recorded. It is still not committed — `corpus/audio`
+ignores everything, and that rule stays simple.
+
+## The English cases a synthesizer cannot answer
+
+`corpus/en-spoken-v1.json` is the same eight sentences plus eight more, to be
+read by a person into `corpus/audio/en-spoken/`. The first eight are repeated
+deliberately: paired against the synthetic run, the only variable left is the
+speaker, so the difference *is* the answer to "how much did synthesis flatter
+the result".
+
+The other eight are the things `say` cannot produce — a self-correction, a
+filler, a one-word utterance, a mid-sentence pause, numbers, product names
+that are also ordinary English words, and one English sentence carrying a
+Chinese word, which is the reverse of every code-switching case measured so
+far.
+
+Record mono WAV at the exact paths in the manifest, then:
+
+```sh
+~/dev/lulo-tts/.venv-ears/bin/python tool/asr_probe.py \
+  Kenji8000/Breeze-ASR-25-mlx breeze-spoken /tmp/spoken.json \
+  corpus/en-spoken-v1.json zh
+dart run tool/evaluate.dart --corpus corpus/en-spoken-v1.json \
+  --candidate /tmp/spoken.json --output /tmp/report --require-audio
+```
+
 ## Private golden WAV files
 
 The scripts live in `corpus/zh-TW-v1.json`. Record mono WAV files using the

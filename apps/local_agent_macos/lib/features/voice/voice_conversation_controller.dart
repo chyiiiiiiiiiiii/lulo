@@ -55,6 +55,7 @@ final class VoiceConversationController extends ChangeNotifier {
     TranscriptRefiner transcriptRefiner = const _RawTranscriptRefiner(),
     TranscriptShadowCoordinator? transcriptShadow,
     List<String> Function() protectedVocabulary = _noProtectedVocabulary,
+    List<MisheardWord> Function() misheard = _nothingMisheard,
     BatchScheduler utteranceScheduler = const TimerBatchScheduler(),
     DateTime Function() now = DateTime.now,
     VoiceTurnLog? turnLog,
@@ -67,6 +68,7 @@ final class VoiceConversationController extends ChangeNotifier {
          transcriptRefiner,
          transcriptShadow,
          protectedVocabulary,
+         misheard,
          utteranceScheduler,
          now,
          turnLog,
@@ -81,6 +83,7 @@ final class VoiceConversationController extends ChangeNotifier {
     this._transcriptRefiner,
     this._transcriptShadow,
     this._protectedVocabulary,
+    this._misheard,
     this._utteranceScheduler,
     this._now,
     this._turnLog,
@@ -104,6 +107,14 @@ final class VoiceConversationController extends ChangeNotifier {
   final TranscriptRefiner _transcriptRefiner;
   final TranscriptShadowCoordinator? _transcriptShadow;
   final List<String> Function() _protectedVocabulary;
+
+  /// Corrections the user has already made once.
+  ///
+  /// Read at the moment an utterance settles rather than captured, for the
+  /// same reason the vocabulary is: the profile is a watched file, and a
+  /// correction taught during a conversation has to hold for the next thing
+  /// said in it.
+  final List<MisheardWord> Function() _misheard;
   final BatchScheduler _utteranceScheduler;
   final DateTime Function() _now;
 
@@ -156,6 +167,9 @@ final class VoiceConversationController extends ChangeNotifier {
 
   /// What was last pushed, so an unchanged profile costs no channel hop.
   List<String>? _pushedEndings;
+
+  /// The vocabulary last pushed to the recogniser, or null before the first.
+  List<String>? _pushedVocabulary;
   StreamSubscription<VoiceEvent>? _events;
 
   /// When the last utterance settled.
@@ -418,6 +432,7 @@ final class VoiceConversationController extends ChangeNotifier {
     _enabled = true;
     notifyListeners();
     _pushUnfinishedEndings();
+    _pushSpokenVocabulary();
     await _voice.startListening();
   }
 
@@ -505,6 +520,7 @@ final class VoiceConversationController extends ChangeNotifier {
         }
       case FinalTranscript(:final String text, :final double? confidence):
         _pushUnfinishedEndings();
+        _pushSpokenVocabulary();
         _lastFinalAt = _now();
         _lastHeardConfidence = confidence;
         // The transcript exists, so the wait the user is about to sit
@@ -891,6 +907,16 @@ final class VoiceConversationController extends ChangeNotifier {
   Future<void> _refineFinalUtterance(String raw) async {
     final int epoch = ++_refinementEpoch;
     final List<String> vocabulary = _protectedVocabulary();
+    // The shadow gets the raw transcript, and the live path additionally
+    // applies the user's corrections — so the two are not comparable on an
+    // utterance a correction fired on. That was tried the other way and
+    // reverted: `TranscriptProposalRequest` rejects blank input, a taught
+    // deletion can empty a short utterance, and the throw escaped from here
+    // before the live refine ran — silently dropping what the user said, in
+    // an `unawaited` future where it surfaced as nothing at all. The field
+    // is also called `rawTranscript` and is written under that name into the
+    // checked-in evaluation envelope, so feeding it corrected text mislabels
+    // the evidence it exists to produce.
     _transcriptShadow?.submit(
       TranscriptProposalRequest(
         requestId: 'voice-shadow-${_nextShadowRequest++}',
@@ -905,6 +931,7 @@ final class VoiceConversationController extends ChangeNotifier {
         rawTranscript: raw,
         locale: 'zh-TW',
         protectedVocabulary: vocabulary,
+        misheard: _misheard(),
         deadline: const Duration(milliseconds: 250),
       ),
     );
@@ -1088,6 +1115,23 @@ final class VoiceConversationController extends ChangeNotifier {
     unawaited(_voice.useUnfinishedEndings(endings));
   }
 
+  /// Sends the recogniser the words this user cares about, if they changed.
+  ///
+  /// Pushed rather than read at the decision, for the same reason as
+  /// [_pushUnfinishedEndings] and one more: biasing has to be in place
+  /// before the audio is decoded. An unchanged list is not sent — replacing
+  /// the recogniser's context costs it, and the profile is usually the same
+  /// list it was one sentence ago.
+  void _pushSpokenVocabulary() {
+    final List<String> terms = _protectedVocabulary();
+    final List<String>? pushed = _pushedVocabulary;
+    if (pushed != null && listEquals(pushed, terms)) {
+      return;
+    }
+    _pushedVocabulary = List<String>.unmodifiable(terms);
+    unawaited(_voice.useSpokenVocabulary(terms));
+  }
+
   /// Why [text] was heard and deliberately not acted on.
   String _whyItDidNotTakeTheFloor(String text) {
     final Duration? ran = _spokenFor;
@@ -1253,6 +1297,8 @@ final class VoiceConversationController extends ChangeNotifier {
 }
 
 List<String> _noProtectedVocabulary() => const <String>[];
+
+List<MisheardWord> _nothingMisheard() => const <MisheardWord>[];
 
 /// The built-in policy, for surfaces with no profile behind them.
 FloorControl _standardFloorControl() => FloorControl.standard;

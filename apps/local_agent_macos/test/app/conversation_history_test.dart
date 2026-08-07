@@ -7,6 +7,7 @@ import 'package:local_agent_macos/app/app.dart';
 import 'package:local_agent_macos/app/app_composition.dart';
 import 'package:local_agent_macos/app/fake_runtime.dart';
 import 'package:local_agent_macos/features/conversation/conversation_storage_service.dart';
+import 'package:local_agent_macos/features/settings/app_settings.dart';
 import 'package:local_agent_macos/platform/desktop_host_service.dart';
 
 import '../support/controlled_inference_service.dart';
@@ -37,6 +38,12 @@ void main() {
       storageService: store,
       inferenceService: ControlledInferenceService(),
       presentationHost: host,
+      // A model already chosen: with none the app opens on the first-run
+      // offer, which is the right thing for a first launch and not what
+      // these tests are about.
+      settingsStore: InMemorySettingsStore(
+        const AppSettings(modelPath: '/models/already-here.litertlm'),
+      ),
     );
     addTearDown(() => unawaited(composition.dispose()));
 
@@ -108,6 +115,12 @@ void main() {
     await pumpApp(tester, store);
 
     await openHistory(tester);
+    // Forgetting is behind the row's menu now. Pumped by hand rather than
+    // settled: the presence animates continuously, so this app never has a
+    // settled frame to wait for.
+    await tester.tap(find.byKey(Key('conversation-menu-${older.value}')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
     await tester.tap(find.byKey(Key('conversation-delete-${older.value}')));
     await tester.pump();
     await tester.pump();
@@ -129,6 +142,10 @@ void main() {
 
     // Forget the open conversation: the view deliberately starts fresh.
     await openHistory(tester);
+    // Forgetting is behind the row's menu now.
+    await tester.tap(find.byKey(Key('conversation-menu-${yesterday.value}')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
     await tester.tap(find.byKey(Key('conversation-delete-${yesterday.value}')));
     await tester.pump();
     await tester.pump();
@@ -147,6 +164,12 @@ void main() {
     // ...then tidies away another stored conversation. That one is not what
     // the view holds, so the draft must not be torn down with it.
     await openHistory(tester);
+    // Forgetting is behind the row's menu now. Pumped by hand rather than
+    // settled: the presence animates continuously, so this app never has a
+    // settled frame to wait for.
+    await tester.tap(find.byKey(Key('conversation-menu-${older.value}')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
     await tester.tap(find.byKey(Key('conversation-delete-${older.value}')));
     await tester.pump();
     await tester.pump();
@@ -174,6 +197,10 @@ void main() {
     expect(find.text('what we talked about'), findsOneWidget);
 
     await openHistory(tester);
+    // Forgetting is behind the row's menu now.
+    await tester.tap(find.byKey(Key('conversation-menu-${yesterday.value}')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
     await tester.tap(find.byKey(Key('conversation-delete-${yesterday.value}')));
     await tester.pump();
     await tester.pump();

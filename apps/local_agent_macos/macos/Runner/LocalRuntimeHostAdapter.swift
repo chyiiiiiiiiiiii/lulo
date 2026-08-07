@@ -16,13 +16,21 @@ final class LocalRuntimeDesktopHostApi: DesktopHostApi {
     panelController: DesktopPanelControlling,
     coordinator: InferenceCoordinator,
     eventBridge: GenerationEventBridge,
-    modelAccess: ChosenModelAccess = ChosenModelAccess()
+    modelAccess: ChosenModelAccess = ChosenModelAccess(),
+    menuBar: MenuBarController? = nil
   ) {
     self.panelController = panelController
     self.coordinator = coordinator
     self.eventBridge = eventBridge
     self.modelAccess = modelAccess
+    self.menuBar = menuBar
   }
+
+  /// The status-bar menu, which is told what to show rather than asking.
+  ///
+  /// Optional because the menu belongs to the running app and the window
+  /// tests build this adapter without one.
+  private let menuBar: MenuBarController?
 
   private let panelController: DesktopPanelControlling
   private let coordinator: InferenceCoordinator
@@ -241,6 +249,105 @@ final class LocalRuntimeDesktopHostApi: DesktopHostApi {
       self.modelAccess.remember(url)
       self.modelAccess.beginReading(url.path)
       completion(.success(url.path))
+    }
+  }
+
+  func loginItemStatus(
+    request: HostRequest,
+    completion: @escaping (Result<HostLoginItemStatus, Error>) -> Void
+  ) {
+    do {
+      try validatePanelRequest(request)
+    } catch {
+      completion(.failure(error))
+      return
+    }
+    // Off the main thread: these are XPC round trips to `smd`, and this
+    // handler arrives on the platform thread, which is the one drawing.
+    DispatchQueue.global(qos: .userInitiated).async {
+      let status = LaunchAtLogin.status()
+      DispatchQueue.main.async { completion(.success(status)) }
+    }
+  }
+
+  func setLaunchAtLogin(
+    request: HostRequest,
+    enabled: Bool,
+    completion: @escaping (Result<HostLoginItemStatus, Error>) -> Void
+  ) {
+    do {
+      try validatePanelRequest(request)
+    } catch {
+      completion(.failure(error))
+      return
+    }
+    DispatchQueue.global(qos: .userInitiated).async {
+      // `register` can raise the system's own consent UI, so this one can
+      // sit for as long as the user takes to answer it.
+      let status = LaunchAtLogin.set(enabled)
+      DispatchQueue.main.async { completion(.success(status)) }
+    }
+  }
+
+  func setMenuBarState(request: HostRequest, state: HostMenuBarState) throws {
+    try validatePanelRequest(request)
+    guard let menuBar else {
+      return
+    }
+    onMain {
+      menuBar.apply(
+        MenuBarController.State(
+          conversations: state.conversations.map {
+            (id: $0.conversationId, title: $0.title)
+          },
+          modelName: state.modelName,
+          activity: state.labels.activity,
+          canStartVoice: state.canStartVoice,
+          labels: MenuBarController.Labels(
+            show: state.labels.show,
+            hide: state.labels.hide,
+            talk: state.labels.talk,
+            recent: state.labels.recent,
+            quit: state.labels.quit
+          )
+        )
+      )
+    }
+  }
+
+  func saveTextFile(
+    request: HostRequest,
+    suggestedName: String,
+    contents: String,
+    completion: @escaping (Result<String, Error>) -> Void
+  ) {
+    do {
+      try validatePanelRequest(request)
+    } catch {
+      completion(.failure(error))
+      return
+    }
+    onMain {
+      let panel = NSSavePanel()
+      panel.nameFieldStringValue = suggestedName
+      if let markdown = UTType(filenameExtension: "md") {
+        panel.allowedContentTypes = [markdown]
+      }
+      // Cancelling is an answer, not a failure: the user decided not to.
+      guard panel.runModal() == .OK, let url = panel.url else {
+        completion(.success(""))
+        return
+      }
+      // Written here rather than by handing the path back to Dart. The panel
+      // grants access to this URL and to nothing else, and that grant belongs
+      // to this process at this moment — a write attempted from the other
+      // side of the channel lands outside it.
+      do {
+        try contents.write(to: url, atomically: true, encoding: .utf8)
+        completion(.success(url.path))
+      } catch {
+        completion(.failure(error))
+      }
     }
   }
 

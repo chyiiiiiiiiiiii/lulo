@@ -394,6 +394,35 @@ class VoiceHostApi {
       isNullValid: true,
     );
   }
+
+  /// Tells the recogniser the words this user says that it would otherwise
+  /// spell as something else — names, products, jargon.
+  ///
+  /// This is contextual biasing: Apple's `AnalysisContext.contextualStrings`,
+  /// what most vendors call a boost list. It has to happen before the audio
+  /// is decoded, which is why it crosses the channel instead of being read
+  /// where the decision is made — by the time Dart sees a transcript the
+  /// word has already been misheard, and repairing it there is guessing at
+  /// what was said. Replaces the previous list wholesale.
+  Future<void> useSpokenVocabulary(List<String> terms) async {
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.local_agent_macos.VoiceHostApi.useSpokenVocabulary$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channel = BasicMessageChannel<Object?>(
+      pigeonVar_channelName,
+      pigeonChannelCodec,
+      binaryMessenger: pigeonVar_binaryMessenger,
+    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(
+      <Object?>[terms],
+    );
+    final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
+
+    _extractReplyValueOrThrow(
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: true,
+    );
+  }
 }
 
 /// Native-to-Dart: everything the pipeline reports, in order.

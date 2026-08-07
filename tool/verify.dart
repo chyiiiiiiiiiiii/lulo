@@ -167,6 +167,32 @@ Future<void> main() async {
       workingDirectory: _join(workspaceRoot.path, 'apps/local_agent_macos'),
     ),
     _VerificationCommand(
+      // The orb rests on the user's own desktop, so every pixel it paints
+      // outside itself is in someone's way. A fragment program cannot be read
+      // for that — only the alpha that reaches the framebuffer answers it — so
+      // this runs the real shader and measures what survives.
+      name: 'macOS presence silhouette test',
+      executable: 'flutter',
+      arguments: const <String>[
+        'test',
+        'integration_test/agent_presence_silhouette_test.dart',
+        '-d',
+        'macos',
+      ],
+      workingDirectory: _join(workspaceRoot.path, 'apps/local_agent_macos'),
+    ),
+    _VerificationCommand(
+      // The gate builds --profile, which signs with DebugProfile
+      // entitlements, so nothing else here ever looks at the file a shipped
+      // app is actually signed with. The voice sidecar is reached over
+      // loopback HTTP and the sandbox requires network.client even for that:
+      // without it a release build hears, thinks, and silently never speaks.
+      name: 'release entitlements',
+      executable: 'dart',
+      arguments: const <String>['run', 'tool/verify_release_entitlements.dart'],
+      workingDirectory: _join(workspaceRoot.path, 'apps/local_agent_macos'),
+    ),
+    _VerificationCommand(
       name: 'macOS profile build',
       executable: 'flutter',
       arguments: const <String>['build', 'macos', '--profile'],

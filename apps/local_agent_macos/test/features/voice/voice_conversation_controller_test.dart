@@ -747,6 +747,82 @@ void main() {
     },
   );
 
+  test('the words the user cares about reach the recogniser', () async {
+    // `AgentProfile.vocabulary` says the recogniser biases towards these
+    // words. It did not: the profile only ever reached the text refiner,
+    // which repairs a name after it has already been misheard, while the
+    // recogniser ran off a hardcoded list of its own. Biasing happens
+    // natively — it is Apple's `contextualStrings` — so the profile has to
+    // be pushed across, the same way the unfinished endings are.
+    final List<String> words = <String>['Lulo', 'LiteRT'];
+    final VoiceConversationController mine = VoiceConversationController(
+      voice: voice,
+      conversation: vm,
+      protectedVocabulary: () => words,
+    );
+    addTearDown(mine.dispose);
+
+    await mine.enable();
+
+    expect(voice.spokenVocabulary, <List<String>>[
+      <String>['Lulo', 'LiteRT'],
+    ]);
+  });
+
+  test('a word added while listening reaches the recogniser', () async {
+    // The profile is a watched file, so a word typed into Settings during a
+    // conversation has to take effect without stopping to listen again —
+    // and pushing an unchanged list every utterance would reset the
+    // recogniser's context for nothing.
+    final List<String> words = <String>['Lulo'];
+    final VoiceConversationController mine = VoiceConversationController(
+      voice: voice,
+      conversation: vm,
+      protectedVocabulary: () => words,
+    );
+    addTearDown(mine.dispose);
+    await mine.enable();
+
+    voice.hear(const FinalTranscript('唸唸看 Lulo'));
+    await pump();
+    expect(
+      voice.spokenVocabulary.length,
+      1,
+      reason: 'An unchanged list is not worth a hop across the channel.',
+    );
+
+    words.add('Breeze');
+    voice.hear(const FinalTranscript('那 Breeze 呢'));
+    await pump();
+
+    expect(voice.spokenVocabulary.last, <String>['Lulo', 'Breeze']);
+  });
+
+  test('a taught correction reaches the question that gets asked', () async {
+    // The wiring runs profile → composition → view → controller → refiner,
+    // and every link of it was untested: deleting the one line in
+    // `bootstrap.dart` would have broken the feature in the app while every
+    // test still passed.
+    final VoiceConversationController mine = VoiceConversationController(
+      voice: voice,
+      conversation: vm,
+      transcriptRefiner: const DeterministicTranscriptRefiner(),
+      misheard: () => const <MisheardWord>[
+        MisheardWord(heard: 'Dark text', meant: 'Dart test'),
+      ],
+    );
+    addTearDown(mine.dispose);
+    await mine.enable();
+
+    voice.hear(const FinalTranscript('幫我跑 Dark text'));
+    await pump();
+
+    expect(
+      vm.completedTurnsListenable.value.map((Turn turn) => turn.text),
+      contains('幫我跑 Dart test'),
+    );
+  });
+
   test('an ordinary conversation suggests nothing', () async {
     // Two unrelated questions in a row must not read as a cut-off, or the
     // ledger would suggest the ending of every sentence ever asked.
@@ -2289,6 +2365,9 @@ final class _NeverStartsVoice implements VoiceService {
 
   @override
   Future<void> useUnfinishedEndings(List<String> endings) async {}
+
+  @override
+  Future<void> useSpokenVocabulary(List<String> terms) async {}
 
   @override
   Future<void> startListening() => Completer<void>().future;

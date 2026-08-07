@@ -322,6 +322,16 @@ protocol VoiceHostApi {
   /// audio path, where a hop across this channel per tick would cost more
   /// than the decision saves. Replaces the previous list wholesale.
   func useUnfinishedEndings(endings: [String], completion: @escaping (Result<Void, Error>) -> Void)
+  /// Tells the recogniser the words this user says that it would otherwise
+  /// spell as something else — names, products, jargon.
+  ///
+  /// This is contextual biasing: Apple's `AnalysisContext.contextualStrings`,
+  /// what most vendors call a boost list. It has to happen before the audio
+  /// is decoded, which is why it crosses the channel instead of being read
+  /// where the decision is made — by the time Dart sees a transcript the
+  /// word has already been misheard, and repairing it there is guessing at
+  /// what was said. Replaces the previous list wholesale.
+  func useSpokenVocabulary(terms: [String], completion: @escaping (Result<Void, Error>) -> Void)
 }
 
 /// Generated setup class from Pigeon to handle messages through the `binaryMessenger`.
@@ -442,6 +452,32 @@ class VoiceHostApiSetup {
       }
     } else {
       useUnfinishedEndingsChannel.setMessageHandler(nil)
+    }
+    /// Tells the recogniser the words this user says that it would otherwise
+    /// spell as something else — names, products, jargon.
+    ///
+    /// This is contextual biasing: Apple's `AnalysisContext.contextualStrings`,
+    /// what most vendors call a boost list. It has to happen before the audio
+    /// is decoded, which is why it crosses the channel instead of being read
+    /// where the decision is made — by the time Dart sees a transcript the
+    /// word has already been misheard, and repairing it there is guessing at
+    /// what was said. Replaces the previous list wholesale.
+    let useSpokenVocabularyChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.local_agent_macos.VoiceHostApi.useSpokenVocabulary\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
+    if let api = api {
+      useSpokenVocabularyChannel.setMessageHandler { message, reply in
+        let args = message as! [Any?]
+        let termsArg = args[0] as! [String]
+        api.useSpokenVocabulary(terms: termsArg) { result in
+          switch result {
+          case .success:
+            reply(wrapResult(nil))
+          case .failure(let error):
+            reply(wrapError(error))
+          }
+        }
+      }
+    } else {
+      useSpokenVocabularyChannel.setMessageHandler(nil)
     }
   }
 }

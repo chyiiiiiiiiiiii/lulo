@@ -2,10 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:local_agent_macos/features/voice/voice_turn_hud.dart';
 import 'package:local_agent_macos/features/voice/voice_turn_log.dart';
+import 'package:local_agent_macos/l10n/generated/app_localizations.dart';
 
 void main() {
   Future<void> show(WidgetTester tester, VoiceTurnLog log) => tester.pumpWidget(
     MaterialApp(
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
       home: Scaffold(body: VoiceTurnHud(log: log)),
     ),
   );

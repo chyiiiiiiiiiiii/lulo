@@ -3,11 +3,13 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:local_agent_macos/features/agent_profile/agent_profile_store.dart';
 import 'package:local_agent_macos/features/model/model_catalog.dart';
 import 'package:local_agent_macos/features/model/model_download_manager.dart';
 import 'package:local_agent_macos/features/model/model_file_service.dart';
 import 'package:local_agent_macos/features/settings/app_settings.dart';
 import 'package:local_agent_macos/features/settings/settings_sheet.dart';
+import 'package:local_agent_macos/l10n/generated/app_localizations.dart';
 
 void main() {
   late Directory modelsDirectory;
@@ -25,7 +27,7 @@ void main() {
   const ModelCatalogEntry small = ModelCatalogEntry(
     id: 'small-model',
     name: 'A small model',
-    description: 'Fits in a test.',
+    descriptionKey: ModelDescription.balanced,
     fileName: 'small-model.litertlm',
     url: 'https://example.invalid/small-model.litertlm',
     sizeBytes: 4,
@@ -46,7 +48,10 @@ void main() {
     ValueChanged<ModelCatalogEntry>? onDownloadModel,
     ValueChanged<ModelCatalogEntry>? onUseModel,
   }) => MaterialApp(
+    localizationsDelegates: AppLocalizations.localizationsDelegates,
+    supportedLocales: AppLocalizations.supportedLocales,
     home: SettingsSheet(
+      agentProfile: InMemoryAgentProfileStore(),
       settings: settings,
       onChanged: (AppSettings _) {},
       onChooseModel: () async => '',
@@ -66,7 +71,10 @@ void main() {
     final List<AppSettings> changed = <AppSettings>[];
     await tester.pumpWidget(
       MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
         home: SettingsSheet(
+          agentProfile: InMemoryAgentProfileStore(),
           settings: const AppSettings(),
           onChanged: changed.add,
           onChooseModel: () async => '',

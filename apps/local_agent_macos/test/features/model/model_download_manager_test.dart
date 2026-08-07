@@ -22,7 +22,7 @@ void main() {
   const ModelCatalogEntry entry = ModelCatalogEntry(
     id: 'test-model',
     name: 'A test model',
-    description: 'Small enough to hold in one hand.',
+    descriptionKey: ModelDescription.balanced,
     fileName: 'test-model.litertlm',
     url: 'https://example.invalid/test-model.litertlm',
     sizeBytes: 4,
@@ -114,7 +114,7 @@ void main() {
     const ModelCatalogEntry chunky = ModelCatalogEntry(
       id: 'chunky-model',
       name: 'A chunky model',
-      description: 'Arrives in many pieces.',
+      descriptionKey: ModelDescription.balanced,
       fileName: 'chunky-model.litertlm',
       url: 'https://example.invalid/chunky-model.litertlm',
       sizeBytes: 400,

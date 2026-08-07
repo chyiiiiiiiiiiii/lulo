@@ -30,6 +30,22 @@ Tests: `test/features/model/model_file_service_test.dart`,
 and the two integration probes `integration_test/litert_bridge_probe_test.dart`
 and `litert_gemma_vertical_slice_test.dart`.
 
+## The first launch
+
+With no model installed the app opens on `FirstRun` rather than on the
+conversation. Behind it the conversation answers from the built-in preview,
+which says the same thing every time; letting the user talk to that first is
+the app pretending to work.
+
+It offers one model — `recommendedModel` — not the catalogue. A first launch
+has exactly one decision to make and a list turns it into a comparison nobody
+arriving is equipped to make. The rest is in settings, for later.
+
+`Look around first` puts it away for the session. It is not persisted: an app
+with nothing to think with still has one thing to do, so the next launch
+offers it again. Installing a model is what retires it, because the offer is
+only made while `settings.modelPath` is empty.
+
 ## The catalog
 
 Two entries, both official LiteRT community conversions of Gemma 4 (E4B
@@ -187,11 +203,20 @@ here:
   shows the user their history but gives the model none of it. The text is on
   screen; the session behind it is new.
 
-`sessionSamplers` also pins the sampler per session: temperature, topP, topK
-and seed are fingerprinted on the first generation in a session and a
-mismatch afterwards is refused. The app sends fixed values
-(`temperature 0.7`, `topP 0.95`, `seed 7`), so this only bites if those
-become user-visible.
+`sessionSamplers` records what a session has most recently been asked for.
+It used to *refuse* a mismatch, and this paragraph used to end "so this only
+bites if those become user-visible" — which is exactly what happened when
+`AnswerStyle` became a setting. Refusing failed the turn the user had just
+asked and every turn after it in that conversation.
+
+It no longer refuses. The sampler is fixed in `ConversationConfig` at
+`createConversation` and `sendMessageStream` has no argument for it, so a
+changed sampler cannot be applied to a live conversation at all — it is
+handled where the system instruction already is, by rebuilding the
+conversation and re-seeding from history. `conversationSamplers` holds what
+each live conversation was actually built with, and the two maps differ
+exactly when the user has changed the style and the rebuild has not happened
+yet. One prefill, never a model load.
 
 ## Cancelling, and the drain
 

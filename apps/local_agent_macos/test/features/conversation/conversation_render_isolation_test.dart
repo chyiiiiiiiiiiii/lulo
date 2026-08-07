@@ -6,6 +6,7 @@ import 'package:local_agent_macos/features/conversation/conversation_view.dart';
 import 'package:local_agent_macos/features/conversation/conversation_view_model.dart';
 import 'package:local_agent_macos/features/presence/agent_presence_controller.dart';
 import 'package:local_agent_macos/features/presence/agent_presence_state.dart';
+import 'package:local_agent_macos/l10n/generated/app_localizations.dart';
 
 import '../../support/controlled_inference_service.dart';
 import '../../support/microtask_batch_scheduler.dart';
@@ -31,6 +32,8 @@ void main() {
     viewModel.addListener(() => broadNotifications += 1);
     await tester.pumpWidget(
       MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
         home: MediaQuery(
           data: const MediaQueryData(disableAnimations: true),
           child: ConversationView(
@@ -315,6 +318,8 @@ final class _ViewHarness {
     ConversationBuildObserver? observer,
     bool disableAnimations = false,
   }) => MaterialApp(
+    localizationsDelegates: AppLocalizations.localizationsDelegates,
+    supportedLocales: AppLocalizations.supportedLocales,
     home: MediaQuery(
       data: MediaQueryData(disableAnimations: disableAnimations),
       child: ConversationView(

@@ -118,7 +118,32 @@ server — not the app — decides who owns a click on a see-through window.
    the window server decides ownership from drawn alpha, so a catcher that
    painted nothing was not invisible but absent, and every click on the orb
    went through to the desktop. Anything below one part in 255 rounds away
-   again. The oval rather than the square keeps the corners passable.
+   again.
+
+   That tint has to be drawn to be there at all, so wherever it reaches past
+   the orb it is the only thing on the pixel and its edge stands on the
+   desktop as a faint circle. It therefore fills only `bodyFraction = 0.62`
+   of the square — measured from the capture below, where the resting orb is
+   still painting 90/255 at that radius. Filling the whole square put that
+   edge a full half-side out, where the orb draws nothing at all, and took
+   every click inside it away from whatever the user meant to hit.
+
+### Where the presence stops
+
+The orb is drawn into a square but is not one, and on the desktop the rest of
+that square is the user's screen. `agentPresenceSilhouetteFraction = 0.75` is
+where it ends, and `integration_test/agent_presence_silhouette_test.dart`
+holds it there by running the real shader and reading the alpha back per ring
+— a fragment program cannot be read for this, only measured.
+
+The bound was found by breaking it. The shader's halo ran to `1.02` of the
+square while the body's own density was gone by `0.65`, so from there out the
+halo was the only thing painting: 23/255 at 0.70, still visible at 0.95. A
+wide, even, barely-there field does not read as light coming off the orb. It
+reads as a faint circle wrapped around it, darkest at the bottom because the
+light sits top-left and that is the ring's shadow side. The halo now stops at
+`fieldRadius + 0.12`, hugging the vapour instead of surrounding it, and the
+measured profile ends at 0.725 in every state.
 
 `OrbCatcherView` turns presses into a summon or a drag itself:
 `acceptsFirstMouse` is true so the very first click works while the app is in

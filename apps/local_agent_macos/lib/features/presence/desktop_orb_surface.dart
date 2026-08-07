@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../l10n/generated/app_localizations.dart';
 import 'agent_presence_controller.dart';
 import 'agent_presence_orb.dart';
 
@@ -144,7 +145,7 @@ final class _DesktopOrbSurfaceState extends State<DesktopOrbSurface> {
           },
           child: Semantics(
             button: true,
-            label: 'Lulo，你的本機助理。點一下開啟對話，或拖曳移動。',
+            label: AppLocalizations.of(context).desktopOrbLabel,
             child: Center(
               child: AnimatedScale(
                 // A restrained hover response: enough to read as alive without

@@ -144,6 +144,11 @@ AppComposition createAppComposition({
           onResult: transcriptShadowEvidence!.record,
         );
   final SettingsStore store = settingsStore ?? createSettingsStore();
+  // Read by the inference service on every question, so a change applies to
+  // the next answer without the model being reloaded.
+  final ValueNotifier<AnswerStyle> answerStyle = ValueNotifier<AnswerStyle>(
+    AnswerStyle.balanced,
+  );
   final AgentProfileStore profileStore =
       agentProfileStore ?? createAgentProfileStore();
   unawaited(profileStore.load());
@@ -184,6 +189,7 @@ AppComposition createAppComposition({
         localModelPath: localModelPath,
         desktopHostService: desktopHostService,
         agentContext: agentContext,
+        answerStyle: () => answerStyle.value,
       ),
     );
   } on Object {
@@ -217,8 +223,11 @@ AppComposition createAppComposition({
     transcriptShadow: transcriptShadow,
     transcriptShadowEvidence: transcriptShadowEvidence,
     protectedVocabulary: () => profileStore.current.vocabulary,
+    misheard: () => profileStore.current.misheard,
     floorControl: () => profileStore.current.floorControl,
     unfinishedEndings: () => profileStore.current.turnTaking.unfinished,
+    agentProfile: profileStore,
+    answerStyle: answerStyle,
     // The model is chosen in settings, and the only part of the graph that has
     // to change when it does is what sits behind this one service.
     changeModel: (String modelPath) => inferenceService.replaceWith(
@@ -227,6 +236,7 @@ AppComposition createAppComposition({
         localModelPath: modelPath,
         desktopHostService: desktopHostService,
         agentContext: agentContext,
+        answerStyle: () => answerStyle.value,
       ),
     ),
   );
@@ -271,6 +281,7 @@ OwnedInferenceService createInferenceService({
   required String localModelPath,
   required DesktopHostService desktopHostService,
   AgentContextProvider? agentContext,
+  AnswerStyle Function()? answerStyle,
 }) {
   if (inferenceRuntime == 'litert') {
     final String modelPath = localModelPath.trim();
@@ -284,12 +295,11 @@ OwnedInferenceService createInferenceService({
     final PigeonInferenceService inferenceService = PigeonInferenceService(
       desktopHostService: desktopHostService,
       agentContext: agentContext,
+      answerStyle: answerStyle,
       config: LocalModelConfig(
         modelId: modelIdForPath(modelPath),
         modelPath: modelPath,
         contextSize: localModelContextSize,
-        temperature: 0.7,
-        topP: 0.95,
         maxTokens: localAnswerTokenBudget,
         seed: 7,
       ),

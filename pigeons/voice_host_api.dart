@@ -115,6 +115,18 @@ abstract class VoiceHostApi {
   /// than the decision saves. Replaces the previous list wholesale.
   @async
   void useUnfinishedEndings(List<String> endings);
+
+  /// Tells the recogniser the words this user says that it would otherwise
+  /// spell as something else — names, products, jargon.
+  ///
+  /// This is contextual biasing: Apple's `AnalysisContext.contextualStrings`,
+  /// what most vendors call a boost list. It has to happen before the audio
+  /// is decoded, which is why it crosses the channel instead of being read
+  /// where the decision is made — by the time Dart sees a transcript the
+  /// word has already been misheard, and repairing it there is guessing at
+  /// what was said. Replaces the previous list wholesale.
+  @async
+  void useSpokenVocabulary(List<String> terms);
 }
 
 /// Native-to-Dart: everything the pipeline reports, in order.

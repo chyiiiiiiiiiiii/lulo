@@ -106,6 +106,45 @@ void _heardNumeralsGroup() {
       expect(normalizeHeard('細節我等等再補'), isNot(normalizeHeard('細節我的忍在補')));
     });
 
+    test('an English number written two ways is not a hearing error', () {
+      // The same rule in the other script. `corpus/en-spoken-v1.json` reads
+      // its version aloud as words and Breeze writes it in digits, and that
+      // charged 67.2% to a case where the only genuine error was one word.
+      // The numeral class covered digits and CJK numerals because the corpus
+      // was zh-TW; English number words were never in scope until there was
+      // an English corpus.
+      expect(
+        normalizeHeard('Flutter three point forty-four point one.'),
+        normalizeHeard('Flutter 3.44.1'),
+      );
+      expect(
+        normalizeHeard('the gate has twenty-one steps'),
+        normalizeHeard('the gate has 21 steps'),
+      );
+      expect(
+        normalizeHeard('about twelve thousand'),
+        normalizeHeard('about 12,000'),
+      );
+    });
+
+    test('an ordinary word that looks like a numeral is left alone', () {
+      // `one` inside `someone`, and `point` with no number anywhere near it.
+      // A run still has to hold a real numeral, so a word the recogniser did
+      // hear is never quietly deleted.
+      expect(
+        normalizeHeard('someone said that'),
+        normalizeSpoken('someone said that'),
+      );
+      expect(
+        normalizeHeard('that is the point'),
+        normalizeSpoken('that is the point'),
+      );
+      expect(
+        normalizeHeard('the point is clear'),
+        isNot(normalizeHeard('the point is unclear')),
+      );
+    });
+
     test('spacing inside a written number is not a hearing error', () {
       // Breeze-ASR-25 writes 「3 點半」 with spaces where the corpus writes
       // 「三點半」 without. Whitespace was not a joiner, so 點半 survived the

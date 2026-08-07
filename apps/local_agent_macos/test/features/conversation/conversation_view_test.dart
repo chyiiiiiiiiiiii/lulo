@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:local_agent_macos/features/conversation/conversation_repository.dart';
 import 'package:local_agent_macos/features/conversation/conversation_view.dart';
 import 'package:local_agent_macos/features/conversation/conversation_view_model.dart';
+import 'package:local_agent_macos/l10n/generated/app_localizations.dart';
 
 import '../../support/controlled_inference_service.dart';
 import '../../support/recording_conversation_storage_service.dart';
@@ -228,8 +229,11 @@ final class _Harness {
 
   ConversationViewModel createViewModel() => viewModel;
 
-  Widget app() =>
-      MaterialApp(home: ConversationView(viewModelFactory: createViewModel));
+  Widget app() => MaterialApp(
+    localizationsDelegates: AppLocalizations.localizationsDelegates,
+    supportedLocales: AppLocalizations.supportedLocales,
+    home: ConversationView(viewModelFactory: createViewModel),
+  );
 
   void start({String prompt = 'Hello'}) {
     inference.emit(

@@ -17,6 +17,9 @@ final class FakeVoiceService implements VoiceService {
   /// Every list of unfinished endings pushed to the endpointer, in order.
   final List<List<String>> unfinishedEndings = <List<String>>[];
 
+  /// Every vocabulary pushed to the recogniser, in order.
+  final List<List<String>> spokenVocabulary = <List<String>>[];
+
   /// Everything asked to be spoken, in order.
   final List<String> spoken = <String>[];
 
@@ -32,6 +35,12 @@ final class FakeVoiceService implements VoiceService {
   Future<void> useUnfinishedEndings(List<String> endings) async {
     calls.add('useUnfinishedEndings');
     unfinishedEndings.add(List<String>.unmodifiable(endings));
+  }
+
+  @override
+  Future<void> useSpokenVocabulary(List<String> terms) async {
+    calls.add('useSpokenVocabulary');
+    spokenVocabulary.add(List<String>.unmodifiable(terms));
   }
 
   @override

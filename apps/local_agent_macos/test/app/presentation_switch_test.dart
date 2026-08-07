@@ -10,6 +10,7 @@ import 'package:local_agent_macos/features/conversation/conversation_view.dart';
 import 'package:local_agent_macos/features/conversation/inference_service.dart';
 import 'package:local_agent_macos/features/conversation/widgets/conversation_content_column.dart';
 import 'package:local_agent_macos/features/presence/desktop_orb_surface.dart';
+import 'package:local_agent_macos/features/settings/app_settings.dart';
 import 'package:local_agent_macos/platform/desktop_host_service.dart';
 
 import '../support/fake_presentation_host.dart';
@@ -25,6 +26,11 @@ void main() {
       storageService: InMemoryConversationStorageService(),
       inferenceService: inference,
       presentationHost: host,
+      // A model already chosen: with none the app opens on the first-run
+      // offer, which is not what these tests are about.
+      settingsStore: InMemorySettingsStore(
+        const AppSettings(modelPath: '/models/already-here.litertlm'),
+      ),
     );
     addTearDown(() => unawaited(composition.dispose()));
 
@@ -90,6 +96,11 @@ void main() {
       storageService: InMemoryConversationStorageService(),
       inferenceService: inference,
       presentationHost: host,
+      // A model already chosen: with none the app opens on the first-run
+      // offer, which is not what these tests are about.
+      settingsStore: InMemorySettingsStore(
+        const AppSettings(modelPath: '/models/already-here.litertlm'),
+      ),
     );
     addTearDown(() => unawaited(composition.dispose()));
 
@@ -139,6 +150,11 @@ void main() {
       storageService: InMemoryConversationStorageService(),
       inferenceService: inference,
       presentationHost: host,
+      // A model already chosen: with none the app opens on the first-run
+      // offer, which is not what these tests are about.
+      settingsStore: InMemorySettingsStore(
+        const AppSettings(modelPath: '/models/already-here.litertlm'),
+      ),
     );
     addTearDown(() => unawaited(composition.dispose()));
 
