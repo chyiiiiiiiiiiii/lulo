@@ -454,9 +454,14 @@ void main() {
     // A model is chosen in settings rather than fixed when the app is built,
     // so choosing one has to be written down or it is gone on the next run.
     host.chosenModelFile = '/models/gemma-4-E4B-it.litertlm';
-    // The curated models sit above this tile, which can push it below the
-    // fold of the test stage.
-    await tester.ensureVisible(find.byKey(const Key('setting-choose-model')));
+    // The curated models sit above this tile, and so now do the file and
+    // recording sections — far enough that a `ListView` has not built it
+    // yet, which `ensureVisible` cannot reach. Scroll until it exists.
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('setting-choose-model')),
+      200,
+      scrollable: find.byType(Scrollable).last,
+    );
     await tester.pump();
     await tester.tap(find.byKey(const Key('setting-choose-model')));
     await tester.pump();

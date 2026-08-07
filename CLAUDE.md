@@ -164,6 +164,23 @@ Writing the answer back over the selection needs `NSReturnTypes` and a
 handler that blocks on the Dart isolate — a different and riskier shape,
 not built.
 
+Questions can be answered out of one file the user picked. Not retrieval-
+augmented generation, which needs an embedding model, chunking and a vector
+store all inside this process because the sandbox cannot spawn one — and then
+the retrieved chunks share a 4096-token window with the question and the
+reserved answer, leaving room for two or three, so retrieval quality decides
+everything with no room to recover. `passagesFor` instead takes whole
+paragraphs the question's own words locate, bounded, into the **turn** half.
+Whole paragraphs because a sentence cut out of the clause it depends on is
+how a model confidently answers the opposite; Han matched by substring for
+the reason `searchConversations` documents; single characters dropped in both
+scripts, because matching 「的」 or "the" makes every passage relevant, which
+is the same as none and costs the whole budget to find out. A question the
+document says nothing about carries none of it, rather than the first
+paragraph. `documentOf` is read at compose time, so a file left open that the
+next question has nothing to do with costs nothing — which is what makes
+leaving one open safe.
+
 Toolchain is pinned by CI: Flutter **3.44.1** stable, Dart SDK `^3.12.0`.
 
 ## Layout

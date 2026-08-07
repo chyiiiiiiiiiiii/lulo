@@ -38,6 +38,8 @@ final class AppComposition {
     List<String> Function()? protectedVocabulary,
     List<MisheardWord> Function()? misheard,
     this.sidecarProbe,
+    ValueNotifier<String>? openDocument,
+    ValueNotifier<String?>? openDocumentName,
     FloorControl Function()? floorControl,
     List<String> Function()? unfinishedEndings,
     ValueNotifier<String>? ttsVoice,
@@ -53,6 +55,8 @@ final class AppComposition {
            transcriptRefiner ?? const DeterministicTranscriptRefiner(),
        protectedVocabulary = protectedVocabulary ?? _emptyVocabulary,
        misheard = misheard ?? _nothingMisheard,
+       openDocument = openDocument ?? ValueNotifier<String>(''),
+       openDocumentName = openDocumentName ?? ValueNotifier<String?>(null),
        floorControl = floorControl ?? _builtInFloorControl,
        unfinishedEndings = unfinishedEndings ?? _emptyVocabulary,
        _changeModel = changeModel ?? _keepThePreview,
@@ -130,6 +134,18 @@ final class AppComposition {
   /// timeout, and a widget test that merely builds the app must not be left
   /// holding a pending timer for a question it never asked.
   final SidecarHealthProbe? sidecarProbe;
+
+  /// The text of the file questions are currently answered out of, empty
+  /// when there is none.
+  ///
+  /// Shared with the context provider, which reads it at the moment a
+  /// question is composed. Only the passages a question turns out to be
+  /// about are sent, so a file left open that the next question has nothing
+  /// to do with costs nothing — which is what makes leaving one open safe.
+  final ValueNotifier<String> openDocument;
+
+  /// What that file is called, for the app to say what it is reading.
+  final ValueNotifier<String?> openDocumentName;
 
   /// Who has the floor, read again at every ruling.
   ///

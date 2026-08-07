@@ -1441,6 +1441,34 @@ class DesktopHostApi {
     return pigeonVar_replyValue! as String;
   }
 
+  /// Asks the user for a text file to ask questions about, and returns its
+  /// path, or empty if they backed out.
+  ///
+  /// The chooser is the system's own, so the app is never told where files
+  /// live. Unlike the recording handed to the transcriber, this one is read
+  /// by the app itself — the sandbox grant `NSOpenPanel` issues belongs to
+  /// this process, which is the process doing the reading.
+  Future<String> chooseTextFile(HostRequest request) async {
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.local_agent_macos.DesktopHostApi.chooseTextFile$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channel = BasicMessageChannel<Object?>(
+      pigeonVar_channelName,
+      pigeonChannelCodec,
+      binaryMessenger: pigeonVar_binaryMessenger,
+    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(
+      <Object?>[request],
+    );
+    final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
+
+    final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: false,
+    );
+    return pigeonVar_replyValue! as String;
+  }
+
   /// Applies the user's choices about how the resting orb behaves.
   ///
   /// Held natively rather than consulted per change of form, because the

@@ -1119,6 +1119,14 @@ protocol DesktopHostApi {
   /// may write where a save panel says and nowhere else, so handing the path
   /// back to Dart to write to would land outside the grant the panel gave.
   func saveTextFile(request: HostRequest, suggestedName: String, contents: String, completion: @escaping (Result<String, Error>) -> Void)
+  /// Asks the user for a text file to ask questions about, and returns its
+  /// path, or empty if they backed out.
+  ///
+  /// The chooser is the system's own, so the app is never told where files
+  /// live. Unlike the recording handed to the transcriber, this one is read
+  /// by the app itself — the sandbox grant `NSOpenPanel` issues belongs to
+  /// this process, which is the process doing the reading.
+  func chooseTextFile(request: HostRequest, completion: @escaping (Result<String, Error>) -> Void)
   /// Applies the user's choices about how the resting orb behaves.
   ///
   /// Held natively rather than consulted per change of form, because the
@@ -1387,6 +1395,30 @@ class DesktopHostApiSetup {
       }
     } else {
       saveTextFileChannel.setMessageHandler(nil)
+    }
+    /// Asks the user for a text file to ask questions about, and returns its
+    /// path, or empty if they backed out.
+    ///
+    /// The chooser is the system's own, so the app is never told where files
+    /// live. Unlike the recording handed to the transcriber, this one is read
+    /// by the app itself — the sandbox grant `NSOpenPanel` issues belongs to
+    /// this process, which is the process doing the reading.
+    let chooseTextFileChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.local_agent_macos.DesktopHostApi.chooseTextFile\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
+    if let api = api {
+      chooseTextFileChannel.setMessageHandler { message, reply in
+        let args = message as! [Any?]
+        let requestArg = args[0] as! HostRequest
+        api.chooseTextFile(request: requestArg) { result in
+          switch result {
+          case .success(let res):
+            reply(wrapResult(res))
+          case .failure(let error):
+            reply(wrapError(error))
+          }
+        }
+      }
+    } else {
+      chooseTextFileChannel.setMessageHandler(nil)
     }
     /// Applies the user's choices about how the resting orb behaves.
     ///

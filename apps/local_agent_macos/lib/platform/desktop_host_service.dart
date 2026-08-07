@@ -561,6 +561,13 @@ abstract interface class DesktopPresentationHost {
     required String contents,
   });
 
+  /// Asks the user for a text file to ask questions about.
+  ///
+  /// Returns its path, or empty if they backed out. Read by the app itself
+  /// rather than handed to a helper: the grant `NSOpenPanel` issues belongs
+  /// to this process, and this is the process doing the reading.
+  Future<String> chooseTextFile();
+
   /// Applies the user's choices about how the resting orb behaves.
   Future<void> setWindowBehaviour({
     required bool keepOrbOnTop,

@@ -643,6 +643,38 @@ final class _PresentationSwitchState extends State<_PresentationSwitch>
     }
   }
 
+  /// Picks a file for questions to be answered out of.
+  ///
+  /// Read here rather than handed to a helper: the sandbox grant the open
+  /// panel issues belongs to this process, and this is the process reading.
+  /// Returns the file's name, empty when the user backed out, or null when
+  /// it could not be read.
+  Future<String?> _openDocument() async {
+    final DesktopPresentationHost? host = widget.composition.presentationHost;
+    if (host == null) {
+      return null;
+    }
+    final String path = await host.chooseTextFile();
+    if (path.isEmpty) {
+      return '';
+    }
+    final String text;
+    try {
+      text = await File(path).readAsString();
+    } on Object {
+      return null;
+    }
+    widget.composition.openDocument.value = text;
+    widget.composition.openDocumentName.value = _baseName(path);
+    return widget.composition.openDocumentName.value;
+  }
+
+  /// Stops answering out of the open file.
+  void _closeDocument() {
+    widget.composition.openDocument.value = '';
+    widget.composition.openDocumentName.value = null;
+  }
+
   /// The last transcript the recogniser produced and nobody has saved.
   ///
   /// Held here rather than in the settings sheet, which is torn down every
@@ -1162,6 +1194,12 @@ final class _PresentationSwitchState extends State<_PresentationSwitch>
                               widget.composition.presentationHost == null
                               ? null
                               : _saveHeldTranscript,
+                          openDocument:
+                              widget.composition.presentationHost == null
+                              ? null
+                              : _openDocument,
+                          closeDocument: _closeDocument,
+                          openDocumentName: widget.composition.openDocumentName,
                         ),
                     ],
                   ),

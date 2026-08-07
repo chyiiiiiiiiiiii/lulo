@@ -621,6 +621,42 @@ abstract class AppLocalizations {
   /// **'Save it'**
   String get transcribeSaveAgain;
 
+  /// No description provided for @documentSection.
+  ///
+  /// In en, this message translates to:
+  /// **'Ask about a file'**
+  String get documentSection;
+
+  /// No description provided for @documentNote.
+  ///
+  /// In en, this message translates to:
+  /// **'Pick a text file and questions will be answered out of it. Only the parts a question is about are sent.'**
+  String get documentNote;
+
+  /// No description provided for @documentChoose.
+  ///
+  /// In en, this message translates to:
+  /// **'Choose a file'**
+  String get documentChoose;
+
+  /// No description provided for @documentOpen.
+  ///
+  /// In en, this message translates to:
+  /// **'Reading: {name}'**
+  String documentOpen(String name);
+
+  /// No description provided for @documentClose.
+  ///
+  /// In en, this message translates to:
+  /// **'Close it'**
+  String get documentClose;
+
+  /// No description provided for @documentUnreadable.
+  ///
+  /// In en, this message translates to:
+  /// **'That file could not be read.'**
+  String get documentUnreadable;
+
   /// No description provided for @sectionModel.
   ///
   /// In en, this message translates to:

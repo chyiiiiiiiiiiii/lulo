@@ -287,6 +287,26 @@ class AppLocalizationsZh extends AppLocalizations {
   String get transcribeSaveAgain => '存檔';
 
   @override
+  String get documentSection => '拿一份檔案來問';
+
+  @override
+  String get documentNote => '選一個文字檔，之後的問題會從裡面找答案。只有跟問題有關的那幾段會被送進去。';
+
+  @override
+  String get documentChoose => '選檔案';
+
+  @override
+  String documentOpen(String name) {
+    return '正在看：$name';
+  }
+
+  @override
+  String get documentClose => '關掉';
+
+  @override
+  String get documentUnreadable => '讀不到那個檔案。';
+
+  @override
   String get sectionModel => '它用來思考的模型';
 
   @override

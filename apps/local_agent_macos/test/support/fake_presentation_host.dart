@@ -16,6 +16,12 @@ final class FakePresentationHost implements DesktopPresentationHost {
     presentation.value = mode;
   }
 
+  /// What [chooseTextFile] answers.
+  String textFileToChoose = '';
+
+  @override
+  Future<String> chooseTextFile() async => textFileToChoose;
+
   /// Text a Services menu is pretending to have sent.
   final StreamController<String> serviceTextController =
       StreamController<String>.broadcast();

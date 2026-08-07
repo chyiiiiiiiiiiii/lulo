@@ -153,8 +153,13 @@ AppComposition createAppComposition({
   final AgentProfileStore profileStore =
       agentProfileStore ?? createAgentProfileStore();
   unawaited(profileStore.load());
+  // Shared with the composition, so the file the user opened in settings is
+  // the file the next question is composed against.
+  final ValueNotifier<String> openDocument = ValueNotifier<String>('');
+  final ValueNotifier<String?> openDocumentName = ValueNotifier<String?>(null);
   final AgentContextProvider agentContext = ProfileAgentContextProvider(
     () => profileStore.current,
+    documentOf: () => openDocument.value,
   );
   final DeadlineTranscriptRefiner transcriptRefiner = DeadlineTranscriptRefiner(
     const DeterministicTranscriptRefiner(),
@@ -226,6 +231,8 @@ AppComposition createAppComposition({
     protectedVocabulary: () => profileStore.current.vocabulary,
     misheard: () => profileStore.current.misheard,
     sidecarProbe: const SidecarHealthProbe(),
+    openDocument: openDocument,
+    openDocumentName: openDocumentName,
     floorControl: () => profileStore.current.floorControl,
     unfinishedEndings: () => profileStore.current.turnTaking.unfinished,
     agentProfile: profileStore,

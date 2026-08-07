@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:agent_core/agent_core.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -37,6 +38,9 @@ final class SettingsSheet extends StatelessWidget {
     this.sidecarProbe,
     this.transcribeRecording,
     this.saveHeldTranscript,
+    this.openDocument,
+    this.closeDocument,
+    this.openDocumentName,
     this.catalog = modelCatalog,
     super.key,
   });
@@ -94,6 +98,16 @@ final class SettingsSheet extends StatelessWidget {
 
   /// Offers the save panel again for a transcript already in hand.
   final Future<(TranscribeOutcome, String?)> Function()? saveHeldTranscript;
+
+  /// Picks a file for questions to be answered out of, returning its name,
+  /// empty when the user backed out, or null when it could not be read.
+  final Future<String?> Function()? openDocument;
+
+  /// Stops answering out of it.
+  final VoidCallback? closeDocument;
+
+  /// The file currently open, or null when there is none.
+  final ValueListenable<String?>? openDocumentName;
 
   /// Called when the user is finished.
   final VoidCallback onClose;
@@ -176,6 +190,14 @@ final class SettingsSheet extends StatelessWidget {
                           ),
                         ],
                       ),
+                      if (openDocument != null &&
+                          closeDocument != null &&
+                          openDocumentName != null)
+                        _DocumentSection(
+                          open: openDocument!,
+                          close: closeDocument!,
+                          name: openDocumentName!,
+                        ),
                       if (transcribeRecording != null &&
                           saveHeldTranscript != null)
                         _TranscribeSection(
@@ -829,6 +851,89 @@ final class _TranscribeSectionState extends State<_TranscribeSection> {
                 ),
         ),
       ],
+    );
+  }
+}
+
+/// Answering out of one file the user picked.
+///
+/// Deliberately not a knowledge base. Only the passages a question turns out
+/// to be about are sent, so a file left open that the next question has
+/// nothing to do with costs nothing — which is what makes leaving one open
+/// safe, and why this can be a thing you set rather than a thing you attach
+/// to each question.
+final class _DocumentSection extends StatefulWidget {
+  const _DocumentSection({
+    required this.open,
+    required this.close,
+    required this.name,
+  });
+
+  final Future<String?> Function() open;
+  final VoidCallback close;
+  final ValueListenable<String?> name;
+
+  @override
+  State<_DocumentSection> createState() => _DocumentSectionState();
+}
+
+final class _DocumentSectionState extends State<_DocumentSection> {
+  bool _unreadable = false;
+
+  Future<void> _pick() async {
+    setState(() => _unreadable = false);
+    String? name;
+    bool failed = false;
+    try {
+      name = await widget.open();
+    } on Object {
+      failed = true;
+    }
+    if (!mounted) {
+      return;
+    }
+    // An empty name is the user closing the panel, which is not a failure.
+    setState(() => _unreadable = failed || name == null);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final AppLocalizations words = AppLocalizations.of(context);
+    return ValueListenableBuilder<String?>(
+      valueListenable: widget.name,
+      builder: (BuildContext context, String? open, Widget? _) {
+        return SettingsSection(
+          key: const Key('setting-document'),
+          title: words.documentSection,
+          children: <Widget>[
+            ListTile(
+              contentPadding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+              title: Text(
+                open == null ? words.documentNote : words.documentOpen(open),
+              ),
+              subtitle: _unreadable
+                  ? Text(
+                      words.documentUnreadable,
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.error,
+                      ),
+                    )
+                  : null,
+              trailing: open == null
+                  ? FilledButton(
+                      key: const Key('setting-document-choose'),
+                      onPressed: () => unawaited(_pick()),
+                      child: Text(words.documentChoose),
+                    )
+                  : TextButton(
+                      key: const Key('setting-document-close'),
+                      onPressed: widget.close,
+                      child: Text(words.documentClose),
+                    ),
+            ),
+          ],
+        );
+      },
     );
   }
 }

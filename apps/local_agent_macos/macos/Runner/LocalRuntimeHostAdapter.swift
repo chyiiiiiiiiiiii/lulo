@@ -289,6 +289,32 @@ final class LocalRuntimeDesktopHostApi: DesktopHostApi {
     }
   }
 
+  func chooseTextFile(
+    request: HostRequest,
+    completion: @escaping (Result<String, Error>) -> Void
+  ) {
+    do {
+      try validatePanelRequest(request)
+    } catch {
+      completion(.failure(error))
+      return
+    }
+    onMain {
+      let panel = NSOpenPanel()
+      panel.title = "Choose a file to ask about"
+      panel.message = "Pick the text Lulo should answer out of."
+      panel.allowedContentTypes = [.plainText, .utf8PlainText, .text]
+      panel.allowsMultipleSelection = false
+      panel.canChooseDirectories = false
+      // Backing out is an answer, not a failure.
+      guard panel.runModal() == .OK, let url = panel.url else {
+        completion(.success(""))
+        return
+      }
+      completion(.success(url.path))
+    }
+  }
+
   func setMenuBarState(request: HostRequest, state: HostMenuBarState) throws {
     try validatePanelRequest(request)
     guard let menuBar else {

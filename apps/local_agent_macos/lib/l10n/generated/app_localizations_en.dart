@@ -299,6 +299,27 @@ class AppLocalizationsEn extends AppLocalizations {
   String get transcribeSaveAgain => 'Save it';
 
   @override
+  String get documentSection => 'Ask about a file';
+
+  @override
+  String get documentNote =>
+      'Pick a text file and questions will be answered out of it. Only the parts a question is about are sent.';
+
+  @override
+  String get documentChoose => 'Choose a file';
+
+  @override
+  String documentOpen(String name) {
+    return 'Reading: $name';
+  }
+
+  @override
+  String get documentClose => 'Close it';
+
+  @override
+  String get documentUnreadable => 'That file could not be read.';
+
+  @override
   String get sectionModel => 'The model it thinks with';
 
   @override

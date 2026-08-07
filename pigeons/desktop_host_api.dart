@@ -369,6 +369,16 @@ abstract class DesktopHostApi {
     String contents,
   );
 
+  /// Asks the user for a text file to ask questions about, and returns its
+  /// path, or empty if they backed out.
+  ///
+  /// The chooser is the system's own, so the app is never told where files
+  /// live. Unlike the recording handed to the transcriber, this one is read
+  /// by the app itself — the sandbox grant `NSOpenPanel` issues belongs to
+  /// this process, which is the process doing the reading.
+  @async
+  String chooseTextFile(HostRequest request);
+
   /// Applies the user's choices about how the resting orb behaves.
   ///
   /// Held natively rather than consulted per change of form, because the

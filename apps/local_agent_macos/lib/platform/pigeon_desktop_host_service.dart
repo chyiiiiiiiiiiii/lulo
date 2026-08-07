@@ -338,6 +338,9 @@ final class PigeonDesktopHostService extends DesktopHostEventApi
   Future<String> chooseModelFile() => _invokeResult(_hostApi.chooseModelFile);
 
   @override
+  Future<String> chooseTextFile() => _invokeResult(_hostApi.chooseTextFile);
+
+  @override
   Future<String> saveTextFile({
     required String suggestedName,
     required String contents,
