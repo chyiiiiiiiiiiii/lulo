@@ -672,7 +672,8 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
   /// collapsing them at the boundary loses that for good.
   private static func transcribeHeld(
     _ url: URL,
-    terms: [String]
+    terms: [String],
+    timeout: TimeInterval = 15
   ) async -> String? {
     guard let endpoint = URL(string: "http://127.0.0.1:46558/transcribe")
     else {
@@ -680,7 +681,7 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
     }
     var request = URLRequest(url: endpoint)
     request.httpMethod = "POST"
-    request.timeoutInterval = 15
+    request.timeoutInterval = timeout
     request.httpBody = try? JSONSerialization.data(
       withJSONObject: ["path": url.path, "terms": terms]
     )
@@ -702,6 +703,43 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
         String(describing: error)
       )
       return nil
+    }
+  }
+
+  func chooseRecording(
+    completion: @escaping (Result<String, Error>) -> Void
+  ) {
+    let panel = NSOpenPanel()
+    panel.title = "Choose a recording"
+    panel.message = "Pick the audio Lulo should write out."
+    panel.allowedContentTypes = [.audio, .movie]
+    panel.allowsMultipleSelection = false
+    panel.canChooseDirectories = false
+    // Backing out is an answer, not a failure.
+    guard panel.runModal() == .OK, let url = panel.url else {
+      completion(.success(""))
+      return
+    }
+    completion(.success(url.path))
+  }
+
+  func transcribeRecording(
+    path: String,
+    completion: @escaping (Result<String, Error>) -> Void
+  ) {
+    let terms = vocabulary.all
+    Task { @MainActor in
+      // The same route the hold key uses, with a budget for a whole
+      // recording rather than one held sentence. Breeze-ASR-25 runs at
+      // roughly a quarter of real time, so this covers about forty minutes
+      // of audio; past that the sidecar is still working and this has
+      // stopped waiting, which is reported as having heard nothing.
+      let heard = await Self.transcribeHeld(
+        URL(fileURLWithPath: path),
+        terms: terms,
+        timeout: 600
+      )
+      completion(.success(heard ?? ""))
     }
   }
 

@@ -423,6 +423,58 @@ class VoiceHostApi {
       isNullValid: true,
     );
   }
+
+  /// Asks the user for a recording to transcribe and returns its path, or
+  /// empty if they backed out.
+  ///
+  /// The chooser is the system's own, so the app is never told where files
+  /// live and never handles a path the user did not pick.
+  Future<String> chooseRecording() async {
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.local_agent_macos.VoiceHostApi.chooseRecording$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channel = BasicMessageChannel<Object?>(
+      pigeonVar_channelName,
+      pigeonChannelCodec,
+      binaryMessenger: pigeonVar_binaryMessenger,
+    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(null);
+    final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
+
+    final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: false,
+    );
+    return pigeonVar_replyValue! as String;
+  }
+
+  /// Transcribes the recording at [path] with the batch recogniser.
+  ///
+  /// Returns the text, or empty when the recogniser could not be reached or
+  /// had nothing to say. The same Breeze-ASR-25 sidecar the hold-to-talk key
+  /// uses — it is tuned for this user's language and already installed, and
+  /// until now the only way to reach it was to hold a key at a live
+  /// microphone.
+  Future<String> transcribeRecording(String path) async {
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.local_agent_macos.VoiceHostApi.transcribeRecording$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channel = BasicMessageChannel<Object?>(
+      pigeonVar_channelName,
+      pigeonChannelCodec,
+      binaryMessenger: pigeonVar_binaryMessenger,
+    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(
+      <Object?>[path],
+    );
+    final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
+
+    final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: false,
+    );
+    return pigeonVar_replyValue! as String;
+  }
 }
 
 /// Native-to-Dart: everything the pipeline reports, in order.

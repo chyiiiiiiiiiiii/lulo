@@ -37,6 +37,24 @@ final class FakeVoiceService implements VoiceService {
     unfinishedEndings.add(List<String>.unmodifiable(endings));
   }
 
+  /// What [chooseRecording] answers.
+  String recordingToChoose = '';
+
+  /// What [transcribeRecording] answers, by path.
+  final Map<String, String> recordingTranscripts = <String, String>{};
+
+  @override
+  Future<String> chooseRecording() async {
+    calls.add('chooseRecording');
+    return recordingToChoose;
+  }
+
+  @override
+  Future<String> transcribeRecording(String path) async {
+    calls.add('transcribeRecording');
+    return recordingTranscripts[path] ?? '';
+  }
+
   @override
   Future<void> useSpokenVocabulary(List<String> terms) async {
     calls.add('useSpokenVocabulary');

@@ -257,6 +257,26 @@ class AppLocalizationsZh extends AppLocalizations {
   String get sidecarCannotStart => 'Lulo 在沙盒裡，沒辦法幫你啟動它們。到終端機把它們開起來就好。';
 
   @override
+  String get transcribeSection => '把錄音寫成文字';
+
+  @override
+  String get transcribeNote => '選一個錄音檔，用你已經裝好的那套辨識器寫出來。整段都在這台電腦上跑。';
+
+  @override
+  String get transcribeChoose => '選檔案';
+
+  @override
+  String get transcribeWorking => '寫字中 —— 長一點的錄音要等幾分鐘。';
+
+  @override
+  String get transcribeFailed => '沒有寫出東西。聽寫的那個程式沒在跑的話，先把它開起來。';
+
+  @override
+  String transcribeSaved(String name) {
+    return '已存成 $name';
+  }
+
+  @override
   String get sectionModel => '它用來思考的模型';
 
   @override

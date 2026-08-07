@@ -18,6 +18,7 @@ import '../features/presence/desktop_orb_surface.dart';
 import '../features/presence/presence_flight.dart';
 import '../features/settings/app_settings.dart';
 import '../features/settings/settings_sheet.dart';
+import '../features/voice/voice_service.dart';
 import '../l10n/generated/app_localizations.dart';
 import '../platform/desktop_host_service.dart';
 import 'app_composition.dart';
@@ -605,6 +606,36 @@ final class _PresentationSwitchState extends State<_PresentationSwitch>
     }
   }
 
+  /// Picks a recording, writes it out, and saves the text beside it.
+  ///
+  /// Returns the file name saved, empty when the user backed out of either
+  /// panel, or null when nothing came back — which most often means the
+  /// batch recogniser is not running, and the section next to this one says
+  /// so by name.
+  Future<String?> _transcribeRecording() async {
+    final VoiceService? voice = widget.composition.voiceService;
+    final DesktopPresentationHost? host = widget.composition.presentationHost;
+    if (voice == null || host == null) {
+      return null;
+    }
+    final String path = await voice.chooseRecording();
+    if (path.isEmpty) {
+      return '';
+    }
+    final String text = await voice.transcribeRecording(path);
+    if (text.trim().isEmpty) {
+      return null;
+    }
+    // Written through the save panel for the same reason an export is: a
+    // sandboxed app may write where the panel says and nowhere else.
+    final String suggested = '${path.split('/').last.split('.').first}.txt';
+    final String written = await host.saveTextFile(
+      suggestedName: suggested,
+      contents: text,
+    );
+    return written.isEmpty ? '' : written.split('/').last;
+  }
+
   /// Hands the choices to the window and writes them down.
   Future<void> _applySettings(AppSettings settings) async {
     widget.composition.ttsVoice.value = settings.ttsVoice;
@@ -1035,6 +1066,11 @@ final class _PresentationSwitchState extends State<_PresentationSwitch>
                               .presentationHost
                               ?.setLaunchAtLogin,
                           sidecarProbe: widget.composition.sidecarProbe,
+                          transcribeRecording:
+                              widget.composition.voiceService == null ||
+                                  widget.composition.presentationHost == null
+                              ? null
+                              : _transcribeRecording,
                         ),
                     ],
                   ),

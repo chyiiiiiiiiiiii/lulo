@@ -142,4 +142,15 @@ abstract interface class VoiceService {
   /// `AgentProfile.misheard` exists because a hint can do nothing where a
   /// substitution cannot.
   Future<void> useSpokenVocabulary(List<String> terms);
+
+  /// Asks the user for a recording and returns its path, or empty if they
+  /// backed out.
+  Future<String> chooseRecording();
+
+  /// Writes out the recording at [path], or empty when nothing came back.
+  ///
+  /// The batch recogniser is tuned for this user's language and already
+  /// installed; until now the only way to reach it was to hold a key at a
+  /// live microphone, so a recording they already had could not use it.
+  Future<String> transcribeRecording(String path);
 }

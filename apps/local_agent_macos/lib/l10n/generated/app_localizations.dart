@@ -567,6 +567,42 @@ abstract class AppLocalizations {
   /// **'Lulo is sandboxed and cannot start them for you. Start them from a terminal.'**
   String get sidecarCannotStart;
 
+  /// No description provided for @transcribeSection.
+  ///
+  /// In en, this message translates to:
+  /// **'Write a recording out'**
+  String get transcribeSection;
+
+  /// No description provided for @transcribeNote.
+  ///
+  /// In en, this message translates to:
+  /// **'Pick an audio file and write it out with the recogniser you already have installed. All of it runs on this computer.'**
+  String get transcribeNote;
+
+  /// No description provided for @transcribeChoose.
+  ///
+  /// In en, this message translates to:
+  /// **'Choose a file'**
+  String get transcribeChoose;
+
+  /// No description provided for @transcribeWorking.
+  ///
+  /// In en, this message translates to:
+  /// **'Writing it out — a long recording takes a few minutes.'**
+  String get transcribeWorking;
+
+  /// No description provided for @transcribeFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Nothing came back. If the transcriber is not running, start it first.'**
+  String get transcribeFailed;
+
+  /// No description provided for @transcribeSaved.
+  ///
+  /// In en, this message translates to:
+  /// **'Saved as {name}'**
+  String transcribeSaved(String name);
+
   /// No description provided for @sectionModel.
   ///
   /// In en, this message translates to:

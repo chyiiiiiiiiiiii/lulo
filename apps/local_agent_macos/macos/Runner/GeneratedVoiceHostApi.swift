@@ -332,6 +332,20 @@ protocol VoiceHostApi {
   /// word has already been misheard, and repairing it there is guessing at
   /// what was said. Replaces the previous list wholesale.
   func useSpokenVocabulary(terms: [String], completion: @escaping (Result<Void, Error>) -> Void)
+  /// Asks the user for a recording to transcribe and returns its path, or
+  /// empty if they backed out.
+  ///
+  /// The chooser is the system's own, so the app is never told where files
+  /// live and never handles a path the user did not pick.
+  func chooseRecording(completion: @escaping (Result<String, Error>) -> Void)
+  /// Transcribes the recording at [path] with the batch recogniser.
+  ///
+  /// Returns the text, or empty when the recogniser could not be reached or
+  /// had nothing to say. The same Breeze-ASR-25 sidecar the hold-to-talk key
+  /// uses — it is tuned for this user's language and already installed, and
+  /// until now the only way to reach it was to hold a key at a live
+  /// microphone.
+  func transcribeRecording(path: String, completion: @escaping (Result<String, Error>) -> Void)
 }
 
 /// Generated setup class from Pigeon to handle messages through the `binaryMessenger`.
@@ -478,6 +492,50 @@ class VoiceHostApiSetup {
       }
     } else {
       useSpokenVocabularyChannel.setMessageHandler(nil)
+    }
+    /// Asks the user for a recording to transcribe and returns its path, or
+    /// empty if they backed out.
+    ///
+    /// The chooser is the system's own, so the app is never told where files
+    /// live and never handles a path the user did not pick.
+    let chooseRecordingChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.local_agent_macos.VoiceHostApi.chooseRecording\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
+    if let api = api {
+      chooseRecordingChannel.setMessageHandler { _, reply in
+        api.chooseRecording { result in
+          switch result {
+          case .success(let res):
+            reply(wrapResult(res))
+          case .failure(let error):
+            reply(wrapError(error))
+          }
+        }
+      }
+    } else {
+      chooseRecordingChannel.setMessageHandler(nil)
+    }
+    /// Transcribes the recording at [path] with the batch recogniser.
+    ///
+    /// Returns the text, or empty when the recogniser could not be reached or
+    /// had nothing to say. The same Breeze-ASR-25 sidecar the hold-to-talk key
+    /// uses — it is tuned for this user's language and already installed, and
+    /// until now the only way to reach it was to hold a key at a live
+    /// microphone.
+    let transcribeRecordingChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.local_agent_macos.VoiceHostApi.transcribeRecording\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
+    if let api = api {
+      transcribeRecordingChannel.setMessageHandler { message, reply in
+        let args = message as! [Any?]
+        let pathArg = args[0] as! String
+        api.transcribeRecording(path: pathArg) { result in
+          switch result {
+          case .success(let res):
+            reply(wrapResult(res))
+          case .failure(let error):
+            reply(wrapError(error))
+          }
+        }
+      }
+    } else {
+      transcribeRecordingChannel.setMessageHandler(nil)
     }
   }
 }

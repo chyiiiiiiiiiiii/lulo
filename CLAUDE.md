@@ -141,6 +141,17 @@ injected from the composition root and absent by default, because the real
 probe opens a socket with a real timeout and a widget test that merely builds
 the app must not hold a pending timer for a question it never asked.
 
+A recording the user already has can be written out. The batch recogniser is
+installed, tuned for this user's language, and measured at 1.6% character
+error on zh — and the only way to reach it was to hold a key at a live
+microphone, so a 課堂錄音 in Downloads could not use the best recogniser on
+the machine. Settings picks a file through the system panel, hands the path
+to the same sidecar the hold key uses with a budget for a whole recording
+rather than one sentence, and saves the text through the save panel because
+a sandboxed app may write where the panel says and nowhere else. Nothing
+came back is reported rather than swallowed, and the section beside it names
+the sidecar that is most likely why.
+
 Toolchain is pinned by CI: Flutter **3.44.1** stable, Dart SDK `^3.12.0`.
 
 ## Layout

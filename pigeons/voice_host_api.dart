@@ -127,6 +127,24 @@ abstract class VoiceHostApi {
   /// what was said. Replaces the previous list wholesale.
   @async
   void useSpokenVocabulary(List<String> terms);
+
+  /// Asks the user for a recording to transcribe and returns its path, or
+  /// empty if they backed out.
+  ///
+  /// The chooser is the system's own, so the app is never told where files
+  /// live and never handles a path the user did not pick.
+  @async
+  String chooseRecording();
+
+  /// Transcribes the recording at [path] with the batch recogniser.
+  ///
+  /// Returns the text, or empty when the recogniser could not be reached or
+  /// had nothing to say. The same Breeze-ASR-25 sidecar the hold-to-talk key
+  /// uses — it is tuned for this user's language and already installed, and
+  /// until now the only way to reach it was to hold a key at a live
+  /// microphone.
+  @async
+  String transcribeRecording(String path);
 }
 
 /// Native-to-Dart: everything the pipeline reports, in order.

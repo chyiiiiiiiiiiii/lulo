@@ -266,6 +266,29 @@ class AppLocalizationsEn extends AppLocalizations {
       'Lulo is sandboxed and cannot start them for you. Start them from a terminal.';
 
   @override
+  String get transcribeSection => 'Write a recording out';
+
+  @override
+  String get transcribeNote =>
+      'Pick an audio file and write it out with the recogniser you already have installed. All of it runs on this computer.';
+
+  @override
+  String get transcribeChoose => 'Choose a file';
+
+  @override
+  String get transcribeWorking =>
+      'Writing it out — a long recording takes a few minutes.';
+
+  @override
+  String get transcribeFailed =>
+      'Nothing came back. If the transcriber is not running, start it first.';
+
+  @override
+  String transcribeSaved(String name) {
+    return 'Saved as $name';
+  }
+
+  @override
   String get sectionModel => 'The model it thinks with';
 
   @override

@@ -35,6 +35,7 @@ final class SettingsSheet extends StatelessWidget {
     this.loginItem,
     this.setLaunchAtLogin,
     this.sidecarProbe,
+    this.transcribeRecording,
     this.catalog = modelCatalog,
     super.key,
   });
@@ -85,6 +86,10 @@ final class SettingsSheet extends StatelessWidget {
   /// merely renders this sheet must not be left holding a pending timer for
   /// a question it never asked.
   final SidecarHealthProbe? sidecarProbe;
+
+  /// Picks a recording, writes it out, and saves the text — or null on a
+  /// surface with no recogniser behind it.
+  final Future<String?> Function()? transcribeRecording;
 
   /// Called when the user is finished.
   final VoidCallback onClose;
@@ -167,6 +172,8 @@ final class SettingsSheet extends StatelessWidget {
                           ),
                         ],
                       ),
+                      if (transcribeRecording != null)
+                        _TranscribeSection(run: transcribeRecording!),
                       if (sidecarProbe != null)
                         SidecarSection(probe: sidecarProbe!),
                       SettingsSection(
@@ -674,6 +681,95 @@ final class _SidecarSectionState extends State<SidecarSection> {
                   ].join('\n'),
           ),
           subtitle: health.allRunning ? null : Text(words.sidecarCannotStart),
+        ),
+      ],
+    );
+  }
+}
+
+/// Writing a recording the user already has out as text.
+///
+/// The batch recogniser is installed, tuned for this user's language, and
+/// measured at 1.6% character error on zh — and until now the only way to
+/// reach it was to hold a key at a live microphone. A two-hour 課堂錄音 in
+/// Downloads could not use the best recogniser on the machine.
+final class _TranscribeSection extends StatefulWidget {
+  const _TranscribeSection({required this.run});
+
+  /// Returns the name of the file written, empty when the user backed out,
+  /// or null when nothing came back.
+  final Future<String?> Function() run;
+
+  @override
+  State<_TranscribeSection> createState() => _TranscribeSectionState();
+}
+
+final class _TranscribeSectionState extends State<_TranscribeSection> {
+  bool _working = false;
+  String? _saved;
+  bool _failed = false;
+
+  Future<void> _start() async {
+    if (_working) {
+      // One at a time. The recogniser is a single-threaded sidecar, so two
+      // at once is two that both take longer.
+      return;
+    }
+    setState(() {
+      _working = true;
+      _saved = null;
+      _failed = false;
+    });
+    String? name;
+    bool failed = false;
+    try {
+      name = await widget.run();
+    } on Object {
+      failed = true;
+    }
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _working = false;
+      _failed = failed || name == null;
+      // An empty name is the user backing out of one of the two panels,
+      // which is not a failure and not worth reporting.
+      _saved = (name != null && name.isNotEmpty) ? name : null;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final AppLocalizations words = AppLocalizations.of(context);
+    return SettingsSection(
+      key: const Key('setting-transcribe'),
+      title: words.transcribeSection,
+      children: <Widget>[
+        ListTile(
+          contentPadding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+          title: Text(words.transcribeNote),
+          subtitle: _working
+              ? Text(words.transcribeWorking)
+              : _failed
+              ? Text(
+                  words.transcribeFailed,
+                  style: TextStyle(color: Theme.of(context).colorScheme.error),
+                )
+              : _saved != null
+              ? Text(words.transcribeSaved(_saved!))
+              : null,
+          trailing: _working
+              ? const SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : FilledButton(
+                  key: const Key('setting-transcribe-choose'),
+                  onPressed: () => unawaited(_start()),
+                  child: Text(words.transcribeChoose),
+                ),
         ),
       ],
     );

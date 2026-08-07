@@ -2368,6 +2368,11 @@ final class _NeverStartsVoice implements VoiceService {
 
   @override
   Future<void> useSpokenVocabulary(List<String> terms) async {}
+  @override
+  Future<String> chooseRecording() async => '';
+
+  @override
+  Future<String> transcribeRecording(String path) async => '';
 
   @override
   Future<void> startListening() => Completer<void>().future;
