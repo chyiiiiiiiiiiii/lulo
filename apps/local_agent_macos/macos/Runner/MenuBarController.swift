@@ -47,6 +47,8 @@ final class MenuBarController: NSObject, NSMenuDelegate {
   private let statusItem: NSStatusItem
   private let visibilityItem = NSMenuItem()
   private let hotKeyStatusItem = NSMenuItem()
+  private let dictationItem = NSMenuItem()
+  private var dictationClearsAt: Date?
   private let activityItem = NSMenuItem()
   private let modelItem = NSMenuItem()
   private let voiceItem = NSMenuItem()
@@ -79,6 +81,7 @@ final class MenuBarController: NSObject, NSMenuDelegate {
       statusItem.button?.title = "AI"
     }
 
+    dictationItem.isHidden = true
     menu.delegate = self
     statusItem.menu = menu
     rebuild()
@@ -88,6 +91,71 @@ final class MenuBarController: NSObject, NSMenuDelegate {
   func apply(_ state: State) {
     self.state = state
     rebuild()
+  }
+
+  /// Says how the last dictation went, where the user can actually see it.
+  ///
+  /// The menu bar and not the app's own window: a dictation happens while the
+  /// user is working in somebody else's app, so anything drawn inside Lulo is
+  /// drawn where nobody is looking. A failure that is only logged is
+  /// discovered by pasting the previous clipboard contents into someone
+  /// else's document.
+  ///
+  /// The icon carries it too, because a menu nobody opens says nothing: it
+  /// goes to a filled dot on success and an exclamation on any failure, and
+  /// back to the resting glyph after [dictationNoticeSeconds].
+  func reportDictation(_ outcome: DictationOutcome) {
+    let symbol: String
+    switch outcome {
+    case .copied(let characters):
+      dictationItem.title = "Copied \(characters) characters"
+      symbol = "checkmark.circle.fill"
+      NSSound(named: "Tink")?.play()
+    case .heardNothing:
+      dictationItem.title = "Heard nothing — say it again"
+      symbol = "exclamationmark.circle"
+      NSSound(named: "Funk")?.play()
+    case .microphoneUnavailable:
+      dictationItem.title = "The microphone would not open"
+      symbol = "exclamationmark.circle"
+      NSSound(named: "Funk")?.play()
+    case .recogniserUnreachable:
+      dictationItem.title = "The recogniser is not running"
+      symbol = "exclamationmark.circle"
+      NSSound(named: "Funk")?.play()
+    }
+    dictationItem.isHidden = false
+    setStatusSymbol(symbol)
+    // Back to resting after a while, so a success from ten minutes ago is not
+    // still being reported as though it just happened.
+    let clearsAt = Date().addingTimeInterval(Self.dictationNoticeSeconds)
+    dictationClearsAt = clearsAt
+    DispatchQueue.main.asyncAfter(
+      deadline: .now() + Self.dictationNoticeSeconds
+    ) { [weak self] in
+      guard let self, self.dictationClearsAt == clearsAt else { return }
+      self.dictationClearsAt = nil
+      self.dictationItem.isHidden = true
+      self.setStatusSymbol("sparkles")
+    }
+    rebuild()
+  }
+
+  /// How long the icon carries the outcome of a dictation.
+  static let dictationNoticeSeconds: TimeInterval = 4
+
+  private func setStatusSymbol(_ name: String) {
+    if #available(macOS 11.0, *) {
+      statusItem.button?.image = NSImage(
+        systemSymbolName: name,
+        accessibilityDescription: "Local Agent"
+      )
+    }
+  }
+
+  /// The last dictation's line, for tests.
+  var dictationNoticeForTesting: String? {
+    dictationItem.isHidden ? nil : dictationItem.title
   }
 
   func setHotKeyAvailable(_ available: Bool) {
@@ -156,6 +224,12 @@ final class MenuBarController: NSObject, NSMenuDelegate {
         menu.addItem(item)
         conversationItems.append(item)
       }
+    }
+
+    if !dictationItem.isHidden {
+      menu.addItem(.separator())
+      dictationItem.isEnabled = false
+      menu.addItem(dictationItem)
     }
 
     menu.addItem(.separator())

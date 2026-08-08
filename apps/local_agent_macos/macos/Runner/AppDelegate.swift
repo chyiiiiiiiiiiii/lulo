@@ -105,6 +105,8 @@ class AppDelegate: FlutterAppDelegate {
   private var serviceEvents: DesktopHostEventApi?
   private var hotKeyController: GlobalHotKeyController?
   private var hotKeySplitter: HotKeyHoldSplitter?
+  private var dictationHotKey: GlobalHotKeyController?
+  private var dictation: DictationController?
   private var desktopHostApi: LocalRuntimeDesktopHostApi?
   private var binaryMessenger: FlutterBinaryMessenger?
   // Held as Any: the adapter's type only exists on macOS 26, and the voice
@@ -161,6 +163,63 @@ class AppDelegate: FlutterAppDelegate {
       menuBarController.setHotKeyAvailable(false)
     }
     self.hotKeySplitter = holdSplitter
+
+    // Hold ⌃⇧Space anywhere in macOS, speak, release, and the words are on
+    // the clipboard. Its own key, its own controller, its own audio engine:
+    // `docs/decisions/dictation-cannot-share-the-tap.md` is a whole document
+    // about what carving this out of the conversation's tap costs.
+    //
+    // Not ⌘⇧D — Finder, Mail and most editors use it, and a Carbon hot key
+    // beats the frontmost app's menu, so registering it would break those
+    // apps for as long as Lulo runs. ⌃⇧Space is the least-claimed of the
+    // combinations left beside the ⌘⇧Space this app already takes. Neither
+    // key being user-configurable is the real problem underneath that and is
+    // still not solved.
+    let dictationController = DictationController(
+      source: DictationAudioEngine(),
+      transcribe: { clip in
+        guard let url = await HeldSpeech.writeHeldClip(clip) else {
+          return nil
+        }
+        return await HeldSpeech.transcribeHeld(
+          url,
+          terms: [],
+          // A whole held utterance, not one sentence of a conversation.
+          timeout: 30
+        )
+      },
+      deliver: { copyToPasteboard($0) },
+      report: { [weak menuBarController] outcome in
+        menuBarController?.reportDictation(outcome)
+      }
+    )
+    let dictationHotKey = GlobalHotKeyController()
+    do {
+      try dictationHotKey.register(
+        GlobalHotKey(
+          keyCode: UInt32(kVK_Space),
+          modifiers: UInt32(controlKey | shiftKey)
+        ),
+        handler: { [weak dictationController] in
+          MainActor.assumeIsolated { dictationController?.pressed() }
+        },
+        releaseHandler: { [weak dictationController] in
+          Task { @MainActor in
+            await dictationController?.released()
+          }
+        }
+      )
+    } catch {
+      // The conversation's own hotkey is reported in the menu; a dictation
+      // key that will not register leaves dictation simply absent, which is
+      // what it was until now.
+      NSLog(
+        "Lulo dictation: the hotkey would not register (%@)",
+        String(describing: error)
+      )
+    }
+    self.dictation = dictationController
+    self.dictationHotKey = dictationHotKey
 
 
     let binaryMessenger = window.flutterEngine.binaryMessenger
@@ -331,6 +390,7 @@ class AppDelegate: FlutterAppDelegate {
       VoiceHostApiSetup.setUp(binaryMessenger: binaryMessenger, api: nil)
     }
     hotKeyController?.unregister()
+    dictationHotKey?.unregister()
     super.applicationWillTerminate(notification)
   }
 }

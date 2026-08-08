@@ -1,3 +1,5 @@
+import AVFoundation
+import AppKit
 import Foundation
 
 /// What one dictation ended as.
@@ -123,4 +125,73 @@ final class DictationController {
     deliver(trimmed)
     report(.copied(characters: trimmed.count))
   }
+}
+
+/// Dictation's own microphone: one `AVAudioEngine`, opened on the press and
+/// closed on the release.
+///
+/// Its own, and nothing else's. The reverted attempt took a mode out of the
+/// conversation's tap and every guard it needed broke one of the four things
+/// sharing it — a VAD whose `lastVoice` froze, an endpointer that then fired
+/// *sooner*, a half-duplex mute bypassed in the one mode with no echo
+/// canceller, and a buffer nothing reset. None of them exist here.
+///
+/// No voice processing. The echo canceller is there so the microphone can
+/// stay open while the agent talks, and the agent is not talking: this is a
+/// key held down in somebody else's app. Skipping it is also what makes this
+/// engine cheap to build — measured on the conversation's engine, enabling it
+/// is 826-960 ms of the ~1100.
+@MainActor
+final class DictationAudioEngine: DictationAudioCapturing {
+  private let capture = HeldSpeechCaptureBox()
+  private var engine: AVAudioEngine?
+
+  func start() throws {
+    // A fresh engine per hold. Keeping one warm is what the conversation's
+    // side does and is worth ~1 s there, but this one has no voice processing
+    // to build and holding an input node open between holds is a microphone
+    // this app has no reason to have open.
+    let engine = AVAudioEngine()
+    let input = engine.inputNode
+    let format = input.outputFormat(forBus: 0)
+    let box = capture
+    box.begin()
+    input.installTap(onBus: 0, bufferSize: 4096, format: format) { buffer, _ in
+      guard let channel = buffer.floatChannelData?[0] else { return }
+      box.append(
+        Array(UnsafeBufferPointer(start: channel, count: Int(buffer.frameLength))),
+        sampleRate: buffer.format.sampleRate
+      )
+    }
+    engine.prepare()
+    do {
+      try engine.start()
+    } catch {
+      // Nothing half-built survives a failed press: the next one starts from
+      // an empty box and no engine, which is what makes a failure recoverable
+      // rather than the beginning of a stuck state.
+      input.removeTap(onBus: 0)
+      _ = box.end()
+      throw error
+    }
+    self.engine = engine
+  }
+
+  func stop() -> HeldSpeechClip? {
+    guard let engine else {
+      return nil
+    }
+    engine.stop()
+    engine.inputNode.removeTap(onBus: 0)
+    self.engine = nil
+    return capture.end()
+  }
+}
+
+/// Puts [text] on the clipboard, which needs no entitlement to write.
+@MainActor
+func copyToPasteboard(_ text: String) {
+  let pasteboard = NSPasteboard.general
+  pasteboard.clearContents()
+  pasteboard.setString(text, forType: .string)
 }

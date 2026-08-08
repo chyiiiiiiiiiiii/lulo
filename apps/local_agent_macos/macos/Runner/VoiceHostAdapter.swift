@@ -595,132 +595,12 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
     let terms = vocabulary.all
     Task { @MainActor in
       var heard: String?
-      if let url = await Self.writeHeldClip(clip) {
-        heard = await Self.transcribeHeld(url, terms: terms)
+      if let url = await HeldSpeech.writeHeldClip(clip) {
+        heard = await HeldSpeech.transcribeHeld(url, terms: terms)
       }
       // The conversation treats unreachable and heard-nothing alike: either
       // way the streamed transcript stands.
       self.emit(.heldTranscript, text: heard ?? "")
-    }
-  }
-
-  /// Deletes held-speech WAVs older than an hour.
-  ///
-  /// These are recordings of somebody's voice. They were written to be
-  /// re-listened to while recognisers were being compared, and nothing ever
-  /// removed them, so they accumulated for as long as the machine ran. An
-  /// hour is long enough to still have the clip that just went wrong.
-  nonisolated private static func sweepHeldClips() {
-    let manager = FileManager.default
-    let directory = manager.temporaryDirectory
-    guard
-      let entries = try? manager.contentsOfDirectory(
-        at: directory,
-        includingPropertiesForKeys: [.contentModificationDateKey]
-      )
-    else {
-      return
-    }
-    let cutoff = Date().addingTimeInterval(-3600)
-    for entry in entries where entry.lastPathComponent.hasPrefix("lulo-held-") {
-      let modified = try? entry.resourceValues(
-        forKeys: [.contentModificationDateKey]
-      ).contentModificationDate
-      if let modified, modified < cutoff {
-        try? manager.removeItem(at: entry)
-      }
-    }
-  }
-
-  /// Writes one held utterance to a WAV beside the logs — the same audio
-  /// Apple heard, kept so recognisers can be judged on real utterances.
-  private static func writeHeldClip(_ clip: HeldSpeechClip) async -> URL? {
-    await Task.detached(priority: .userInitiated) { () -> URL? in
-      // Off the main thread, alongside the write that needs it anyway.
-      Self.sweepHeldClips()
-      let url = FileManager.default.temporaryDirectory
-        .appendingPathComponent(
-          String(format: "lulo-held-%.0f.wav", Date().timeIntervalSince1970)
-        )
-      guard
-        let format = AVAudioFormat(
-          commonFormat: .pcmFormatFloat32,
-          sampleRate: clip.sampleRate,
-          channels: 1,
-          interleaved: false
-        ),
-        let buffer = AVAudioPCMBuffer(
-          pcmFormat: format,
-          frameCapacity: AVAudioFrameCount(clip.samples.count)
-        )
-      else {
-        return nil
-      }
-      clip.samples.withUnsafeBufferPointer { raw in
-        buffer.floatChannelData![0].update(
-          from: raw.baseAddress!,
-          count: clip.samples.count
-        )
-      }
-      buffer.frameLength = AVAudioFrameCount(clip.samples.count)
-      do {
-        let file = try AVAudioFile(forWriting: url, settings: format.settings)
-        try file.write(from: buffer)
-        NSLog(
-          "Lulo ptt: captured %.1fs -> %@",
-          Double(clip.samples.count) / clip.sampleRate,
-          url.path
-        )
-        return url
-      } catch {
-        NSLog("Lulo ptt: clip not written (%@)", String(describing: error))
-        return nil
-      }
-    }.value
-  }
-
-  /// What the batch recogniser heard in [url], or empty when it could not
-  /// answer.
-  /// The batch recogniser's answer, or nil when it could not be reached.
-  ///
-  /// Nil and empty are different answers, even though this caller treats
-  /// them alike: the streamed transcript stands either way. They are kept
-  /// apart because "the recogniser is not running" and "the recogniser
-  /// heard nothing" are different things to tell anyone who asks, and
-  /// collapsing them at the boundary loses that for good.
-  private static func transcribeHeld(
-    _ url: URL,
-    terms: [String],
-    timeout: TimeInterval = 15
-  ) async -> String? {
-    guard let endpoint = URL(string: "http://127.0.0.1:46558/transcribe")
-    else {
-      return nil
-    }
-    var request = URLRequest(url: endpoint)
-    request.httpMethod = "POST"
-    request.timeoutInterval = timeout
-    request.httpBody = try? JSONSerialization.data(
-      withJSONObject: ["path": url.path, "terms": terms]
-    )
-    do {
-      let (data, response) = try await URLSession.shared.data(for: request)
-      guard (response as? HTTPURLResponse)?.statusCode == 200,
-        let payload = try? JSONSerialization.jsonObject(with: data)
-          as? [String: Any],
-        payload["ok"] as? Bool == true,
-        let text = payload["text"] as? String
-      else {
-        return nil
-      }
-      NSLog("Lulo ptt: batch recogniser heard %d chars", text.count)
-      return text
-    } catch {
-      NSLog(
-        "Lulo ptt: batch recogniser unreachable (%@)",
-        String(describing: error)
-      )
-      return nil
     }
   }
 
@@ -752,7 +632,7 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
       // roughly a quarter of real time, so this covers about forty minutes
       // of audio; past that the sidecar is still working and this has
       // stopped waiting, which is reported as having heard nothing.
-      let heard = await Self.transcribeHeld(
+      let heard = await HeldSpeech.transcribeHeld(
         URL(fileURLWithPath: path),
         terms: terms,
         timeout: 600
@@ -2631,5 +2511,133 @@ private final class ResumeOnce: @unchecked Sendable {
     continuation = nil
     lock.unlock()
     pending?.resume()
+  }
+}
+
+/// Held speech on its way to the batch recogniser.
+///
+/// Lifted out of `VoiceHostAdapter` because none of it needs that class or
+/// the macOS 26 it is gated on: one writes a WAV, one deletes old ones, and
+/// one posts a path to a sidecar over loopback. Dictation needs all three
+/// and must not carry a version requirement it has no use for.
+enum HeldSpeech {
+  /// Deletes held-speech WAVs older than an hour.
+  ///
+  /// These are recordings of somebody's voice. They were written to be
+  /// re-listened to while recognisers were being compared, and nothing ever
+  /// removed them, so they accumulated for as long as the machine ran. An
+  /// hour is long enough to still have the clip that just went wrong.
+  static func sweepHeldClips() {
+    let manager = FileManager.default
+    let directory = manager.temporaryDirectory
+    guard
+      let entries = try? manager.contentsOfDirectory(
+        at: directory,
+        includingPropertiesForKeys: [.contentModificationDateKey]
+      )
+    else {
+      return
+    }
+    let cutoff = Date().addingTimeInterval(-3600)
+    for entry in entries where entry.lastPathComponent.hasPrefix("lulo-held-") {
+      let modified = try? entry.resourceValues(
+        forKeys: [.contentModificationDateKey]
+      ).contentModificationDate
+      if let modified, modified < cutoff {
+        try? manager.removeItem(at: entry)
+      }
+    }
+  }
+
+  /// Writes one held utterance to a WAV beside the logs — the same audio
+  /// Apple heard, kept so recognisers can be judged on real utterances.
+  static func writeHeldClip(_ clip: HeldSpeechClip) async -> URL? {
+    await Task.detached(priority: .userInitiated) { () -> URL? in
+      // Off the main thread, alongside the write that needs it anyway.
+      HeldSpeech.sweepHeldClips()
+      let url = FileManager.default.temporaryDirectory
+        .appendingPathComponent(
+          String(format: "lulo-held-%.0f.wav", Date().timeIntervalSince1970)
+        )
+      guard
+        let format = AVAudioFormat(
+          commonFormat: .pcmFormatFloat32,
+          sampleRate: clip.sampleRate,
+          channels: 1,
+          interleaved: false
+        ),
+        let buffer = AVAudioPCMBuffer(
+          pcmFormat: format,
+          frameCapacity: AVAudioFrameCount(clip.samples.count)
+        )
+      else {
+        return nil
+      }
+      clip.samples.withUnsafeBufferPointer { raw in
+        buffer.floatChannelData![0].update(
+          from: raw.baseAddress!,
+          count: clip.samples.count
+        )
+      }
+      buffer.frameLength = AVAudioFrameCount(clip.samples.count)
+      do {
+        let file = try AVAudioFile(forWriting: url, settings: format.settings)
+        try file.write(from: buffer)
+        NSLog(
+          "Lulo ptt: captured %.1fs -> %@",
+          Double(clip.samples.count) / clip.sampleRate,
+          url.path
+        )
+        return url
+      } catch {
+        NSLog("Lulo ptt: clip not written (%@)", String(describing: error))
+        return nil
+      }
+    }.value
+  }
+
+  /// What the batch recogniser heard in [url], or empty when it could not
+  /// answer.
+  /// The batch recogniser's answer, or nil when it could not be reached.
+  ///
+  /// Nil and empty are different answers, even though this caller treats
+  /// them alike: the streamed transcript stands either way. They are kept
+  /// apart because "the recogniser is not running" and "the recogniser
+  /// heard nothing" are different things to tell anyone who asks, and
+  /// collapsing them at the boundary loses that for good.
+  static func transcribeHeld(
+    _ url: URL,
+    terms: [String],
+    timeout: TimeInterval = 15
+  ) async -> String? {
+    guard let endpoint = URL(string: "http://127.0.0.1:46558/transcribe")
+    else {
+      return nil
+    }
+    var request = URLRequest(url: endpoint)
+    request.httpMethod = "POST"
+    request.timeoutInterval = timeout
+    request.httpBody = try? JSONSerialization.data(
+      withJSONObject: ["path": url.path, "terms": terms]
+    )
+    do {
+      let (data, response) = try await URLSession.shared.data(for: request)
+      guard (response as? HTTPURLResponse)?.statusCode == 200,
+        let payload = try? JSONSerialization.jsonObject(with: data)
+          as? [String: Any],
+        payload["ok"] as? Bool == true,
+        let text = payload["text"] as? String
+      else {
+        return nil
+      }
+      NSLog("Lulo ptt: batch recogniser heard %d chars", text.count)
+      return text
+    } catch {
+      NSLog(
+        "Lulo ptt: batch recogniser unreachable (%@)",
+        String(describing: error)
+      )
+      return nil
+    }
   }
 }

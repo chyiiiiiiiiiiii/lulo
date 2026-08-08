@@ -425,6 +425,52 @@ final class DesktopPanelControllerTests: XCTestCase {
     stack.contains(number)
   }
 
+  func testTheMenuBarSaysHowADictationWent() {
+    // A dictation happens while the user is working in somebody else's app,
+    // so anything drawn inside Lulo's own window is drawn where nobody is
+    // looking. Four outcomes, four different things to do about them, and a
+    // line for each — a single "dictation failed" sends the user to try the
+    // three that cannot help.
+    let controller = MenuBarController(
+      panelController: Self.makeController(),
+      statusBar: NSStatusBar()
+    )
+
+    XCTAssertNil(
+      controller.dictationNoticeForTesting,
+      "nothing to say before anything has been dictated"
+    )
+
+    controller.reportDictation(.copied(characters: 12))
+    XCTAssertEqual(controller.dictationNoticeForTesting, "Copied 12 characters")
+
+    controller.reportDictation(.recogniserUnreachable)
+    XCTAssertEqual(
+      controller.dictationNoticeForTesting,
+      "The recogniser is not running",
+      "the sidecar being down is its own answer, not \"heard nothing\""
+    )
+
+    controller.reportDictation(.heardNothing)
+    XCTAssertEqual(
+      controller.dictationNoticeForTesting,
+      "Heard nothing — say it again"
+    )
+
+    controller.reportDictation(.microphoneUnavailable)
+    XCTAssertEqual(
+      controller.dictationNoticeForTesting,
+      "The microphone would not open"
+    )
+
+    XCTAssertTrue(
+      controller.itemsForTesting.contains {
+        $0.title == "The microphone would not open"
+      },
+      "the notice has to be in the menu, not only in the field behind it"
+    )
+  }
+
   func testTheWindowStaysWhereTheUserPutIt() {
     let controller = Self.makeController()
     controller.show()
