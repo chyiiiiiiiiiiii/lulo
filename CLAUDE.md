@@ -264,6 +264,8 @@ It matches the **build directory**, not the process name, so a Lulo installed to
 
 `.claude/settings.json` runs it as a `Stop` hook, so it also happens at the end of every turn without anybody remembering to. Report the gate's result and the sweep together anyway: the hook fires after the reply is written, so a report that does not mention the sweep was written before it ran.
 
+**Which means the gate cannot be left running across a turn boundary.** The hook's pattern is `Products/(Debug|Profile)/Lulo.app`, and that is exactly where the xcodebuild test host and the two integration-test windows live — so a background run that is still going when a reply is written gets its own host `pkill`ed. The xcresult records that as `Test crashed with signal term.`: no assertion, no message, 0.000 seconds, and `verify.dart` reports it as an ordinary failed step. Run the gate in the foreground, and the same for any `-only-testing:` run of the device tests. Measured 2026-08-08, where a backgrounded `SecondAudioEngineTests` died at the exact turn boundary and the same command passed four times when nothing swept underneath it.
+
 Once the gate is green, put the app where the user can actually run it:
 
 ```sh

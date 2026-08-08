@@ -105,6 +105,23 @@ TEST_RUNNER_LULO_AUDIO_DEVICE_TESTS=1 xcodebuild test \
   -only-testing:RunnerTests/SecondAudioEngineTests
 ```
 
+Re-measured 2026-08-08, four runs: `testTwoEnginesCanTapTheInputAtOnce`
+passes in 1.4–1.7s every time. Two things that had been open close with it.
+The 86-second engine build seen once in the test host on 2026-08-08 does not
+reproduce — `testAWarmEngineDoesNotHoldTheMicrophone` runs in 0.45–1.9s
+across all four — so it was not a second the user will pay at the first
+press. And `testAWarmEngineMakesStartingToListenQuick` lands at 0.09–0.11s
+against its 300ms bound, which is the 90ms claim standing up on a fifth
+occasion.
+
+A fifth run failed and is not evidence about audio: **the repository's own
+`Stop` hook killed it.** `sweep_app_instances.sh` matches
+`Products/(Debug|Profile)/Lulo.app`, which is exactly where the xcodebuild
+test host lives, and `.claude/settings.json` runs it at the end of every
+turn. A device test left running across a turn boundary is `pkill`ed
+mid-flight, and the xcresult records it as `Test crashed with signal term.`
+— no assertion, no message, 0.000 seconds. Run these in the foreground.
+
 ### Two wrong explanations for a hang that was environmental
 
 The answer above took three tries to get, and the two failed ones are worth
