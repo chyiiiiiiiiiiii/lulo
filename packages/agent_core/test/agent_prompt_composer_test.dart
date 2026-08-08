@@ -69,6 +69,36 @@ void main() {
     expect(second.systemInstruction, first.systemInstruction);
   });
 
+  test('the length names what makes an answer long, not just a ceiling', () {
+    // A ceiling is read as a target. Measured against the real model, 「三句話
+    // 以內」 produced four answers of exactly three sentences to four
+    // questions of wildly different weight, the third sentence of each one
+    // padding — and in a running conversation it was worse, because the model
+    // copies the shape of its own previous answers: the hardest question
+    // came back at 48 characters in conversation against 89 asked alone.
+    //
+    // Naming the trigger instead — steps, comparisons, reasons — gives it a
+    // rule it can apply per question rather than a habit it applies to all of
+    // them. Same five questions, same seeds: 15 characters for 「早安」 and 201
+    // for a comparison, against 16 and 48. See
+    // `docs/decisions/answer-length-should-follow-the-question.md`.
+    final AgentPromptContext concise = composeAgentPrompt(
+      profile: AgentProfile(),
+      prompt: '幫我想一個週末可以做的活動。',
+    );
+    expect(concise.systemInstruction, contains('一到三句'));
+    expect(
+      concise.systemInstruction,
+      contains('比較'),
+      reason: 'the trigger has to be nameable in the question itself',
+    );
+    expect(
+      concise.systemInstruction,
+      contains('不要為了湊長度補話'),
+      reason: 'without this the raised ceiling becomes the new target',
+    );
+  });
+
   test('the spoken length is a sentence budget, not an adjective', () {
     // "Concise" produced answers averaging 172 characters — 27 seconds of
     // Mandarin speech for a conversational question. The same profile with a
@@ -78,7 +108,7 @@ void main() {
       profile: AgentProfile(),
       prompt: '幫我想一個週末可以做的活動。',
     );
-    expect(concise.systemInstruction, contains('三句話以內'));
+    expect(concise.systemInstruction, contains('一到三句'));
     expect(concise.systemInstruction, contains('這是用說的'));
 
     final AgentPromptContext detailed = composeAgentPrompt(
@@ -89,13 +119,13 @@ void main() {
       ),
       prompt: '幫我想一個週末可以做的活動。',
     );
-    expect(detailed.systemInstruction, isNot(contains('三句話以內')));
+    expect(detailed.systemInstruction, isNot(contains('一到三句')));
 
     // The budget belongs to the section about speaking, because that is what
     // it is a constraint on.
     final int spoken = concise.systemInstruction.indexOf('[語音回答方式]');
     final int preferences = concise.systemInstruction.indexOf('[使用者偏好]');
-    final int budget = concise.systemInstruction.indexOf('三句話以內');
+    final int budget = concise.systemInstruction.indexOf('一到三句');
     expect(budget, greaterThan(spoken));
     expect(budget, lessThan(preferences));
   });
@@ -120,7 +150,7 @@ void main() {
         ),
         prompt: '幫我想一個週末可以做的活動。',
       );
-      expect(result.systemInstruction, isNot(contains('三句話以內')));
+      expect(result.systemInstruction, isNot(contains('一到三句')));
     },
   );
 

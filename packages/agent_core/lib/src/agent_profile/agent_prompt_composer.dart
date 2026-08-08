@@ -342,33 +342,57 @@ String _appendSectionWithin(
   return result;
 }
 
-/// How long a spoken answer may run, as a number of sentences.
+/// How long an answer may run, as a typical length and what raises it.
 ///
 /// The adjective on its own was not an instruction. Asked five
 /// conversational questions with `concise` spelled out only as 簡潔,
 /// gemma-4-E4B answered in 172 characters on average — twenty-seven seconds
 /// of Mandarin speech, where nobody in a conversation talks for twenty-seven
-/// seconds. The same profile with a sentence budget answered in 64, and the
-/// answers were whole thoughts rather than truncated ones: one of them ended
-/// by asking a question back.
+/// seconds. The same profile with a sentence budget answered in 64.
 ///
-/// Telling it to stop is not enough on its own — the second clause says
-/// where the rest of the answer went, so stopping reads as leaving room
-/// rather than as running out.
+/// But a ceiling is read as a target. 「三句話以內」 produced four answers of
+/// exactly three sentences to four questions of wildly different weight,
+/// the third sentence of each one padding — and in a running conversation it
+/// was worse, because the model copies the shape of its own previous
+/// answers: the heaviest question came back at 48 characters in conversation
+/// against 89 asked alone. A mean length cannot see that; the spread can.
+///
+/// So this names a typical length **and** what raises it. The triggers are
+/// words that appear in the question itself — steps, a comparison, a reason
+/// — which gives the model a rule it can apply per question rather than a
+/// habit it applies to all of them. Measured over the same five questions,
+/// in one conversation: 15 characters for 「早安」 and 201 for a comparison,
+/// against 16 and 48 for the ceiling.
+///
+/// The last clause is not decoration. Without 「不要為了湊長度補話」 the
+/// raised ceiling becomes the new target and every answer grows to eight
+/// sentences instead of three — the same defect with a bigger number.
+///
+/// An escape clause was measured too and is worse: 「三句話以內，除非使用者要
+/// 細節」 compressed the spread further *and* loosened the identity block
+/// three sections above it, answering 「我叫 Gemma 4。我是由 Google DeepMind
+/// 開發的。」 to its own name. See
+/// `docs/decisions/answer-length-should-follow-the-question.md`.
 String _zhSpokenLength(AgentResponseLength length) => switch (length) {
-  AgentResponseLength.concise => '回答控制在三句話以內；講完核心就停，細節等使用者追問再說。',
-  AgentResponseLength.balanced => '回答控制在五句話以內；講完核心就停，細節等使用者追問再說。',
+  AgentResponseLength.concise =>
+    '多數問題一到三句就夠；需要步驟、比較或說明原因時可以到七八句。'
+        '講完就停，不要為了湊長度補話。',
+  AgentResponseLength.balanced =>
+    '多數問題一到五句就夠；需要步驟、比較或說明原因時可以更長。'
+        '講完就停，不要為了湊長度補話。',
   AgentResponseLength.detailed => '可以講得完整一些，但仍然是講話，不是寫文章。',
 };
 
 /// [_zhSpokenLength] for a question asked in English.
 String _spokenLength(AgentResponseLength length) => switch (length) {
   AgentResponseLength.concise =>
-    'Answer in three sentences or fewer; stop after the core of it and '
-        'leave the detail for the user to ask about.',
+    'One to three sentences answer most questions; go to seven or eight '
+        'when the question needs steps, a comparison, or a reason. Stop when '
+        'you are done, and never pad to fill the room.',
   AgentResponseLength.balanced =>
-    'Answer in five sentences or fewer; stop after the core of it and '
-        'leave the detail for the user to ask about.',
+    'One to five sentences answer most questions; go longer when the '
+        'question needs steps, a comparison, or a reason. Stop when you are '
+        'done, and never pad to fill the room.',
   AgentResponseLength.detailed =>
     'You may answer more fully, but this is still talking, not writing.',
 };
