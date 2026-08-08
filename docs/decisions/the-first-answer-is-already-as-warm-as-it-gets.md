@@ -82,6 +82,29 @@ prints them next to each other. It carries no assertion: there is no
 threshold here that means anything, and what is worth keeping is the two
 numbers taken the same way, for the next person who has this idea.
 
+## Where a warm-up cost is worth measuring, and where it is not
+
+The audio engine's warm-up is the same idea applied to something it does
+work on, and its numbers are worth keeping beside these because they were
+taken in three places and only one of them was the app:
+
+| | first `makeWarmEngine()` |
+|---|---|
+| bare `swift` script | 1098 ms |
+| XCTest host, with the app's own warm-up also running | **86 s** |
+| XCTest host, once the app's warm-up is guarded off | 5.5 s |
+| **the real app** | **1077 ms** |
+
+The 86 seconds was two engines being built at once — the test host *is* the
+app, so its `VoiceHostAdapter.init` was warming one up beside the one the
+test was building, and they contended. Guarding the warm-up off under
+XCTest removed it. The 5.5 s that remained is the first CoreAudio touch in
+that process, and it is not the app's number either.
+
+So a measurement taken in the test host said 86 s, then 5.5 s, for something
+the app does in 1.08 s. Neither was wrong about what it measured; both were
+wrong about what they were taken to mean.
+
 ## What is left worth doing
 
 Not making the first answer faster — 1.25 s of preface prefill is the price

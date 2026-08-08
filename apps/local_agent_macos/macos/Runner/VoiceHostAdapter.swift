@@ -1406,9 +1406,20 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
       return
     }
     warmingUp = Task { @MainActor [weak self] in
+      let startedAt = ProcessInfo.processInfo.systemUptime
       let built = try? await Task.detached(priority: .utility) {
         try Self.makeWarmEngine()
       }.value
+      // What the warm-up really costs in this app, as opposed to in a test
+      // host or a bare script. Both of those were measured and neither is
+      // this process: the test host runs the whole app delegate beside it,
+      // and a script runs nothing. A press that lands inside this window
+      // waits for it, so the number is worth having.
+      NSLog(
+        "Lulo voice: warm engine %@ in %.0f ms",
+        built == nil ? "failed" : "ready",
+        (ProcessInfo.processInfo.systemUptime - startedAt) * 1000
+      )
       guard let self else {
         built?.engine.stop()
         return
