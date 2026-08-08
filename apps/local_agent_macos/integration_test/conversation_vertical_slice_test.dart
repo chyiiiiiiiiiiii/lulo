@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 import 'package:local_agent_macos/app/app.dart';
 import 'package:local_agent_macos/app/bootstrap.dart';
+import 'package:local_agent_macos/features/settings/app_settings.dart';
 import 'package:local_agent_macos/platform/desktop_host_service.dart';
 
 void main() {
@@ -13,7 +14,21 @@ void main() {
   testWidgets(
     'fake runtime stops partial output then completes a second response',
     (WidgetTester tester) async {
-      final composition = createAppComposition(inferenceRuntime: 'fake');
+      // Its own settings, rather than the ones in the app's container. Read
+      // from there, this slice passed on a machine with a model installed and
+      // failed on every machine without one: with an empty `modelPath` the
+      // first-run offer covers the conversation, so the composer never took
+      // the text and the submit button stayed disabled. The path is a
+      // fiction and can be — the runtime here is the fake one, and nothing
+      // opens the file. What it stands for is the only thing this test needs
+      // from settings: that a model has been chosen, so the conversation is
+      // what the window is showing.
+      final composition = createAppComposition(
+        inferenceRuntime: 'fake',
+        settingsStore: InMemorySettingsStore(
+          const AppSettings(modelPath: '/nonexistent/chosen.litertlm'),
+        ),
+      );
       await tester.pumpWidget(
         LocalAgentApp(
           composition: composition,
