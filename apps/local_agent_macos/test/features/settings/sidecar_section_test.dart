@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:local_agent_macos/features/settings/settings_sheet.dart';
@@ -15,7 +17,7 @@ void main() {
             probe: SidecarHealthProbe(
               connect: (int port, Duration timeout) async {
                 if (!listening.contains(port)) {
-                  throw const SocketRefused();
+                  throw const SocketException('connection refused');
                 }
               },
             ),
@@ -95,7 +97,7 @@ void main() {
                 probe: SidecarHealthProbe(
                   connect: (int port, Duration timeout) async {
                     if (!listening.contains(port)) {
-                      throw const SocketRefused();
+                      throw const SocketException('connection refused');
                     }
                   },
                 ),

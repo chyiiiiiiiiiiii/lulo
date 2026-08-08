@@ -30,16 +30,23 @@ enum Sidecar {
   final int port;
 }
 
-/// A connection refused rather than merely slow.
+/// Opens a connection to [port] on loopback and closes it again.
 ///
-/// Its own type so a test can say "nothing is listening" without depending
-/// on `dart:io` raising a particular platform error.
-final class SocketRefused implements Exception {
-  /// Creates the refusal.
-  const SocketRefused();
-
-  @override
-  String toString() => 'SocketRefused';
+/// Named rather than private because it is the only way of asking that ever
+/// runs outside a test, and a probe with an injected `connect` proves
+/// nothing about it. There used to be a `SocketRefused` here as well, thrown
+/// by four test fakes and by nothing else — so what the probe's catch was
+/// proven against was a type production could not raise. `dart:io` raises
+/// `SocketException`, the fakes raise it too now, and this is where it comes
+/// from.
+Future<void> openLoopbackSocket(int port, Duration timeout) async {
+  final Socket socket = await Socket.connect(
+    InternetAddress.loopbackIPv4,
+    port,
+    timeout: timeout,
+  );
+  // Nothing is sent. Opening it answered the question.
+  socket.destroy();
 }
 
 /// Which sidecars answered.
@@ -71,9 +78,14 @@ final class SidecarHealthProbe {
   /// Creates a probe, optionally over an injected [connect].
   const SidecarHealthProbe({
     Future<void> Function(int port, Duration timeout)? connect,
-  }) : _connect = connect ?? _openSocket;
+  }) : connect = connect ?? openLoopbackSocket;
 
-  final Future<void> Function(int port, Duration timeout) _connect;
+  /// How it asks. [openLoopbackSocket] unless a test said otherwise.
+  ///
+  /// Readable so a test can say that a probe nobody handed anything to is
+  /// the one that opens a real socket. Left private, a default swapped for
+  /// something else would keep every test passing.
+  final Future<void> Function(int port, Duration timeout) connect;
 
   /// How long a port gets to answer.
   ///
@@ -112,20 +124,10 @@ final class SidecarHealthProbe {
   /// to the user, which is that it is not there.
   Future<void> _ask(Sidecar sidecar, Set<Sidecar> running) async {
     try {
-      await _connect(sidecar.port, timeout);
+      await connect(sidecar.port, timeout);
       running.add(sidecar);
     } on Object {
       return;
     }
   }
-}
-
-Future<void> _openSocket(int port, Duration timeout) async {
-  final Socket socket = await Socket.connect(
-    InternetAddress.loopbackIPv4,
-    port,
-    timeout: timeout,
-  );
-  // Nothing is sent. Opening it answered the question.
-  socket.destroy();
 }

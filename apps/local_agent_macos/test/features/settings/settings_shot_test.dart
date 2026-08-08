@@ -105,7 +105,7 @@ void main() {
           probe: SidecarHealthProbe(
             connect: (int port, Duration timeout) async {
               if (port != Sidecar.ears.port) {
-                throw const SocketRefused();
+                throw const SocketException('connection refused');
               }
             },
           ),
