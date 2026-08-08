@@ -66,6 +66,7 @@ final class ConversationView extends StatefulWidget {
   const ConversationView({
     required this.viewModelFactory,
     this.onShowHistory,
+    this.modelLoading,
     this.voiceService,
     this.transcriptRefiner,
     this.transcriptShadow,
@@ -118,6 +119,16 @@ final class ConversationView extends StatefulWidget {
   /// Null hides the button: surfaces with no store behind them have no list
   /// to show.
   final VoidCallback? onShowHistory;
+
+  /// Whether the local model is still loading.
+  ///
+  /// Loading it takes seconds — measured on the real one at 3.7-8.5 s against
+  /// 1.5 s for the first answer once it is in memory — and `warmUp()` starts
+  /// it at launch, so a question asked in the first few seconds waits for it
+  /// with nothing on screen to say why. That wait is indistinguishable from a
+  /// hang. Null where nothing knows: the tests that do not care, and the
+  /// preview runtime that has no model to load.
+  final ValueListenable<bool>? modelLoading;
 
   /// The ears and mouth behind the microphone button.
   ///
@@ -309,6 +320,8 @@ final class _ConversationViewState extends State<ConversationView> {
                     widget.buildObserver?.activeStreamingTurnBuilds += 1,
               ),
             ),
+            if (widget.modelLoading != null)
+              _ModelLoadingNotice(loading: widget.modelLoading!),
             if (_voice != null) _HeardSoFar(voice: _voice!),
             if (widget.showVoiceEvidence) VoiceTurnHud(log: _turnLog),
             ConversationComposer(
@@ -322,6 +335,55 @@ final class _ConversationViewState extends State<ConversationView> {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// Says the model is still loading, and nothing at all once it is not.
+///
+/// Deliberately not a spinner over the whole surface: the app is usable while
+/// the model loads — the scrollback, the settings and the history are all
+/// there — and only an answer has to wait. A question typed now is not
+/// refused either; it waits on the same readiness attempt the warm-up
+/// started. This explains a wait rather than preventing one.
+final class _ModelLoadingNotice extends StatelessWidget {
+  const _ModelLoadingNotice({required this.loading});
+
+  final ValueListenable<bool> loading;
+
+  @override
+  Widget build(BuildContext context) {
+    final ThemeData theme = Theme.of(context);
+    return ValueListenableBuilder<bool>(
+      valueListenable: loading,
+      builder: (BuildContext context, bool isLoading, Widget? child) {
+        if (!isLoading) {
+          return const SizedBox.shrink();
+        }
+        return Padding(
+          key: const Key('conversation-model-loading'),
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+          child: Row(
+            children: <Widget>[
+              SizedBox(
+                width: 12,
+                height: 12,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                AppLocalizations.of(context).conversationModelLoading,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 }

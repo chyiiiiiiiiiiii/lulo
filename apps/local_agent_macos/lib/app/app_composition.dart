@@ -46,6 +46,7 @@ final class AppComposition {
     AgentProfileStore? agentProfile,
     ValueNotifier<AnswerStyle>? answerStyle,
     ValueNotifier<int>? voiceRequests,
+    ValueNotifier<bool>? modelLoading,
   }) : voiceRequests = voiceRequests ?? ValueNotifier<int>(0),
        answerStyle =
            answerStyle ?? ValueNotifier<AnswerStyle>(AnswerStyle.balanced),
@@ -55,6 +56,7 @@ final class AppComposition {
            transcriptRefiner ?? const DeterministicTranscriptRefiner(),
        protectedVocabulary = protectedVocabulary ?? _emptyVocabulary,
        misheard = misheard ?? _nothingMisheard,
+       modelLoading = modelLoading ?? ValueNotifier<bool>(false),
        openDocument = openDocument ?? ValueNotifier<String>(''),
        openDocumentName = openDocumentName ?? ValueNotifier<String?>(null),
        floorControl = floorControl ?? _builtInFloorControl,
@@ -143,6 +145,15 @@ final class AppComposition {
   /// about are sent, so a file left open that the next question has nothing
   /// to do with costs nothing — which is what makes leaving one open safe.
   final ValueNotifier<String> openDocument;
+
+  /// Whether the local model is still loading.
+  ///
+  /// Owned here rather than read off the inference service, because the thing
+  /// that knows is the warm-up the composition root starts: the service is
+  /// swappable and the readiness would have to be forwarded across a swap for
+  /// no gain. False by default — the preview runtime has no model to load, so
+  /// nothing about it is ever loading.
+  final ValueNotifier<bool> modelLoading;
 
   /// What that file is called, for the app to say what it is reading.
   final ValueNotifier<String?> openDocumentName;

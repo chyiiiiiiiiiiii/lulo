@@ -285,6 +285,12 @@ abstract class AppLocalizations {
   /// **'Start a conversation'**
   String get conversationEmptyTitle;
 
+  /// Shown while the local model is still loading, so a question asked in the first seconds after launch is not a silent wait.
+  ///
+  /// In en, this message translates to:
+  /// **'Loading the model…'**
+  String get conversationModelLoading;
+
   /// No description provided for @conversationEmptyNote.
   ///
   /// In en, this message translates to:

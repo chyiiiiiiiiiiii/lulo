@@ -48,6 +48,10 @@
   },
   "jumpToNewest": "Jump to the newest message",
   "conversationEmptyTitle": "Start a conversation",
+  "conversationModelLoading": "Loading the model…",
+  "@conversationModelLoading": {
+    "description": "Shown while the local model is still loading, so a question asked in the first seconds after launch is not a silent wait."
+  },
   "conversationEmptyNote": "Private, fast, and ready on this Mac.",
   "conversationsTitle": "Conversations",
   "newConversation": "New conversation",

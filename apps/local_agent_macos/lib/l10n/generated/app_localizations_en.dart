@@ -106,6 +106,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get conversationEmptyTitle => 'Start a conversation';
 
   @override
+  String get conversationModelLoading => 'Loading the model…';
+
+  @override
   String get conversationEmptyNote => 'Private, fast, and ready on this Mac.';
 
   @override

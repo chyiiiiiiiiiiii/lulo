@@ -31,6 +31,7 @@
   "heardDoubtTooltip": "最弱的一個詞只有 {score} 分；低於 {threshold} 就會標記。",
   "jumpToNewest": "跳到最新的訊息",
   "conversationEmptyTitle": "開始對話",
+  "conversationModelLoading": "正在載入模型…",
   "conversationEmptyNote": "都在這台 Mac 上，不外傳、也不用等。",
   "conversationsTitle": "對話紀錄",
   "newConversation": "開新對話",

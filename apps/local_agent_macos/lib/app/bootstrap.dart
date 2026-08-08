@@ -187,6 +187,9 @@ AppComposition createAppComposition({
       );
   final PigeonDesktopHostService desktopHostService =
       PigeonDesktopHostService();
+  // Owned here so it survives a model swap: the service behind it is replaced,
+  // and the thing the interface watches must not be.
+  final ValueNotifier<bool> modelLoading = ValueNotifier<bool>(false);
   final SwappableInferenceService inferenceService;
   try {
     inferenceService = SwappableInferenceService(
@@ -196,6 +199,7 @@ AppComposition createAppComposition({
         desktopHostService: desktopHostService,
         agentContext: agentContext,
         answerStyle: () => answerStyle.value,
+        modelLoading: modelLoading,
       ),
     );
   } on Object {
@@ -231,6 +235,7 @@ AppComposition createAppComposition({
     protectedVocabulary: () => profileStore.current.vocabulary,
     misheard: () => profileStore.current.misheard,
     sidecarProbe: const SidecarHealthProbe(),
+    modelLoading: modelLoading,
     openDocument: openDocument,
     openDocumentName: openDocumentName,
     floorControl: () => profileStore.current.floorControl,
@@ -246,6 +251,7 @@ AppComposition createAppComposition({
         desktopHostService: desktopHostService,
         agentContext: agentContext,
         answerStyle: () => answerStyle.value,
+        modelLoading: modelLoading,
       ),
     ),
   );
@@ -291,6 +297,7 @@ OwnedInferenceService createInferenceService({
   required DesktopHostService desktopHostService,
   AgentContextProvider? agentContext,
   AnswerStyle Function()? answerStyle,
+  ValueNotifier<bool>? modelLoading,
 }) {
   if (inferenceRuntime == 'litert') {
     final String modelPath = localModelPath.trim();
@@ -321,7 +328,20 @@ OwnedInferenceService createInferenceService({
     // The failure is deliberately dropped here: the readiness attempt is
     // cleared when it fails, so the first real prompt retries and reports the
     // error through the conversation, where the user can actually see it.
-    unawaited(inferenceService.warmUp().catchError((Object _) {}));
+    //
+    // Said out loud while it runs. The load is seconds — measured on the real
+    // model at 3.7-8.5 s, against 1.5 s for the first answer once it is in
+    // memory — and a question asked inside that window waits for it with
+    // nothing to explain the wait, which is indistinguishable from a hang.
+    // Cleared on failure as well as success: the notice says "still loading",
+    // and a load that has stopped is not still loading whichever way it ended.
+    modelLoading?.value = true;
+    unawaited(
+      inferenceService
+          .warmUp()
+          .catchError((Object _) {})
+          .whenComplete(() => modelLoading?.value = false),
+    );
     return OwnedInferenceService(
       service: inferenceService,
       release: inferenceService.dispose,

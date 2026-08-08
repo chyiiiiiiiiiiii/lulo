@@ -11,6 +11,40 @@ import '../../support/controlled_inference_service.dart';
 import '../../support/recording_conversation_storage_service.dart';
 
 void main() {
+  testWidgets('a question asked while the model loads says so', (tester) async {
+    // The model takes seconds to load and `warmUp()` starts it at launch, so
+    // a question asked in the first few seconds waits for it with nothing on
+    // screen to explain the wait — which is indistinguishable from a hang.
+    // Measured on the real model: `initialize()` is 3.7-8.5 s, against 1.5 s
+    // for the first answer once it is loaded. See
+    // `docs/decisions/the-first-answer-is-already-as-warm-as-it-gets.md`.
+    final _Harness harness = _Harness();
+    harness.modelLoading.value = true;
+    await tester.pumpWidget(harness.app());
+
+    expect(find.byKey(const Key('conversation-model-loading')), findsOneWidget);
+
+    harness.modelLoading.value = false;
+    await tester.pump();
+
+    expect(
+      find.byKey(const Key('conversation-model-loading')),
+      findsNothing,
+      reason: 'the notice has to leave when the model is ready',
+    );
+  });
+
+  testWidgets('nothing is said when the model is already loaded', (
+    tester,
+  ) async {
+    // The ordinary case is a model loaded long before anyone types, and a
+    // banner that is always there is a banner nobody reads.
+    final _Harness harness = _Harness();
+    await tester.pumpWidget(harness.app());
+
+    expect(find.byKey(const Key('conversation-model-loading')), findsNothing);
+  });
+
   testWidgets('empty conversation presents a focused composer', (tester) async {
     final _Harness harness = _Harness();
     await tester.pumpWidget(harness.app());
@@ -229,10 +263,15 @@ final class _Harness {
 
   ConversationViewModel createViewModel() => viewModel;
 
+  final ValueNotifier<bool> modelLoading = ValueNotifier<bool>(false);
+
   Widget app() => MaterialApp(
     localizationsDelegates: AppLocalizations.localizationsDelegates,
     supportedLocales: AppLocalizations.supportedLocales,
-    home: ConversationView(viewModelFactory: createViewModel),
+    home: ConversationView(
+      viewModelFactory: createViewModel,
+      modelLoading: modelLoading,
+    ),
   );
 
   void start({String prompt = 'Hello'}) {

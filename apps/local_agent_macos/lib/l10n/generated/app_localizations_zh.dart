@@ -106,6 +106,9 @@ class AppLocalizationsZh extends AppLocalizations {
   String get conversationEmptyTitle => '開始對話';
 
   @override
+  String get conversationModelLoading => '正在載入模型…';
+
+  @override
   String get conversationEmptyNote => '都在這台 Mac 上，不外傳、也不用等。';
 
   @override

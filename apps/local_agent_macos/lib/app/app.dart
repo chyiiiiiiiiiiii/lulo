@@ -1029,6 +1029,7 @@ final class _PresentationSwitchState extends State<_PresentationSwitch>
       },
       child: ConversationView(
         key: _conversationKey,
+        modelLoading: widget.composition.modelLoading,
         voiceRequests: widget.composition.voiceRequests,
         composerSeed: _composerSeed.stream,
         viewModelFactory: () => widget.composition.createConversationViewModel(
