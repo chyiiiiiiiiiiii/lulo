@@ -341,30 +341,30 @@ final class DesktopPanelControllerTests: XCTestCase {
       width: side,
       height: side
     )
+    func stackAt(_ x: CGFloat, _ y: CGFloat) -> [Int] {
+      Self.stack(at: NSPoint(x: x, y: y))
+    }
     catcher.place(over: rect)
     // The server takes the window's shape from the drawing, so it is given the
     // run loop long enough to have received it.
     RunLoop.current.run(until: Date().addingTimeInterval(0.3))
     defer { catcher.place(over: nil) }
 
-    XCTAssertEqual(
-      NSWindow.windowNumber(
-        at: NSPoint(x: rect.midX, y: rect.midY),
-        belowWindowWithWindowNumber: 0
-      ),
-      catcher.windowNumber,
-      "A click on the resting orb went straight through the catcher"
+    let centreStack = stackAt(rect.midX, rect.midY)
+    XCTAssertTrue(
+      Self.window(catcher.windowNumber, ownsPointIn: centreStack),
+      """
+      A click on the resting orb went straight through the catcher. \
+      catcher \(catcher.windowNumber), stack there \(centreStack)
+      """
     )
 
     // And nothing beyond the orb itself: a corner of the square clear of it
     // still belongs to whatever is behind, because a resident assistant must
     // not be in anyone's way.
-    XCTAssertNotEqual(
-      NSWindow.windowNumber(
-        at: NSPoint(x: rect.minX + 4, y: rect.minY + 4),
-        belowWindowWithWindowNumber: 0
-      ),
-      catcher.windowNumber,
+    XCTAssertFalse(
+      Self.window(
+        catcher.windowNumber, ownsPointIn: stackAt(rect.minX + 4, rect.minY + 4)),
       "The catcher took a click that was clear of the orb"
     )
 
@@ -374,24 +374,55 @@ final class DesktopPanelControllerTests: XCTestCase {
     // that: clicking a file on the desktop beside the orb summoned the
     // conversation, and the tint the catcher has to draw to be there at all
     // had nothing of the orb over it to hide under.
-    XCTAssertNotEqual(
-      NSWindow.windowNumber(
-        at: NSPoint(x: rect.midX + side / 2 * 0.85, y: rect.midY),
-        belowWindowWithWindowNumber: 0
-      ),
-      catcher.windowNumber,
+    XCTAssertFalse(
+      Self.window(
+        catcher.windowNumber,
+        ownsPointIn: stackAt(rect.midX + side / 2 * 0.85, rect.midY)),
       "The catcher took a click on the desktop beside the orb"
     )
 
     // The body itself still answers, all the way to where it is solidly drawn.
-    XCTAssertEqual(
-      NSWindow.windowNumber(
-        at: NSPoint(x: rect.midX + side / 2 * 0.5, y: rect.midY),
-        belowWindowWithWindowNumber: 0
-      ),
-      catcher.windowNumber,
+    XCTAssertTrue(
+      Self.window(
+        catcher.windowNumber,
+        ownsPointIn: stackAt(rect.midX + side / 2 * 0.5, rect.midY)),
       "A click on the orb's own body went through the catcher"
     )
+  }
+
+  /// Every window the server says owns [point], topmost first.
+  ///
+  /// `NSWindow.windowNumber(at:belowWindowWithWindowNumber:)` alone answers
+  /// which window is *on top* there, and that is a different question from
+  /// the one this test asks. Anything at a higher window level owns every
+  /// point underneath it: measured on one machine, a menu-bar utility drawing
+  /// a layer-4 overlay across the screen centre, against the catcher's
+  /// `.floating` layer 3. That made this test report that a click went
+  /// straight through the orb — the exact bug it exists to catch — because
+  /// somebody else's app was running.
+  ///
+  /// Walking the stack asks what the catcher itself draws, which is the thing
+  /// that was broken and the thing worth guarding. A catcher that paints
+  /// nothing is absent from the stack at every point, so this still fails
+  /// exactly where it used to.
+  static func stack(at point: NSPoint) -> [Int] {
+    var found: [Int] = []
+    var below = 0
+    // Bounded: the server can hand back a cycle if the stack changes under
+    // the walk, and a test that hangs is worse than one that is wrong.
+    for _ in 0..<64 {
+      let number = NSWindow.windowNumber(at: point, belowWindowWithWindowNumber: below)
+      guard number > 0, !found.contains(number) else {
+        break
+      }
+      found.append(number)
+      below = number
+    }
+    return found
+  }
+
+  static func window(_ number: Int, ownsPointIn stack: [Int]) -> Bool {
+    stack.contains(number)
   }
 
   func testTheWindowStaysWhereTheUserPutIt() {

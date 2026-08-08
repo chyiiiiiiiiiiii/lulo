@@ -216,6 +216,22 @@ Future<void> main() async {
         ],
         workingDirectory: workspaceRoot.path,
       ),
+    // Close whatever the integration steps above left on screen, before the
+    // step that asks the window server questions.
+    //
+    // `testAClickOnTheRestingOrbReachesTheCatcher` asks who owns the point at
+    // the centre of the screen, and a window left over from the two steps
+    // above owns it instead — the test then reports that a click went
+    // straight through the orb, which is a real bug with a real cause and
+    // neither of them is this. It passes in isolation and fails here, which
+    // is the signature. CLAUDE.md has said to quit Lulo before running this
+    // since long before anything enforced it; this is the enforcement.
+    _VerificationCommand(
+      name: 'close leftover app windows',
+      executable: './tool/sweep_app_instances.sh',
+      arguments: const <String>[],
+      workingDirectory: workspaceRoot.path,
+    ),
     // The window is where this app's hardest bugs live, and its tests were
     // being written but never run: nothing here invoked them, so a rename of
     // the app quietly broke the test target and a click that went straight
