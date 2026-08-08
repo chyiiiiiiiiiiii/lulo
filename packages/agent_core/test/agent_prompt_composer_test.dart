@@ -69,6 +69,36 @@ void main() {
     expect(second.systemInstruction, first.systemInstruction);
   });
 
+  test('the first sentence has to be the answer, not a preamble', () {
+    // 「先回答核心」 was not enough of an instruction. Measured against the
+    // real model over five questions built to provoke a preamble, only one
+    // answer in five opened with the answer; the rest opened with 「兩者不
+    // 一樣」, 「原因比較多樣化」, 「這取決於」 — sentences that restate the
+    // question. Saying it plainly moved it to four in five.
+    //
+    // This matters more for speech than for text. A long answer is fine to
+    // hear if the first five seconds carried it and barge-in works, which
+    // here it does; five seconds of throat-clearing cannot be skimmed past.
+    // And the model preambles *more* as the question gets harder, which is
+    // exactly when leading with the answer matters most.
+    final AgentPromptContext zh = composeAgentPrompt(
+      profile: AgentProfile(),
+      prompt: '幫我比較跑步和游泳對膝蓋的影響。',
+    );
+    expect(zh.systemInstruction, contains('第一句'));
+    expect(
+      zh.systemInstruction,
+      contains('這個問題很複雜'),
+      reason: 'naming the preamble it must not open with is what moved it',
+    );
+
+    final AgentPromptContext en = composeAgentPrompt(
+      profile: AgentProfile(),
+      prompt: 'Compare running and swimming for my knees.',
+    );
+    expect(en.systemInstruction, contains('first sentence'));
+  });
+
   test('the length names what makes an answer long, not just a ceiling', () {
     // A ceiling is read as a target. Measured against the real model, 「三句話
     // 以內」 produced four answers of exactly three sentences to four

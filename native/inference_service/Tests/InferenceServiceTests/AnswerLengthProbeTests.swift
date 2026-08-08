@@ -158,6 +158,118 @@ final class AnswerLengthProbeTests: XCTestCase {
   ///
   /// If that is what is happening, a better instruction fixes less than it
   /// looks like it should, and this is the run that says so.
+  /// Whether the first sentence carries the answer.
+  ///
+  /// Length turned out not to be the thing that hurts a spoken answer. Of the
+  /// three long answers the adopted length rule produced, two opened with the
+  /// answer — 「跑步前暖身是蠻建議的」, 「肌酸通常是每日服用」 — and the longest
+  /// opened with 「跑步和游泳對膝蓋的影響是不同的」, fourteen characters that
+  /// say nothing.
+  ///
+  /// That is what cannot be recovered in speech. Two hundred characters is
+  /// thirty seconds, but thirty seconds is fine if the first five gave you
+  /// the answer and barge-in works, which here it does. Five seconds of
+  /// throat-clearing is not fine, because there is no way to skim past it.
+  ///
+  /// The pattern is that the model rambles *more* the harder the question —
+  /// exactly when leading with the answer matters most. So the question is
+  /// whether saying so explicitly moves it.
+  ///
+  /// Nothing here can be scored automatically. Whether a sentence is the
+  /// answer or a preamble is a judgement, and a character count that tried
+  /// would be the third scorer this project has been misled by. The first
+  /// sentence of every answer is printed on its own line to be read.
+  static let openers: [Variant] = [
+    Variant(
+      label: "core identity as it stands",
+      length: "先回答核心；不確定時坦白說明，不捏造資訊。"
+    ),
+    Variant(
+      label: "first sentence must be the answer",
+      length:
+        "第一句就要是答案本身。不要先說「這個問題很複雜」或「兩者是不同的」這類開場。"
+        + "不確定時坦白說明，不捏造資訊。"
+    ),
+  ]
+
+  /// The preface with the *core identity* line varied instead of the length
+  /// one, and the length rule left at what the app now ships.
+  static func openerPreface(core: String) -> String {
+    """
+    [核心人格]
+    你是 Lulo，在使用者電腦上運作的私人助手。
+    用臺灣繁體中文回答，親近但不裝熟。
+    \(core)
+
+    [語音回答方式]
+    這是用說的，不是用寫的。
+    多數問題一到三句就夠；需要步驟、比較或說明原因時可以到七八句。講完就停，不要為了湊長度補話。
+    不要使用 Markdown。
+    不要朗讀完整 URL。
+    避免冗長條列。
+    使用適合自然朗讀的短句。
+
+    [使用者偏好]
+    回答長度：簡潔。
+    """
+  }
+
+  /// Questions chosen to provoke a preamble: comparisons, choices and
+  /// why-questions, which is where the rambling opener showed up.
+  static let openerQuestions: [String] = [
+    "幫我比較跑步和游泳對膝蓋的影響，還有各自適合什麼人。",
+    "為什麼有些人跑步會膝蓋痛？",
+    "我該選跑步機還是戶外跑？",
+    "肌酸和乳清蛋白差在哪？",
+    "減脂期要怎麼安排訓練？",
+  ]
+
+  /// The first sentence, the way Chinese ends one.
+  static func firstSentence(of text: String) -> String {
+    var out = ""
+    for character in text {
+      out.append(character)
+      if "。！？!?".contains(character) {
+        break
+      }
+    }
+    return out.trimmingCharacters(in: .whitespacesAndNewlines)
+  }
+
+  /// Writes a probe line where it will actually be seen.
+  ///
+  /// Not `print`. Under a real run the runtime writes hundreds of lines to
+  /// stderr and this probe's own stdout did not survive it — the marker
+  /// proved the loop ran and the lines were nowhere. stderr is the channel
+  /// that demonstrably arrives.
+  static func say(_ line: String) {
+    FileHandle.standardError.write(Data((line + "\n").utf8))
+  }
+
+  func testWhetherTheFirstSentenceCarriesTheAnswer() async throws {
+    let environment = ProcessInfo.processInfo.environment
+    guard let modelPath = environment["REAL_GEMMA_MODEL_PATH"] else {
+      throw XCTSkip("Set REAL_GEMMA_MODEL_PATH to run the opener probe.")
+    }
+
+    for variant in Self.openers {
+      Self.say("OPENER === \(variant.label) ===")
+      let replies = try await askAll(
+        Self.openerQuestions,
+        preface: Self.openerPreface(core: variant.length),
+        modelPath: modelPath
+      )
+      for (index, reply) in replies.enumerated() {
+        Self.say("OPENER   Q\(index + 1) \(Self.openerQuestions[index])")
+        Self.say("OPENER     first: \(Self.firstSentence(of: reply))")
+        Self.say(
+          "OPENER     whole: "
+            + reply.replacingOccurrences(of: "\n", with: " ")
+        )
+      }
+    }
+  }
+
   /// All the questions down one conversation, in order.
   private func askAll(
     _ questions: [String],
@@ -215,18 +327,18 @@ final class AnswerLengthProbeTests: XCTestCase {
     }
 
     for variant in Self.variants {
-      print("MULTITURN === \(variant.label) ===")
+      Self.say("MULTITURN === \(variant.label) ===")
       let replies = try await askAll(
         Self.questions,
         preface: Self.preface(length: variant.length),
         modelPath: modelPath
       )
       for (index, reply) in replies.enumerated() {
-        print(
+        Self.say(
           "MULTITURN   Q\(index + 1) \(reply.count) chars, "
             + "\(Self.sentences(in: reply)) sentences — \(Self.questions[index])"
         )
-        print(
+        Self.say(
           "MULTITURN     "
             + reply.replacingOccurrences(of: "\n", with: " ")
         )
@@ -234,7 +346,7 @@ final class AnswerLengthProbeTests: XCTestCase {
       let lengths = replies.map(\.count)
       let shortest = lengths.min() ?? 0
       let longest = lengths.max() ?? 0
-      print(
+      Self.say(
         "MULTITURN   spread: shortest \(shortest), longest \(longest), "
           + "ratio \(longest / max(shortest, 1))"
       )
@@ -249,7 +361,7 @@ final class AnswerLengthProbeTests: XCTestCase {
 
     for variant in Self.variants {
       var lengths: [Int] = []
-      print("LENGTH === \(variant.label) ===")
+      Self.say("LENGTH === \(variant.label) ===")
       for (index, question) in Self.questions.enumerated() {
         let reply = try await ask(
           question,
@@ -258,15 +370,15 @@ final class AnswerLengthProbeTests: XCTestCase {
           modelPath: modelPath
         )
         lengths.append(reply.count)
-        print(
+        Self.say(
           "LENGTH   Q\(index + 1) \(reply.count) chars, "
             + "\(Self.sentences(in: reply)) sentences — \(question)"
         )
-        print("LENGTH     \(reply.replacingOccurrences(of: "\n", with: " "))")
+        Self.say("LENGTH     \(reply.replacingOccurrences(of: "\n", with: " "))")
       }
       let shortest = lengths.min() ?? 0
       let longest = lengths.max() ?? 0
-      print(
+      Self.say(
         "LENGTH   spread: shortest \(shortest), longest \(longest), "
           + "ratio \(longest / max(shortest, 1))"
       )

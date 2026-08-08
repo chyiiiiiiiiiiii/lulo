@@ -116,12 +116,22 @@ AgentPromptContext composeAgentPrompt({
           ? <String>[
               '你是 ${profile.identity.agentName}，在使用者電腦上運作的私人助手。',
               '用臺灣繁體中文回答，親近但不裝熟。',
-              '先回答核心；不確定時坦白說明，不捏造資訊。',
+              // Not 「先回答核心」, which was not enough of an instruction:
+              // measured over five questions built to provoke a preamble,
+              // one answer in five opened with the answer. Naming the
+              // preambles it must not open with moved that to four in five.
+              // See `docs/decisions/answer-length-should-follow-the-question.md`.
+              '第一句就要是答案本身，不要先說「這個問題很複雜」或「兩者不一樣」這類開場。',
+              '不確定時坦白說明，不捏造資訊。',
             ]
           : <String>[
               'You are ${profile.identity.agentName}, a private assistant running on the user’s computer.',
               'Answer in natural spoken English. Be warm without pretending familiarity.',
-              'Lead with the answer; state uncertainty honestly and never invent facts.',
+              // The English wording follows the Chinese, which is what was
+              // measured; this side has not been.
+              'The first sentence must be the answer itself — not that the '
+                  'question is complex, or that the two things differ.',
+              'State uncertainty honestly and never invent facts.',
             ],
     ),
     _section(

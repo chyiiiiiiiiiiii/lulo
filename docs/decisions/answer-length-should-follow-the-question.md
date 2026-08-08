@@ -140,6 +140,82 @@ right. Both probes are checked in and skipped without
 single-turn numbers alone would have understated how bad A is and how well B
 holds.
 
+## The split that was nearly built, and the objection that stopped it
+
+The plan after adopting B was to cap spoken answers and let typed ones run.
+The arithmetic looked conclusive: B answers the heaviest question in 201
+characters, and 172 characters is already recorded in this repository as
+twenty-seven seconds of Mandarin, next to the words "nobody in a conversation
+talks for twenty-seven seconds". It read like re-creating, for voice, the
+exact failure the sentence budget was built to stop.
+
+It was wrong twice, and the objection that stopped it was one sentence: *some
+questions genuinely need several sentences to explain, and a cap truncates
+them.*
+
+**The guidance was cited out of its context.** Deepgram, NVIDIA and
+ElevenLabs all cap a spoken turn at one to three sentences, and every one of
+those documents is about a **transactional** voice agent — appointment
+scheduling, order lookup, an alert bot. Their users do not ask 「肌酸怎麼吃？
+有什麼副作用？」. Generalising "a booking bot should be brief" into "speech
+should be brief" is the whole of the error.
+
+**And this app has something those do not: working barge-in.** `FloorControl`
+is measured and 「不對」 stops an answer at any length. For a phone IVR a long
+answer is unrecoverable; here it is one word away from over.
+
+## What actually hurts a spoken answer
+
+Not the length. The opening.
+
+Of the three long answers B produced, two led with the answer and the longest
+did not:
+
+| question | first sentence | |
+|---|---|---|
+| 跑步前要暖身嗎？ | 「跑步前暖身是蠻建議的。」 | the answer |
+| 肌酸怎麼吃？ | 「肌酸通常是每日服用，建議您按照包裝上的建議量來吃。」 | the answer |
+| 比較跑步和游泳對膝蓋 | 「跑步和游泳對膝蓋的影響是不同的。」 | **fourteen characters that say nothing** |
+
+Thirty seconds is fine if the first five gave you the answer, because the
+rest is optional and interruptible. Five seconds of throat-clearing is not,
+because speech cannot be skimmed past.
+
+The preface already says 「先回答核心」. It holds for the two easier questions
+and fails on the hardest one — the model preambles *more* as the question
+gets harder, which is exactly when leading with the answer matters most.
+
+So the fix is to the opening, not the length, and it is the same rule for
+both channels. Capping speech would have traded a truncated answer for a
+preamble that is still there.
+
+Measured over five questions built to provoke one — comparisons, choices and
+why-questions, down one conversation. First sentences:
+
+| | 「先回答核心」 (today) | 「第一句就要是答案本身」 |
+|---|---|---|
+| 比較跑步和游泳 | 跑步和游泳對膝蓋的影響**不一樣**。 | 跑步對膝蓋的衝擊力較大，需要膝蓋狀況良好的人。 |
+| 為什麼膝蓋痛 | 原因比較**多樣化**。 | 很多時候是因為跑步姿勢或步態上的問題。 |
+| 跑步機還是戶外 | 這**取決於**你的目標和環境。 | 這取決於你更在意什麼樣的訓練體驗。 |
+| 肌酸 vs 乳清 | 是兩種**功能不同**的補充品。 | 肌酸是幫助肌肉儲存能量，讓你在高強度訓練時能多做幾次重訓。 |
+| 減脂期訓練 | 重點是結合有氧和阻力訓練。 | 重點是保持高強度的燃燒，同時避免讓肌肉流失。 |
+
+**One in five became four in five.** The old openings all restate the
+question — 「不一樣」, 「多樣化」, 「取決於」 — which is the model buying time
+in a medium where time cannot be bought back.
+
+The one that did not move is the treadmill-or-outdoors question, and it is
+arguably right not to: there is no objectively correct choice, the answer
+does name the trade-off immediately afterwards, and it closes with 「建議先選
+跑步機」. A hedge on a genuinely preference-shaped question is not a preamble.
+
+Nothing else moved. The persona held, the lengths still followed the
+questions, and the answers stayed substantive — checked against the whole
+text, not only the openings, because an escape clause on the *length* line
+was already found to reach three sections up and change the model's name.
+
+The English wording follows the Chinese and **has not been measured**.
+
 ## The other half: spoken is not typed
 
 The industry guidance found while looking for these shapes is unanimous and
