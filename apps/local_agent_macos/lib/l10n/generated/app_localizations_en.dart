@@ -497,11 +497,15 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get modelDescriptionBalanced =>
-      'The balanced choice: strongest answers this laptop-sized model family offers.';
+      'The balanced choice: answers fast enough to speak with, and strong enough for everyday conversation.';
 
   @override
   String get modelDescriptionLight =>
       'The light choice: quicker to fetch and to answer, with simpler answers.';
+
+  @override
+  String get modelDescriptionCapable =>
+      'The strongest choice: the best answers on offer here, at several seconds before the first word and a much larger download. Better for reading and writing than for talking.';
 
   @override
   String get sectionHearing => 'How it hears you';

@@ -990,7 +990,7 @@ abstract class AppLocalizations {
   /// No description provided for @modelDescriptionBalanced.
   ///
   /// In en, this message translates to:
-  /// **'The balanced choice: strongest answers this laptop-sized model family offers.'**
+  /// **'The balanced choice: answers fast enough to speak with, and strong enough for everyday conversation.'**
   String get modelDescriptionBalanced;
 
   /// No description provided for @modelDescriptionLight.
@@ -998,6 +998,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'The light choice: quicker to fetch and to answer, with simpler answers.'**
   String get modelDescriptionLight;
+
+  /// No description provided for @modelDescriptionCapable.
+  ///
+  /// In en, this message translates to:
+  /// **'The strongest choice: the best answers on offer here, at several seconds before the first word and a much larger download. Better for reading and writing than for talking.'**
+  String get modelDescriptionCapable;
 
   /// No description provided for @sectionHearing.
   ///

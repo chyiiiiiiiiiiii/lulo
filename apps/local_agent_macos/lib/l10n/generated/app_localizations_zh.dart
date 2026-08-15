@@ -474,10 +474,14 @@ class AppLocalizationsZh extends AppLocalizations {
   String get addTooltip => '新增';
 
   @override
-  String get modelDescriptionBalanced => '平衡的選擇：這個筆電尺寸的模型家族裡回答最強的一個。';
+  String get modelDescriptionBalanced => '平衡的選擇：快到可以用講的，日常對話也夠強。';
 
   @override
   String get modelDescriptionLight => '輕量的選擇：下載跟回答都更快，但答案比較簡單。';
+
+  @override
+  String get modelDescriptionCapable =>
+      '最強的選擇：這裡回答最好的一個，代價是第一個字要等好幾秒、下載也大得多。適合讀跟寫，不適合用講的。';
 
   @override
   String get sectionHearing => '它怎麼聽你說話';

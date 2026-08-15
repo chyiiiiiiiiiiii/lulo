@@ -38,7 +38,25 @@ void main() {
     expect(modelCatalog.first.id, 'gemma-4-E4B-it');
     expect(
       modelCatalog.map((ModelCatalogEntry entry) => entry.recommended),
-      <bool>[true, false],
+      <bool>[true, false, false],
+    );
+  });
+
+  test('the desktop-sized model is offered, and is not the default', () {
+    // Gemma 4 12B is the model Google packaged for laptops, and the strongest
+    // answers on offer here. It is deliberately not `recommended`: measured on
+    // an M4 its time to first token is 4.2s against the 362ms this app holds
+    // a settled voice turn to, so it is a choice made on purpose rather than
+    // the one a first launch is handed.
+    final ModelCatalogEntry twelve = modelCatalog.singleWhere(
+      (ModelCatalogEntry entry) => entry.id == 'gemma-4-12B-it',
+    );
+    expect(twelve.recommended, isFalse);
+    expect(twelve.fileName, 'gemma-4-12B-it.litertlm');
+    expect(twelve.sizeBytes, 6547589312);
+    expect(
+      twelve.sha256,
+      '74fc29a10c20eb5b3ced6c389471a7994a0ffd657255b2a1c764262fb9054aef',
     );
   });
 
