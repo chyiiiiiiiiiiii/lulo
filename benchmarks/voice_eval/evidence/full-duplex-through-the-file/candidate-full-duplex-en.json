@@ -1,0 +1,156 @@
+{
+  "adapter" : {
+    "name" : "apple-speech-transcriber",
+    "version" : "SpeechTranscriber locale=en-US bias=app-vocabulary"
+  },
+  "cases" : [
+    {
+      "caseId" : "spoken-run-tests",
+      "finalAtMs" : 550,
+      "partialEvents" : [
+
+      ],
+      "rawTranscript" : "How do I run a test in this project?",
+      "refinedTranscript" : null
+    },
+    {
+      "caseId" : "spoken-widget-question",
+      "finalAtMs" : 264,
+      "partialEvents" : [
+
+      ],
+      "rawTranscript" : "What is the difference between your status and your state for widget?",
+      "refinedTranscript" : null
+    },
+    {
+      "caseId" : "spoken-litert",
+      "finalAtMs" : 220,
+      "partialEvents" : [
+
+      ],
+      "rawTranscript" : "Can you explain what the light RT, wrongtime does?",
+      "refinedTranscript" : null
+    },
+    {
+      "caseId" : "spoken-commits",
+      "finalAtMs" : 171,
+      "partialEvents" : [
+
+      ],
+      "rawTranscript" : "Show me the latest commit on the main branch.",
+      "refinedTranscript" : null
+    },
+    {
+      "caseId" : "spoken-download-failed",
+      "finalAtMs" : 170,
+      "partialEvents" : [
+
+      ],
+      "rawTranscript" : "I think the town of failed. Can you try again?",
+      "refinedTranscript" : null
+    },
+    {
+      "caseId" : "spoken-remind-mic",
+      "finalAtMs" : 175,
+      "partialEvents" : [
+
+      ],
+      "rawTranscript" : "Remind me to check the microphone permissions later.",
+      "refinedTranscript" : null
+    },
+    {
+      "caseId" : "spoken-dart-test",
+      "finalAtMs" : 155,
+      "partialEvents" : [
+
+      ],
+      "rawTranscript" : "Dot test is falling on the 2nd cast.",
+      "refinedTranscript" : null
+    },
+    {
+      "caseId" : "spoken-settings-voice",
+      "finalAtMs" : 145,
+      "partialEvents" : [
+
+      ],
+      "rawTranscript" : "Open the settings and turn the voice off.",
+      "refinedTranscript" : null
+    },
+    {
+      "caseId" : "spoken-restart",
+      "finalAtMs" : 259,
+      "partialEvents" : [
+
+      ],
+      "rawTranscript" : "Can you? Actually, can you show me the last 3 comemates instead?",
+      "refinedTranscript" : null
+    },
+    {
+      "caseId" : "spoken-filler",
+      "finalAtMs" : 284,
+      "partialEvents" : [
+
+      ],
+      "rawTranscript" : "So, I want to know why the download keeps falling.",
+      "refinedTranscript" : null
+    },
+    {
+      "caseId" : "spoken-vocabulary",
+      "finalAtMs" : 221,
+      "partialEvents" : [
+
+      ],
+      "rawTranscript" : "Does Jemmon run through light RT or through analytics on this Mac?",
+      "refinedTranscript" : null
+    },
+    {
+      "caseId" : "spoken-tooling",
+      "finalAtMs" : 215,
+      "partialEvents" : [
+
+      ],
+      "rawTranscript" : "Open Xcode and run the sweep test, then tell me what dog test says.",
+      "refinedTranscript" : null
+    },
+    {
+      "caseId" : "spoken-numbers",
+      "finalAtMs" : 188,
+      "partialEvents" : [
+
+      ],
+      "rawTranscript" : "Brother 3.44.1 and the kid has 21 steps.",
+      "refinedTranscript" : null
+    },
+    {
+      "caseId" : "spoken-short",
+      "finalAtMs" : 109,
+      "partialEvents" : [
+
+      ],
+      "rawTranscript" : "Stop.",
+      "refinedTranscript" : null
+    },
+    {
+      "caseId" : "spoken-code-switch-out",
+      "finalAtMs" : 173,
+      "partialEvents" : [
+
+      ],
+      "rawTranscript" : "I think that you in part is broken, not a model.",
+      "refinedTranscript" : null
+    },
+    {
+      "caseId" : "spoken-long-pause",
+      "finalAtMs" : 254,
+      "partialEvents" : [
+
+      ],
+      "rawTranscript" : "The thing I actually want is a way to tell which recognizer is listening.",
+      "refinedTranscript" : null
+    }
+  ],
+  "corpusId" : "en-spoken-v1",
+  "kind" : "transcript",
+  "runId" : "full-duplex-en-spoken-v1",
+  "schemaVersion" : 1
+}

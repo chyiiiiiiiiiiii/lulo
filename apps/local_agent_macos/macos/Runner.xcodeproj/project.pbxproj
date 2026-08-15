@@ -25,6 +25,7 @@
 		A10000000000000000000001 /* DesktopPanelControllerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000003 /* DesktopPanelControllerTests.swift */; };
 		A1VA000000000000000VA001 /* VoiceActivityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1VA000000000000000VA002 /* VoiceActivityTests.swift */; };
 		A1ST000000000000000ST001 /* SpeechTurnTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1ST000000000000000ST002 /* SpeechTurnTests.swift */; };
+		A1FD000000000000000FD001 /* FullDuplexCorpusProbeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1FD000000000000000FD002 /* FullDuplexCorpusProbeTests.swift */; };
 		A1IP000000000000000IP001 /* InputDevicePolicyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1IP000000000000000IP002 /* InputDevicePolicyTests.swift */; };
 		A2AE000000000000000AE001 /* SecondAudioEngineTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2AE000000000000000AE002 /* SecondAudioEngineTests.swift */; };
 		A2ST000000000000000ST011 /* SelectionServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2ST000000000000000ST012 /* SelectionServiceTests.swift */; };
@@ -96,6 +97,7 @@
 		A10000000000000000000003 /* DesktopPanelControllerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DesktopPanelControllerTests.swift; sourceTree = "<group>"; };
 		A1VA000000000000000VA002 /* VoiceActivityTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceActivityTests.swift; sourceTree = "<group>"; };
 		A1ST000000000000000ST002 /* SpeechTurnTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeechTurnTests.swift; sourceTree = "<group>"; };
+		A1FD000000000000000FD002 /* FullDuplexCorpusProbeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FullDuplexCorpusProbeTests.swift; sourceTree = "<group>"; };
 		A1IP000000000000000IP002 /* InputDevicePolicyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InputDevicePolicyTests.swift; sourceTree = "<group>"; };
 		A2AE000000000000000AE002 /* SecondAudioEngineTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SecondAudioEngineTests.swift; sourceTree = "<group>"; };
 		A2ST000000000000000ST012 /* SelectionServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SelectionServiceTests.swift; sourceTree = "<group>"; };
@@ -187,6 +189,7 @@
 				A10000000000000000000003 /* DesktopPanelControllerTests.swift */,
 		A1VA000000000000000VA002 /* VoiceActivityTests.swift */,
 		A1ST000000000000000ST002 /* SpeechTurnTests.swift */,
+		A1FD000000000000000FD002 /* FullDuplexCorpusProbeTests.swift */,
 		A1IP000000000000000IP002 /* InputDevicePolicyTests.swift */,
 		A2AE000000000000000AE002 /* SecondAudioEngineTests.swift */,
 		A2ST000000000000000ST012 /* SelectionServiceTests.swift */,
@@ -505,6 +508,7 @@
 				A10000000000000000000001 /* DesktopPanelControllerTests.swift in Sources */,
 		A1VA000000000000000VA001 /* VoiceActivityTests.swift in Sources */,
 		A1ST000000000000000ST001 /* SpeechTurnTests.swift in Sources */,
+		A1FD000000000000000FD001 /* FullDuplexCorpusProbeTests.swift in Sources */,
 		A1IP000000000000000IP001 /* InputDevicePolicyTests.swift in Sources */,
 		A2AE000000000000000AE001 /* SecondAudioEngineTests.swift in Sources */,
 		A2ST000000000000000ST011 /* SelectionServiceTests.swift in Sources */,

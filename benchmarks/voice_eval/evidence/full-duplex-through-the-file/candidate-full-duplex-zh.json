@@ -1,0 +1,120 @@
+{
+  "adapter" : {
+    "name" : "apple-speech-transcriber",
+    "version" : "SpeechTranscriber locale=zh-TW bias=app-vocabulary"
+  },
+  "cases" : [
+    {
+      "caseId" : "short-answer-ready",
+      "finalAtMs" : 549,
+      "partialEvents" : [
+
+      ],
+      "rawTranscript" : "好 ，可以開始了。",
+      "refinedTranscript" : null
+    },
+    {
+      "caseId" : "short-answer-not-yet",
+      "finalAtMs" : 141,
+      "partialEvents" : [
+
+      ],
+      "rawTranscript" : "等一下還沒",
+      "refinedTranscript" : null
+    },
+    {
+      "caseId" : "code-switch-product-names",
+      "finalAtMs" : 269,
+      "partialEvents" : [
+
+      ],
+      "rawTranscript" : "我剛剛把 Flater和 NLX的版本都更新了。",
+      "refinedTranscript" : null
+    },
+    {
+      "caseId" : "code-switch-agent-tools",
+      "finalAtMs" : 239,
+      "partialEvents" : [
+
+      ],
+      "rawTranscript" : "先用 codex檢查再跑 Dortest。",
+      "refinedTranscript" : null
+    },
+    {
+      "caseId" : "numbers-date-time",
+      "finalAtMs" : 167,
+      "partialEvents" : [
+
+      ],
+      "rawTranscript" : "8月 2日下午 3:30提醒我。",
+      "refinedTranscript" : null
+    },
+    {
+      "caseId" : "numbers-money-version",
+      "finalAtMs" : 132,
+      "partialEvents" : [
+
+      ],
+      "rawTranscript" : "預算是 12,000版本先用 3.5。",
+      "refinedTranscript" : null
+    },
+    {
+      "caseId" : "disfluency-self-correction",
+      "finalAtMs" : 127,
+      "partialEvents" : [
+
+      ],
+      "rawTranscript" : "我想看明天哎不是後天的天氣。",
+      "refinedTranscript" : null
+    },
+    {
+      "caseId" : "punctuation-natural-clauses",
+      "finalAtMs" : 118,
+      "partialEvents" : [
+
+      ],
+      "rawTranscript" : "先迴答核心細節我的忍在補。",
+      "refinedTranscript" : null
+    },
+    {
+      "caseId" : "long-form-project-request",
+      "finalAtMs" : 177,
+      "partialEvents" : [
+
+      ],
+      "rawTranscript" : "幫我先確認目前專案在哪個分支測試有沒有通過再告訴我最值得先修的地方。",
+      "refinedTranscript" : null
+    },
+    {
+      "caseId" : "long-form-conversational",
+      "finalAtMs" : 197,
+      "partialEvents" : [
+
+      ],
+      "rawTranscript" : "我不是要你全部重做 ，我隻是想知道現在這個版本哪一段聽起來最不像臺灣人平常講話。",
+      "refinedTranscript" : null
+    },
+    {
+      "caseId" : "barge-in-stop-answer",
+      "finalAtMs" : 103,
+      "partialEvents" : [
+
+      ],
+      "rawTranscript" : "等一下先不要念完",
+      "refinedTranscript" : null
+    },
+    {
+      "caseId" : "endpoint-thinking-pause",
+      "finalAtMs" : 141,
+      "partialEvents" : [
+
+      ],
+      "rawTranscript" : "我想問的是如果完全離線的話 ，記憶要怎麼同步 ？",
+      "refinedTranscript" : null
+    }
+  ],
+  "corpusId" : "zh-TW-v1",
+  "kind" : "transcript",
+  "runId" : "full-duplex-zh-TW-v1",
+  "schemaVersion" : 1
+}

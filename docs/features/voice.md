@@ -201,8 +201,8 @@ is the one place that puts them beside each other.
 |---|---|---|---|
 | Recogniser | none | Breeze-ASR-25, batch | Apple `SpeechTranscriber`, streaming |
 | How the language is chosen | from what is typed | **pinned `language="zh"`** | **pinned at `begin()` from `Locale.preferredLanguages`** |
-| Chinese | — | 1.6% heard CER | 14.6% spoken CER |
-| English | — | **3.8% heard CER** | **never measured** |
+| Chinese | — | 1.6% heard CER | 14.6% spoken CER / **6.0% heard CER** |
+| English | — | **3.8% heard CER** | 16.4% spoken CER / **13.4% heard CER** |
 | Per utterance | — | ~1.3 s | live partials |
 
 **Typing** is the only path with no language disadvantage. The prompt is
@@ -225,12 +225,40 @@ substitution cannot fail the same way. See
 [batch-asr-candidates.md](../decisions/batch-asr-candidates.md).
 
 **Full duplex** pins one locale for the whole session, so on a zh-TW Mac an
-English sentence is heard by a recogniser set to Chinese. Nothing has measured
-what that costs, and no number here should be guessed at from the batch
-results — a different model, a different mechanism. What is known is that
-this recogniser's worst *Chinese* errors were already code-switching
-(`Flutter → Flater`, `MLX → NLX`, `Dart test → Dortest`), which is what sent
-us to Breeze for the other path.
+English sentence is heard by a recogniser set to Chinese. This column used to
+read "never measured", and the reason was not English: the full-duplex
+recogniser could not be measured **at all**. `voice_eval` scores files and
+`SpeechTranscriber` only existed wired to a live `AVAudioEngine`, so the only
+way to get a transcript out of it was to speak into the machine — and a number
+obtained that way cannot be re-run.
+
+`SpeechAnalyzer` never needed the engine.
+`macos/RunnerTests/FullDuplexCorpusProbeTests.swift` feeds it corpus `.wav`
+files and writes the candidate `voice_eval` already knows how to score, so both
+columns above now come from one instrument. It reproduces the 14.6% that was
+obtained the old way, which is why the English figure beside it can be
+believed. See
+[full-duplex-through-the-file](../../benchmarks/voice_eval/evidence/full-duplex-through-the-file/README.md).
+
+**Read the heard column, not the spoken one.** `spokenCer` folds punctuation
+and case but not numerals, and the Chinese corpus spells out 一萬二 and 三點半
+where the recogniser writes `12,000` and `3:30` — so Chinese is charged there
+for a transcription convention rather than for mishearing. On `heardCer`,
+which removes numbers and asks only whether the words were heard, **English is
+2.2× worse: 13.4% against 6.0%.** The two spoken-CER figures looking
+comparable is an artifact of the fold, and it points the opposite way to the
+truth. Different corpora, different speakers, so this is enough to say English
+is clearly worse and not enough to quote a ratio as a property of the model.
+
+What was already known holds: this recogniser's worst *Chinese* errors were
+code-switching (`Flutter → Flater`, `MLX → NLX`, `Dart test → Dortest`), which
+is what sent us to Breeze for the other path — and the English run fails the
+same way and harder (`LiteRT` → "light RT", `Gemma` → "Jemmon", `Flutter
+3.44.1` → "Brother 3.44.1"). Withholding the vocabulary bias changes **not one
+character of all sixteen English cases**, independently reproducing what
+`SpokenVocabularyBook` already recorded. Every one of those errors is a
+correctly spelled ordinary word, which is what `AgentProfile.misheard` is for
+and what a hint list cannot reach.
 
 Turn-taking is bilingual on both halves and does not depend on which of these
 is in use: `FloorControl` carries English backchannels (`yeah`, `right`,
@@ -241,11 +269,22 @@ needs no language knowledge at all.
 
 ### What follows from this
 
-The product's English problem is not a model problem. Two of the three paths
-already work; the third pins a locale nobody can change. What is missing is
-that **a user has no way to know the hold key hears English while the
-always-listening path does not** — an interface question, and a far cheaper
-one than a recogniser.
+Two of the three paths work in English and the third is now measured rather
+than suspected: 13.4% heard CER against 6.0% for Chinese, on the same
+recogniser through the same harness. So the English problem is **partly** an
+interface question and partly not, and the halves want different answers.
+
+The interface half is still the cheap one and still undone: **a user has no way
+to know the hold key hears English well and the always-listening path does
+not.** Holding the key is 3.8% heard CER; leaving voice on is 13.4%. Those are
+the same app, and nothing on screen says so.
+
+The other half is a recogniser this app does not control. `SpeechTranscriber`
+is the only streaming option on the platform, the vocabulary bias has now twice
+been measured changing nothing, and the errors it makes are ordinary English
+words rather than nonsense — so nothing downstream can detect them either.
+What is left is `AgentProfile.misheard`, one substitution at a time, and
+telling the user which door hears them better.
 
 ## Endpointing
 
