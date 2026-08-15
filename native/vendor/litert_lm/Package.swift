@@ -30,9 +30,9 @@ let package = Package(
     .binaryTarget(
       name: "CLiteRTLM_mac",
       url:
-        "https://github.com/google-ai-edge/LiteRT-LM/releases/download/v0.14.0/CLiteRTLM_mac.xcframework.zip",
+        "https://github.com/google-ai-edge/LiteRT-LM/releases/download/v0.16.0/CLiteRTLM_mac.xcframework.zip",
       checksum:
-        "450615483509aaa6d34b321fdc6862e41a224b674468ab10aff64ebe113d21b7"
+        "3ae6c876abd74614b1869bfc40cb4d0b892981363564740268b1f8ac5cf895a4"
     ),
     .target(
       name: "LiteRTLM",

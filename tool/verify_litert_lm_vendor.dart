@@ -5,28 +5,30 @@ const String _vendorRelativePath = 'native/vendor/litert_lm';
 const String _inferenceServiceRelativePath = 'native/inference_service';
 const String _releaseArchiveUrl =
     'https://github.com/google-ai-edge/LiteRT-LM/releases/download/'
-    'v0.14.0/CLiteRTLM_mac.xcframework.zip';
+    'v0.16.0/CLiteRTLM_mac.xcframework.zip';
 const String _releaseArchiveChecksum =
-    '450615483509aaa6d34b321fdc6862e41a224b674468ab10aff64ebe113d21b7';
-const String _upstreamRevision = '80f301ff9a3b02c2c1e7be2dd1a567752f7b51b6';
+    '3ae6c876abd74614b1869bfc40cb4d0b892981363564740268b1f8ac5cf895a4';
+const String _upstreamRevision = '924e79c91542761242244e4f1651851f822e4cbb';
 
 const Map<String, String> _sourceChecksums = <String, String>{
   'Benchmark.swift':
-      '33f131245456ceef8a2b8eaf8a5ea1ec310cec6124e3227f5e7a3ed35e0a3199',
+      '9096200cb1ad930cb6ac9af72747c430621739838b9f18ec8d3b2ea4fce7fd74',
   'Capabilities.swift':
       '30bc7cd1057f9100ef19249863266481a61e4c80d2a28ccb6098236318dee020',
   'Config.swift':
-      '3f1c93449c679736b4e487376805161673b440c74244b07bb15c3c288e6aa929',
+      '6f7b618fbfed7e3a735b0e90dff8bcb6057ac44ef75bcee1f3c8ac56a7e43734',
   'Conversation.swift':
-      'b6af8f849cd7ae212381b566d5ef252f6070cabd528a544dfb3a6ddff86595e2',
+      '0f5c9767afbb6eef1195e188c6254f2d1eed6e7f04c733323fd954f7f9a1b826',
   'Engine.swift':
-      '2ebbb095aea6440725e605b3b858ae43e30f2cbbb19cb420c3595f4c49d1290d',
+      '98ed918619cbf03cd92e03037b6af5f427d9f7bdf7251e733538c318f2e6dea6',
   'ExperimentalFlags.swift':
-      'bc2d554c686a0db84d553174d1acffbcd38e151a8f10f3f0b78e747a11400621',
+      'e7aa8ed306d0ab5c84557512da020a140af4c7b90c4d8cb54a53f585182fdbfc',
   'LiteRTLMError.swift':
-      '40a05e2749a8445b4b36873e4889ee1cbf6da9337101af9b7ae5d69751c6fbcb',
+      '28d22da99ad3e5a7ab8d94dec73e891d2df402077a1146893149f28b8fca2fc8',
   'Message.swift':
-      'c9f3bcaa02897e406b8e3208c9c9657c8035d4830ee61dd0c5a2a6536f814d55',
+      '23631912d2caf0a63f971e5da869ef9e385fa1b93e459e1ea3232cc6a99fa637',
+  'ResponseFormat.swift':
+      '071705a8d9e9916a83b2197514d58bdbd3a30e643903a9e826a500fb67772067',
   'Tool.swift':
       'd9698c6c7f8425cfa1f479cec5070fe94d9ca732b3e20b171e3dd90ca1545422',
   'ToolManager.swift':
@@ -36,7 +38,7 @@ const Map<String, String> _sourceChecksums = <String, String>{
 /// SHA-256 over the wrapper-source records, each rendered as
 /// `<sha256>  <filename>\n` and ordered by filename.
 const String _wrapperAggregateChecksum =
-    '147c61bff2e672d4ccd6e8f00b62d77f2bebd0db071f52fd3dcc30baa4f27e81';
+    '3e1ec1ee0fe86600a14bafae1b72c5f6189d4288d1070079ab2a147b5f2f3730';
 
 const String _licenseChecksum =
     'c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4';
@@ -131,7 +133,7 @@ Future<void> _main(List<String> arguments) async {
       _sourceChecksums.keys.map((String name) => 'file:$name').toList()..sort();
   _require(
     _deepEquals(actualSourceEntries, expectedSourceEntries),
-    'Vendored wrapper source set differs from official v0.14.0 production '
+    'Vendored wrapper source set differs from official v0.16.0 production '
     'sources.\nExpected: $expectedSourceEntries'
     '\nActual: $actualSourceEntries',
   );
@@ -152,7 +154,7 @@ Future<void> _main(List<String> arguments) async {
   final String patches = _read(_join(vendor.path, 'PATCHES.md'));
   for (final String provenance in <String>[
     'google-ai-edge/LiteRT-LM',
-    'v0.14.0',
+    'v0.16.0',
     _upstreamRevision,
     _releaseArchiveChecksum,
     _wrapperAggregateChecksum,
@@ -373,7 +375,7 @@ void _validateVendorPackage(Map<String, dynamic> package) {
   _require(binary['type'] == 'binary', 'CLiteRTLM_mac must be binary.');
   _require(
     binary['url'] == _releaseArchiveUrl,
-    'CLiteRTLM_mac active URL is not the official v0.14.0 archive.',
+    'CLiteRTLM_mac active URL is not the official v0.16.0 archive.',
   );
   _require(
     binary['checksum'] == _releaseArchiveChecksum,

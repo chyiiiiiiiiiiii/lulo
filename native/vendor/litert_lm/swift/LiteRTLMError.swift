@@ -81,11 +81,16 @@ public enum LiteRTLMError: Error, LocalizedError, Equatable {
     case invalidResponse(String)
     case recurringToolCallLimitExceeded(limit: Int)
     case failedToStartStream(status: Int)
-    case invalidMaxOutputTokens
     case invalidJson(String)
     case toolExecutionError(name: String, error: String)
     case benchmarkNotEnabled
     case benchmarkInfoUnavailable
+    case responseFormatNotEnabled
+    // Local patch: upstream converts `maxOutputTokens` with a bare
+    // `Int32(_:)`, which traps on overflow and silently accepts zero and
+    // negatives. The validating helper in Conversation.swift throws this
+    // instead.
+    case invalidMaxOutputTokens
 
     public var errorDescription: String? {
       switch self {
@@ -99,8 +104,6 @@ public enum LiteRTLMError: Error, LocalizedError, Equatable {
         return "Exceeded recurring tool call limit of \(limit)"
       case .failedToStartStream(let status):
         return "Failed to start stream. Status: \(status)"
-      case .invalidMaxOutputTokens:
-        return "maxOutputTokens must fit in Int32 and be greater than zero."
       case .invalidJson(let details):
         return "Invalid JSON: \(details)"
       case .toolExecutionError(let name, let error):
@@ -112,6 +115,11 @@ public enum LiteRTLMError: Error, LocalizedError, Equatable {
           """
       case .benchmarkInfoUnavailable:
         return "Failed to get benchmark info."
+      case .responseFormatNotEnabled:
+        return
+          "responseFormat cannot be used unless enableResponseFormat=true was passed to ConversationConfig."
+      case .invalidMaxOutputTokens:
+        return "maxOutputTokens must fit in Int32 and be greater than zero."
       }
     }
   }
@@ -123,6 +131,7 @@ public enum LiteRTLMError: Error, LocalizedError, Equatable {
     case invalidTopP
     case invalidTemperature
     case multipleSystemMessages
+    case invalidJsonSchema(String)
 
     public var errorDescription: String? {
       switch self {
@@ -138,6 +147,8 @@ public enum LiteRTLMError: Error, LocalizedError, Equatable {
         return "temperature should be non-negative"
       case .multipleSystemMessages:
         return "Cannot set both systemMessage and have system messages in initialMessages."
+      case .invalidJsonSchema(let schema):
+        return "Invalid JSON schema: \(schema)"
       }
     }
   }

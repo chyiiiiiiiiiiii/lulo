@@ -71,39 +71,39 @@ gap after it. `flutter pub get` reporting `zh_Hant: N untranslated` is that file
 working as intended — N is however many keys `app_zh.arb` has, and it moves
 with every string added.
 
-There is no tool calling, and that is now a measured decision rather than a
-gap. Probed against the real model with a clock tool registered, gemma-4-E4B
-called it 5 times out of 5 with no system message and **0 times out of 5**
-under this app's own system instruction — either language, either
-temperature, and still 0 when a further paragraph ordered it to use the
-tool. It invents a confident wrong time instead, in an app whose core
-instruction says 不捏造資訊. Telling it the time in the prompt answers 5/5 in
-both languages, so `composeAgentPrompt` takes
-a `now` and puts the clock in the **turn** half, where it costs nothing the
-turn was not already paying. English used to read 3/5 there and does not:
-the scorer's minute list held 「五十三」 and no English word form, so a clock
-spelled out scored right in one language and wrong in the other — a scorer
-uneven between two languages manufactures a difference that then reads as a
-finding about the model, and two paragraphs had been written about it. The
-probe now prints every reply that scored wrong rather than the last one,
-because an invented time and a real one the scorer could not parse are the
-same number and different problems. Read
-`docs/decisions/tool-calling-readiness.md`
-before building on tool calling: the probe is checked in and skipped by
-default, and **both** things that were supposed to fix it have now been
-measured and do not. Constrained decoding is not missing from the vendored
-runtime, as this file used to say — it is there, it was turned on, and the
-app-instruction rows stayed at 0/5 while the no-system-message control
-stayed at 5/5; it shapes the tokens of a call already decided on, and the
-decision is what is missing. The larger model is spent too: `gemma-4-12B-it`
-is **0/5 with no system message at all**, where E4B is 4/5 on the same GPU
-backend — a control run for the express purpose that 12B cannot decode on
-CPU, so the comparison was one backend away from measuring the wrong thing.
-Whether 12B ever saw the tool is **not** established, and the test that
-would settle it errors inside the runtime. Separately it is unusable on this
-machine for ordinary reasons: 59.5s to load and 17.4s to first token with a
-warm cache, and about one generation in seven killed by a GPU readback
-deadline.
+Tool calling works, and this file spent a year saying the opposite because
+of a scorer. Measured on runtime v0.16.0 with executions counted directly,
+gemma-4-E4B calls a registered clock **5/5 under this app's own system
+instruction**, both languages, and never calls it for a question a tool
+does not serve (0/5 on unrelated questions, 0/5 when the clock is already
+in the prompt). The old 0/5 was an instrument failure: the tool answered
+with a sentinel no persona would read aloud, the scorer searched the final
+text for it, and 「用臺灣繁體中文、三句話以內」 turned every called-but-
+paraphrased answer into a "did not call". A check that is proof in one
+direction is not evidence in the other. The probe now counts `run()`
+executions for the *called* column, hands back a readable clock (`02:53`)
+for the *quoted* column, and writes its report to `TOOL_PROBE_REPORT`
+because the runner eats buffered stdout. The clock itself stays **told**,
+not fetched — telling is 5/5 at zero extra latency and the told rows show
+the model does not double-fetch; tools are for side effects and expensive
+or variable lookups. Read `docs/decisions/tool-calling-readiness.md` before
+building further: it also records what the 12B rows do and do not
+establish (its calling rows died with the old scorer; its 59.5s load,
+17.4s first token, and one-in-seven GPU aborts on this machine did not).
+
+The vendored LiteRT-LM is **v0.16.0** (was v0.14.0), and the upgrade is
+what makes the integration buildable: `automaticToolCalling`,
+`Message.toolCalls`, tool-response messages, and per-call `maxOutputTokens`
+are in the official API. Four narrow local patches remain, each documented
+and re-pinned in `native/vendor/litert_lm/PATCHES.md` and verified by the
+opt-in `dart run tool/verify_litert_lm_vendor.dart`: maxOutputTokens
+validation, `sending Conversation` for Swift 6, the streaming path
+honoring `automaticToolCalling` (upstream ignores it there), and
+`toolDeclarationsJson` so tools defined in Dart can be declared without a
+Swift type per tool. The old exit condition (upstream checksum valid, no
+`-all_load`) is met and deliberately not taken: a Git dependency clones an
+~877 MB repository per cold CI cache where the vendored copy costs one
+46 MB archive, and two patches are still load-bearing.
 
 Two settings that named something they did not reach now reach it.
 `AgentProfile.vocabulary` documented itself as biasing the recogniser while

@@ -134,6 +134,10 @@ public actor Engine {
   /// - Returns: `Conversation` The created conversation.
   /// - Throws: A `LiteRTLMError` if the conversation creation fails.
   ///
+  // Local patch: `sending` transfers the only reference out of this actor's
+  // isolation domain. `Engine` is an actor and `Conversation` is a
+  // non-Sendable class, so under Swift 6 strict concurrency the bare return
+  // upstream writes cannot cross the actor boundary to the caller.
   public func createConversation(
     with config: ConversationConfig? = nil
   ) throws -> sending Conversation {
@@ -161,7 +165,10 @@ public actor Engine {
     let toolManager = ToolManager(tools: conversationConfig.tools)
 
     let systemMessageJsonStr = (try? conversationConfig.systemMessage?.contents.jsonString) ?? ""
-    let toolDescriptionJsonStr = toolManager.toolsJsonDescription
+    // Local patch: declarations given directly as JSON take precedence over
+    // the schema generated from Swift tool types. See ConversationConfig.
+    let toolDescriptionJsonStr =
+      conversationConfig.toolDeclarationsJson ?? toolManager.toolsJsonDescription
 
     let initialMessagesJson = conversationConfig.initialMessages.map { $0.toJson }
     let messagesJsonStr: String
@@ -224,13 +231,34 @@ public actor Engine {
     if !messagesJsonStr.isEmpty {
       litert_lm_conversation_config_set_messages(cConversationConfig, messagesJsonStr)
     }
-    litert_lm_conversation_config_set_enable_constrained_decoding(
-      cConversationConfig, ExperimentalFlags.enableConversationConstrainedDecoding)
+    if conversationConfig.enableResponseFormat {
+      var providerType = kLiteRtLmConstraintProviderTypeLlGuidance
+      litert_lm_conversation_config_set_constraint_provider(cConversationConfig, &providerType)
+      litert_lm_conversation_config_set_enable_constrained_decoding(cConversationConfig, true)
+    } else {
+      litert_lm_conversation_config_set_enable_constrained_decoding(
+        cConversationConfig, ExperimentalFlags.enableConversationConstrainedDecoding)
+    }
     litert_lm_conversation_config_set_stream_tool_calls(
       cConversationConfig,
       conversationConfig.enableToolCallStreaming
         && ExperimentalFlags.enableConversationToolCallStreaming,
       ExperimentalFlags.conversationToolCallStreamingChannelName)
+    if let filterChannelContentFromKvCache = ExperimentalFlags.filterChannelContentFromKvCache {
+      litert_lm_conversation_config_set_filter_channel_content_from_kv_cache(
+        cConversationConfig, filterChannelContentFromKvCache)
+    }
+
+    if let thinkingConfig = conversationConfig.thinkingConfig {
+      guard let cThinkingConfig = litert_lm_thinking_config_create() else {
+        throw LiteRTLMError.engine(.failedToCreateConversationConfig)
+      }
+      defer { litert_lm_thinking_config_delete(cThinkingConfig) }
+      litert_lm_thinking_config_set_enable_thinking(cThinkingConfig, thinkingConfig.enableThinking)
+      litert_lm_thinking_config_set_thinking_token_budget(
+        cThinkingConfig, Int32(thinkingConfig.thinkingTokenBudget))
+      litert_lm_conversation_config_set_thinking_config(cConversationConfig, cThinkingConfig)
+    }
 
     guard
       let conversationHandle = litert_lm_conversation_create(
@@ -239,11 +267,18 @@ public actor Engine {
       throw LiteRTLMError.engine(.failedToCreateConversation)
     }
 
-    return Conversation(handle: conversationHandle, toolManager: toolManager)
+    return Conversation(
+      handle: conversationHandle,
+      toolManager: toolManager,
+      automaticToolCalling: conversationConfig.automaticToolCalling,
+      engine: self,
+      enableResponseFormat: conversationConfig.enableResponseFormat,
+      visualTokenBudget: conversationConfig.visualTokenBudget)
   }
 
   deinit {
     if let handle = handle {
+      self.handle = nil
       litert_lm_engine_delete(handle)
     }
   }

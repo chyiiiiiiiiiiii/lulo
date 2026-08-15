@@ -6,11 +6,15 @@ import XCTest
 /// Whether gemma-4-E4B decides to call a tool when it needs one, and whether
 /// being told the answer instead beats asking it to fetch one.
 ///
-/// `CLAUDE.md` said "next up: tool calling with a permission layer" for a
-/// long time. This is the measurement underneath that, taken before
-/// designing anything on top of it. The tool is registered through the
-/// vendored `ConversationConfig(tools:)`, so a call that never happens is
-/// the model declining rather than the plumbing failing.
+/// The tool is registered through the vendored `ConversationConfig(tools:)`
+/// and **calling is counted by the tool body running**, never by reading
+/// the final text. An earlier version of this probe searched the reply for
+/// a sentinel the tool returned, which proves a call when found and proves
+/// nothing when absent — and under this app's persona the model calls,
+/// then paraphrases the unpronounceable sentinel away, so a year of
+/// numbers read "declined" where the truth was "called and answered in
+/// character". See the scoring section of
+/// `docs/decisions/tool-calling-readiness.md`.
 ///
 /// Every condition in one run, from one artifact, at the sampler settings
 /// the app actually uses — an earlier version of this file was edited
@@ -27,9 +31,23 @@ import XCTest
 ///   swift test --filter ToolCallProbeTests
 /// ```
 final class ToolCallProbeTests: XCTestCase {
-  /// A string no model produces by accident, so its presence is proof the
-  /// tool body ran rather than that the answer merely looked plausible.
-  static let sentinel = "TOOL-RAN-4718"
+  /// The clock the tool answers with. Chosen so the *minute* doubles as the
+  /// sentinel: an invented time has sixty minutes to land on, so a reply
+  /// carrying fifty-three is one the tool's answer actually reached.
+  ///
+  /// This used to be `TOOL-RAN-4718`, a string no model produces by
+  /// accident — and that is exactly what broke a year of conclusions. The
+  /// old scorer looked for the sentinel in the final text, which proves the
+  /// tool ran when it is there and proves **nothing** when it is not. Under
+  /// this app's instruction the model called the tool, was handed a string
+  /// that is not a time, and answered like the spoken-Chinese assistant it
+  /// was told to be — with a plausible clock and no sentinel. Without the
+  /// instruction it parroted the sentinel back. The scorer turned that
+  /// difference in *quoting* into a table about *calling*: 5/5 bare, 0/5
+  /// under the preface, and a decision doc concluded the instruction
+  /// suppresses the decision to call. Executions are counted directly now,
+  /// and the tool answers with something a persona can actually say.
+  static let toolClock = "02:53"
 
   /// Which compute backend the probe runs on.
   ///
@@ -68,12 +86,24 @@ final class ToolCallProbeTests: XCTestCase {
       .filter { !$0.isEmpty }
   }
 
-  /// The clock the model is offered.
+  /// How many times the tool body ran in the current attempt.
+  ///
+  /// Static because `ToolManager` instantiates a fresh tool per execution,
+  /// so an instance property never survives to be read. Unsafe-nonisolated
+  /// because the probe runs attempts strictly one at a time; nothing else
+  /// touches it.
+  nonisolated(unsafe) static var clockExecutions = 0
+
+  /// The clock the model is offered. Running it is recorded, which is the
+  /// fact the table is about; what it returns is a time the model can quote.
   struct ClockTool: Tool {
     static let name = "get_current_time"
     static let description = "Returns the current time on this computer."
     init() {}
-    func run() async throws -> Any { ["time": ToolCallProbeTests.sentinel] }
+    func run() async throws -> Any {
+      ToolCallProbeTests.clockExecutions += 1
+      return ["time": ToolCallProbeTests.toolClock]
+    }
   }
 
   /// How many times each condition is asked.
@@ -100,6 +130,29 @@ final class ToolCallProbeTests: XCTestCase {
   /// `invalidResponse(String)`, with no case of its own to switch on.
   static func isReadbackAbort(_ error: Error) -> Bool {
     String(describing: error).contains("timeout was reached while reading back")
+  }
+
+  /// Where the report lines go.
+  ///
+  /// Printed, and also appended to `TOOL_PROBE_REPORT` when set — a run of
+  /// the full table buffers its stdout past whatever the test runner is
+  /// willing to deliver, and a five-minute measurement whose numbers cannot
+  /// be read afterwards was run for nothing.
+  static func report(_ line: String) {
+    print(line)
+    guard let path = ProcessInfo.processInfo.environment["TOOL_PROBE_REPORT"]
+    else {
+      return
+    }
+    let url = URL(fileURLWithPath: path)
+    let data = Data((line + "\n").utf8)
+    if let handle = try? FileHandle(forWritingTo: url) {
+      defer { try? handle.close() }
+      _ = try? handle.seekToEnd()
+      try? handle.write(contentsOf: data)
+    } else {
+      try? data.write(to: url)
+    }
   }
 
   /// What the app really sends in Chinese, from `composeAgentPrompt` with
@@ -192,7 +245,9 @@ final class ToolCallProbeTests: XCTestCase {
     let prompt: String
     let style: Style
     /// Whether the clock is in the prompt. A told turn is right when it
-    /// reads the clock back; a tool turn is right when the sentinel returns.
+    /// reads the clock back; a tool turn is expected to *call*, and both
+    /// are scored on both columns — a told turn that calls anyway and a
+    /// tool turn that quotes without calling are each worth seeing.
     let told: Bool
     /// Whether the conversation forces the tool-call token shape.
     ///
@@ -206,6 +261,17 @@ final class ToolCallProbeTests: XCTestCase {
     /// with this off, which is what makes the off/on pair the measurement
     /// rather than either column alone.
     var constrained: Bool = false
+    /// Whether the system text travels as `initialMessages[0]` with
+    /// `role: .system` instead of `ConversationConfig(systemMessage:)`.
+    ///
+    /// The two reach different C calls — `set_messages` against
+    /// `set_system_message` — and the official CLI's OpenAI server, which
+    /// feeds the same core the message-list way, measured **5/5 under this
+    /// app's instruction** where the `systemMessage:` path measures 0/5 on
+    /// the same runtime, model, and prompt. This flag is what separates
+    /// "the instruction suppresses the decision" from "one of the two C
+    /// paths drops or mis-renders the tools".
+    var systemAsInitialMessage: Bool = false
   }
 
   private func ask(
@@ -228,7 +294,12 @@ final class ToolCallProbeTests: XCTestCase {
     ExperimentalFlags.enableConversationConstrainedDecoding = condition.constrained
     let conversation = try await engine.createConversation(
       with: ConversationConfig(
-        systemMessage: condition.systemMessage.map { Message($0) },
+        systemMessage: condition.systemAsInitialMessage
+          ? nil
+          : condition.systemMessage.map { Message($0) },
+        initialMessages: condition.systemAsInitialMessage
+          ? condition.systemMessage.map { [Message($0, role: .system)] } ?? []
+          : [],
         tools: [ClockTool()],
         samplerConfig: try SamplerConfig(
           topK: 40,
@@ -268,13 +339,7 @@ final class ToolCallProbeTests: XCTestCase {
   /// whichever column it was asked about, and the English column it
   /// understated — 3/5 against 5/5 — was the one being investigated. Even,
   /// the English column re-runs at 5/5 and the gap is gone.
-  static func answered(_ reply: String, told: Bool) -> Bool {
-    if reply.contains(sentinel) {
-      return true
-    }
-    guard told else {
-      return false
-    }
+  static func answered(_ reply: String) -> Bool {
     let minute = ["53", "五十三", "fifty-three", "fifty three"]
     let lowered = reply.lowercased()
     return minute.contains { lowered.contains($0) }
@@ -287,15 +352,15 @@ final class ToolCallProbeTests: XCTestCase {
     // spellings even it re-runs at 5/5 — the whole gap was the instrument
     // being harsher in one language than the other.
     XCTAssertTrue(
-      Self.answered("現在是凌晨兩點五十三分。", told: true),
+      Self.answered("現在是凌晨兩點五十三分。"),
       "A Chinese clock spelled out has always been read."
     )
     XCTAssertTrue(
-      Self.answered("It's two fifty-three in the morning.", told: true),
+      Self.answered("It's two fifty-three in the morning."),
       "The same answer in English has to be read the same way."
     )
     XCTAssertTrue(
-      Self.answered("It is 02:53.", told: true),
+      Self.answered("It is 02:53."),
       "Digits were the one English form the scorer already accepted."
     )
   }
@@ -303,17 +368,25 @@ final class ToolCallProbeTests: XCTestCase {
   func testTheScorerStillRefusesAnInventedTime() {
     // Widening the spellings must not widen what counts as answering. A
     // clock the model made up names a different minute.
-    XCTAssertFalse(Self.answered("It's about 4:17 in the morning.", told: true))
-    XCTAssertFalse(Self.answered("It is twenty past three.", told: true))
-    XCTAssertFalse(Self.answered("現在是凌晨四點十七分。", told: true))
+    XCTAssertFalse(Self.answered("It's about 4:17 in the morning."))
+    XCTAssertFalse(Self.answered("It is twenty past three."))
+    XCTAssertFalse(Self.answered("現在是凌晨四點十七分。"))
   }
 
-  func testAToolTurnIsOnlyRightWhenTheToolActuallyRan() {
-    // A told turn is scored on the minute; a tool turn is scored on the
-    // sentinel, and reading a plausible clock back is exactly the failure
-    // the sentinel exists to catch.
-    XCTAssertFalse(Self.answered("It is 02:53.", told: false))
-    XCTAssertTrue(Self.answered("The time is \(Self.sentinel).", told: false))
+  func testCallingIsCountedByExecutionAndNotByQuotation() async throws {
+    // The probe's worst bug, pinned so it cannot come back: whether the
+    // model *called* is read off the tool body running, never off the final
+    // text. A persona that paraphrases the clock instead of quoting it must
+    // still count as having called — a year of this file scoring "called"
+    // by searching the reply is how a working capability got written up as
+    // an absent one.
+    Self.clockExecutions = 0
+    _ = try await ClockTool().run()
+    XCTAssertEqual(
+      Self.clockExecutions,
+      1,
+      "Running the tool body is the one fact the called column reads."
+    )
   }
 
   func testWhetherGemmaCallsAToolOrShouldJustBeTold() async throws {
@@ -395,6 +468,34 @@ final class ToolCallProbeTests: XCTestCase {
         told: false,
         constrained: true
       ),
+      // The same preface fed the way the official OpenAI server feeds it —
+      // as the first message rather than through `systemMessage:`.
+      Condition(
+        label: "tool zh/app-preface @initial-message",
+        systemMessage: Self.chinesePreface,
+        prompt: "現在幾點？",
+        style: .balanced,
+        told: false,
+        systemAsInitialMessage: true
+      ),
+      // A question the clock has nothing to do with, with the tool still
+      // registered. This is the precision half: registering a tool on the
+      // app's main conversation is only safe if an ordinary turn does not
+      // reach for it. The recall rows above cannot answer that.
+      Condition(
+        label: "tool zh/app-preface unrelated-question",
+        systemMessage: Self.chinesePreface,
+        prompt: "幫我想一句生日祝福的話。",
+        style: .balanced,
+        told: false
+      ),
+      Condition(
+        label: "tool en/app-preface unrelated-question",
+        systemMessage: Self.englishPreface,
+        prompt: "Help me write a short birthday wish.",
+        style: .balanced,
+        told: false
+      ),
       // Telling it instead.
       Condition(
         label: "told zh/app-preface",
@@ -424,7 +525,7 @@ final class ToolCallProbeTests: XCTestCase {
       filter.isEmpty
       ? conditions
       : conditions.filter { filter.contains($0.label) }
-    print(
+    Self.report(
       "PROBE backend=\(Self.probeBackend) conditions=\(selected.count)"
         + "/\(conditions.count) model=\((modelPath as NSString).lastPathComponent)"
     )
@@ -436,7 +537,8 @@ final class ToolCallProbeTests: XCTestCase {
     )
 
     for condition in selected {
-      var right = 0
+      var called = 0
+      var quoted = 0
       // Every reply and how it scored, not the last one seen. This file's
       // own lesson is to check the scorer against the actual replies before
       // believing a column, and it has been broken three times by a version
@@ -444,12 +546,13 @@ final class ToolCallProbeTests: XCTestCase {
       // column reading 3/5 is a number until all five can be read: a time
       // the model invented and a real one the scorer could not parse are
       // the same number and completely different problems.
-      var transcript: [(right: Bool, reply: String)] = []
+      var transcript: [(called: Bool, quoted: Bool, reply: String)] = []
       var aborted = 0
       for attempt in 0..<Self.attempts {
         // A fixed seed would repeat one sample rather than draw five.
         var reply: String?
         for _ in 0...Self.abortRetries {
+          Self.clockExecutions = 0
           do {
             reply = try await ask(
               condition,
@@ -459,29 +562,42 @@ final class ToolCallProbeTests: XCTestCase {
             break
           } catch let error where Self.isReadbackAbort(error) {
             aborted += 1
-            print("PROBE   aborted \(attempt + 1): \(error)")
+            Self.report("PROBE   aborted \(attempt + 1): \(error)")
           }
         }
         guard let last = reply else { continue }
-        let scored = Self.answered(last, told: condition.told)
-        if scored {
-          right += 1
+        // Two separate facts, never inferred from each other. Whether the
+        // model *called* is read off the tool body having run — the final
+        // text is no witness, because a persona paraphrases a clock instead
+        // of quoting it, and the version of this probe that searched the
+        // reply for a sentinel wrote a working capability up as an absent
+        // one. Whether the answer *carried* the clock is the text's to say.
+        let ranTool = Self.clockExecutions > 0
+        let quotedClock = Self.answered(last)
+        if ranTool {
+          called += 1
+        }
+        if quotedClock {
+          quoted += 1
         }
         transcript.append(
-          (scored, last.replacingOccurrences(of: "\n", with: " "))
+          (ranTool, quotedClock, last.replacingOccurrences(of: "\n", with: " "))
         )
       }
       // The denominator is what came back, not what was asked for. A
       // generation the driver aborted is not the model declining to call
       // the tool, and folding the two together would report a machine's
       // limit as a model's decision.
-      print(
-        "PROBE \(condition.label): \(right)/\(transcript.count)"
+      Self.report(
+        "PROBE \(condition.label): "
+          + "called \(called)/\(transcript.count), "
+          + "quoted \(quoted)/\(transcript.count)"
           + (aborted == 0 ? "" : " (\(aborted) aborted, \(Self.attempts) asked)")
       )
       for (index, attempt) in transcript.enumerated() {
-        print(
-          "PROBE   \(attempt.right ? "right" : "wrong") "
+        Self.report(
+          "PROBE   \(attempt.called ? "called" : "silent")"
+            + "+\(attempt.quoted ? "quoted" : "unquoted") "
             + "\(index + 1): \(attempt.reply)"
         )
       }
