@@ -150,7 +150,7 @@
   "addTooltip": "新增",
   "modelDescriptionBalanced": "平衡的選擇：快到可以用講的，日常對話也夠強。",
   "modelDescriptionLight": "輕量的選擇：下載跟回答都更快，但答案比較簡單。",
-  "modelDescriptionCapable": "最強的選擇：這裡回答最好的一個，代價是第一個字要等好幾秒、下載也大得多。適合讀跟寫，不適合用講的。",
+  "modelDescriptionCapable": "最大也最慢的選擇：需要較新的高階 Mac，在較舊的機器上第一個字可能要等數十秒，甚至中途失敗。適合讀寫長文，不適合對話。",
   "sectionHearing": "它怎麼聽你說話",
   "hearingHoldTitle": "按住麥克風鍵",
   "hearingHoldNote": "放開就送出，中文英文都聽得懂。會出錯的地方是那些同時也是普通英文單字的產品名 —— Swift、Dart、test。",

@@ -196,7 +196,7 @@
   "addTooltip": "Add",
   "modelDescriptionBalanced": "The balanced choice: answers fast enough to speak with, and strong enough for everyday conversation.",
   "modelDescriptionLight": "The light choice: quicker to fetch and to answer, with simpler answers.",
-  "modelDescriptionCapable": "The strongest choice: the best answers on offer here, at several seconds before the first word and a much larger download. Better for reading and writing than for talking.",
+  "modelDescriptionCapable": "The largest and slowest choice: it needs a recent high-end Mac, and on older machines the first word can take tens of seconds or the answer can fail partway. For long reading and writing, never for talking.",
   "sectionHearing": "How it hears you",
   "hearingHoldTitle": "Holding the microphone button",
   "hearingHoldNote": "Sends when you let go, and hears English as well as Chinese. Product names that are also ordinary English words are where it slips — Swift, Dart, test.",

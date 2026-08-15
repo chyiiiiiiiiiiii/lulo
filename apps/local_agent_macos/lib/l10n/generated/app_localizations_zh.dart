@@ -481,7 +481,7 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get modelDescriptionCapable =>
-      '最強的選擇：這裡回答最好的一個，代價是第一個字要等好幾秒、下載也大得多。適合讀跟寫，不適合用講的。';
+      '最大也最慢的選擇：需要較新的高階 Mac，在較舊的機器上第一個字可能要等數十秒，甚至中途失敗。適合讀寫長文，不適合對話。';
 
   @override
   String get sectionHearing => '它怎麼聽你說話';
