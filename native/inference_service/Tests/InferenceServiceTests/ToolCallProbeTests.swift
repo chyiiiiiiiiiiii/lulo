@@ -138,6 +138,18 @@ final class ToolCallProbeTests: XCTestCase {
     /// Whether the clock is in the prompt. A told turn is right when it
     /// reads the clock back; a tool turn is right when the sentinel returns.
     let told: Bool
+    /// Whether the conversation forces the tool-call token shape.
+    ///
+    /// The first version of this probe never set it, and
+    /// `docs/decisions/tool-calling-readiness.md` then reported constrained
+    /// decoding as missing from the vendored runtime. It is not:
+    /// `ExperimentalFlags.enableConversationConstrainedDecoding` is wired
+    /// through `Engine.createConversation`, and the binary exports
+    /// `LiteRtLmGemmaModelConstraintProvider_CreateConstraintFromTools`
+    /// alongside a whole llguidance engine. Every row above it was measured
+    /// with this off, which is what makes the off/on pair the measurement
+    /// rather than either column alone.
+    var constrained: Bool = false
   }
 
   private func ask(
@@ -152,6 +164,12 @@ final class ToolCallProbeTests: XCTestCase {
       )
     )
     try await engine.initialize()
+    // Set for every condition rather than only the ones that want it: the
+    // flag is process-global and read when a conversation is created, so
+    // leaving it wherever the previous condition put it would let one row
+    // silently describe another row's settings.
+    ExperimentalFlags.optIntoExperimentalAPIs()
+    ExperimentalFlags.enableConversationConstrainedDecoding = condition.constrained
     let conversation = try await engine.createConversation(
       with: ConversationConfig(
         systemMessage: condition.systemMessage.map { Message($0) },
@@ -291,6 +309,35 @@ final class ToolCallProbeTests: XCTestCase {
         prompt: "What time is it right now?",
         style: .balanced,
         told: false
+      ),
+      // The same three asks with the tool-call token shape forced. Paired
+      // with the rows above them rather than run alone: the question is not
+      // whether a constrained model calls the clock, it is whether
+      // constraining it is what changes a refusal into a call under the
+      // instruction this app really sends.
+      Condition(
+        label: "tool zh/no-system-message +constrained",
+        systemMessage: nil,
+        prompt: "現在幾點？",
+        style: .balanced,
+        told: false,
+        constrained: true
+      ),
+      Condition(
+        label: "tool zh/app-preface +constrained",
+        systemMessage: Self.chinesePreface,
+        prompt: "現在幾點？",
+        style: .balanced,
+        told: false,
+        constrained: true
+      ),
+      Condition(
+        label: "tool en/app-preface +constrained",
+        systemMessage: Self.englishPreface,
+        prompt: "What time is it right now?",
+        style: .balanced,
+        told: false,
+        constrained: true
       ),
       // Telling it instead.
       Condition(

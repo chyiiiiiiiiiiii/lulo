@@ -30,6 +30,9 @@ one call and one refusal are the same observation until they are repeated.
 | Chinese, plus a paragraph ordering it to use the tool | 0/5 |
 | English, no system message | 0/5 |
 | English, this app's instruction | 0/5 |
+| Chinese, no system message, **constrained decoding** | **5/5** |
+| Chinese, this app's instruction, **constrained decoding** | 0/5 |
+| English, this app's instruction, **constrained decoding** | 0/5 |
 
 | Told the time in the prompt instead | Answered right |
 |---|---|
@@ -45,6 +48,40 @@ and not even when a further paragraph told it in as many words to call the
 tool and not to guess. This is not a fragile capability that needs coaxing.
 Between an empty prompt and this app's ordinary prompt, it goes from always
 to never.
+
+**Constrained decoding does not change it, and that was measured after this
+file said it would.** The three rows above them are the same three asks with
+`ExperimentalFlags.enableConversationConstrainedDecoding` on. The control
+moved nothing and proves the flag reached the model: with no system message
+the sentinel comes back all five times, formatted by the model as
+「現在的時間是 **TOOL-RAN-4718**。」 Under this app's instruction it is still
+0/5, in both languages, and the replies are the same invented clocks as
+before — 「現在是下午兩點零八分。」, `It is currently 10:45 AM.`, and once
+`It is currently 4:71 PM.`, which is not a time at all.
+
+This file used to argue the opposite, in the list at the bottom: "forcing
+the tool-call token shape takes the decision away from the model, which is
+the only one of these that addresses what was measured." That is a
+misreading of what constrained decoding is. It constrains the **shape of
+the tokens once the model has decided to call**; it does not make the model
+decide. The decision is upstream of the constraint, and the decision is
+what this app's instruction is suppressing.
+
+Two claims in that same bullet were also simply wrong about the code.
+`native/vendor/litert_lm/swift/` **does** carry constrained decoding —
+`ExperimentalFlags.enableConversationConstrainedDecoding` at
+`ExperimentalFlags.swift:85`, passed through `Engine.createConversation` at
+`Engine.swift:227` — and the Gemma constraint provider **is** in the shipped
+binary, which exports `LiteRtLmGemmaModelConstraintProvider_Create`,
+`…_CreateConstraintFromTools`, a whole llguidance engine, and the string
+`CONSTRAINT_MODE_FUNCTION_CALL_ONLY`. What was missing was any call to
+`optIntoExperimentalAPIs()` in the probe, so every row above the constrained
+ones was measured with it off. It reads like the search was for
+`enableConstrainedDecoding` and missed the `Conversation` in the middle of
+the real name.
+
+All nine original rows re-run unchanged alongside the new three, from one
+artifact, so the two halves of the table are comparable.
 
 **The failure is silent, and once it was worse than silent.** It does not
 say it cannot read a clock. It returns 「現在是下午兩點零一分」, `1:17 PM`,
@@ -149,16 +186,19 @@ under this app's prompt it does not decide, ever. A permission layer over a
 capability that fires zero times in thirty is a permission layer over
 nothing. One of these has to change first:
 
-- **Constrained decoding.** The upstream LiteRT-LM has it; the copy in
-  `native/vendor/litert_lm/swift/` does not — no `enableConstrainedDecoding`,
-  no `ResponseFormat`, and the Gemma constraint provider dylib is not in the
-  repo. Forcing the tool-call token shape takes the decision away from the
-  model, which is the only one of these that addresses what was measured.
+- ~~**Constrained decoding.**~~ **Ruled out, by measurement.** It is present
+  in the vendored wrapper and in the shipped binary, it was turned on, and
+  the app-instruction rows stayed at 0/5 while the control stayed at 5/5.
+  See the table above. It shapes the tokens of a call the model has already
+  decided to make, and the decision is what is missing.
 - **A much shorter system instruction**, which the 5/5 row shows would help
   — and which costs the persona, the spoken-answer rules, and the length
   budget that `agent_prompt_composer.dart` documents as earned.
 - **A larger model**, at a cost in first-token latency this app has already
-  spent a decision doc protecting.
+  spent a decision doc protecting. With constrained decoding ruled out this
+  is the only untried lever left that does not cost the persona, and
+  `gemma-4-12B-it` is now in `model_catalog.dart` — run the probe against it
+  before designing anything on top of tool calling.
 - **A router that decides instead of the model** — cheap to write, and it
   fails on exactly the phrasings nobody anticipated, which is most of them.
 
