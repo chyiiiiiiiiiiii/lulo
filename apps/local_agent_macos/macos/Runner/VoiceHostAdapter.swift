@@ -1928,61 +1928,44 @@ enum TurnCompletion: Equatable {
   /// A question or statement that has visibly landed — submit sooner.
   case settled
 
+  // The words and thresholds are not written here. They live in
+  // `TurnCompletion` in `agent_core` and reach this file through
+  // `GeneratedTurnTakingLexicon.swift`, which `verify.dart` regenerates and
+  // diffs — so a word added on one side and not the other fails the gate
+  // instead of quietly making two platforms disagree about when a sentence
+  // has ended. The *matcher* below stays native because it is consulted on a
+  // 50ms tick inside the audio path; see `pigeons/voice_host_api.dart`.
+
   /// How much longer a half-finished thought is given.
   ///
   /// Sized to clear the corpus's longest mid-utterance pause: 0.8 + 0.6 is
   /// 1.4s, against the 1.02s of `short-answer-not-yet`.
-  static let continuingGrace: TimeInterval = 0.6
+  static let continuingGrace = TurnTakingLexicon.continuingGrace
 
   /// How much sooner a visibly finished question is submitted.
   ///
   /// Deliberately small. Every millisecond taken off the wait is a
   /// millisecond of a user's trailing word that can be cut off, and being
   /// cut off is a worse failure than being answered a quarter-second late.
-  static let settledSaving: TimeInterval = 0.25
+  static let settledSaving = TurnTakingLexicon.settledSaving
 
   /// How much has to have been said before "finished" is believable.
   ///
   /// A bare 「嗎」 is one misheard syllable, not a question, and shortening
   /// the endpoint on a mishearing is how a user gets cut off mid-word.
-  static let syllablesToBeFinished = 4
+  static let syllablesToBeFinished = TurnTakingLexicon.syllablesToBeFinished
 
   /// Endings that introduce more words after a pause.
-  ///
-  /// Connectives, hesitations, and the framing phrases a speaker uses to
-  /// announce a question before asking it. The first three of these were
-  /// the whole list, hardcoded, and everything else here is a pause this
-  /// agent has had to be interrupted through.
-  private static let continuingSuffixes = [
-    "等一下", "我想問的是", "我想說的是", "我的意思是", "我是說", "我覺得", "我想說", "我想",
-    "但是", "可是", "不過", "然後", "而且", "因為", "所以", "如果", "要是", "除非",
-    "雖然", "既然", "或是", "還有", "還是", "就是", "那個", "這個", "譬如", "例如",
-    "比如", "像是", "至於", "另外", "首先", "再來", "接下來", "反正", "其實",
-    "的話", "的時候",
-  ]
+  private static let continuingSuffixes = TurnTakingLexicon.continuingSuffixes
 
   /// The same, in Latin script, matched as a whole final word.
-  ///
-  /// By word rather than by suffix: "also" ends in "so" and is not a
-  /// speaker trailing off.
-  private static let continuingWords: Set<String> = [
-    "and", "but", "so", "because", "if", "then", "or", "like", "um", "uh",
-    "well", "actually", "the", "a", "an", "to", "of", "for", "with", "that",
-    "which", "when", "while", "however", "although",
-  ]
+  private static let continuingWords = TurnTakingLexicon.continuingWords
 
   /// Endings that mean the question has been asked.
-  ///
-  /// Only the particles that do not double as hesitations. 「了」「吧」「啦」
-  /// are all common mid-sentence — 「我吃了飯就出門」 — and are deliberately
-  /// absent: including them buys a quarter-second and pays for it by cutting
-  /// people off.
-  private static let settledSuffixes = ["嗎", "呢", "嘛", "沒有", "好不好", "對不對"]
+  private static let settledSuffixes = TurnTakingLexicon.settledSuffixes
 
   /// What the recogniser writes when it believes the sentence ended.
-  private static let terminalPunctuation: Set<Character> = [
-    "。", "？", "！", "．", "｡", "?", "!",
-  ]
+  private static let terminalPunctuation = TurnTakingLexicon.terminalPunctuation
 
   /// What [text] says about whether the speaker has finished.
   ///

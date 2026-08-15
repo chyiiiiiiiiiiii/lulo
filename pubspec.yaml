@@ -11,5 +11,9 @@ workspace:
   - packages/agent_core
 
 dev_dependencies:
+  # `tool/generate_turn_taking_lexicon.dart` reads the turn-taking lexicon
+  # from its one source and writes the native copy, so the tool layer has to
+  # be able to import the core it generates from.
+  agent_core: ^0.1.0
   flutter_lints: ^6.0.0
   pigeon: ^26.0.1

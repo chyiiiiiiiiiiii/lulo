@@ -18,3 +18,4 @@ export 'src/transcript_refiner/transcript_refinement.dart';
 export 'src/voice/cut_off_ledger.dart';
 export 'src/voice/floor_control.dart';
 export 'src/voice/heard_confidence.dart';
+export 'src/voice/turn_completion.dart';

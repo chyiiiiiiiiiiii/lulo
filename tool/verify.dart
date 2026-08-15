@@ -79,6 +79,22 @@ Future<void> main() async {
       arguments: const <String>['test'],
       workingDirectory: _join(workspaceRoot.path, 'packages/agent_core'),
     ),
+    // The turn-taking lexicon is written once in `agent_core` and generated
+    // into Swift, because the endpointer that reads it runs natively on a
+    // 50ms audio tick and a second platform's will too. Generated output is
+    // only single-sourced while something checks it: without this step a word
+    // added to the Dart list and not regenerated leaves the two platforms
+    // disagreeing about when a sentence has ended, and nothing says so.
+    _VerificationCommand(
+      name: 'turn-taking lexicon is generated from its one source',
+      executable: 'dart',
+      arguments: const <String>[
+        'run',
+        'tool/generate_turn_taking_lexicon.dart',
+        '--check',
+      ],
+      workingDirectory: workspaceRoot.path,
+    ),
     // The gate's own checks had tests that nothing ran, which is the same
     // trap the window tests fell into: a verifier that has quietly stopped
     // detecting anything still reports success.
