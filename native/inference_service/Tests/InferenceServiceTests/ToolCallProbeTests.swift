@@ -31,6 +31,43 @@ final class ToolCallProbeTests: XCTestCase {
   /// tool body ran rather than that the answer merely looked plausible.
   static let sentinel = "TOOL-RAN-4718"
 
+  /// Which compute backend the probe runs on.
+  ///
+  /// CPU by default, because every row already in
+  /// `docs/decisions/tool-calling-readiness.md` was measured that way and a
+  /// backend is a condition like any other. That default is itself worth
+  /// noticing: `LiteRTLMRuntimeConfiguration.defaultBackend` is `.gpu` on
+  /// arm64, so the whole table was taken on a backend the app does not use.
+  /// It was left alone rather than quietly switched — the finding it supports
+  /// is that a system instruction stops the model calling tools, which is not
+  /// a thing a matrix-multiply kernel decides.
+  ///
+  /// `TOOL_PROBE_BACKEND=gpu` selects the app's, which is not optional for a
+  /// model too large to decode on CPU in a sitting.
+  static var probeBackend: Backend {
+    ProcessInfo.processInfo.environment["TOOL_PROBE_BACKEND"] == "gpu"
+      ? .gpu : .cpu(threadCount: nil)
+  }
+
+  /// Which conditions to run, when only some of them are wanted.
+  ///
+  /// Empty runs all of them, which is what the checked-in table needs. A
+  /// comma-separated `TOOL_PROBE_ONLY` keeps the labels equal to one of its
+  /// entries — a 12B model reloaded sixty times is an hour of a machine, and
+  /// the question asked of a new model is usually two rows wide.
+  ///
+  /// Equality rather than a substring, because the labels nest: every one of
+  /// them is a prefix of another (`tool zh/app-preface` of `… @steady` and
+  /// `… +constrained`, and of `told zh/app-preface` had it matched loosely).
+  /// Asking for two rows and being handed five is an extra hour, and worse,
+  /// a table that says it ran what was asked for.
+  static var probeFilter: [String] {
+    (ProcessInfo.processInfo.environment["TOOL_PROBE_ONLY"] ?? "")
+      .split(separator: ",")
+      .map { $0.trimmingCharacters(in: .whitespaces) }
+      .filter { !$0.isEmpty }
+  }
+
   /// The clock the model is offered.
   struct ClockTool: Tool {
     static let name = "get_current_time"
@@ -45,6 +82,25 @@ final class ToolCallProbeTests: XCTestCase {
   /// observation until they are repeated. Every condition gets the same
   /// number, so the denominators in the table are comparable.
   static let attempts = 5
+
+  /// How many times a generation the driver aborted is asked again.
+  ///
+  /// Only for `ABORTED: The timeout was reached while reading back data`,
+  /// which is a GPU readback deadline rather than an answer: measured on
+  /// this M1 Pro it ends roughly half of gemma-4-12B's generations, and it
+  /// ended the shortest condition in the table as readily as the longest.
+  /// Retrying it is what keeps a machine's limit out of a column about what
+  /// a model decides — and the retries are printed, because a silent one
+  /// turns an unreliable model into a clean-looking row.
+  static let abortRetries = 3
+
+  /// Whether an error is that readback deadline rather than a real failure.
+  ///
+  /// Matched on the message because the vendored runtime surfaces it as
+  /// `invalidResponse(String)`, with no case of its own to switch on.
+  static func isReadbackAbort(_ error: Error) -> Bool {
+    String(describing: error).contains("timeout was reached while reading back")
+  }
 
   /// What the app really sends in Chinese, from `composeAgentPrompt` with
   /// the built-in profile. Pasted rather than abbreviated: the first version
@@ -160,7 +216,7 @@ final class ToolCallProbeTests: XCTestCase {
     let engine = Engine(
       engineConfig: try EngineConfig(
         modelPath: modelPath,
-        backend: .cpu(threadCount: nil)
+        backend: Self.probeBackend
       )
     )
     try await engine.initialize()
@@ -363,9 +419,24 @@ final class ToolCallProbeTests: XCTestCase {
       ),
     ]
 
-    for condition in conditions {
+    let filter = Self.probeFilter
+    let selected =
+      filter.isEmpty
+      ? conditions
+      : conditions.filter { filter.contains($0.label) }
+    print(
+      "PROBE backend=\(Self.probeBackend) conditions=\(selected.count)"
+        + "/\(conditions.count) model=\((modelPath as NSString).lastPathComponent)"
+    )
+    // A misspelled label would otherwise run nothing and pass, and an hour
+    // later the absence of rows reads as a model that answered nothing.
+    XCTAssertFalse(
+      selected.isEmpty,
+      "TOOL_PROBE_ONLY=\(filter) matched no condition"
+    )
+
+    for condition in selected {
       var right = 0
-      var last = ""
       // Every reply and how it scored, not the last one seen. This file's
       // own lesson is to check the scorer against the actual replies before
       // believing a column, and it has been broken three times by a version
@@ -374,13 +445,24 @@ final class ToolCallProbeTests: XCTestCase {
       // the model invented and a real one the scorer could not parse are
       // the same number and completely different problems.
       var transcript: [(right: Bool, reply: String)] = []
+      var aborted = 0
       for attempt in 0..<Self.attempts {
         // A fixed seed would repeat one sample rather than draw five.
-        last = try await ask(
-          condition,
-          modelPath: modelPath,
-          seed: attempt + 1
-        )
+        var reply: String?
+        for _ in 0...Self.abortRetries {
+          do {
+            reply = try await ask(
+              condition,
+              modelPath: modelPath,
+              seed: attempt + 1
+            )
+            break
+          } catch let error where Self.isReadbackAbort(error) {
+            aborted += 1
+            print("PROBE   aborted \(attempt + 1): \(error)")
+          }
+        }
+        guard let last = reply else { continue }
         let scored = Self.answered(last, told: condition.told)
         if scored {
           right += 1
@@ -389,7 +471,14 @@ final class ToolCallProbeTests: XCTestCase {
           (scored, last.replacingOccurrences(of: "\n", with: " "))
         )
       }
-      print("PROBE \(condition.label): \(right)/\(Self.attempts)")
+      // The denominator is what came back, not what was asked for. A
+      // generation the driver aborted is not the model declining to call
+      // the tool, and folding the two together would report a machine's
+      // limit as a model's decision.
+      print(
+        "PROBE \(condition.label): \(right)/\(transcript.count)"
+          + (aborted == 0 ? "" : " (\(aborted) aborted, \(Self.attempts) asked)")
+      )
       for (index, attempt) in transcript.enumerated() {
         print(
           "PROBE   \(attempt.right ? "right" : "wrong") "

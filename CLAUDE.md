@@ -90,8 +90,20 @@ because an invented time and a real one the scorer could not parse are the
 same number and different problems. Read
 `docs/decisions/tool-calling-readiness.md`
 before building on tool calling: the probe is checked in and skipped by
-default, and the thing that would actually fix it — constrained decoding —
-is missing from the vendored runtime.
+default, and **both** things that were supposed to fix it have now been
+measured and do not. Constrained decoding is not missing from the vendored
+runtime, as this file used to say — it is there, it was turned on, and the
+app-instruction rows stayed at 0/5 while the no-system-message control
+stayed at 5/5; it shapes the tokens of a call already decided on, and the
+decision is what is missing. The larger model is spent too: `gemma-4-12B-it`
+is **0/5 with no system message at all**, where E4B is 4/5 on the same GPU
+backend — a control run for the express purpose that 12B cannot decode on
+CPU, so the comparison was one backend away from measuring the wrong thing.
+Whether 12B ever saw the tool is **not** established, and the test that
+would settle it errors inside the runtime. Separately it is unusable on this
+machine for ordinary reasons: 59.5s to load and 17.4s to first token with a
+warm cache, and about one generation in seven killed by a GPU readback
+deadline.
 
 Two settings that named something they did not reach now reach it.
 `AgentProfile.vocabulary` documented itself as biasing the recogniser while
