@@ -175,6 +175,131 @@ final class LocalModelRuntimeTests: XCTestCase {
     )
   }
 
+  func testToolDeclarationsReachTheDriverAndResponsesReplaceThePrompt()
+    async throws
+  {
+    // Tools are declared in Dart and executed in Dart; the runtime's part
+    // is rendering the declarations into the template and carrying the
+    // results back in. Both travel as opaque JSON — the backend must hand
+    // them through without an opinion.
+    let harness = try await makeLiteRTLMBackendHarness()
+    defer { try? FileManager.default.removeItem(at: harness.modelDirectory) }
+    let declarations = #"[{"type":"function","function":{"name":"echo"}}]"#
+    let first = try await harness.backend.startGeneration(
+      RuntimeGenerationRequest(
+        generationId: "g1",
+        sessionId: "session-9",
+        prompt: "Hello",
+        context: [],
+        history: [],
+        temperature: 0.2,
+        topP: 0.9,
+        maxTokens: 16,
+        seed: 7,
+        toolsJson: declarations
+      )
+    )
+    XCTAssertTrue(first.accepted)
+    await harness.driver.waitForGenerationCall()
+    await harness.driver.finishGeneration()
+    await harness.events.waitForCount(2)
+
+    // The model asked for a tool; the caller ran it and continues the same
+    // session with the results and no prompt — the user's words for this
+    // turn were already sent by g1.
+    let responses = #"[{"name":"echo","id":"c1","response":{"ok":true}}]"#
+    let second = try await harness.backend.startGeneration(
+      RuntimeGenerationRequest(
+        generationId: "g2",
+        sessionId: "session-9",
+        prompt: "",
+        context: [],
+        history: [],
+        temperature: 0.2,
+        topP: 0.9,
+        maxTokens: 16,
+        seed: 7,
+        toolsJson: declarations,
+        toolResponsesJson: responses
+      )
+    )
+    XCTAssertTrue(
+      second.accepted,
+      "A continuation with an empty prompt is the tool loop's normal step"
+    )
+    var requests = await harness.driver.generationRequests
+    for _ in 0..<200 where requests.count < 2 {
+      try await Task.sleep(nanoseconds: 2_000_000)
+      requests = await harness.driver.generationRequests
+    }
+    XCTAssertEqual(requests.first?.toolsJson, declarations)
+    XCTAssertEqual(requests.last?.toolResponsesJson, responses)
+  }
+
+  func testAnEmptyPromptWithoutToolResponsesIsStillRefused() async throws {
+    // The empty-prompt allowance exists for tool continuations and for
+    // nothing else; an ordinary request with nothing to say stays a
+    // protocol error rather than becoming a blank generation.
+    let harness = try await makeLiteRTLMBackendHarness()
+    defer { try? FileManager.default.removeItem(at: harness.modelDirectory) }
+    do {
+      _ = try await harness.backend.startGeneration(
+        RuntimeGenerationRequest(
+          generationId: "g1",
+          sessionId: "session-9",
+          prompt: "",
+          context: [],
+          history: [],
+          temperature: 0.2,
+          topP: 0.9,
+          maxTokens: 16,
+          seed: 7
+        )
+      )
+      XCTFail("An empty prompt with no tool responses was accepted")
+    } catch {
+      // Expected: the request never reaches the driver.
+      let requests = await harness.driver.generationRequests
+      XCTAssertTrue(requests.isEmpty)
+    }
+  }
+
+  func testAToolCallChunkIsTerminalAndCarriesTheCalls() async throws {
+    // When the model stops to ask for tools, that is the end of this
+    // generation — the loop's next step is a new generation on the same
+    // session. The event must carry the calls, and nothing after it may
+    // dress the same generation up as completed: a completed event behind
+    // the toolCall would tell the caller the turn is over when the model
+    // is still waiting for its results.
+    let harness = try await makeLiteRTLMBackendHarness()
+    defer { try? FileManager.default.removeItem(at: harness.modelDirectory) }
+    _ = try await harness.backend.startGeneration(
+      RuntimeGenerationRequest(
+        generationId: "g1",
+        sessionId: "session-9",
+        prompt: "Hello",
+        context: [],
+        history: [],
+        temperature: 0.2,
+        topP: 0.9,
+        maxTokens: 16,
+        seed: 7,
+        toolsJson: #"[{"type":"function","function":{"name":"echo"}}]"#
+      )
+    )
+    await harness.driver.waitForGenerationCall()
+    let calls = #"[{"name":"echo","id":"c1","arguments":{}}]"#
+    await harness.driver.emitToolCalls(calls)
+    await harness.driver.finishGeneration()
+    await harness.events.waitForCount(2)
+    // Give any wrongly-emitted completion a chance to arrive before the
+    // absence below is believed.
+    try await Task.sleep(nanoseconds: 20_000_000)
+    let events = await harness.events.events
+    XCTAssertEqual(events.map(\.kind), [.started, .toolCall])
+    XCTAssertEqual(events.last?.toolCallsJson, calls)
+  }
+
   func testLiteRTLMBackendStartsPromptlyAndEmitsOrderedEvents() async throws {
     let harness = try await makeLiteRTLMBackendHarness()
     defer { try? FileManager.default.removeItem(at: harness.modelDirectory) }
@@ -5843,7 +5968,7 @@ private actor LiteRTLMRuntimeDriverSpy: LiteRTLMRuntimeDriving {
   private(set) var generationCompleted = false
 
   private var generationHandler:
-    (@Sendable (String) async -> Void)?
+    (@Sendable (LiteRTLMDriverChunk) async -> Void)?
   private var generationContinuation: CheckedContinuation<Void, Error>?
   private var generationCallWaiters: [CheckedContinuation<Void, Never>] = []
 
@@ -5853,7 +5978,7 @@ private actor LiteRTLMRuntimeDriverSpy: LiteRTLMRuntimeDriving {
 
   func generate(
     _ request: LiteRTLMDriverGenerationRequest,
-    onChunk: @escaping @Sendable (String) async -> Void
+    onChunk: @escaping @Sendable (LiteRTLMDriverChunk) async -> Void
   ) async throws {
     generationRequests.append(request)
     generationHandler = onChunk
@@ -5887,7 +6012,11 @@ private actor LiteRTLMRuntimeDriverSpy: LiteRTLMRuntimeDriving {
   }
 
   func emitChunk(_ chunk: String) async {
-    await generationHandler?(chunk)
+    await generationHandler?(.text(chunk))
+  }
+
+  func emitToolCalls(_ callsJson: String) async {
+    await generationHandler?(.toolCalls(callsJson))
   }
 
   func finishGeneration() {

@@ -42,6 +42,7 @@ final class PigeonInferenceService implements InferenceService {
     required this._config,
     AgentContextProvider? agentContext,
     AnswerStyle Function()? answerStyle,
+    this.toolbox,
   }) : _agentContext =
            agentContext ?? ProfileAgentContextProvider(AgentProfile.builtIn),
        _answerStyle = answerStyle ?? _balanced;
@@ -58,6 +59,14 @@ final class PigeonInferenceService implements InferenceService {
   /// model stays loaded: the sampler travels in the request the host already
   /// receives, so this costs nothing and never reloads anything.
   final AnswerStyle Function() _answerStyle;
+
+  /// The tools this conversation offers, read again for every generation.
+  ///
+  /// A function for the same reason [_answerStyle] is: the set can change
+  /// while the model stays loaded, and the native side already rebuilds the
+  /// conversation when the declarations it was built with have changed.
+  /// Null means no tools, which must cost what no toolbox ever cost.
+  final AgentToolbox Function()? toolbox;
   int _nextGeneration = 0;
 
   @override
@@ -91,6 +100,7 @@ final class PigeonInferenceService implements InferenceService {
       // Read here rather than held, so a style the user changes mid-session
       // applies to the next question without reloading anything.
       style: _answerStyle(),
+      toolbox: toolbox?.call(),
       request: request,
       generationId: generationId,
       controller: controller,
@@ -250,7 +260,15 @@ final class _PigeonGenerationOperation {
     required this.onSessionStarted,
     required this.onFinished,
     required this.style,
+    this.toolbox,
   });
+
+  /// How many tool continuations one turn is allowed before it is cut off.
+  ///
+  /// A model looping on tools would otherwise hold the machine forever —
+  /// the vendored runtime's own automatic loop caps at 25, but three is
+  /// already more than any turn this app composes has a use for.
+  static const int maxToolRounds = 3;
 
   final DesktopHostService host;
   final LocalModelConfig config;
@@ -262,15 +280,40 @@ final class _PigeonGenerationOperation {
   final AgentContextProvider agentContext;
   final void Function(String sessionId) onSessionStarted;
   final void Function() onFinished;
+
+  /// The tools this turn may use, or null for a turn without any.
+  final AgentToolbox? toolbox;
   StreamSubscription<DesktopGenerationEvent>? _subscription;
   Future<void>? _cancellation;
   bool _fenced = false;
   bool _terminal = false;
   bool _hostAcknowledgedCancellation = false;
 
+  /// Which host generation this operation is currently listening for.
+  ///
+  /// The first phase reuses [generationId]; each tool continuation is a new
+  /// host generation on the same session, because the host treats the
+  /// tool-call event as terminal and refuses an id it has already seen.
+  late String _hostGenerationId = generationId.value;
+
+  /// Whether [GenerationStarted] already went upward. One turn starts once,
+  /// however many host generations its tool loop spends.
+  bool _startedEmitted = false;
+
+  /// The system instruction the first phase was built with. Continuations
+  /// must repeat it verbatim: the native side rebuilds a conversation whose
+  /// instruction has changed, and a rebuilt conversation has forgotten the
+  /// tool calls it was answering.
+  String _systemInstruction = '';
+
+  /// The declarations the first phase sent, repeated on continuations for
+  /// the same reason as [_systemInstruction].
+  String? _toolsJson;
+  int _toolRounds = 0;
+
   Future<void> start() async {
     _subscription = host.generationEvents
-        .where((event) => event.generationId == generationId.value)
+        .where((event) => event.generationId == _hostGenerationId)
         .listen(_receiveEvent);
     try {
       await ensureReady();
@@ -285,6 +328,11 @@ final class _PigeonGenerationOperation {
       }
       onSessionStarted(request.conversationId.value);
       final AgentPromptContext context = agentContext.compose(request.prompt);
+      _systemInstruction = context.systemInstruction;
+      final AgentToolbox? tools = toolbox;
+      _toolsJson = tools == null || tools.isEmpty
+          ? null
+          : tools.declarationsJson;
       final acknowledgement = await host.startGeneration(
         DesktopGenerationRequest(
           generationId: generationId.value,
@@ -300,6 +348,7 @@ final class _PigeonGenerationOperation {
           topP: style.topP,
           maxTokens: config.maxTokens,
           seed: config.seed,
+          toolsJson: _toolsJson,
         ),
       );
       if (_fenced) {
@@ -337,9 +386,16 @@ final class _PigeonGenerationOperation {
     }
     switch (event.type) {
       case HostGenerationEventType.started:
-        controller.add(
-          GenerationStarted(Generation(id: generationId, request: request)),
-        );
+        // One turn starts once, however many host generations its tool
+        // loop spends underneath it.
+        if (!_startedEmitted) {
+          _startedEmitted = true;
+          controller.add(
+            GenerationStarted(Generation(id: generationId, request: request)),
+          );
+        }
+      case HostGenerationEventType.toolCall:
+        unawaited(_continueWithTools(event.toolCallsJson ?? '[]'));
       case HostGenerationEventType.delta:
         controller.add(
           GenerationDelta(generationId: generationId, delta: event.delta ?? ''),
@@ -364,6 +420,84 @@ final class _PigeonGenerationOperation {
     }
   }
 
+  /// Runs the model's tool calls and continues the turn with the results.
+  ///
+  /// The host has already ended the previous generation — its tool-call
+  /// event is terminal on that side — so the continuation is a fresh host
+  /// generation on the same session, and this operation re-aims its event
+  /// filter at the new id. The turn the caller sees never notices.
+  Future<void> _continueWithTools(String callsJson) async {
+    final AgentToolbox? tools = toolbox;
+    final List<AgentToolCall> calls = AgentToolCall.listFromJson(callsJson);
+    _toolRounds += 1;
+    if (tools == null || calls.isEmpty || _toolRounds > maxToolRounds) {
+      // A tool call with no toolbox is a protocol breach, an empty list is
+      // a runtime bug, and a fourth round is a model stuck in a loop. All
+      // three end the turn as a failure rather than hanging it.
+      if (!_terminal) {
+        controller.add(
+          GenerationFailed(
+            generationId: generationId,
+            failure: ConversationFailure(
+              DesktopHostFailureCode.generationFailed.userSafeMessage,
+            ),
+          ),
+        );
+        await _finish();
+      }
+      return;
+    }
+    final List<AgentToolResult> results = <AgentToolResult>[
+      for (final AgentToolCall call in calls) await tools.call(call),
+    ];
+    if (_fenced || _terminal) {
+      // Cancelled while a tool was running. The host holds no generation
+      // right now — the tool-call event ended the last one — so there is
+      // nothing to take back; not starting the continuation is the whole
+      // job.
+      return;
+    }
+    final String continuationId = '${generationId.value}-tools-$_toolRounds';
+    _hostGenerationId = continuationId;
+    try {
+      final acknowledgement = await host.startGeneration(
+        DesktopGenerationRequest(
+          generationId: continuationId,
+          sessionId: request.conversationId.value,
+          systemInstruction: _systemInstruction,
+          prompt: '',
+          context: const <String>[],
+          temperature: style.temperature,
+          topP: style.topP,
+          maxTokens: config.maxTokens,
+          seed: config.seed,
+          toolsJson: _toolsJson,
+          toolResponsesJson: encodeAgentToolResults(results),
+        ),
+      );
+      if (_fenced) {
+        await _cancellation;
+        if (!_hostAcknowledgedCancellation &&
+            acknowledgement.accepted &&
+            acknowledgement.generationId == continuationId) {
+          await host.cancelGeneration(continuationId);
+        }
+        return;
+      }
+      if (acknowledgement.generationId != continuationId) {
+        throw const DesktopHostFailure(DesktopHostFailureCode.protocolMismatch);
+      }
+      if (!acknowledgement.accepted) {
+        throw const DesktopHostFailure(DesktopHostFailureCode.generationFailed);
+      }
+    } on Object catch (error, stackTrace) {
+      if (!_terminal) {
+        controller.addError(_safeConversationFailure(error), stackTrace);
+        await _finish();
+      }
+    }
+  }
+
   Future<void> cancel() {
     if (_terminal) {
       return Future<void>.value();
@@ -382,9 +516,12 @@ final class _PigeonGenerationOperation {
   Future<void> _cancel() async {
     _fenced = true;
     await _subscription?.cancel();
+    // The current host generation, which after a tool round is not the one
+    // this operation was born with.
+    final String hostGenerationId = _hostGenerationId;
     try {
-      final acknowledgement = await host.cancelGeneration(generationId.value);
-      if (acknowledgement.generationId != generationId.value) {
+      final acknowledgement = await host.cancelGeneration(hostGenerationId);
+      if (acknowledgement.generationId != hostGenerationId) {
         throw const DesktopHostFailure(DesktopHostFailureCode.protocolMismatch);
       }
       // An unacknowledged cancellation has one meaning at this boundary: the

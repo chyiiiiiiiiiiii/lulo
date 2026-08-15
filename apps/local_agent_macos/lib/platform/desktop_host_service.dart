@@ -234,6 +234,8 @@ final class DesktopGenerationRequest {
     required this.maxTokens,
     required this.seed,
     this.history = const <DesktopConversationTurn>[],
+    this.toolsJson,
+    this.toolResponsesJson,
   });
 
   /// What was already said, oldest first, excluding [prompt].
@@ -272,6 +274,16 @@ final class DesktopGenerationRequest {
 
   /// Deterministic sampling seed.
   final int seed;
+
+  /// Tool declarations the model may call, as OpenAPI function JSON, or
+  /// null when this conversation has nothing to declare.
+  final String? toolsJson;
+
+  /// Results answering the previous generation's tool calls, as
+  /// `[{"name","id","response"}]` JSON. Non-null makes this a continuation
+  /// of the same session: [prompt] is ignored, because the user's words
+  /// were sent by the generation that asked for the tools.
+  final String? toolResponsesJson;
 }
 
 /// Typed acknowledgement for generation start.
@@ -436,6 +448,7 @@ final class DesktopGenerationEvent {
     this.delta,
     this.failureCode,
     this.message,
+    this.toolCallsJson,
   });
 
   /// Stable generation identifier supplied by the native runtime boundary.
@@ -455,6 +468,10 @@ final class DesktopGenerationEvent {
 
   /// Safe terminal diagnostic text.
   final String? message;
+
+  /// The calls a [HostGenerationEventType.toolCall] event carries, as
+  /// `[{"name","id","arguments"}]` JSON; null on every other type.
+  final String? toolCallsJson;
 }
 
 /// Whether the app starts itself when the user logs in.

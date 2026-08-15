@@ -109,7 +109,9 @@ final class LocalRuntimeDesktopHostApi: DesktopHostApi {
       temperature: generation.temperature,
       topP: generation.topP,
       maxTokens: generation.maxTokens,
-      seed: generation.seed
+      seed: generation.seed,
+      toolsJson: generation.toolsJson,
+      toolResponsesJson: generation.toolResponsesJson
     )
     Task {
       await resolve(completion) {
@@ -553,7 +555,8 @@ final class PigeonGenerationEventSink: RuntimeGenerationEventSink {
         type: event.kind.hostType,
         delta: event.delta,
         failureCode: event.failureCode?.hostCode,
-        message: event.message
+        message: event.message,
+        toolCallsJson: event.toolCallsJson
       ),
       completion: { _ in }
     )
@@ -609,6 +612,8 @@ private extension RuntimeGenerationEventKind {
       .cancelled
     case .failed:
       .failed
+    case .toolCall:
+      .toolCall
     }
   }
 }

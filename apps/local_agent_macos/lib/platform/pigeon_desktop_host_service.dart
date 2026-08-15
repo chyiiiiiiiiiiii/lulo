@@ -99,6 +99,8 @@ final class PigeonDesktopHostService extends DesktopHostEventApi
           topP: generation.topP,
           maxTokens: generation.maxTokens,
           seed: generation.seed,
+          toolsJson: generation.toolsJson,
+          toolResponsesJson: generation.toolResponsesJson,
         ),
       ),
     );
@@ -490,6 +492,7 @@ final class PigeonDesktopHostService extends DesktopHostEventApi
       delta: event.delta,
       failureCode: failureCode,
       message: failureCode?.userSafeMessage,
+      toolCallsJson: event.toolCallsJson,
     );
   }
 
@@ -504,7 +507,10 @@ final class PigeonDesktopHostService extends DesktopHostEventApi
     return switch (type) {
       HostGenerationEventType.completed ||
       HostGenerationEventType.cancelled ||
-      HostGenerationEventType.failed => true,
+      HostGenerationEventType.failed ||
+      // Terminal for the generation the way completed is; the tool loop's
+      // next step is a new generation on the same session.
+      HostGenerationEventType.toolCall => true,
       HostGenerationEventType.started || HostGenerationEventType.delta => false,
     };
   }

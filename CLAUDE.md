@@ -71,6 +71,22 @@ gap after it. `flutter pub get` reporting `zh_Hant: N untranslated` is that file
 working as intended — N is however many keys `app_zh.arb` has, and it moves
 with every string added.
 
+Tool calling is **built and measured**, not merely possible: declarations
+travel as opaque JSON from `AgentToolbox` (agent_core) through Pigeon into
+`ConversationConfig`; when the model stops to call, the host generation
+ends with a `toolCall` event; `PigeonInferenceService` runs the tool in
+Dart and continues the same session with `toolResponsesJson` — one turn
+upward, however many host generations the loop spends. Three rounds, then
+the turn fails rather than looping. The first tool is
+`search_conversations` (titles and dates, read-only, no permission layer
+needed); the clock stays told, not fetched. End-to-end against the real
+model: ask the time under the app's own instruction, the model calls,
+reads `02:53` back as 「凌晨兩點五三分」, 3.1 s warm
+(`ToolLoopIntegrationTests`). Read
+`docs/decisions/tools-declared-in-dart-loop-in-dart.md` before moving any
+part of the loop — where each piece lives is argued there, and the
+cancellation window and stale-tools rebuild rules are pinned by tests.
+
 Tool calling works, and this file spent a year saying the opposite because
 of a scorer. Measured on runtime v0.16.0 with executions counted directly,
 gemma-4-E4B calls a registered clock **5/5 under this app's own system

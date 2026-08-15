@@ -102,7 +102,9 @@ public struct RuntimeGenerationRequest: Equatable, Sendable {
     temperature: Double,
     topP: Double,
     maxTokens: Int64,
-    seed: Int64
+    seed: Int64,
+    toolsJson: String? = nil,
+    toolResponsesJson: String? = nil
   ) {
     self.generationId = generationId
     self.sessionId = sessionId
@@ -114,6 +116,8 @@ public struct RuntimeGenerationRequest: Equatable, Sendable {
     self.topP = topP
     self.maxTokens = maxTokens
     self.seed = seed
+    self.toolsJson = toolsJson
+    self.toolResponsesJson = toolResponsesJson
   }
 
   public let generationId: String
@@ -135,6 +139,18 @@ public struct RuntimeGenerationRequest: Equatable, Sendable {
   public let topP: Double
   public let maxTokens: Int64
   public let seed: Int64
+
+  /// Tool declarations the model may call, as OpenAPI function JSON, or nil
+  /// for a conversation with nothing to declare. Opaque here: what exists
+  /// and what it does are the caller's decisions, and the runtime's only
+  /// job is rendering them into the template.
+  public let toolsJson: String?
+
+  /// Results answering the previous generation's tool calls, as
+  /// `[{"name","id","response"}]` JSON. Non-nil makes this a continuation:
+  /// `prompt` is ignored — and may be empty — because the user's words for
+  /// this turn were sent by the generation that asked for the tools.
+  public let toolResponsesJson: String?
 }
 
 public struct RuntimeGenerationAcknowledgement: Equatable, Sendable {
@@ -171,6 +187,11 @@ public enum RuntimeGenerationEventKind: Equatable, Sendable {
   case completed
   case cancelled
   case failed
+
+  /// The model stopped to ask for tools. Terminal for the generation the
+  /// way `completed` is — the caller runs the tools and continues the same
+  /// session with a new generation carrying the results.
+  case toolCall
 }
 
 public enum RuntimeFailureCode: Equatable, Sendable {
@@ -190,7 +211,8 @@ public struct RuntimeGenerationEvent: Equatable, Sendable {
     kind: RuntimeGenerationEventKind,
     delta: String? = nil,
     failureCode: RuntimeFailureCode? = nil,
-    message: String? = nil
+    message: String? = nil,
+    toolCallsJson: String? = nil
   ) {
     self.generationId = generationId
     self.sequence = sequence
@@ -198,6 +220,7 @@ public struct RuntimeGenerationEvent: Equatable, Sendable {
     self.delta = delta
     self.failureCode = failureCode
     self.message = message
+    self.toolCallsJson = toolCallsJson
   }
 
   public let generationId: String
@@ -206,6 +229,10 @@ public struct RuntimeGenerationEvent: Equatable, Sendable {
   public let delta: String?
   public let failureCode: RuntimeFailureCode?
   public let message: String?
+
+  /// The calls a `toolCall` event carries, as `[{"name","id","arguments"}]`
+  /// JSON; nil on every other kind.
+  public let toolCallsJson: String?
 }
 
 public protocol RuntimeGenerationEventSink: AnyObject {
@@ -497,7 +524,7 @@ public final class GenerationEventBridge:
 
   private func isTerminalEvent(_ kind: RuntimeGenerationEventKind) -> Bool {
     switch kind {
-    case .completed, .cancelled, .failed:
+    case .completed, .cancelled, .failed, .toolCall:
       true
     case .started, .delta:
       false
@@ -1577,7 +1604,7 @@ public actor InferenceCoordinator {
 
   private func isTerminal(_ kind: RuntimeGenerationEventKind) -> Bool {
     switch kind {
-    case .completed, .cancelled, .failed:
+    case .completed, .cancelled, .failed, .toolCall:
       true
     case .started, .delta:
       false

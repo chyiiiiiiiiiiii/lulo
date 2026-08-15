@@ -112,6 +112,26 @@ struct LiteRTLMDriverGenerationRequest: Equatable, Sendable {
   /// the window — and it cannot notice without knowing how big the window
   /// is. The backend knows, from the model it loaded.
   let contextSize: Int64
+
+  /// Tool declarations for the conversation, opaque OpenAPI JSON, or nil.
+  /// A change here is a different conversation, the way a changed system
+  /// instruction is.
+  var toolsJson: String? = nil
+
+  /// Tool results continuing the previous generation of this session, as
+  /// `[{"name","id","response"}]` JSON. When present, `prompt` is not sent;
+  /// these are.
+  var toolResponsesJson: String? = nil
+}
+
+/// One thing the driver's stream produced.
+enum LiteRTLMDriverChunk: Equatable, Sendable {
+  /// Response text to append to the answer.
+  case text(String)
+
+  /// The model stopped to ask for tools, as `[{"name","id","arguments"}]`
+  /// JSON. Nothing follows this in the stream.
+  case toolCalls(String)
 }
 
 protocol LiteRTLMRuntimeDriving: Sendable {
@@ -119,7 +139,7 @@ protocol LiteRTLMRuntimeDriving: Sendable {
 
   func generate(
     _ request: LiteRTLMDriverGenerationRequest,
-    onChunk: @escaping @Sendable (String) async -> Void
+    onChunk: @escaping @Sendable (LiteRTLMDriverChunk) async -> Void
   ) async throws
 
   func cancel(sessionId: String) async throws
@@ -155,6 +175,13 @@ actor SystemLiteRTLMRuntimeDriver: LiteRTLMRuntimeDriving {
   /// changed the answer style and the conversation has not been rebuilt yet.
   private var conversationSamplers: [String: LiteRTLMSamplerFingerprint] = [:]
 
+  /// The tool declarations each live conversation was built with.
+  ///
+  /// Declarations render into the conversation's system turn, so like the
+  /// system instruction they cannot be amended inside a prefilled KV cache
+  /// — a session whose toolbox has changed is rebuilt, not lied to.
+  private var conversationTools: [String: String?] = [:]
+
   func load(_ request: LiteRTLMDriverLoadRequest) async throws {
     try FileManager.default.createDirectory(
       atPath: request.cacheDirectory,
@@ -178,11 +205,12 @@ actor SystemLiteRTLMRuntimeDriver: LiteRTLMRuntimeDriving {
     conversations.removeAll()
     systemInstructions.removeAll()
     conversationSamplers.removeAll()
+    conversationTools.removeAll()
   }
 
   func generate(
     _ request: LiteRTLMDriverGenerationRequest,
-    onChunk: @escaping @Sendable (String) async -> Void
+    onChunk: @escaping @Sendable (LiteRTLMDriverChunk) async -> Void
   ) async throws {
     guard let engine else {
       throw RuntimeBoundaryError.runtimeUnavailable
@@ -202,6 +230,13 @@ actor SystemLiteRTLMRuntimeDriver: LiteRTLMRuntimeDriving {
     let staleSampler =
       conversationSamplers[request.sessionId] != nil
       && conversationSamplers[request.sessionId] != request.sampler
+    // Tool declarations render into the same system turn the instruction
+    // does, so a changed toolbox is stale for the same reason. A tool
+    // continuation never trips this: it repeats the declarations its own
+    // conversation was built with.
+    let staleTools =
+      conversationTools[request.sessionId] != nil
+      && conversationTools[request.sessionId] != request.toolsJson
     // A conversation that has run out of window is rebuilt for the same
     // reason an edited profile rebuilds one: a KV cache cannot be amended,
     // and there is no way to drop a prefix of it. The rebuild seeds from the
@@ -223,7 +258,7 @@ actor SystemLiteRTLMRuntimeDriver: LiteRTLMRuntimeDriving {
           contextSize: request.contextSize
         )
       } ?? false
-    let stale = staleInstruction || staleSampler || outgrewWindow
+    let stale = staleInstruction || staleSampler || staleTools || outgrewWindow
     if let existing = conversations[request.sessionId], !stale {
       conversation = existing
     } else {
@@ -240,6 +275,12 @@ actor SystemLiteRTLMRuntimeDriver: LiteRTLMRuntimeDriving {
       // the window above it is full of turns read back from storage. The
       // history seeds it; a session already in `conversations` is its own
       // memory and is left alone.
+      //
+      // Tool declarations go through the vendored `toolDeclarationsJson`
+      // escape hatch because the tools themselves live in Dart, and the
+      // loop is the caller's: `automaticToolCalling` stays false so the
+      // stream hands calls back instead of looking for Swift tool types
+      // that do not exist.
       conversation = try await engine.createConversation(
         with: ConversationConfig(
           systemMessage: request.systemInstruction.isEmpty
@@ -248,7 +289,9 @@ actor SystemLiteRTLMRuntimeDriver: LiteRTLMRuntimeDriving {
           initialMessages: request.history.map {
             Message($0.text, role: $0.role == .user ? .user : .model)
           },
-          samplerConfig: sampler
+          toolDeclarationsJson: request.toolsJson,
+          samplerConfig: sampler,
+          automaticToolCalling: false
         )
       )
       conversations[request.sessionId] = conversation
@@ -256,17 +299,77 @@ actor SystemLiteRTLMRuntimeDriver: LiteRTLMRuntimeDriving {
       // What this conversation was actually built with, so the next turn can
       // tell whether it still matches what the user has chosen.
       conversationSamplers[request.sessionId] = request.sampler
+      conversationTools[request.sessionId] = request.toolsJson
     }
     try Task.checkCancellation()
     let context: [String: Any] = request.extraContext
-    for try await message in conversation.sendMessageStream(
-      Message(request.prompt),
+    // A continuation answers the model's tool calls; an ordinary turn asks
+    // the user's question. Same stream, different message.
+    let message: Message
+    if let toolResponsesJson = request.toolResponsesJson {
+      message = try Self.toolResponseMessage(toolResponsesJson)
+    } else {
+      message = Message(request.prompt)
+    }
+    for try await streamed in conversation.sendMessageStream(
+      message,
       extraContext: context,
       maxOutputTokens: request.maxOutputTokens
     ) {
       try Task.checkCancellation()
-      await onChunk(message.toString)
+      if !streamed.toolCalls.isEmpty {
+        await onChunk(
+          .toolCalls(Self.encodeToolCalls(streamed.toolCalls))
+        )
+        continue
+      }
+      let text = streamed.toString
+      if !text.isEmpty {
+        await onChunk(.text(text))
+      }
     }
+  }
+
+  /// Restates the caller's `[{"name","id","response"}]` JSON as the
+  /// tool-response message the template renders.
+  static func toolResponseMessage(_ json: String) throws -> Message {
+    guard
+      let data = json.data(using: .utf8),
+      let decoded = try? JSONSerialization.jsonObject(with: data),
+      let entries = decoded as? [[String: Any]],
+      !entries.isEmpty
+    else {
+      throw RuntimeBoundaryError.generationFailed
+    }
+    return Message(
+      contents: entries.map { entry in
+        .toolResponse(
+          name: entry["name"] as? String ?? "",
+          response: entry["response"] ?? [:] as [String: Any],
+          id: entry["id"] as? String ?? ""
+        )
+      },
+      role: .tool
+    )
+  }
+
+  /// Serializes the calls the wrapper yielded into the wire shape the
+  /// caller's parser reads: `[{"name","id","arguments"}]`.
+  static func encodeToolCalls(_ calls: [ToolCall]) -> String {
+    let entries: [[String: Any]] = calls.map { call in
+      [
+        "name": call.name,
+        "id": call.id,
+        "arguments": call.arguments,
+      ]
+    }
+    guard
+      let data = try? JSONSerialization.data(withJSONObject: entries),
+      let json = String(data: data, encoding: .utf8)
+    else {
+      return "[]"
+    }
+    return json
   }
 
   func cancel(sessionId: String) async throws {
@@ -276,6 +379,7 @@ actor SystemLiteRTLMRuntimeDriver: LiteRTLMRuntimeDriving {
   func resetSession(sessionId: String) async throws {
     systemInstructions.removeValue(forKey: sessionId)
     conversationSamplers.removeValue(forKey: sessionId)
+    conversationTools.removeValue(forKey: sessionId)
     if let conversation = conversations.removeValue(forKey: sessionId) {
       try conversation.cancel()
     }
@@ -288,6 +392,7 @@ actor SystemLiteRTLMRuntimeDriver: LiteRTLMRuntimeDriving {
     conversations.removeAll()
     systemInstructions.removeAll()
     conversationSamplers.removeAll()
+    conversationTools.removeAll()
     engine = nil
   }
 }
@@ -631,11 +736,20 @@ public actor LiteRTLMRuntimeBackend: RuntimeBackend {
     )
     do {
       try await driver.generate(request) { [weak self] chunk in
-        await self?.receiveChunk(
-          chunk,
-          generationId: generationId,
-          token: token
-        )
+        switch chunk {
+        case .text(let text):
+          await self?.receiveChunk(
+            text,
+            generationId: generationId,
+            token: token
+          )
+        case .toolCalls(let callsJson):
+          await self?.receiveToolCalls(
+            callsJson,
+            generationId: generationId,
+            token: token
+          )
+        }
       }
       await completeGeneration(generationId: generationId, token: token)
     } catch {
@@ -674,6 +788,36 @@ public actor LiteRTLMRuntimeBackend: RuntimeBackend {
         sequence: active.nextSequence,
         kind: .delta,
         delta: chunk
+      )
+    )
+  }
+
+  /// Ends the generation as a request for tools rather than an answer.
+  ///
+  /// Terminal the way completion is — `activeGeneration` clears here, so
+  /// the `completeGeneration` that follows the driver's return finds no
+  /// matching generation and stays silent. A completed event behind this
+  /// one would tell the caller the turn is over while the model is still
+  /// waiting for its results.
+  private func receiveToolCalls(
+    _ callsJson: String,
+    generationId: String,
+    token: UInt64
+  ) async {
+    guard var active = matchingGeneration(
+      generationId: generationId,
+      token: token
+    ) else {
+      return
+    }
+    active.nextSequence += 1
+    activeGeneration = nil
+    await eventRelay.emit(
+      RuntimeGenerationEvent(
+        generationId: generationId,
+        sequence: active.nextSequence,
+        kind: .toolCall,
+        toolCallsJson: callsJson
       )
     )
   }
@@ -924,7 +1068,9 @@ public actor LiteRTLMRuntimeBackend: RuntimeBackend {
     guard
       !generation.generationId.isEmpty,
       !generation.sessionId.isEmpty,
-      !generation.prompt.isEmpty,
+      // A tool continuation carries the model's answers instead of a
+      // prompt; everything else with nothing to say is a protocol error.
+      !generation.prompt.isEmpty || generation.toolResponsesJson != nil,
       generation.temperature.isFinite,
       (0...2).contains(generation.temperature),
       generation.topP.isFinite,
@@ -947,7 +1093,12 @@ public actor LiteRTLMRuntimeBackend: RuntimeBackend {
       prompt: generation.prompt,
       history: Self.historyFitting(
         generation.history,
-        systemInstruction: generation.systemInstruction,
+        // Tool declarations render into the same system turn the
+        // instruction does and spend the same window. Charged as part of
+        // it — the JSON is longer than what the template renders, which
+        // errs in the direction this estimator already promises to.
+        systemInstruction: generation.systemInstruction
+          + (generation.toolsJson ?? ""),
         prompt: generation.prompt,
         maxOutputTokens: maxTokens,
         contextSize: contextSize
@@ -960,7 +1111,9 @@ public actor LiteRTLMRuntimeBackend: RuntimeBackend {
         seed: seed
       ),
       maxOutputTokens: maxTokens,
-      contextSize: contextSize
+      contextSize: contextSize,
+      toolsJson: generation.toolsJson,
+      toolResponsesJson: generation.toolResponsesJson
     )
   }
 }

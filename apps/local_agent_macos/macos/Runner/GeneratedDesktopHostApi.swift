@@ -184,6 +184,10 @@ enum HostGenerationEventType: Int {
   case completed = 2
   case cancelled = 3
   case failed = 4
+  /// The model stopped to ask for tools. Terminal for the generation the
+  /// way [completed] is; the caller runs the tools and continues the same
+  /// session with a new generation carrying the results.
+  case toolCall = 5
 }
 
 /// Whether the app starts itself when the user logs in.
@@ -630,6 +634,16 @@ struct HostGenerationRequest: Hashable {
   var topP: Double
   var maxTokens: Int64
   var seed: Int64
+  /// Tool declarations the model may call, as OpenAPI function JSON, or
+  /// null for a conversation with nothing to declare. Opaque to the host:
+  /// what exists and what it does are decided on this side, and the
+  /// runtime's only part is rendering them into the chat template.
+  var toolsJson: String? = nil
+  /// Results answering the previous generation's tool calls, as
+  /// `[{"name","id","response"}]` JSON. Non-null makes this a continuation
+  /// of the same session: [prompt] is ignored — and may be empty — because
+  /// the user's words were sent by the generation that asked for the tools.
+  var toolResponsesJson: String? = nil
 
 
   // swift-format-ignore: AlwaysUseLowerCamelCase
@@ -644,6 +658,8 @@ struct HostGenerationRequest: Hashable {
     let topP = pigeonVar_list[7] as! Double
     let maxTokens = pigeonVar_list[8] as! Int64
     let seed = pigeonVar_list[9] as! Int64
+    let toolsJson: String? = nilOrValue(pigeonVar_list[10])
+    let toolResponsesJson: String? = nilOrValue(pigeonVar_list[11])
 
     return HostGenerationRequest(
       generationId: generationId,
@@ -655,7 +671,9 @@ struct HostGenerationRequest: Hashable {
       temperature: temperature,
       topP: topP,
       maxTokens: maxTokens,
-      seed: seed
+      seed: seed,
+      toolsJson: toolsJson,
+      toolResponsesJson: toolResponsesJson
     )
   }
   func toList() -> [Any?] {
@@ -670,13 +688,15 @@ struct HostGenerationRequest: Hashable {
       topP,
       maxTokens,
       seed,
+      toolsJson,
+      toolResponsesJson,
     ]
   }
   static func == (lhs: HostGenerationRequest, rhs: HostGenerationRequest) -> Bool {
     if Swift.type(of: lhs) != Swift.type(of: rhs) {
       return false
     }
-    return deepEqualsGeneratedDesktopHostApi(lhs.generationId, rhs.generationId) && deepEqualsGeneratedDesktopHostApi(lhs.sessionId, rhs.sessionId) && deepEqualsGeneratedDesktopHostApi(lhs.systemInstruction, rhs.systemInstruction) && deepEqualsGeneratedDesktopHostApi(lhs.prompt, rhs.prompt) && deepEqualsGeneratedDesktopHostApi(lhs.context, rhs.context) && deepEqualsGeneratedDesktopHostApi(lhs.history, rhs.history) && deepEqualsGeneratedDesktopHostApi(lhs.temperature, rhs.temperature) && deepEqualsGeneratedDesktopHostApi(lhs.topP, rhs.topP) && deepEqualsGeneratedDesktopHostApi(lhs.maxTokens, rhs.maxTokens) && deepEqualsGeneratedDesktopHostApi(lhs.seed, rhs.seed)
+    return deepEqualsGeneratedDesktopHostApi(lhs.generationId, rhs.generationId) && deepEqualsGeneratedDesktopHostApi(lhs.sessionId, rhs.sessionId) && deepEqualsGeneratedDesktopHostApi(lhs.systemInstruction, rhs.systemInstruction) && deepEqualsGeneratedDesktopHostApi(lhs.prompt, rhs.prompt) && deepEqualsGeneratedDesktopHostApi(lhs.context, rhs.context) && deepEqualsGeneratedDesktopHostApi(lhs.history, rhs.history) && deepEqualsGeneratedDesktopHostApi(lhs.temperature, rhs.temperature) && deepEqualsGeneratedDesktopHostApi(lhs.topP, rhs.topP) && deepEqualsGeneratedDesktopHostApi(lhs.maxTokens, rhs.maxTokens) && deepEqualsGeneratedDesktopHostApi(lhs.seed, rhs.seed) && deepEqualsGeneratedDesktopHostApi(lhs.toolsJson, rhs.toolsJson) && deepEqualsGeneratedDesktopHostApi(lhs.toolResponsesJson, rhs.toolResponsesJson)
   }
 
   func hash(into hasher: inout Hasher) {
@@ -691,6 +711,8 @@ struct HostGenerationRequest: Hashable {
     deepHashGeneratedDesktopHostApi(value: topP, hasher: &hasher)
     deepHashGeneratedDesktopHostApi(value: maxTokens, hasher: &hasher)
     deepHashGeneratedDesktopHostApi(value: seed, hasher: &hasher)
+    deepHashGeneratedDesktopHostApi(value: toolsJson, hasher: &hasher)
+    deepHashGeneratedDesktopHostApi(value: toolResponsesJson, hasher: &hasher)
   }
 }
 
@@ -806,6 +828,9 @@ struct HostGenerationEvent: Hashable {
   var delta: String? = nil
   var failureCode: HostFailureCode? = nil
   var message: String? = nil
+  /// The calls a [HostGenerationEventType.toolCall] event carries, as
+  /// `[{"name","id","arguments"}]` JSON; null on every other type.
+  var toolCallsJson: String? = nil
 
 
   // swift-format-ignore: AlwaysUseLowerCamelCase
@@ -817,6 +842,7 @@ struct HostGenerationEvent: Hashable {
     let delta: String? = nilOrValue(pigeonVar_list[4])
     let failureCode: HostFailureCode? = nilOrValue(pigeonVar_list[5])
     let message: String? = nilOrValue(pigeonVar_list[6])
+    let toolCallsJson: String? = nilOrValue(pigeonVar_list[7])
 
     return HostGenerationEvent(
       schemaVersion: schemaVersion,
@@ -825,7 +851,8 @@ struct HostGenerationEvent: Hashable {
       type: type,
       delta: delta,
       failureCode: failureCode,
-      message: message
+      message: message,
+      toolCallsJson: toolCallsJson
     )
   }
   func toList() -> [Any?] {
@@ -837,13 +864,14 @@ struct HostGenerationEvent: Hashable {
       delta,
       failureCode,
       message,
+      toolCallsJson,
     ]
   }
   static func == (lhs: HostGenerationEvent, rhs: HostGenerationEvent) -> Bool {
     if Swift.type(of: lhs) != Swift.type(of: rhs) {
       return false
     }
-    return deepEqualsGeneratedDesktopHostApi(lhs.schemaVersion, rhs.schemaVersion) && deepEqualsGeneratedDesktopHostApi(lhs.generationId, rhs.generationId) && deepEqualsGeneratedDesktopHostApi(lhs.sequence, rhs.sequence) && deepEqualsGeneratedDesktopHostApi(lhs.type, rhs.type) && deepEqualsGeneratedDesktopHostApi(lhs.delta, rhs.delta) && deepEqualsGeneratedDesktopHostApi(lhs.failureCode, rhs.failureCode) && deepEqualsGeneratedDesktopHostApi(lhs.message, rhs.message)
+    return deepEqualsGeneratedDesktopHostApi(lhs.schemaVersion, rhs.schemaVersion) && deepEqualsGeneratedDesktopHostApi(lhs.generationId, rhs.generationId) && deepEqualsGeneratedDesktopHostApi(lhs.sequence, rhs.sequence) && deepEqualsGeneratedDesktopHostApi(lhs.type, rhs.type) && deepEqualsGeneratedDesktopHostApi(lhs.delta, rhs.delta) && deepEqualsGeneratedDesktopHostApi(lhs.failureCode, rhs.failureCode) && deepEqualsGeneratedDesktopHostApi(lhs.message, rhs.message) && deepEqualsGeneratedDesktopHostApi(lhs.toolCallsJson, rhs.toolCallsJson)
   }
 
   func hash(into hasher: inout Hasher) {
@@ -855,6 +883,7 @@ struct HostGenerationEvent: Hashable {
     deepHashGeneratedDesktopHostApi(value: delta, hasher: &hasher)
     deepHashGeneratedDesktopHostApi(value: failureCode, hasher: &hasher)
     deepHashGeneratedDesktopHostApi(value: message, hasher: &hasher)
+    deepHashGeneratedDesktopHostApi(value: toolCallsJson, hasher: &hasher)
   }
 }
 

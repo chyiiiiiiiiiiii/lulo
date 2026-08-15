@@ -7,6 +7,7 @@ import 'package:flutter/foundation.dart';
 
 import '../features/agent_profile/agent_context_provider.dart';
 import '../features/agent_profile/agent_profile_store.dart';
+import '../features/conversation/conversation_search_tool.dart';
 import '../features/conversation/conversation_storage_service.dart';
 import '../features/conversation/drift_conversation_storage_service.dart';
 import '../features/conversation/pigeon_inference_service.dart';
@@ -187,6 +188,14 @@ AppComposition createAppComposition({
       );
   final PigeonDesktopHostService desktopHostService =
       PigeonDesktopHostService();
+  // The one toolbox both the first model and every later swap offer. Built
+  // over the storage the composition already owns; a second registered tool
+  // starts here.
+  AgentToolbox buildToolbox() => AgentToolbox(<AgentTool>[
+    ConversationSearchTool(
+      searchConversations: storage.service.searchConversations,
+    ),
+  ]);
   // Owned here so it survives a model swap: the service behind it is replaced,
   // and the thing the interface watches must not be.
   final ValueNotifier<bool> modelLoading = ValueNotifier<bool>(false);
@@ -200,6 +209,7 @@ AppComposition createAppComposition({
         agentContext: agentContext,
         answerStyle: () => answerStyle.value,
         modelLoading: modelLoading,
+        toolbox: buildToolbox,
       ),
     );
   } on Object {
@@ -252,6 +262,7 @@ AppComposition createAppComposition({
         agentContext: agentContext,
         answerStyle: () => answerStyle.value,
         modelLoading: modelLoading,
+        toolbox: buildToolbox,
       ),
     ),
   );
@@ -298,6 +309,7 @@ OwnedInferenceService createInferenceService({
   AgentContextProvider? agentContext,
   AnswerStyle Function()? answerStyle,
   ValueNotifier<bool>? modelLoading,
+  AgentToolbox Function()? toolbox,
 }) {
   if (inferenceRuntime == 'litert') {
     final String modelPath = localModelPath.trim();
@@ -312,6 +324,7 @@ OwnedInferenceService createInferenceService({
       desktopHostService: desktopHostService,
       agentContext: agentContext,
       answerStyle: answerStyle,
+      toolbox: toolbox,
       config: LocalModelConfig(
         modelId: modelIdForPath(modelPath),
         modelPath: modelPath,

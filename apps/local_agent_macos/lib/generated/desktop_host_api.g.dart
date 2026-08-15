@@ -111,7 +111,18 @@ int _deepHash(Object? value) {
   return value.hashCode;
 }
 
-enum HostGenerationEventType { started, delta, completed, cancelled, failed }
+enum HostGenerationEventType {
+  started,
+  delta,
+  completed,
+  cancelled,
+  failed,
+
+  /// The model stopped to ask for tools. Terminal for the generation the
+  /// way [completed] is; the caller runs the tools and continues the same
+  /// session with a new generation carrying the results.
+  toolCall,
+}
 
 /// Whether the app starts itself when the user logs in.
 ///
@@ -600,6 +611,8 @@ class HostGenerationRequest {
     required this.topP,
     required this.maxTokens,
     required this.seed,
+    this.toolsJson,
+    this.toolResponsesJson,
   });
 
   String generationId;
@@ -632,6 +645,18 @@ class HostGenerationRequest {
 
   int seed;
 
+  /// Tool declarations the model may call, as OpenAPI function JSON, or
+  /// null for a conversation with nothing to declare. Opaque to the host:
+  /// what exists and what it does are decided on this side, and the
+  /// runtime's only part is rendering them into the chat template.
+  String? toolsJson;
+
+  /// Results answering the previous generation's tool calls, as
+  /// `[{"name","id","response"}]` JSON. Non-null makes this a continuation
+  /// of the same session: [prompt] is ignored — and may be empty — because
+  /// the user's words were sent by the generation that asked for the tools.
+  String? toolResponsesJson;
+
   List<Object?> _toList() {
     return <Object?>[
       generationId,
@@ -644,6 +669,8 @@ class HostGenerationRequest {
       topP,
       maxTokens,
       seed,
+      toolsJson,
+      toolResponsesJson,
     ];
   }
 
@@ -664,6 +691,8 @@ class HostGenerationRequest {
       topP: result[7]! as double,
       maxTokens: result[8]! as int,
       seed: result[9]! as int,
+      toolsJson: result[10] as String?,
+      toolResponsesJson: result[11] as String?,
     );
   }
 
@@ -685,7 +714,9 @@ class HostGenerationRequest {
         _deepEquals(temperature, other.temperature) &&
         _deepEquals(topP, other.topP) &&
         _deepEquals(maxTokens, other.maxTokens) &&
-        _deepEquals(seed, other.seed);
+        _deepEquals(seed, other.seed) &&
+        _deepEquals(toolsJson, other.toolsJson) &&
+        _deepEquals(toolResponsesJson, other.toolResponsesJson);
   }
 
   @override
@@ -827,6 +858,7 @@ class HostGenerationEvent {
     this.delta,
     this.failureCode,
     this.message,
+    this.toolCallsJson,
   });
 
   int schemaVersion;
@@ -843,6 +875,10 @@ class HostGenerationEvent {
 
   String? message;
 
+  /// The calls a [HostGenerationEventType.toolCall] event carries, as
+  /// `[{"name","id","arguments"}]` JSON; null on every other type.
+  String? toolCallsJson;
+
   List<Object?> _toList() {
     return <Object?>[
       schemaVersion,
@@ -852,6 +888,7 @@ class HostGenerationEvent {
       delta,
       failureCode,
       message,
+      toolCallsJson,
     ];
   }
 
@@ -869,6 +906,7 @@ class HostGenerationEvent {
       delta: result[4] as String?,
       failureCode: result[5] as HostFailureCode?,
       message: result[6] as String?,
+      toolCallsJson: result[7] as String?,
     );
   }
 
@@ -887,7 +925,8 @@ class HostGenerationEvent {
         _deepEquals(type, other.type) &&
         _deepEquals(delta, other.delta) &&
         _deepEquals(failureCode, other.failureCode) &&
-        _deepEquals(message, other.message);
+        _deepEquals(message, other.message) &&
+        _deepEquals(toolCallsJson, other.toolCallsJson);
   }
 
   @override

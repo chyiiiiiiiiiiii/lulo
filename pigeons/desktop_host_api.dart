@@ -10,7 +10,18 @@ import 'package:pigeon/pigeon.dart';
     dartPackageName: 'local_agent_macos',
   ),
 )
-enum HostGenerationEventType { started, delta, completed, cancelled, failed }
+enum HostGenerationEventType {
+  started,
+  delta,
+  completed,
+  cancelled,
+  failed,
+
+  /// The model stopped to ask for tools. Terminal for the generation the
+  /// way [completed] is; the caller runs the tools and continues the same
+  /// session with a new generation carrying the results.
+  toolCall,
+}
 
 /// Whether the app starts itself when the user logs in.
 ///
@@ -202,6 +213,8 @@ class HostGenerationRequest {
     required this.topP,
     required this.maxTokens,
     required this.seed,
+    this.toolsJson,
+    this.toolResponsesJson,
   });
 
   String generationId;
@@ -226,6 +239,18 @@ class HostGenerationRequest {
   double topP;
   int maxTokens;
   int seed;
+
+  /// Tool declarations the model may call, as OpenAPI function JSON, or
+  /// null for a conversation with nothing to declare. Opaque to the host:
+  /// what exists and what it does are decided on this side, and the
+  /// runtime's only part is rendering them into the chat template.
+  String? toolsJson;
+
+  /// Results answering the previous generation's tool calls, as
+  /// `[{"name","id","response"}]` JSON. Non-null makes this a continuation
+  /// of the same session: [prompt] is ignored — and may be empty — because
+  /// the user's words were sent by the generation that asked for the tools.
+  String? toolResponsesJson;
 }
 
 class HostGenerationAcknowledgement {
@@ -272,6 +297,10 @@ class HostGenerationEvent {
   String? delta;
   HostFailureCode? failureCode;
   String? message;
+
+  /// The calls a [HostGenerationEventType.toolCall] event carries, as
+  /// `[{"name","id","arguments"}]` JSON; null on every other type.
+  String? toolCallsJson;
 }
 
 /// The canvas a change of form is drawn on, in Flutter logical points.

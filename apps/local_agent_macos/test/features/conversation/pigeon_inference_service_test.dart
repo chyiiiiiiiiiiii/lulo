@@ -10,6 +10,258 @@ import 'package:local_agent_macos/generated/desktop_host_api.g.dart';
 import 'package:local_agent_macos/platform/desktop_host_service.dart';
 
 void main() {
+  group('tool loop', () {
+    test('runs the model\'s tool calls and continues the same turn', () async {
+      final clock = _RecordingClock();
+      final host = RecordingDesktopHostService(
+        onStart:
+            (
+              RecordingDesktopHostService host,
+              DesktopGenerationRequest request,
+            ) async {
+              host.emit(
+                DesktopGenerationEvent(
+                  generationId: request.generationId,
+                  sequence: 0,
+                  type: HostGenerationEventType.started,
+                ),
+              );
+              if (request.toolResponsesJson == null) {
+                // The model stops to ask for the clock.
+                host.emit(
+                  DesktopGenerationEvent(
+                    generationId: request.generationId,
+                    sequence: 1,
+                    type: HostGenerationEventType.toolCall,
+                    toolCallsJson:
+                        '[{"name":"get_current_time","id":"c1",'
+                        '"arguments":{}}]',
+                  ),
+                );
+              } else {
+                host.emit(
+                  DesktopGenerationEvent(
+                    generationId: request.generationId,
+                    sequence: 1,
+                    type: HostGenerationEventType.delta,
+                    delta: '現在是凌晨兩點五十三分。',
+                  ),
+                );
+                host.emit(
+                  DesktopGenerationEvent(
+                    generationId: request.generationId,
+                    sequence: 2,
+                    type: HostGenerationEventType.completed,
+                  ),
+                );
+              }
+              return DesktopGenerationAcknowledgement(
+                generationId: request.generationId,
+                accepted: true,
+              );
+            },
+      );
+      final service = PigeonInferenceService(
+        desktopHostService: host,
+        config: testModelConfig,
+        toolbox: () => AgentToolbox(<AgentTool>[clock]),
+      );
+
+      final events = await service
+          .generate(
+            const GenerationRequest(
+              conversationId: ConversationId('conversation-1'),
+              prompt: '現在幾點？',
+            ),
+          )
+          .toList();
+
+      // One turn upward: the loop is the service's business, not the
+      // caller's. Started once, the continuation's text, completed once.
+      expect(events, hasLength(3));
+      expect(events[0], isA<GenerationStarted>());
+      expect((events[1] as GenerationDelta).delta, '現在是凌晨兩點五十三分。');
+      expect(events[2], isA<GenerationCompleted>());
+
+      expect(clock.callArguments, hasLength(1));
+      expect(host.generationRequests, hasLength(2));
+      final first = host.generationRequests.first;
+      final second = host.generationRequests.last;
+      expect(first.toolsJson, contains('get_current_time'));
+      expect(first.toolResponsesJson, isNull);
+      expect(second.sessionId, first.sessionId);
+      expect(
+        second.generationId,
+        isNot(first.generationId),
+        reason: 'The host refuses a generation id it has already seen.',
+      );
+      expect(second.toolResponsesJson, contains('"time":"02:53"'));
+      expect(
+        second.toolsJson,
+        first.toolsJson,
+        reason:
+            'A continuation must not rebuild the conversation: the '
+            'declarations it repeats are the ones its conversation was '
+            'built with.',
+      );
+    });
+
+    test('an absent toolbox costs the request nothing at all', () async {
+      final host = RecordingDesktopHostService(
+        onStart:
+            (
+              RecordingDesktopHostService host,
+              DesktopGenerationRequest request,
+            ) async {
+              host.emit(
+                DesktopGenerationEvent(
+                  generationId: request.generationId,
+                  sequence: 0,
+                  type: HostGenerationEventType.started,
+                ),
+              );
+              host.emit(
+                DesktopGenerationEvent(
+                  generationId: request.generationId,
+                  sequence: 1,
+                  type: HostGenerationEventType.completed,
+                ),
+              );
+              return DesktopGenerationAcknowledgement(
+                generationId: request.generationId,
+                accepted: true,
+              );
+            },
+      );
+      final service = PigeonInferenceService(
+        desktopHostService: host,
+        config: testModelConfig,
+      );
+      await service
+          .generate(
+            const GenerationRequest(
+              conversationId: ConversationId('conversation-1'),
+              prompt: 'Hi',
+            ),
+          )
+          .drain<void>();
+      expect(host.generationRequests.single.toolsJson, isNull);
+    });
+
+    test('a model that never stops asking for tools is cut off', () async {
+      final clock = _RecordingClock();
+      final host = RecordingDesktopHostService(
+        onStart:
+            (
+              RecordingDesktopHostService host,
+              DesktopGenerationRequest request,
+            ) async {
+              host.emit(
+                DesktopGenerationEvent(
+                  generationId: request.generationId,
+                  sequence: 0,
+                  type: HostGenerationEventType.started,
+                ),
+              );
+              host.emit(
+                DesktopGenerationEvent(
+                  generationId: request.generationId,
+                  sequence: 1,
+                  type: HostGenerationEventType.toolCall,
+                  toolCallsJson:
+                      '[{"name":"get_current_time","id":"","arguments":{}}]',
+                ),
+              );
+              return DesktopGenerationAcknowledgement(
+                generationId: request.generationId,
+                accepted: true,
+              );
+            },
+      );
+      final service = PigeonInferenceService(
+        desktopHostService: host,
+        config: testModelConfig,
+        toolbox: () => AgentToolbox(<AgentTool>[clock]),
+      );
+
+      final events = await service
+          .generate(
+            const GenerationRequest(
+              conversationId: ConversationId('conversation-1'),
+              prompt: '現在幾點？',
+            ),
+          )
+          .toList();
+
+      expect(events.last, isA<GenerationFailed>());
+      // The opening ask plus three continuations, and then no more: a
+      // model looping on tools must not hold the machine forever.
+      expect(host.generationRequests, hasLength(4));
+    });
+
+    test('cancelling while a tool runs stops the loop cold', () async {
+      final clock = _RecordingClock()..gate = Completer<void>();
+      final host = RecordingDesktopHostService(
+        onStart:
+            (
+              RecordingDesktopHostService host,
+              DesktopGenerationRequest request,
+            ) async {
+              host.emit(
+                DesktopGenerationEvent(
+                  generationId: request.generationId,
+                  sequence: 0,
+                  type: HostGenerationEventType.started,
+                ),
+              );
+              host.emit(
+                DesktopGenerationEvent(
+                  generationId: request.generationId,
+                  sequence: 1,
+                  type: HostGenerationEventType.toolCall,
+                  toolCallsJson:
+                      '[{"name":"get_current_time","id":"","arguments":{}}]',
+                ),
+              );
+              return DesktopGenerationAcknowledgement(
+                generationId: request.generationId,
+                accepted: true,
+              );
+            },
+      );
+      final service = PigeonInferenceService(
+        desktopHostService: host,
+        config: testModelConfig,
+        toolbox: () => AgentToolbox(<AgentTool>[clock]),
+      );
+
+      final events = <GenerationEvent>[];
+      final subscription = service
+          .generate(
+            const GenerationRequest(
+              conversationId: ConversationId('conversation-1'),
+              prompt: '現在幾點？',
+            ),
+          )
+          .listen(events.add);
+      // Let the first phase run to the tool call and block inside it.
+      await Future<void>.delayed(Duration.zero);
+      expect(clock.callArguments, hasLength(1));
+
+      await subscription.cancel();
+      clock.gate!.complete();
+      await Future<void>.delayed(Duration.zero);
+
+      expect(
+        host.generationRequests,
+        hasLength(1),
+        reason:
+            'A cancelled turn must not quietly continue into a second '
+            'generation after its tool finishes.',
+      );
+    });
+  });
+
   test(
     'subscribes before start so a fast native lifecycle is not lost',
     () async {
@@ -890,6 +1142,32 @@ Future<StreamSubscription<GenerationEvent>> _startedGeneration(
       });
   await started.future;
   return subscription;
+}
+
+final class _RecordingClock implements AgentTool {
+  final List<Map<String, Object?>> callArguments = <Map<String, Object?>>[];
+
+  /// Held open to keep an execution in flight while the test cancels.
+  Completer<void>? gate;
+
+  @override
+  String get name => 'get_current_time';
+
+  @override
+  String get description => 'Returns the current time on this computer.';
+
+  @override
+  Map<String, Object?> get parameters => const <String, Object?>{};
+
+  @override
+  Future<Object?> call(Map<String, Object?> arguments) async {
+    callArguments.add(arguments);
+    final Completer<void>? held = gate;
+    if (held != null) {
+      await held.future;
+    }
+    return <String, Object?>{'time': '02:53'};
+  }
 }
 
 const LocalModelConfig testModelConfig = LocalModelConfig(

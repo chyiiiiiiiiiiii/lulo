@@ -340,7 +340,11 @@ final class ToolCallProbeTests: XCTestCase {
   /// understated — 3/5 against 5/5 — was the one being investigated. Even,
   /// the English column re-runs at 5/5 and the gap is gone.
   static func answered(_ reply: String) -> Bool {
-    let minute = ["53", "五十三", "fifty-three", "fifty three"]
+    // 「五三」 is the fifth spelling this scorer has been caught missing:
+    // 「凌晨兩點五三分」 is how the model reads a digital clock aloud when
+    // it drops the 十, the way English drops the "and". Every widening
+    // here can only raise a quoted column, never a called one.
+    let minute = ["53", "五十三", "五三", "fifty-three", "fifty three"]
     let lowered = reply.lowercased()
     return minute.contains { lowered.contains($0) }
   }
@@ -362,6 +366,11 @@ final class ToolCallProbeTests: XCTestCase {
     XCTAssertTrue(
       Self.answered("It is 02:53."),
       "Digits were the one English form the scorer already accepted."
+    )
+    XCTAssertTrue(
+      Self.answered("現在是凌晨兩點五三分。"),
+      "Reading a digital clock aloud drops the 十, and that is still the "
+        + "handed clock — the fifth spelling this scorer missed."
     )
   }
 
