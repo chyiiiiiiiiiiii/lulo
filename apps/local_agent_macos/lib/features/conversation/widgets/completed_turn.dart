@@ -422,6 +422,19 @@ final class TerminalMarkdown extends StatelessWidget {
   /// own lines inside a paragraph block as often as between blocks.
   static final RegExp _heading = RegExp(r'^#{1,6}\s+(.*)$', multiLine: true);
 
+  /// A line that is a list item: a dash or a number, a space, then words.
+  ///
+  /// The space is load-bearing here too — 「-5 度」 is a temperature.
+  static final RegExp _listItem = RegExp(r'^\s*(?:[-*•]|(\d{1,2}[.)]))\s+');
+
+  /// Reading rhythm for the answer's body.
+  ///
+  /// CJK needs more leading than the theme's default or the lines sit on
+  /// each other's shoulders; this is the 1.5–1.7 every reading surface
+  /// converged on.
+  static TextStyle? _body(BuildContext context) =>
+      Theme.of(context).textTheme.bodyMedium?.copyWith(height: 1.55);
+
   static void _appendParagraphs(
     List<Widget> blocks,
     String text,
@@ -441,7 +454,7 @@ final class TerminalMarkdown extends StatelessWidget {
       if (heading != null && !trimmed.contains('\n')) {
         blocks.add(
           Padding(
-            padding: const EdgeInsets.only(top: 6, bottom: 3),
+            padding: const EdgeInsets.only(top: 10, bottom: 2),
             child: SelectableText.rich(
               TextSpan(
                 style: Theme.of(context).textTheme.titleSmall,
@@ -452,18 +465,98 @@ final class TerminalMarkdown extends StatelessWidget {
         );
         continue;
       }
+      if (_appendListBlock(blocks, trimmed, context)) {
+        continue;
+      }
       blocks.add(
         Padding(
-          padding: const EdgeInsets.symmetric(vertical: 3),
+          padding: const EdgeInsets.symmetric(vertical: 5),
           child: SelectableText.rich(
             TextSpan(
-              style: Theme.of(context).textTheme.bodyMedium,
+              style: _body(context),
               children: _spansStrippingHeadings(trimmed),
             ),
           ),
         ),
       );
     }
+  }
+
+  /// Renders a block whose lines are all list items, or says it is not one.
+  ///
+  /// Each item gets a bullet gutter and a hanging indent, so a wrapped
+  /// line aligns under its own first character instead of crashing into
+  /// the margin. A block where any line is not an item is left to the
+  /// paragraph path whole — half-list half-prose is prose.
+  static bool _appendListBlock(
+    List<Widget> blocks,
+    String paragraph,
+    BuildContext context,
+  ) {
+    final List<String> lines = paragraph.split('\n');
+    if (lines.length < 2 &&
+        _listItem.matchAsPrefix(lines.first.trim()) == null) {
+      return false;
+    }
+    final List<({String marker, String text})> items =
+        <({String marker, String text})>[];
+    for (final String line in lines) {
+      final String trimmed = line.trim();
+      if (trimmed.isEmpty) {
+        continue;
+      }
+      final Match? match = _listItem.matchAsPrefix(trimmed);
+      if (match == null) {
+        return false;
+      }
+      items.add((
+        marker: match.group(1) ?? '•',
+        text: trimmed.substring(match.end),
+      ));
+    }
+    if (items.isEmpty) {
+      return false;
+    }
+    final TextStyle? style = _body(context);
+    blocks.add(
+      Padding(
+        padding: const EdgeInsets.symmetric(vertical: 5),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: <Widget>[
+            for (final (int index, ({String marker, String text}) item)
+                in items.indexed)
+              Padding(
+                key: Key('markdown-list-item-$index'),
+                padding: const EdgeInsets.only(bottom: 4),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    SizedBox(
+                      width: 22,
+                      child: Text(
+                        item.marker,
+                        style: style?.copyWith(
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ),
+                    Expanded(
+                      child: SelectableText.rich(
+                        TextSpan(
+                          style: style,
+                          children: _emphasisSpans(item.text),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+    return true;
   }
 
   /// Emphasis spans, with any heading line inside the paragraph shown as

@@ -5,17 +5,27 @@ import 'package:local_agent_macos/features/conversation/widgets/completed_turn.d
 Widget _host(String source) =>
     MaterialApp(home: Scaffold(body: TerminalMarkdown(source)));
 
-/// Every visible string in the widget, joined.
+/// How many rendered list items the tree holds.
+int _listItems(WidgetTester tester) => tester
+    .widgetList(find.byType(Padding))
+    .where(
+      (Widget widget) => widget.key.toString().contains('markdown-list-item'),
+    )
+    .length;
+
+/// Every visible string in the widget, joined — selectable text and the
+/// plain [Text] the list gutter uses for its markers.
 String _visibleText(WidgetTester tester) {
-  final Iterable<SelectableText> texts = tester.widgetList<SelectableText>(
-    find.byType(SelectableText),
-  );
-  return texts
+  final Iterable<String> selectable = tester
+      .widgetList<SelectableText>(find.byType(SelectableText))
       .map(
         (SelectableText text) =>
             text.data ?? text.textSpan?.toPlainText() ?? '',
-      )
-      .join('\n');
+      );
+  final Iterable<String> plain = tester
+      .widgetList<Text>(find.byType(Text))
+      .map((Text text) => text.data ?? text.textSpan?.toPlainText() ?? '');
+  return <String>[...selectable, ...plain].join('\n');
 }
 
 void main() {
@@ -49,6 +59,41 @@ void main() {
   ) async {
     await tester.pumpWidget(_host('C# 和 F# 都是程式語言。'));
     expect(_visibleText(tester), contains('C# 和 F# 都是程式語言。'));
+  });
+
+  testWidgets('list items shed their dashes and stand apart', (
+    WidgetTester tester,
+  ) async {
+    // The reader's list, not the writer's: each item gets a bullet gutter
+    // and a hanging indent, so a wrapped line aligns under its own text
+    // instead of crashing into the margin — the shape every reading app
+    // converged on.
+    await tester.pumpWidget(_host('優點：\n\n- 提升力量與表現\n- 肌肉量增加\n- 提升恢復力'));
+    final String visible = _visibleText(tester);
+    expect(visible, contains('提升力量與表現'));
+    expect(visible, contains('肌肉量增加'));
+    expect(
+      visible,
+      isNot(contains('- 提升')),
+      reason: 'the dash is layout, not content',
+    );
+    expect(_listItems(tester), 3);
+  });
+
+  testWidgets('numbered items keep their numbers in the gutter', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(_host('步驟：\n\n1. 先暖身\n2. 再拉伸'));
+    final String visible = _visibleText(tester);
+    expect(visible, contains('先暖身'));
+    expect(visible, contains('1.'));
+    expect(_listItems(tester), 2);
+  });
+
+  testWidgets('a dash mid-sentence stays a dash', (WidgetTester tester) async {
+    await tester.pumpWidget(_host('溫度大約是 -5 度。'));
+    expect(_visibleText(tester), contains('-5 度'));
+    expect(_listItems(tester), 0);
   });
 
   testWidgets('bold inside a heading still reads as words', (
