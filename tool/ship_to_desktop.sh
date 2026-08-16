@@ -36,6 +36,39 @@ echo "==> copying to the Desktop"
 rm -rf "$DEST"
 ditto "$BUNDLE" "$DEST"
 
+# Re-signed with a real identity when the machine has one, and this is not
+# cosmetic: the project signs ad-hoc (`CODE_SIGN_IDENTITY = "-"`, correct
+# for CI, which has no certificates), and TCC keys an ad-hoc app's consent
+# to its **cdhash**. Every rebuild is a new cdhash, so every ship silently
+# revoked the Screen Recording grant the user had already given — System
+# Settings kept showing the switch on, because the entry it belongs to is
+# the previous binary. A development certificate carries a stable team
+# identifier, which is an identity TCC can hold a grant against across
+# rebuilds. Falls back to the ad-hoc bundle with a warning rather than
+# failing: an app that runs is worth more than a permission that persists.
+# By SHA-1 rather than by name: two certificates on this machine share the
+# name "Apple Development: …", and codesign refuses an ambiguous match.
+IDENTITY=$(security find-identity -v -p codesigning 2>/dev/null \
+  | grep "Apple Development" | head -1 | awk '{print $2}')
+if [ -n "$IDENTITY" ]; then
+  echo "==> re-signing as $IDENTITY"
+  # Nested code first, outermost last: signing the bundle seals what is
+  # inside it, so a dylib signed afterwards invalidates the seal above it.
+  find "$DEST/Contents/Frameworks" -name "*.dylib" -o -name "*.framework" \
+    -maxdepth 1 2>/dev/null | while read -r nested; do
+    codesign --force --sign "$IDENTITY" --timestamp=none "$nested" \
+      >/dev/null 2>&1 || true
+  done
+  # No hardened runtime: nothing here is notarized, and it would only add a
+  # way for the vendored LiteRT dylib's loading to break.
+  codesign --force --deep --sign "$IDENTITY" --timestamp=none \
+    --entitlements "$ROOT/apps/local_agent_macos/macos/Runner/Release.entitlements" \
+    "$DEST"
+else
+  echo "==> no development certificate; leaving the ad-hoc signature"
+  echo "    (macOS will forget Screen Recording consent on every ship)"
+fi
+
 echo "==> verifying what landed"
 codesign --verify --deep --strict "$DEST"
 dart tool/verify_litert_app_bundle.dart "$DEST"
