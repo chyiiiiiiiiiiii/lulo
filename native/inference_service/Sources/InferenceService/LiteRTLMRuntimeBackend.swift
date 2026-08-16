@@ -661,15 +661,21 @@ public actor LiteRTLMRuntimeBackend: RuntimeBackend {
     // Clearing the active generation first fences any chunk the driver is
     // still producing, so nothing can follow the terminal emitted below.
     activeGeneration = nil
-    // The decode is abandoned, not stopped. LiteRT-LM v0.14.0's CancelProcess
-    // does not end the running task: it leaves one active task in the
-    // callback thread pool permanently, which wedges the engine so completely
-    // that a later generation only ever reports started, and even unloadModel
-    // blocks. Measured against the real Gemma artifact, the engine never
-    // recovered across four minutes. Cancelling the Swift task cannot help
-    // either, because the loop is suspended awaiting a stream that stops
-    // yielding. So the decode is left to finish on its own token budget while
-    // its output is discarded, and the next generation waits for it.
+    // Stopped, not abandoned — since v0.16.0. On v0.14.0 `CancelProcess`
+    // left a task pinned in the callback thread pool so completely that
+    // the engine never recovered across four minutes, so a cancelled
+    // decode was left to burn its whole token budget while the next
+    // generation waited for it: stopping an answer and asking the next
+    // question sat for as long as 2048 tokens take. Re-measured on
+    // v0.16.0 by `CancelProbeTests`, the stream ends **27 ms** after
+    // `cancel()` — throwing `CANCELLED: Task cancelled`, which
+    // `runGeneration` catches and drops because the generation it belonged
+    // to is already gone — and the engine answers again 2.7 s later.
+    //
+    // The drain is kept and now resolves in milliseconds: it is what
+    // guarantees two decodes never overlap on one engine, which is a
+    // property of the engine rather than of any one runtime version.
+    try? await driver?.cancel(sessionId: active.sessionId)
     drainingGeneration = active.task
     drainingToken = active.token
     // A cancelled generation must still reach a terminal event. The

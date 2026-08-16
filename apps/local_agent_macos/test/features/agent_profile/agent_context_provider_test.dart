@@ -17,7 +17,7 @@ void main() {
 
     final AgentPromptContext context = provider.compose('現在幾點？');
 
-    expect(context.turnInstruction, contains('[現在]'));
+    expect(context.turnInstruction, contains('[背景：現在]'));
     expect(context.turnInstruction, contains('2026 年 8 月 7 日'));
     expect(context.turnInstruction, contains('02:53'));
   });

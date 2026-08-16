@@ -292,9 +292,16 @@ AgentPromptContext composeAgentPrompt({
       : profileText.substring(systemInstruction.length + 2);
   final String questionSection =
       '${chinese ? '[問題]' : '[Question]'}\n$question';
+  // Labelled as background and told not to be repeated. Without the
+  // instruction the model opens answers by reciting what it was handed —
+  // 「Lulo 看到您現在的時間已經是 2026 年 8 月 17 日的凌晨一點點，而且您正
+  // 在使用 Warp 終端機」 in front of a question about food — because a
+  // section in the prompt reads as something to use, and a clock is the
+  // easiest thing in it to say.
   final String clockSection = now == null
       ? ''
-      : '${chinese ? '[現在]' : '[Now]'}\n${_clock(now, chinese: chinese)}';
+      : '${chinese ? '[背景：現在]' : '[Background: now]'}\n'
+            '${_clock(now, chinese: chinese)}';
   // Which app is front changes between questions the way the clock does,
   // so it lives in the same half for the same measured reason. Told, not
   // fetched, like the clock: a fact this cheap and this current is
@@ -303,8 +310,8 @@ AgentPromptContext composeAgentPrompt({
   final String desktopSection = desktopApp.isEmpty
       ? ''
       : chinese
-      ? '[桌面]\n使用者正在使用 $desktopApp。'
-      : '[Desktop]\nThe user is currently in $desktopApp.';
+      ? '[背景：桌面]\n使用者正在使用 $desktopApp。'
+      : '[Background: desktop]\nThe user is currently in $desktopApp.';
   final DocumentPassages passages = document == null
       ? DocumentPassages(const <String>[])
       : passagesFor(
@@ -317,12 +324,28 @@ AgentPromptContext composeAgentPrompt({
       : '${chinese ? '[文件裡相關的段落]' : '[From the document]'}\n'
             '${passages.passages.join('\n\n')}';
 
+  // One line covering every background block, placed just before the
+  // question so it is the last thing read before it. Named blocks rather
+  // than a general "do not repeat context": the model has to be able to
+  // tell which sections the rule is about.
+  final bool hasBackground =
+      clockSection.isNotEmpty || desktopSection.isNotEmpty;
+  final String backgroundRule = !hasBackground
+      ? ''
+      : chinese
+      ? '以上「背景」只是你知道的事，不是問題的一部分。'
+            '只有在問題真的需要時才用到它，不要在開頭複述。'
+      : 'The background above is what you happen to know, not part of the '
+            'question. Use it only if the question needs it, and never '
+            'recite it up front.';
+
   // The question stays last, so it is the most recent thing the model read.
   final String turnInstruction = <String>[
     if (memories.isNotEmpty) memories,
     if (clockSection.isNotEmpty) clockSection,
     if (desktopSection.isNotEmpty) desktopSection,
     if (documentSection.isNotEmpty) documentSection,
+    if (backgroundRule.isNotEmpty) backgroundRule,
     questionSection,
   ].join('\n\n');
 

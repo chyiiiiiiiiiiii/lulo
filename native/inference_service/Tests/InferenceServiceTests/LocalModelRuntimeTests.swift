@@ -512,12 +512,13 @@ final class LocalModelRuntimeTests: XCTestCase {
     _ = try await harness.backend.cancelGeneration(generationId: "generation-1")
     await harness.events.waitForCount(3)
 
-    // LiteRT-LM v0.14.0 never finishes a cancelled task: CancelProcess leaves
-    // one active task in its callback pool forever, which wedges the engine so
-    // hard that even unloadModel blocks. The driver cancel must therefore stay
-    // unused, and the abandoned decode is drained instead.
+    // Since v0.16.0 the runtime's own cancel ends the decode — measured at
+    // 27 ms in `CancelProbeTests`, against v0.14.0 where it wedged the
+    // engine and the decode had to be left to burn its token budget while
+    // the next question waited for it. The driver cancel is what makes
+    // stopping actually stop, so it must be invoked.
     let cancelledSessionIds = await harness.driver.cancelledSessionIds
-    XCTAssertEqual(cancelledSessionIds, [])
+    XCTAssertEqual(cancelledSessionIds, ["session-1"])
 
     let second = Task {
       try await harness.backend.startGeneration(
@@ -647,10 +648,10 @@ final class LocalModelRuntimeTests: XCTestCase {
     )
     let cancelledSessionIds = await harness.driver.cancelledSessionIds
     let deliveredDeltas = await harness.events.events.compactMap(\.delta)
-    // Fencing is what hides the late chunk, not the runtime's own cancel.
-    // LiteRT-LM v0.14.0's CancelProcess wedges the engine permanently, so it
-    // is deliberately never invoked.
-    XCTAssertEqual(cancelledSessionIds, [])
+    // Fencing is what hides the late chunk; the runtime's own cancel is
+    // what stops the decode producing more of them, and since v0.16.0 it
+    // does that in milliseconds rather than wedging the engine.
+    XCTAssertFalse(cancelledSessionIds.isEmpty)
     XCTAssertEqual(
       deliveredDeltas,
       ["kept"]

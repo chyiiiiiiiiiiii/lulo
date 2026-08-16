@@ -327,7 +327,7 @@ void main() {
     // whole prompt every turn — the 1648ms that
     // `docs/decisions/voice-turn-latency.md` measured and removed.
     expect(result.systemInstruction, isNot(contains('2026')));
-    expect(result.turnInstruction, contains('[現在]'));
+    expect(result.turnInstruction, contains('[背景：現在]'));
     expect(result.turnInstruction, contains('2026 年 8 月 7 日'));
     expect(result.turnInstruction, contains('星期五'));
     expect(result.turnInstruction, contains('02:53'));
@@ -384,7 +384,7 @@ void main() {
       now: DateTime(2026, 8, 7, 14, 5),
     );
 
-    expect(result.turnInstruction, contains('[Now]'));
+    expect(result.turnInstruction, contains('[Background: now]'));
     expect(result.turnInstruction, contains('Friday, 7 August 2026'));
     expect(result.turnInstruction, contains('14:05'));
   });
@@ -397,7 +397,7 @@ void main() {
       prompt: '現在幾點？',
     );
 
-    expect(result.turnInstruction, isNot(contains('[現在]')));
+    expect(result.turnInstruction, isNot(contains('[背景：現在]')));
     expect(result.turnInstruction, '[問題]\n現在幾點？');
   });
 
@@ -525,7 +525,7 @@ void main() {
     // The turn half for the same reason the clock is: which app is front
     // changes between questions, and the stable half is prefilled once.
     expect(result.systemInstruction, isNot(contains('Xcode')));
-    expect(result.turnInstruction, contains('[桌面]'));
+    expect(result.turnInstruction, contains('[背景：桌面]'));
     expect(result.turnInstruction, contains('Xcode'));
     expect(result.turnInstruction, endsWith('[問題]\n我卡住了，怎麼辦？'));
   });
@@ -541,7 +541,7 @@ void main() {
       frontmostApp: 'Xcode',
     );
 
-    expect(result.turnInstruction, contains('[Desktop]'));
+    expect(result.turnInstruction, contains('[Background: desktop]'));
     expect(result.turnInstruction, contains('Xcode'));
   });
 
@@ -562,8 +562,8 @@ void main() {
 
     // Absent and blank are the same answer: a section head with nothing
     // under it would read as the app hiding something.
-    expect(withNull.turnInstruction, isNot(contains('[桌面]')));
-    expect(withEmpty.turnInstruction, isNot(contains('[桌面]')));
+    expect(withNull.turnInstruction, isNot(contains('[背景：桌面]')));
+    expect(withEmpty.turnInstruction, isNot(contains('[背景：桌面]')));
   });
 
   test('a question about a document brings the relevant part with it', () {
