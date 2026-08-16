@@ -206,7 +206,7 @@
   "hearingDuplexTitle": "Leaving voice on",
   "hearingDuplexNote": "Listens continuously so it can be interrupted, using the first of your preferred languages it supports — chosen when listening starts and kept for the whole conversation. English is weaker on this path: measured at 13.4% character error against 3.8% when holding the key, so for English the microphone key hears better.",
   "sectionAnswerStyle": "How far it may roam",
-  "answerStyleNote": "Applies to the next question. The model stays loaded; only the conversation is rebuilt.",
+  "answerStyleNote": "This sets how far it may roam, not how much it says \u2014 answer length lives under Agent profile below. Applies to the next question; the model stays loaded.",
   "answerStyleSteady": "Careful",
   "answerStyleBalanced": "Balanced",
   "answerStyleInventive": "Inventive",

@@ -511,7 +511,8 @@ class AppLocalizationsZh extends AppLocalizations {
   String get sectionAnswerStyle => '它可以放多開';
 
   @override
-  String get answerStyleNote => '從下一個問題開始生效。模型不會重新載入，只有對話會重建。';
+  String get answerStyleNote =>
+      '這裡調的是它發揮的空間，不是長度 —— 回答的長短在下面「Agent 檔案」的「回答長度」。從下一個問題開始生效，模型不會重新載入。';
 
   @override
   String get answerStyleSteady => '謹慎';

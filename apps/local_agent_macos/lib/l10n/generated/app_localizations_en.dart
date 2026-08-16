@@ -536,7 +536,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get answerStyleNote =>
-      'Applies to the next question. The model stays loaded; only the conversation is rebuilt.';
+      'This sets how far it may roam, not how much it says — answer length lives under Agent profile below. Applies to the next question; the model stays loaded.';
 
   @override
   String get answerStyleSteady => 'Careful';

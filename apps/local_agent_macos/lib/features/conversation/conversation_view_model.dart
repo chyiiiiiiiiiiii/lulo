@@ -165,6 +165,11 @@ final class ConversationViewModel extends ChangeNotifier {
           request: GenerationRequest(
             conversationId: conversationId,
             prompt: prompt,
+            // The way the words came in decides the shape of the answer:
+            // typed questions are read on screen, spoken ones are heard.
+            channel: voiceInput == null
+                ? AnswerChannel.written
+                : AnswerChannel.spoken,
             // What is on screen but possibly not in the runtime. After a
             // relaunch or a model swap the scrollback is read back from
             // storage while the model behind it starts empty; sending the

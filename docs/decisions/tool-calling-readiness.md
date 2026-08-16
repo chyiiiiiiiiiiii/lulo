@@ -7,20 +7,35 @@ instruction**, in either language, at either temperature, with constrained
 decoding on or off, even when a paragraph ordered it to use the tool.
 
 Every part of that was reproducible, and the conclusion drawn from it was
-wrong. Measured on runtime v0.16.0 with the scorer fixed:
+wrong. Measured on runtime v0.16.0 with the scorer fixed, on the GPU
+backend the app uses, against the prefaces the composer emits as of
+2026-08-16 (the reconciled opening line and the identity anchor — see the
+last sections of `answer-length-should-follow-the-question.md` for why
+those lines are what they are):
 
-| Asked to fetch the time with a tool (gemma-4-E4B, CPU) | Called | Quoted |
+| Asked to fetch the time with a tool (gemma-4-E4B, GPU) | Called | Quoted |
 |---|---|---|
 | Chinese, no system message | **5/5** | 5/5 |
-| Chinese, **this app's instruction** | **5/5** | 4/5 |
+| Chinese, **this app's instruction** | **5/5** | 5/5 |
 | Chinese, this app's instruction, `AnswerStyle.steady` | **5/5** | 5/5 |
 | Chinese, plus a paragraph naming the tool | **5/5** | 5/5 |
-| English, no system message | **5/5** | 4/5 |
+| English, no system message | **5/5** | 5/5 |
 | English, this app's instruction | **5/5** | 5/5 |
 | Chinese, no system message, constrained decoding | **5/5** | 5/5 |
-| Chinese, this app's instruction, constrained decoding | **5/5** | 4/5 |
+| Chinese, this app's instruction, constrained decoding | **5/5** | 5/5 |
 | English, this app's instruction, constrained decoding | **5/5** | 5/5 |
-| Chinese, instruction as `initialMessages[0]` | **5/5** | 4/5 |
+| Chinese, instruction as `initialMessages[0]` | **5/5** | 5/5 |
+
+The table is one preface edit away from zero, and that was measured the
+hard way: the opening line 「第一句就要是答案本身」 — adopted for preamble
+suppression before tools worked, never re-probed — took every app-preface
+row to **0/5 called**, on both channels, and the ablation named it as the
+single cause. A model told the first sentence must *be* the answer cannot
+stop to call a tool first. The line was reworded to keep the measured
+active ingredient (the named preamble ban) without the absolutism, and
+`WrittenPrefaceProbeTests` now guards persona, spread, and calling on
+both channels so the next preface edit is measured before it ships
+rather than after.
 
 | The precision half | Called |
 |---|---|

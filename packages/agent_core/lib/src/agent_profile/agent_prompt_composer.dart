@@ -56,6 +56,24 @@ final class AgentPromptContext {
   final int profileCharacterCount;
 }
 
+/// The way a question came in, which decides the shape of the answer.
+///
+/// A spoken answer is heard once, in order, at talking speed — the rules
+/// written for it (short sentences, no markup, a tight budget) exist
+/// because 172 characters is twenty-seven seconds of Mandarin. A typed
+/// answer is read: the eye skims, rereads, and follows structure, and the
+/// listener's rules make it feel curt instead of respectful. The channel
+/// lives in the stable half, so switching between typing and talking
+/// rebuilds the conversation once — the same trade an edited profile
+/// already makes.
+enum AnswerChannel {
+  /// The answer will be spoken aloud.
+  spoken,
+
+  /// The answer will be read on screen.
+  written,
+}
+
 /// Composes Lulo's stable behavior and relevant personal context for one turn.
 ///
 /// [now] is what the clock said when the question was asked. It must be a
@@ -90,6 +108,7 @@ AgentPromptContext composeAgentPrompt({
   DateTime? now,
   String? document,
   String? frontmostApp,
+  AnswerChannel channel = AnswerChannel.spoken,
   int maxDocumentCharacters = 1400,
   int maxProfileCharacters = 1200,
 }) {
@@ -116,55 +135,85 @@ AgentPromptContext composeAgentPrompt({
       chinese
           ? <String>[
               '你是 ${profile.identity.agentName}，在使用者電腦上運作的私人助手。',
+              // The identity anchor. Reworking the opening line for tool
+              // calling cost the name three times in five at temperature
+              // 0.7 — 「我叫 Gemma 4」 — and one specific sentence about
+              // the one question that leaks restored it to five in five on
+              // both channels, where the old absolutist opening had bought
+              // it as a side effect.
+              '被問到名字或身分時，你就是 ${profile.identity.agentName}。',
               '用臺灣繁體中文回答，親近但不裝熟。',
-              // Not 「先回答核心」, which was not enough of an instruction:
-              // measured over five questions built to provoke a preamble,
-              // one answer in five opened with the answer. Naming the
-              // preambles it must not open with moved that to four in five.
-              // See `docs/decisions/answer-length-should-follow-the-question.md`.
-              '第一句就要是答案本身，不要先說「這個問題很複雜」或「兩者不一樣」這類開場。',
+              // Two measurements collided here and this line is the
+              // reconciliation. 「第一句就要是答案本身」 moved preamble-free
+              // answers from one in five to four in five — and was then
+              // measured killing tool calling outright, 5/5 to 0/5: a model
+              // told the first sentence must BE the answer cannot stop to
+              // call a tool first. The active ingredient the length doc
+              // records is naming the banned preambles, so the ban keeps
+              // its examples and the first-sentence absolutism goes.
+              '先回答核心；不要用「這個問題很複雜」或「兩者不一樣」這類開場。',
               '不確定時坦白說明，不捏造資訊。',
             ]
           : <String>[
               'You are ${profile.identity.agentName}, a private assistant running on the user’s computer.',
+              'When asked your name or what you are, you are '
+                  '${profile.identity.agentName}.',
               'Answer in natural spoken English. Be warm without pretending familiarity.',
               // The English wording follows the Chinese, which is what was
               // measured; this side has not been.
-              'The first sentence must be the answer itself — not that the '
-                  'question is complex, or that the two things differ.',
+              'Lead with the core of the answer; never open with how '
+                  'complex the question is, or that the two things differ.',
               'State uncertainty honestly and never invent facts.',
             ],
     ),
     _section(
-      chinese ? '語音回答方式' : 'Spoken response',
-      chinese
-          ? <String>[
-              if (profile
-                  .voiceBehavior
-                  .preferNaturalShortSentences) ...<String>[
-                '這是用說的，不是用寫的。',
-                _zhSpokenLength(profile.personality.responseLength),
-              ],
-              if (profile.voiceBehavior.avoidMarkdown) '不要使用 Markdown。',
-              if (profile.voiceBehavior.avoidReadingUrls) '不要朗讀完整 URL。',
-              if (profile.voiceBehavior.avoidLongLists) '避免冗長條列。',
-              if (profile.voiceBehavior.preferNaturalShortSentences)
-                '使用適合自然朗讀的短句。',
-            ]
-          : <String>[
-              if (profile
-                  .voiceBehavior
-                  .preferNaturalShortSentences) ...<String>[
-                'This is being spoken aloud, not written.',
-                _spokenLength(profile.personality.responseLength),
-              ],
-              if (profile.voiceBehavior.avoidMarkdown) 'Do not use Markdown.',
-              if (profile.voiceBehavior.avoidReadingUrls)
-                'Do not read full URLs aloud.',
-              if (profile.voiceBehavior.avoidLongLists) 'Avoid long lists.',
-              if (profile.voiceBehavior.preferNaturalShortSentences)
-                'Use short sentences that sound natural when spoken.',
-            ],
+      channel == AnswerChannel.spoken
+          ? (chinese ? '語音回答方式' : 'Spoken response')
+          : (chinese ? '文字回答方式' : 'Written response'),
+      channel == AnswerChannel.spoken
+          ? (chinese
+                ? <String>[
+                    if (profile
+                        .voiceBehavior
+                        .preferNaturalShortSentences) ...<String>[
+                      '這是用說的，不是用寫的。',
+                      _zhSpokenLength(profile.personality.responseLength),
+                    ],
+                    if (profile.voiceBehavior.avoidMarkdown) '不要使用 Markdown。',
+                    if (profile.voiceBehavior.avoidReadingUrls) '不要朗讀完整 URL。',
+                    if (profile.voiceBehavior.avoidLongLists) '避免冗長條列。',
+                    if (profile.voiceBehavior.preferNaturalShortSentences)
+                      '使用適合自然朗讀的短句。',
+                  ]
+                : <String>[
+                    if (profile
+                        .voiceBehavior
+                        .preferNaturalShortSentences) ...<String>[
+                      'This is being spoken aloud, not written.',
+                      _spokenLength(profile.personality.responseLength),
+                    ],
+                    if (profile.voiceBehavior.avoidMarkdown)
+                      'Do not use Markdown.',
+                    if (profile.voiceBehavior.avoidReadingUrls)
+                      'Do not read full URLs aloud.',
+                    if (profile.voiceBehavior.avoidLongLists)
+                      'Avoid long lists.',
+                    if (profile.voiceBehavior.preferNaturalShortSentences)
+                      'Use short sentences that sound natural when spoken.',
+                  ])
+          : (chinese
+                ? <String>[
+                    '這是打字的對話，回答是用眼睛讀的。',
+                    _zhWrittenLength(profile.personality.responseLength),
+                    '需要列點時用「-」開頭的短行；不要用其他 Markdown 語法。',
+                  ]
+                : <String>[
+                    'This is a typed conversation; the answer is read on '
+                        'screen.',
+                    _writtenLength(profile.personality.responseLength),
+                    'Use short lines starting with "-" when a list helps; '
+                        'no other Markdown.',
+                  ]),
     ),
   ];
   final String required = sections.join('\n\n');
@@ -417,6 +466,41 @@ String _spokenLength(AgentResponseLength length) => switch (length) {
         'done, and never pad to fill the room.',
   AgentResponseLength.detailed =>
     'You may answer more fully, but this is still talking, not writing.',
+};
+
+/// [_zhSpokenLength] for an answer that will be read, not heard.
+///
+/// The B-shape from `answer-length-should-follow-the-question.md` — named
+/// triggers the model can evaluate per question — without the ear's
+/// framing: a reader skims and rereads, so the ceilings loosen one notch
+/// and structure is allowed instead of feared.
+String _zhWrittenLength(AgentResponseLength length) => switch (length) {
+  // The B lines verbatim, not a rewrite: the first written draft replaced
+  // 「可以到七八句」 with the open-ended 「把它說完整」, and the probe
+  // measured the C-variant failure both ways at once — 「我是 Gemma 4」
+  // and the clock tool at 0/5. An open-ended clause loosens far more than
+  // the sentence it is in; a numbered ceiling does not.
+  AgentResponseLength.concise =>
+    '多數問題一到三句就夠；需要步驟、比較或說明原因時可以到七八句。'
+        '講完就停，不要為了湊長度補話。',
+  AgentResponseLength.balanced =>
+    '多數問題一到五句就夠；需要步驟、比較或說明原因時可以更長。'
+        '講完就停，不要為了湊長度補話。',
+  AgentResponseLength.detailed => '可以講得完整一些，分段說清楚。',
+};
+
+/// [_zhWrittenLength] for a question asked in English.
+String _writtenLength(AgentResponseLength length) => switch (length) {
+  AgentResponseLength.concise =>
+    'One to three sentences answer most questions; go to seven or eight '
+        'when the question needs steps, a comparison, or a reason. Stop '
+        'when you are done, and never pad to fill the room.',
+  AgentResponseLength.balanced =>
+    'One to five sentences answer most questions; go longer when the '
+        'question needs steps, a comparison, or a reason. Stop when you '
+        'are done, and never pad to fill the room.',
+  AgentResponseLength.detailed =>
+    'You may answer more fully, in paragraphs, spelled out.',
 };
 
 String _zhLength(AgentResponseLength length) => switch (length) {

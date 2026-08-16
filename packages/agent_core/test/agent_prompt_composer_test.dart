@@ -69,34 +69,48 @@ void main() {
     expect(second.systemInstruction, first.systemInstruction);
   });
 
-  test('the first sentence has to be the answer, not a preamble', () {
-    // 「先回答核心」 was not enough of an instruction. Measured against the
-    // real model over five questions built to provoke a preamble, only one
-    // answer in five opened with the answer; the rest opened with 「兩者不
-    // 一樣」, 「原因比較多樣化」, 「這取決於」 — sentences that restate the
-    // question. Saying it plainly moved it to four in five.
-    //
-    // This matters more for speech than for text. A long answer is fine to
-    // hear if the first five seconds carried it and barge-in works, which
-    // here it does; five seconds of throat-clearing cannot be skimmed past.
-    // And the model preambles *more* as the question gets harder, which is
-    // exactly when leading with the answer matters most.
+  test('the preamble ban keeps its named examples, without the absolutism', () {
+    // Two measurements collided on this line and both are pinned here.
+    // 「第一句就要是答案本身」 moved preamble-free answers from one in five
+    // to four in five — and then the tool probe measured it killing tool
+    // calling outright, 5/5 to 0/5: a model told the first sentence must
+    // BE the answer cannot stop to call a tool first. The active
+    // ingredient the length doc records is naming the banned preambles,
+    // so the named ban stays and the first-sentence absolutism goes; both
+    // channels re-measure at 5/5 called with the ban in this form.
     final AgentPromptContext zh = composeAgentPrompt(
       profile: AgentProfile(),
       prompt: '幫我比較跑步和游泳對膝蓋的影響。',
     );
-    expect(zh.systemInstruction, contains('第一句'));
+    expect(zh.systemInstruction, contains('先回答核心'));
     expect(
       zh.systemInstruction,
       contains('這個問題很複雜'),
       reason: 'naming the preamble it must not open with is what moved it',
+    );
+    expect(
+      zh.systemInstruction,
+      isNot(contains('第一句就要是答案本身')),
+      reason: 'the absolutist form is the one measured at 0/5 tool calls',
     );
 
     final AgentPromptContext en = composeAgentPrompt(
       profile: AgentProfile(),
       prompt: 'Compare running and swimming for my knees.',
     );
-    expect(en.systemInstruction, contains('first sentence'));
+    expect(en.systemInstruction, contains('Lead with the core'));
+  });
+
+  test('the name is anchored against the question that leaks it', () {
+    // Asked 你叫什麼名字 at temperature 0.7, the model answered
+    // 「我叫 Gemma 4」 three times in five once the opening line stopped
+    // being absolutist. One sentence about that one question restores
+    // five in five on both channels.
+    final AgentPromptContext zh = composeAgentPrompt(
+      profile: AgentProfile(),
+      prompt: '你叫什麼名字？',
+    );
+    expect(zh.systemInstruction, contains('被問到名字或身分時，你就是 Lulo'));
   });
 
   test('the length names what makes an answer long, not just a ceiling', () {
@@ -436,6 +450,67 @@ void main() {
   // 40 pages do not fit in a 4096-token window and never were going to. What
   // goes in is chosen against the question, bounded, and reported — so the
   // user can check the answer against the file they can read themselves.
+  test('a typed question is answered for reading, not for speaking', () {
+    final AgentProfile profile = AgentProfile(
+      identity: const AgentIdentity(userName: 'Yii'),
+    );
+
+    final AgentPromptContext result = composeAgentPrompt(
+      profile: profile,
+      prompt: '幫我比較跑步和游泳對膝蓋的影響',
+      channel: AnswerChannel.written,
+    );
+
+    // The reader's rules, not the listener's: no spoken framing, no
+    // sentence-shortness rule written for the ear.
+    expect(result.systemInstruction, contains('[文字回答方式]'));
+    expect(result.systemInstruction, isNot(contains('這是用說的')));
+    expect(result.systemInstruction, isNot(contains('[語音回答方式]')));
+    expect(result.systemInstruction, isNot(contains('自然朗讀')));
+  });
+
+  test('a spoken question keeps the rules written for the ear', () {
+    final AgentProfile profile = AgentProfile(
+      identity: const AgentIdentity(userName: 'Yii'),
+    );
+
+    final AgentPromptContext spokenExplicit = composeAgentPrompt(
+      profile: profile,
+      prompt: '現在幾點？',
+      channel: AnswerChannel.spoken,
+    );
+    final AgentPromptContext byDefault = composeAgentPrompt(
+      profile: profile,
+      prompt: '現在幾點？',
+    );
+
+    expect(spokenExplicit.systemInstruction, contains('[語音回答方式]'));
+    // The default stays spoken: every measured preface in the decision docs
+    // was taken in this shape, and the caller who knows the question was
+    // typed says so explicitly.
+    expect(byDefault.systemInstruction, spokenExplicit.systemInstruction);
+  });
+
+  test('the two channels are different conversations, deliberately', () {
+    // The channel lives in the stable half, so switching between typing and
+    // talking rebuilds the conversation once — the trade voice-turn-latency
+    // already made for an edited profile.
+    final AgentProfile profile = AgentProfile(
+      identity: const AgentIdentity(userName: 'Yii'),
+    );
+    final String written = composeAgentPrompt(
+      profile: profile,
+      prompt: '你好',
+      channel: AnswerChannel.written,
+    ).systemInstruction;
+    final String spoken = composeAgentPrompt(
+      profile: profile,
+      prompt: '你好',
+      channel: AnswerChannel.spoken,
+    ).systemInstruction;
+    expect(written, isNot(spoken));
+  });
+
   test('the app the user is in reaches the turn half, told not asked', () {
     final AgentProfile profile = AgentProfile(
       identity: const AgentIdentity(userName: 'Yii'),

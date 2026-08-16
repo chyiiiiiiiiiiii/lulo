@@ -2,8 +2,12 @@ import 'package:agent_core/agent_core.dart';
 
 /// Supplies one immutable context snapshot immediately before generation.
 abstract interface class AgentContextProvider {
-  /// Composes stable behavior and relevant memories for [prompt].
-  AgentPromptContext compose(String prompt);
+  /// Composes stable behavior and relevant memories for [prompt], shaped
+  /// for the [channel] the question came in on.
+  AgentPromptContext compose(
+    String prompt, {
+    AnswerChannel channel = AnswerChannel.spoken,
+  });
 }
 
 /// Composes context from the latest profile returned by [profileOf].
@@ -43,7 +47,10 @@ final class ProfileAgentContextProvider implements AgentContextProvider {
   final String Function() frontmostAppOf;
 
   @override
-  AgentPromptContext compose(String prompt) {
+  AgentPromptContext compose(
+    String prompt, {
+    AnswerChannel channel = AnswerChannel.spoken,
+  }) {
     final String document = documentOf();
     final String frontmostApp = frontmostAppOf();
     return composeAgentPrompt(
@@ -52,6 +59,7 @@ final class ProfileAgentContextProvider implements AgentContextProvider {
       now: clock(),
       document: document.isEmpty ? null : document,
       frontmostApp: frontmostApp.isEmpty ? null : frontmostApp,
+      channel: channel,
     );
   }
 }

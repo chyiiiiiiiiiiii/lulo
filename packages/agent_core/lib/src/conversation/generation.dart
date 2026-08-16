@@ -1,3 +1,4 @@
+import '../agent_profile/agent_prompt_composer.dart' show AnswerChannel;
 import 'conversation_id.dart';
 import 'turn.dart';
 
@@ -24,6 +25,7 @@ final class GenerationRequest {
     required this.conversationId,
     required this.prompt,
     this.history = const <Turn>[],
+    this.channel = AnswerChannel.spoken,
   });
 
   /// The conversation that owns the request.
@@ -40,6 +42,12 @@ final class GenerationRequest {
   /// implementation that has forgotten them start from where the user
   /// thinks it is.
   final List<Turn> history;
+
+  /// The way this question came in, which decides the shape of the answer.
+  ///
+  /// Spoken by default because every measured preface was taken in that
+  /// shape; the caller who knows the question was typed says so.
+  final AnswerChannel channel;
 }
 
 /// A generation tracked independently from its inference implementation.

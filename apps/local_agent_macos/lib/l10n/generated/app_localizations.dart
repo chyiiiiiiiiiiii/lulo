@@ -1056,7 +1056,7 @@ abstract class AppLocalizations {
   /// No description provided for @answerStyleNote.
   ///
   /// In en, this message translates to:
-  /// **'Applies to the next question. The model stays loaded; only the conversation is rebuilt.'**
+  /// **'This sets how far it may roam, not how much it says — answer length lives under Agent profile below. Applies to the next question; the model stays loaded.'**
   String get answerStyleNote;
 
   /// No description provided for @answerStyleSteady.

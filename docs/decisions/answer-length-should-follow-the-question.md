@@ -230,3 +230,36 @@ minutes with no way to skim and no way to interrupt without barging.
 real error underneath this one. The length rule should differ by how the
 question arrived, not because a voice user deserves less but because a voice
 user cannot skim.
+
+
+## The first-sentence line was later measured killing tool calls, and fell
+
+Written 2026-08-16, when the typed channel was being built. The tool probe
+— by then counting executions rather than reading the reply — measured the
+clock tool under the preface actually shipping, and it had gone from 5/5
+to **0/5 called**. Ablated one line at a time against the real model:
+reverting 「第一句就要是答案本身」 restored 5/5; reverting the length line
+restored nothing. A model told the first sentence must *be* the answer
+cannot stop to call a tool first — the call is not an answer sentence.
+
+The table above says the active ingredient was never the absolutism: it
+was **naming the banned preambles**. So the line shipping now is
+「先回答核心；不要用「這個問題很複雜」或「兩者不一樣」這類開場。」 — the old
+opening plus the named ban — and it re-measures at 5/5 called on both
+channels with the preamble examples still in force.
+
+Dropping the absolutism cost something it had been buying silently:
+identity. Asked 你叫什麼名字 at temperature 0.7, the model answered
+「我叫 Gemma 4」 two to three times in five. One specific sentence about
+that one question — 「被問到名字或身分時，你就是 Lulo。」 — restored 5/5 on
+both channels. Specific beats absolutist: the C-variant lesson said an
+open-ended clause reaches further than its sentence, and this is its
+converse — a narrowly-scoped sentence stays where it is put.
+
+The typed channel this section anticipated now exists: `AnswerChannel` in
+`composeAgentPrompt`, written by the view model from how the words
+arrived, with a `[文字回答方式]` block measured whole in
+`WrittenPrefaceProbeTests` — persona 5/5, tools 5/5, spread 27×. Its
+first draft replaced 「可以到七八句」 with the open-ended 「把它說完整」 and
+measured the C-variant failure both ways at once, which is why its length
+lines are the B lines verbatim.

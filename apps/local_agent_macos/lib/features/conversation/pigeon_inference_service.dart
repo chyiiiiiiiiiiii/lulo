@@ -327,7 +327,10 @@ final class _PigeonGenerationOperation {
         return;
       }
       onSessionStarted(request.conversationId.value);
-      final AgentPromptContext context = agentContext.compose(request.prompt);
+      final AgentPromptContext context = agentContext.compose(
+        request.prompt,
+        channel: request.channel,
+      );
       _systemInstruction = context.systemInstruction;
       final AgentToolbox? tools = toolbox;
       _toolsJson = tools == null || tools.isEmpty

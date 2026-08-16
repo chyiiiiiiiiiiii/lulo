@@ -160,7 +160,7 @@
   "hearingDuplexTitle": "讓語音一直開著",
   "hearingDuplexNote": "持續聆聽，所以你可以插話。它用你偏好語言裡它支援的第一個，在開始聆聽時就決定，整段對話不換。這條路聽英文比較差：量測是 13.4% 錯字率，按住麥克風鍵是 3.8% —— 講英文時按住鍵比較準。",
   "sectionAnswerStyle": "它可以放多開",
-  "answerStyleNote": "從下一個問題開始生效。模型不會重新載入，只有對話會重建。",
+  "answerStyleNote": "這裡調的是它發揮的空間，不是長度 —— 回答的長短在下面「Agent 檔案」的「回答長度」。從下一個問題開始生效，模型不會重新載入。",
   "answerStyleSteady": "謹慎",
   "answerStyleBalanced": "平衡",
   "answerStyleInventive": "發散",
