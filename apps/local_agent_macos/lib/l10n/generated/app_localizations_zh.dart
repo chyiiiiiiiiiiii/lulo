@@ -484,6 +484,19 @@ class AppLocalizationsZh extends AppLocalizations {
       '最大也最慢的選擇：需要較新的高階 Mac，在較舊的機器上第一個字可能要等數十秒，甚至中途失敗。適合讀寫長文，不適合對話。';
 
   @override
+  String get lookAtScreenTooltip => '看一下我的螢幕';
+
+  @override
+  String get lookDefaultPrompt => '看一下我的螢幕，說說你看到什麼。有什麼不對勁或可以做得更好的，直接說。';
+
+  @override
+  String get lookDeniedNotice =>
+      'Lulo 看不到螢幕 —— 請在「系統設定 › 隱私權與安全性」允許 Lulo 使用螢幕錄製。';
+
+  @override
+  String get lookFailedNotice => '這次沒看成 —— 沒有擷取到畫面。';
+
+  @override
   String get shareFrontmostApp => '讓它知道你在用哪個 App';
 
   @override

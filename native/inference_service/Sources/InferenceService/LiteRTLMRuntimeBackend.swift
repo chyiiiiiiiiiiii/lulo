@@ -122,6 +122,9 @@ struct LiteRTLMDriverGenerationRequest: Equatable, Sendable {
   /// `[{"name","id","response"}]` JSON. When present, `prompt` is not sent;
   /// these are.
   var toolResponsesJson: String? = nil
+
+  /// A picture this question is about, or nil for words alone.
+  var imagePath: String? = nil
 }
 
 /// One thing the driver's stream produced.
@@ -193,9 +196,14 @@ actor SystemLiteRTLMRuntimeDriver: LiteRTLMRuntimeDriving {
     case .cpu(let threadCount):
       .cpu(threadCount: threadCount)
     }
+    // The vision executor rides along on the same backend. Measured before
+    // being enabled: it adds ~0.5 s to an engine load and nothing to a
+    // text turn, and it is what lets 「看一下我的螢幕」 exist at all — a
+    // look was measured at 5.7 s end to end on this backend.
     let config = try EngineConfig(
       modelPath: request.modelPath,
       backend: backend,
+      visionBackend: backend,
       maxNumTokens: request.maxNumTokens,
       cacheDir: request.cacheDirectory
     )
@@ -304,10 +312,16 @@ actor SystemLiteRTLMRuntimeDriver: LiteRTLMRuntimeDriving {
     try Task.checkCancellation()
     let context: [String: Any] = request.extraContext
     // A continuation answers the model's tool calls; an ordinary turn asks
-    // the user's question. Same stream, different message.
+    // the user's question — with the picture it is about in front of it,
+    // when there is one. Same stream, different message.
     let message: Message
     if let toolResponsesJson = request.toolResponsesJson {
       message = try Self.toolResponseMessage(toolResponsesJson)
+    } else if let imagePath = request.imagePath, !imagePath.isEmpty {
+      message = Message(
+        contents: [.imageFile(imagePath), .text(request.prompt)],
+        role: .user
+      )
     } else {
       message = Message(request.prompt)
     }
@@ -996,17 +1010,28 @@ public actor LiteRTLMRuntimeBackend: RuntimeBackend {
   /// without doing it, and was simultaneously too generous when a long
   /// answer was asked for and far too mean for anything written in Latin
   /// script.
+  /// What one picture is charged against the window.
+  ///
+  /// The runtime does not say how many visual tokens an image will cost
+  /// before it is sent, so a flat estimate is charged the way this
+  /// estimator charges everything — erring toward trimming a turn of
+  /// history too early rather than failing the answer. 800 covers the
+  /// per-image visual token counts Gemma is documented to use.
+  static let imageTokenEstimate = 800
+
   static func historyFitting(
     _ history: [RuntimeConversationTurn],
     systemInstruction: String,
     prompt: String,
     maxOutputTokens: Int,
-    contextSize: Int64
+    contextSize: Int64,
+    imageTokens: Int = 0
   ) -> [RuntimeConversationTurn] {
     let reserved =
       max(0, maxOutputTokens)
       + estimatedTokenCount(prompt)
       + estimatedTokenCount(systemInstruction)
+      + imageTokens
       + turnMarkerTokens
     let budget = max(0, Int(contextSize) - reserved)
     var kept: [RuntimeConversationTurn] = []
@@ -1101,7 +1126,8 @@ public actor LiteRTLMRuntimeBackend: RuntimeBackend {
           + (generation.toolsJson ?? ""),
         prompt: generation.prompt,
         maxOutputTokens: maxTokens,
-        contextSize: contextSize
+        contextSize: contextSize,
+        imageTokens: generation.imagePath == nil ? 0 : Self.imageTokenEstimate
       ),
       extraContext: ["context": generation.context],
       sampler: LiteRTLMSamplerFingerprint(
@@ -1113,7 +1139,8 @@ public actor LiteRTLMRuntimeBackend: RuntimeBackend {
       maxOutputTokens: maxTokens,
       contextSize: contextSize,
       toolsJson: generation.toolsJson,
-      toolResponsesJson: generation.toolResponsesJson
+      toolResponsesJson: generation.toolResponsesJson,
+      imagePath: generation.imagePath
     )
   }
 }

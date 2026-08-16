@@ -236,6 +236,28 @@ final class LocalModelRuntimeTests: XCTestCase {
     XCTAssertEqual(requests.last?.toolResponsesJson, responses)
   }
 
+  func testTheLooksPictureRidesTheRequestToTheDriver() async throws {
+    let harness = try await makeLiteRTLMBackendHarness()
+    defer { try? FileManager.default.removeItem(at: harness.modelDirectory) }
+    _ = try await harness.backend.startGeneration(
+      RuntimeGenerationRequest(
+        generationId: "g1",
+        sessionId: "session-9",
+        prompt: "我在看什麼？",
+        context: [],
+        history: [],
+        temperature: 0.2,
+        topP: 0.9,
+        maxTokens: 16,
+        seed: 7,
+        imagePath: "/tmp/look.png"
+      )
+    )
+    await harness.driver.waitForGenerationCall()
+    let request = await harness.driver.generationRequests.first
+    XCTAssertEqual(request?.imagePath, "/tmp/look.png")
+  }
+
   func testAnEmptyPromptWithoutToolResponsesIsStillRefused() async throws {
     // The empty-prompt allowance exists for tool continuations and for
     // nothing else; an ordinary request with nothing to say stays a

@@ -1029,6 +1029,9 @@ final class _PresentationSwitchState extends State<_PresentationSwitch>
         );
       },
       child: ConversationView(
+        screenLook: widget.composition.presentationHost == null
+            ? null
+            : () => widget.composition.presentationHost!.captureScreenLook(),
         key: _conversationKey,
         modelLoading: widget.composition.modelLoading,
         voiceRequests: widget.composition.voiceRequests,

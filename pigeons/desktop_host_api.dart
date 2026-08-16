@@ -215,6 +215,7 @@ class HostGenerationRequest {
     required this.seed,
     this.toolsJson,
     this.toolResponsesJson,
+    this.imagePath,
   });
 
   String generationId;
@@ -251,6 +252,10 @@ class HostGenerationRequest {
   /// of the same session: [prompt] is ignored — and may be empty — because
   /// the user's words were sent by the generation that asked for the tools.
   String? toolResponsesJson;
+
+  /// A picture this question is about, as a path the runtime reads itself,
+  /// or null for a question made of words alone.
+  String? imagePath;
 }
 
 class HostGenerationAcknowledgement {
@@ -457,6 +462,46 @@ abstract class DesktopHostApi {
   /// requested.
   @async
   HostLoginItemStatus setLaunchAtLogin(HostRequest request, bool enabled);
+
+  /// Takes one screenshot of the window the user was last working in, for a
+  /// question they just asked about it.
+  ///
+  /// The invited look and nothing more: capture happens only inside this
+  /// call, the user's tap is the consent, and the first call is where macOS
+  /// asks for Screen Recording. The previous look's file is deleted when
+  /// the next capture happens — the app is not a recorder, and keeps no
+  /// archive of the user's screen.
+  @async
+  HostScreenLookResult captureScreenLook(HostRequest request);
+}
+
+/// How asking for a look at the screen ended.
+enum HostScreenLookStatus {
+  /// A screenshot was written; `path` names it.
+  captured,
+
+  /// macOS refused: Screen Recording is off for this app. The user can
+  /// grant it in System Settings › Privacy & Security.
+  denied,
+
+  /// This macOS cannot do it (the capture API needs macOS 14).
+  unavailable,
+
+  /// Permission is fine and the capture still failed — no window to
+  /// capture, or the write failed.
+  failed,
+}
+
+/// One attempted look at the screen.
+class HostScreenLookResult {
+  HostScreenLookResult({required this.status, required this.path});
+
+  /// How it ended.
+  final HostScreenLookStatus status;
+
+  /// Where the screenshot was written, or empty unless [status] is
+  /// [HostScreenLookStatus.captured].
+  final String path;
 }
 
 @FlutterApi()

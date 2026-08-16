@@ -241,6 +241,20 @@ enum HostTurnRole: Int {
   case assistant = 1
 }
 
+/// How asking for a look at the screen ended.
+enum HostScreenLookStatus: Int {
+  /// A screenshot was written; `path` names it.
+  case captured = 0
+  /// macOS refused: Screen Recording is off for this app. The user can
+  /// grant it in System Settings › Privacy & Security.
+  case denied = 1
+  /// This macOS cannot do it (the capture API needs macOS 14).
+  case unavailable = 2
+  /// Permission is fine and the capture still failed — no window to
+  /// capture, or the write failed.
+  case failed = 3
+}
+
 /// One conversation as the menu bar lists it.
 ///
 /// Generated class from Pigeon that represents data sent in messages.
@@ -644,6 +658,9 @@ struct HostGenerationRequest: Hashable {
   /// of the same session: [prompt] is ignored — and may be empty — because
   /// the user's words were sent by the generation that asked for the tools.
   var toolResponsesJson: String? = nil
+  /// A picture this question is about, as a path the runtime reads itself,
+  /// or null for a question made of words alone.
+  var imagePath: String? = nil
 
 
   // swift-format-ignore: AlwaysUseLowerCamelCase
@@ -660,6 +677,7 @@ struct HostGenerationRequest: Hashable {
     let seed = pigeonVar_list[9] as! Int64
     let toolsJson: String? = nilOrValue(pigeonVar_list[10])
     let toolResponsesJson: String? = nilOrValue(pigeonVar_list[11])
+    let imagePath: String? = nilOrValue(pigeonVar_list[12])
 
     return HostGenerationRequest(
       generationId: generationId,
@@ -673,7 +691,8 @@ struct HostGenerationRequest: Hashable {
       maxTokens: maxTokens,
       seed: seed,
       toolsJson: toolsJson,
-      toolResponsesJson: toolResponsesJson
+      toolResponsesJson: toolResponsesJson,
+      imagePath: imagePath
     )
   }
   func toList() -> [Any?] {
@@ -690,13 +709,14 @@ struct HostGenerationRequest: Hashable {
       seed,
       toolsJson,
       toolResponsesJson,
+      imagePath,
     ]
   }
   static func == (lhs: HostGenerationRequest, rhs: HostGenerationRequest) -> Bool {
     if Swift.type(of: lhs) != Swift.type(of: rhs) {
       return false
     }
-    return deepEqualsGeneratedDesktopHostApi(lhs.generationId, rhs.generationId) && deepEqualsGeneratedDesktopHostApi(lhs.sessionId, rhs.sessionId) && deepEqualsGeneratedDesktopHostApi(lhs.systemInstruction, rhs.systemInstruction) && deepEqualsGeneratedDesktopHostApi(lhs.prompt, rhs.prompt) && deepEqualsGeneratedDesktopHostApi(lhs.context, rhs.context) && deepEqualsGeneratedDesktopHostApi(lhs.history, rhs.history) && deepEqualsGeneratedDesktopHostApi(lhs.temperature, rhs.temperature) && deepEqualsGeneratedDesktopHostApi(lhs.topP, rhs.topP) && deepEqualsGeneratedDesktopHostApi(lhs.maxTokens, rhs.maxTokens) && deepEqualsGeneratedDesktopHostApi(lhs.seed, rhs.seed) && deepEqualsGeneratedDesktopHostApi(lhs.toolsJson, rhs.toolsJson) && deepEqualsGeneratedDesktopHostApi(lhs.toolResponsesJson, rhs.toolResponsesJson)
+    return deepEqualsGeneratedDesktopHostApi(lhs.generationId, rhs.generationId) && deepEqualsGeneratedDesktopHostApi(lhs.sessionId, rhs.sessionId) && deepEqualsGeneratedDesktopHostApi(lhs.systemInstruction, rhs.systemInstruction) && deepEqualsGeneratedDesktopHostApi(lhs.prompt, rhs.prompt) && deepEqualsGeneratedDesktopHostApi(lhs.context, rhs.context) && deepEqualsGeneratedDesktopHostApi(lhs.history, rhs.history) && deepEqualsGeneratedDesktopHostApi(lhs.temperature, rhs.temperature) && deepEqualsGeneratedDesktopHostApi(lhs.topP, rhs.topP) && deepEqualsGeneratedDesktopHostApi(lhs.maxTokens, rhs.maxTokens) && deepEqualsGeneratedDesktopHostApi(lhs.seed, rhs.seed) && deepEqualsGeneratedDesktopHostApi(lhs.toolsJson, rhs.toolsJson) && deepEqualsGeneratedDesktopHostApi(lhs.toolResponsesJson, rhs.toolResponsesJson) && deepEqualsGeneratedDesktopHostApi(lhs.imagePath, rhs.imagePath)
   }
 
   func hash(into hasher: inout Hasher) {
@@ -713,6 +733,7 @@ struct HostGenerationRequest: Hashable {
     deepHashGeneratedDesktopHostApi(value: seed, hasher: &hasher)
     deepHashGeneratedDesktopHostApi(value: toolsJson, hasher: &hasher)
     deepHashGeneratedDesktopHostApi(value: toolResponsesJson, hasher: &hasher)
+    deepHashGeneratedDesktopHostApi(value: imagePath, hasher: &hasher)
   }
 }
 
@@ -975,6 +996,47 @@ struct HostTransitionGeometry: Hashable {
   }
 }
 
+/// One attempted look at the screen.
+///
+/// Generated class from Pigeon that represents data sent in messages.
+struct HostScreenLookResult: Hashable {
+  /// How it ended.
+  var status: HostScreenLookStatus
+  /// Where the screenshot was written, or empty unless [status] is
+  /// [HostScreenLookStatus.captured].
+  var path: String
+
+
+  // swift-format-ignore: AlwaysUseLowerCamelCase
+  static func fromList(_ pigeonVar_list: [Any?]) -> HostScreenLookResult? {
+    let status = pigeonVar_list[0] as! HostScreenLookStatus
+    let path = pigeonVar_list[1] as! String
+
+    return HostScreenLookResult(
+      status: status,
+      path: path
+    )
+  }
+  func toList() -> [Any?] {
+    return [
+      status,
+      path,
+    ]
+  }
+  static func == (lhs: HostScreenLookResult, rhs: HostScreenLookResult) -> Bool {
+    if Swift.type(of: lhs) != Swift.type(of: rhs) {
+      return false
+    }
+    return deepEqualsGeneratedDesktopHostApi(lhs.status, rhs.status) && deepEqualsGeneratedDesktopHostApi(lhs.path, rhs.path)
+  }
+
+  func hash(into hasher: inout Hasher) {
+    hasher.combine("HostScreenLookResult")
+    deepHashGeneratedDesktopHostApi(value: status, hasher: &hasher)
+    deepHashGeneratedDesktopHostApi(value: path, hasher: &hasher)
+  }
+}
+
 private class GeneratedDesktopHostApiPigeonCodecReader: FlutterStandardReader {
   override func readValue(ofType type: UInt8) -> Any? {
     switch type {
@@ -1009,33 +1071,41 @@ private class GeneratedDesktopHostApiPigeonCodecReader: FlutterStandardReader {
       }
       return nil
     case 134:
-      return HostMenuConversation.fromList(self.readValue() as! [Any?])
+      let enumResultAsInt: Int? = nilOrValue(self.readValue() as! Int?)
+      if let enumResultAsInt = enumResultAsInt {
+        return HostScreenLookStatus(rawValue: enumResultAsInt)
+      }
+      return nil
     case 135:
-      return HostMenuBarLabels.fromList(self.readValue() as! [Any?])
+      return HostMenuConversation.fromList(self.readValue() as! [Any?])
     case 136:
-      return HostMenuBarState.fromList(self.readValue() as! [Any?])
+      return HostMenuBarLabels.fromList(self.readValue() as! [Any?])
     case 137:
-      return HostRequest.fromList(self.readValue() as! [Any?])
+      return HostMenuBarState.fromList(self.readValue() as! [Any?])
     case 138:
-      return HostHandshakeResult.fromList(self.readValue() as! [Any?])
+      return HostRequest.fromList(self.readValue() as! [Any?])
     case 139:
-      return HostModelRequest.fromList(self.readValue() as! [Any?])
+      return HostHandshakeResult.fromList(self.readValue() as! [Any?])
     case 140:
-      return HostModelLoadResult.fromList(self.readValue() as! [Any?])
+      return HostModelRequest.fromList(self.readValue() as! [Any?])
     case 141:
-      return HostConversationTurn.fromList(self.readValue() as! [Any?])
+      return HostModelLoadResult.fromList(self.readValue() as! [Any?])
     case 142:
-      return HostGenerationRequest.fromList(self.readValue() as! [Any?])
+      return HostConversationTurn.fromList(self.readValue() as! [Any?])
     case 143:
-      return HostGenerationAcknowledgement.fromList(self.readValue() as! [Any?])
+      return HostGenerationRequest.fromList(self.readValue() as! [Any?])
     case 144:
-      return HostCancellationAcknowledgement.fromList(self.readValue() as! [Any?])
+      return HostGenerationAcknowledgement.fromList(self.readValue() as! [Any?])
     case 145:
-      return HostOperationCompletion.fromList(self.readValue() as! [Any?])
+      return HostCancellationAcknowledgement.fromList(self.readValue() as! [Any?])
     case 146:
-      return HostGenerationEvent.fromList(self.readValue() as! [Any?])
+      return HostOperationCompletion.fromList(self.readValue() as! [Any?])
     case 147:
+      return HostGenerationEvent.fromList(self.readValue() as! [Any?])
+    case 148:
       return HostTransitionGeometry.fromList(self.readValue() as! [Any?])
+    case 149:
+      return HostScreenLookResult.fromList(self.readValue() as! [Any?])
     default:
       return super.readValue(ofType: type)
     }
@@ -1059,47 +1129,53 @@ private class GeneratedDesktopHostApiPigeonCodecWriter: FlutterStandardWriter {
     } else if let value = value as? HostTurnRole {
       super.writeByte(133)
       super.writeValue(value.rawValue)
-    } else if let value = value as? HostMenuConversation {
+    } else if let value = value as? HostScreenLookStatus {
       super.writeByte(134)
-      super.writeValue(value.toList())
-    } else if let value = value as? HostMenuBarLabels {
+      super.writeValue(value.rawValue)
+    } else if let value = value as? HostMenuConversation {
       super.writeByte(135)
       super.writeValue(value.toList())
-    } else if let value = value as? HostMenuBarState {
+    } else if let value = value as? HostMenuBarLabels {
       super.writeByte(136)
       super.writeValue(value.toList())
-    } else if let value = value as? HostRequest {
+    } else if let value = value as? HostMenuBarState {
       super.writeByte(137)
       super.writeValue(value.toList())
-    } else if let value = value as? HostHandshakeResult {
+    } else if let value = value as? HostRequest {
       super.writeByte(138)
       super.writeValue(value.toList())
-    } else if let value = value as? HostModelRequest {
+    } else if let value = value as? HostHandshakeResult {
       super.writeByte(139)
       super.writeValue(value.toList())
-    } else if let value = value as? HostModelLoadResult {
+    } else if let value = value as? HostModelRequest {
       super.writeByte(140)
       super.writeValue(value.toList())
-    } else if let value = value as? HostConversationTurn {
+    } else if let value = value as? HostModelLoadResult {
       super.writeByte(141)
       super.writeValue(value.toList())
-    } else if let value = value as? HostGenerationRequest {
+    } else if let value = value as? HostConversationTurn {
       super.writeByte(142)
       super.writeValue(value.toList())
-    } else if let value = value as? HostGenerationAcknowledgement {
+    } else if let value = value as? HostGenerationRequest {
       super.writeByte(143)
       super.writeValue(value.toList())
-    } else if let value = value as? HostCancellationAcknowledgement {
+    } else if let value = value as? HostGenerationAcknowledgement {
       super.writeByte(144)
       super.writeValue(value.toList())
-    } else if let value = value as? HostOperationCompletion {
+    } else if let value = value as? HostCancellationAcknowledgement {
       super.writeByte(145)
       super.writeValue(value.toList())
-    } else if let value = value as? HostGenerationEvent {
+    } else if let value = value as? HostOperationCompletion {
       super.writeByte(146)
       super.writeValue(value.toList())
-    } else if let value = value as? HostTransitionGeometry {
+    } else if let value = value as? HostGenerationEvent {
       super.writeByte(147)
+      super.writeValue(value.toList())
+    } else if let value = value as? HostTransitionGeometry {
+      super.writeByte(148)
+      super.writeValue(value.toList())
+    } else if let value = value as? HostScreenLookResult {
+      super.writeByte(149)
       super.writeValue(value.toList())
     } else {
       super.writeValue(value)
@@ -1186,6 +1262,15 @@ protocol DesktopHostApi {
   /// in System Settings. The caller shows what came back rather than what it
   /// requested.
   func setLaunchAtLogin(request: HostRequest, enabled: Bool, completion: @escaping (Result<HostLoginItemStatus, Error>) -> Void)
+  /// Takes one screenshot of the window the user was last working in, for a
+  /// question they just asked about it.
+  ///
+  /// The invited look and nothing more: capture happens only inside this
+  /// call, the user's tap is the consent, and the first call is where macOS
+  /// asks for Screen Recording. The previous look's file is deleted when
+  /// the next capture happens — the app is not a recorder, and keeps no
+  /// archive of the user's screen.
+  func captureScreenLook(request: HostRequest, completion: @escaping (Result<HostScreenLookResult, Error>) -> Void)
 }
 
 /// Generated setup class from Pigeon to handle messages through the `binaryMessenger`.
@@ -1588,6 +1673,31 @@ class DesktopHostApiSetup {
       }
     } else {
       setLaunchAtLoginChannel.setMessageHandler(nil)
+    }
+    /// Takes one screenshot of the window the user was last working in, for a
+    /// question they just asked about it.
+    ///
+    /// The invited look and nothing more: capture happens only inside this
+    /// call, the user's tap is the consent, and the first call is where macOS
+    /// asks for Screen Recording. The previous look's file is deleted when
+    /// the next capture happens — the app is not a recorder, and keeps no
+    /// archive of the user's screen.
+    let captureScreenLookChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.local_agent_macos.DesktopHostApi.captureScreenLook\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
+    if let api = api {
+      captureScreenLookChannel.setMessageHandler { message, reply in
+        let args = message as! [Any?]
+        let requestArg = args[0] as! HostRequest
+        api.captureScreenLook(request: requestArg) { result in
+          switch result {
+          case .success(let res):
+            reply(wrapResult(res))
+          case .failure(let error):
+            reply(wrapError(error))
+          }
+        }
+      }
+    } else {
+      captureScreenLookChannel.setMessageHandler(nil)
     }
   }
 }

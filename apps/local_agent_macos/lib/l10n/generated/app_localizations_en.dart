@@ -508,6 +508,21 @@ class AppLocalizationsEn extends AppLocalizations {
       'The largest and slowest choice: it needs a recent high-end Mac, and on older machines the first word can take tens of seconds or the answer can fail partway. For long reading and writing, never for talking.';
 
   @override
+  String get lookAtScreenTooltip => 'Look at my screen';
+
+  @override
+  String get lookDefaultPrompt =>
+      'Look at my screen and tell me what you see. If something seems off or could be done better, say so.';
+
+  @override
+  String get lookDeniedNotice =>
+      'Lulo can’t see the screen — allow Screen Recording for Lulo in System Settings › Privacy & Security.';
+
+  @override
+  String get lookFailedNotice =>
+      'That look didn’t work — nothing was captured.';
+
+  @override
   String get shareFrontmostApp => 'Let it know which app you’re in';
 
   @override

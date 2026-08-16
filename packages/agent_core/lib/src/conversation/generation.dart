@@ -26,6 +26,7 @@ final class GenerationRequest {
     required this.prompt,
     this.history = const <Turn>[],
     this.channel = AnswerChannel.spoken,
+    this.imagePath,
   });
 
   /// The conversation that owns the request.
@@ -48,6 +49,13 @@ final class GenerationRequest {
   /// Spoken by default because every measured preface was taken in that
   /// shape; the caller who knows the question was typed says so.
   final AnswerChannel channel;
+
+  /// A picture this question is about — the user's screen, when they asked
+  /// for a look — or null for a question made of words alone.
+  ///
+  /// A path rather than bytes because the runtime reads the file itself,
+  /// and megabytes of pixels have no business riding a message channel.
+  final String? imagePath;
 }
 
 /// A generation tracked independently from its inference implementation.

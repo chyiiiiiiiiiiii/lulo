@@ -47,6 +47,7 @@
 		CA0000000000000000000001 /* ChosenModelAccess.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA0000000000000000000002 /* ChosenModelAccess.swift */; };
 		A1CE000000000000000VH003 /* GeneratedVoiceHostApi.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1CE000000000000000VH004 /* GeneratedVoiceHostApi.swift */; };
 		A1CE000000000000000TT001 /* GeneratedTurnTakingLexicon.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1CE000000000000000TT002 /* GeneratedTurnTakingLexicon.swift */; };
+		A1CE000000000000000SL001 /* ScreenLookController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1CE000000000000000SL002 /* ScreenLookController.swift */; };
 		A1CE000000000000000VH001 /* VoiceHostAdapter.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1CE000000000000000VH002 /* VoiceHostAdapter.swift */; };
 		A20000000000000000000002 /* GlobalHotKeyController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000007 /* GlobalHotKeyController.swift */; };
 		A2SS000000000000000SS001 /* SelectionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2SS000000000000000SS002 /* SelectionService.swift */; };
@@ -122,6 +123,7 @@
 		CA0000000000000000000002 /* ChosenModelAccess.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChosenModelAccess.swift; sourceTree = "<group>"; };
 		A1CE000000000000000VH004 /* GeneratedVoiceHostApi.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeneratedVoiceHostApi.swift; sourceTree = "<group>"; };
 		A1CE000000000000000TT002 /* GeneratedTurnTakingLexicon.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeneratedTurnTakingLexicon.swift; sourceTree = "<group>"; };
+		A1CE000000000000000SL002 /* ScreenLookController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScreenLookController.swift; sourceTree = "<group>"; };
 		A1CE000000000000000VH002 /* VoiceHostAdapter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceHostAdapter.swift; sourceTree = "<group>"; };
 		A20000000000000000000007 /* GlobalHotKeyController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GlobalHotKeyController.swift; sourceTree = "<group>"; };
 		A2SS000000000000000SS002 /* SelectionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SelectionService.swift; sourceTree = "<group>"; };
@@ -268,6 +270,7 @@
 				CA0000000000000000000002 /* ChosenModelAccess.swift */,
 				A1CE000000000000000VH004 /* GeneratedVoiceHostApi.swift */,
 				A1CE000000000000000TT002 /* GeneratedTurnTakingLexicon.swift */,
+				A1CE000000000000000SL002 /* ScreenLookController.swift */,
 				A1CE000000000000000VH002 /* VoiceHostAdapter.swift */,
 				A20000000000000000000007 /* GlobalHotKeyController.swift */,
 				A2SS000000000000000SS002 /* SelectionService.swift */,
@@ -534,6 +537,7 @@
 				CA0000000000000000000001 /* ChosenModelAccess.swift in Sources */,
 				A1CE000000000000000VH003 /* GeneratedVoiceHostApi.swift in Sources */,
 				A1CE000000000000000TT001 /* GeneratedTurnTakingLexicon.swift in Sources */,
+				A1CE000000000000000SL001 /* ScreenLookController.swift in Sources */,
 				A1CE000000000000000VH001 /* VoiceHostAdapter.swift in Sources */,
 				A20000000000000000000002 /* GlobalHotKeyController.swift in Sources */,
 				A2SS000000000000000SS001 /* SelectionService.swift in Sources */,

@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../../l10n/generated/app_localizations.dart';
+import '../../platform/desktop_host_service.dart';
 import '../presence/agent_presence_controller.dart';
 import '../presence/agent_presence_header.dart';
 import '../presence/agent_presence_orb.dart';
@@ -83,8 +84,13 @@ final class ConversationView extends StatefulWidget {
     this.presenceAnchorKey,
     this.showVoiceEvidence = false,
     this.voiceRequests,
+    this.screenLook,
     super.key,
   });
+
+  /// Takes the invited look at the screen, or null where no screen exists
+  /// behind the surface — which hides the button entirely.
+  final Future<DesktopScreenLook> Function()? screenLook;
 
   /// Bumped when something outside this view asks it to start listening.
   ///
@@ -238,6 +244,36 @@ final class _ConversationViewState extends State<ConversationView> {
     _agentSpeaking.value = _voice?.speaking ?? false;
   }
 
+  /// Takes the invited look and asks about it, or says why it could not.
+  ///
+  /// The default question exists because a look with an empty field is
+  /// still a question — "what am I looking at" — and demanding words first
+  /// would turn one click into three.
+  Future<void> _lookAtScreen(String text) async {
+    final DesktopScreenLook look = await widget.screenLook!();
+    if (!mounted) {
+      return;
+    }
+    final AppLocalizations words = AppLocalizations.of(context);
+    switch (look.status) {
+      case DesktopScreenLookStatus.captured:
+        await _viewModel.submit(
+          text.isEmpty ? words.lookDefaultPrompt : text,
+          imagePath: look.path,
+        );
+      case DesktopScreenLookStatus.denied:
+        // The one state the user can fix, so the notice says where.
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(words.lookDeniedNotice)));
+      case DesktopScreenLookStatus.unavailable:
+      case DesktopScreenLookStatus.failed:
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(words.lookFailedNotice)));
+    }
+  }
+
   @override
   void dispose() {
     _voice?.removeListener(_reflectVoice);
@@ -331,6 +367,9 @@ final class _ConversationViewState extends State<ConversationView> {
               voice: _voice,
               onBuild: () => widget.buildObserver?.composerBuilds += 1,
               seed: widget.composerSeed,
+              onLook: widget.screenLook == null
+                  ? null
+                  : (String text) => unawaited(_lookAtScreen(text)),
             ),
           ],
         ),

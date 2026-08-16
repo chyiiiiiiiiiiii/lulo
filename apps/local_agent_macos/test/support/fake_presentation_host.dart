@@ -33,6 +33,20 @@ final class FakePresentationHost implements DesktopPresentationHost {
   @override
   ValueListenable<String> get frontmostApp => frontmostAppValue;
 
+  /// What the next invited look returns, settable by tests.
+  DesktopScreenLook nextScreenLook = const DesktopScreenLook(
+    status: DesktopScreenLookStatus.unavailable,
+  );
+
+  /// How many looks were asked for.
+  int screenLooks = 0;
+
+  @override
+  Future<DesktopScreenLook> captureScreenLook() async {
+    screenLooks += 1;
+    return nextScreenLook;
+  }
+
   /// The app the fake claims the user is in, settable by tests.
   final ValueNotifier<String> frontmostAppValue = ValueNotifier<String>('');
 

@@ -17,14 +17,19 @@ final class LocalRuntimeDesktopHostApi: DesktopHostApi {
     coordinator: InferenceCoordinator,
     eventBridge: GenerationEventBridge,
     modelAccess: ChosenModelAccess = ChosenModelAccess(),
-    menuBar: MenuBarController? = nil
+    menuBar: MenuBarController? = nil,
+    screenLook: ScreenLookController? = nil
   ) {
     self.panelController = panelController
     self.coordinator = coordinator
     self.eventBridge = eventBridge
     self.modelAccess = modelAccess
     self.menuBar = menuBar
+    self.screenLook = screenLook
   }
+
+  /// Takes the invited look at the screen, absent in the window tests.
+  private let screenLook: ScreenLookController?
 
   /// The status-bar menu, which is told what to show rather than asking.
   ///
@@ -111,7 +116,8 @@ final class LocalRuntimeDesktopHostApi: DesktopHostApi {
       maxTokens: generation.maxTokens,
       seed: generation.seed,
       toolsJson: generation.toolsJson,
-      toolResponsesJson: generation.toolResponsesJson
+      toolResponsesJson: generation.toolResponsesJson,
+      imagePath: generation.imagePath
     )
     Task {
       await resolve(completion) {
@@ -288,6 +294,38 @@ final class LocalRuntimeDesktopHostApi: DesktopHostApi {
       // sit for as long as the user takes to answer it.
       let status = LaunchAtLogin.set(enabled)
       DispatchQueue.main.async { completion(.success(status)) }
+    }
+  }
+
+  func captureScreenLook(
+    request: HostRequest,
+    completion: @escaping (Result<HostScreenLookResult, Error>) -> Void
+  ) {
+    do {
+      try validatePanelRequest(request)
+    } catch {
+      completion(.failure(error))
+      return
+    }
+    guard let screenLook else {
+      completion(
+        .success(HostScreenLookResult(status: .unavailable, path: ""))
+      )
+      return
+    }
+    Task {
+      let outcome = await screenLook.capture()
+      let result: HostScreenLookResult = switch outcome {
+      case .captured(let path):
+        HostScreenLookResult(status: .captured, path: path)
+      case .denied:
+        HostScreenLookResult(status: .denied, path: "")
+      case .unavailable:
+        HostScreenLookResult(status: .unavailable, path: "")
+      case .failed:
+        HostScreenLookResult(status: .failed, path: "")
+      }
+      completion(.success(result))
     }
   }
 

@@ -18,6 +18,7 @@ final class ConversationComposer extends StatefulWidget {
     this.voice,
     this.onBuild,
     this.seed,
+    this.onLook,
     super.key,
   });
 
@@ -43,6 +44,11 @@ final class ConversationComposer extends StatefulWidget {
 
   /// Called with a normalized non-empty prompt.
   final ValueChanged<String> onSubmit;
+
+  /// The invited look: called with whatever is in the field — possibly
+  /// nothing — when the user asks Lulo to look at their screen. Null hides
+  /// the button, for surfaces with no screen behind them.
+  final ValueChanged<String>? onLook;
 
   /// Called when the active response should stop.
   final Future<void> Function() onStop;
@@ -96,6 +102,17 @@ final class _ConversationComposerState extends State<ConversationComposer> {
       return;
     }
     widget.onSubmit(prompt);
+    _controller.clear();
+    _focusNode.requestFocus();
+  }
+
+  /// Sends the field — empty is allowed, a look is its own question — to
+  /// whoever takes the screenshot.
+  void _look() {
+    if (!widget.canSubmit.value) {
+      return;
+    }
+    widget.onLook?.call(_controller.text.trim());
     _controller.clear();
     _focusNode.requestFocus();
   }
@@ -172,13 +189,27 @@ final class _ConversationComposerState extends State<ConversationComposer> {
                       ? null
                       : _HoldToTalkButton(voice: widget.voice!),
                   suffixIcon: canSubmit
-                      ? IconButton(
-                          key: const Key('conversation-submit-button'),
-                          tooltip: AppLocalizations.of(context).sendTooltip,
-                          onPressed: _controller.text.trim().isEmpty
-                              ? null
-                              : _submit,
-                          icon: const Icon(Icons.arrow_upward_rounded),
+                      ? Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: <Widget>[
+                            if (widget.onLook != null)
+                              IconButton(
+                                key: const Key('conversation-look-button'),
+                                tooltip: AppLocalizations.of(
+                                  context,
+                                ).lookAtScreenTooltip,
+                                onPressed: _look,
+                                icon: const Icon(Icons.remove_red_eye_outlined),
+                              ),
+                            IconButton(
+                              key: const Key('conversation-submit-button'),
+                              tooltip: AppLocalizations.of(context).sendTooltip,
+                              onPressed: _controller.text.trim().isEmpty
+                                  ? null
+                                  : _submit,
+                              icon: const Icon(Icons.arrow_upward_rounded),
+                            ),
+                          ],
                         )
                       : IconButton(
                           key: const Key('conversation-stop-button'),

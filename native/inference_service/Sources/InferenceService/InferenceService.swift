@@ -104,7 +104,8 @@ public struct RuntimeGenerationRequest: Equatable, Sendable {
     maxTokens: Int64,
     seed: Int64,
     toolsJson: String? = nil,
-    toolResponsesJson: String? = nil
+    toolResponsesJson: String? = nil,
+    imagePath: String? = nil
   ) {
     self.generationId = generationId
     self.sessionId = sessionId
@@ -118,6 +119,7 @@ public struct RuntimeGenerationRequest: Equatable, Sendable {
     self.seed = seed
     self.toolsJson = toolsJson
     self.toolResponsesJson = toolResponsesJson
+    self.imagePath = imagePath
   }
 
   public let generationId: String
@@ -151,6 +153,10 @@ public struct RuntimeGenerationRequest: Equatable, Sendable {
   /// `prompt` is ignored — and may be empty — because the user's words for
   /// this turn were sent by the generation that asked for the tools.
   public let toolResponsesJson: String?
+
+  /// A picture this question is about, as a path the runtime reads itself,
+  /// or nil for a question made of words alone.
+  public let imagePath: String?
 }
 
 public struct RuntimeGenerationAcknowledgement: Equatable, Sendable {

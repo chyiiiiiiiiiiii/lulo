@@ -106,6 +106,49 @@ void main() {
       );
     });
 
+    test('the look\'s picture rides the request to the host', () async {
+      final host = RecordingDesktopHostService(
+        onStart:
+            (
+              RecordingDesktopHostService host,
+              DesktopGenerationRequest request,
+            ) async {
+              host.emit(
+                DesktopGenerationEvent(
+                  generationId: request.generationId,
+                  sequence: 0,
+                  type: HostGenerationEventType.started,
+                ),
+              );
+              host.emit(
+                DesktopGenerationEvent(
+                  generationId: request.generationId,
+                  sequence: 1,
+                  type: HostGenerationEventType.completed,
+                ),
+              );
+              return DesktopGenerationAcknowledgement(
+                generationId: request.generationId,
+                accepted: true,
+              );
+            },
+      );
+      final service = PigeonInferenceService(
+        desktopHostService: host,
+        config: testModelConfig,
+      );
+      await service
+          .generate(
+            const GenerationRequest(
+              conversationId: ConversationId('conversation-1'),
+              prompt: '我在看什麼？',
+              imagePath: '/tmp/look.png',
+            ),
+          )
+          .drain<void>();
+      expect(host.generationRequests.single.imagePath, '/tmp/look.png');
+    });
+
     test('an absent toolbox costs the request nothing at all', () async {
       final host = RecordingDesktopHostService(
         onStart:
@@ -1199,6 +1242,10 @@ final class RecordingDesktopHostService implements DesktopHostService {
 
   @override
   ValueListenable<String> get frontmostApp => ValueNotifier<String>('');
+
+  @override
+  Future<DesktopScreenLook> captureScreenLook() async =>
+      const DesktopScreenLook(status: DesktopScreenLookStatus.unavailable);
 
   @override
   Future<DesktopLoginItem> loginItem() async => DesktopLoginItem.off;

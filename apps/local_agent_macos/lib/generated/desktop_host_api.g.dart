@@ -173,6 +173,23 @@ enum HostFailureCode {
 /// Who said one remembered turn.
 enum HostTurnRole { user, assistant }
 
+/// How asking for a look at the screen ended.
+enum HostScreenLookStatus {
+  /// A screenshot was written; `path` names it.
+  captured,
+
+  /// macOS refused: Screen Recording is off for this app. The user can
+  /// grant it in System Settings › Privacy & Security.
+  denied,
+
+  /// This macOS cannot do it (the capture API needs macOS 14).
+  unavailable,
+
+  /// Permission is fine and the capture still failed — no window to
+  /// capture, or the write failed.
+  failed,
+}
+
 /// One conversation as the menu bar lists it.
 class HostMenuConversation {
   HostMenuConversation({required this.conversationId, required this.title});
@@ -613,6 +630,7 @@ class HostGenerationRequest {
     required this.seed,
     this.toolsJson,
     this.toolResponsesJson,
+    this.imagePath,
   });
 
   String generationId;
@@ -657,6 +675,10 @@ class HostGenerationRequest {
   /// the user's words were sent by the generation that asked for the tools.
   String? toolResponsesJson;
 
+  /// A picture this question is about, as a path the runtime reads itself,
+  /// or null for a question made of words alone.
+  String? imagePath;
+
   List<Object?> _toList() {
     return <Object?>[
       generationId,
@@ -671,6 +693,7 @@ class HostGenerationRequest {
       seed,
       toolsJson,
       toolResponsesJson,
+      imagePath,
     ];
   }
 
@@ -693,6 +716,7 @@ class HostGenerationRequest {
       seed: result[9]! as int,
       toolsJson: result[10] as String?,
       toolResponsesJson: result[11] as String?,
+      imagePath: result[12] as String?,
     );
   }
 
@@ -716,7 +740,8 @@ class HostGenerationRequest {
         _deepEquals(maxTokens, other.maxTokens) &&
         _deepEquals(seed, other.seed) &&
         _deepEquals(toolsJson, other.toolsJson) &&
-        _deepEquals(toolResponsesJson, other.toolResponsesJson);
+        _deepEquals(toolResponsesJson, other.toolResponsesJson) &&
+        _deepEquals(imagePath, other.imagePath);
   }
 
   @override
@@ -1040,6 +1065,50 @@ class HostTransitionGeometry {
   int get hashCode => _deepHash(<Object?>[runtimeType, ..._toList()]);
 }
 
+/// One attempted look at the screen.
+class HostScreenLookResult {
+  HostScreenLookResult({required this.status, required this.path});
+
+  /// How it ended.
+  HostScreenLookStatus status;
+
+  /// Where the screenshot was written, or empty unless [status] is
+  /// [HostScreenLookStatus.captured].
+  String path;
+
+  List<Object?> _toList() {
+    return <Object?>[status, path];
+  }
+
+  Object encode() {
+    return _toList();
+  }
+
+  static HostScreenLookResult decode(Object result) {
+    result as List<Object?>;
+    return HostScreenLookResult(
+      status: result[0]! as HostScreenLookStatus,
+      path: result[1]! as String,
+    );
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  bool operator ==(Object other) {
+    if (other is! HostScreenLookResult || other.runtimeType != runtimeType) {
+      return false;
+    }
+    if (identical(this, other)) {
+      return true;
+    }
+    return _deepEquals(status, other.status) && _deepEquals(path, other.path);
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  int get hashCode => _deepHash(<Object?>[runtimeType, ..._toList()]);
+}
+
 class _PigeonCodec extends StandardMessageCodec {
   const _PigeonCodec();
   @override
@@ -1062,47 +1131,53 @@ class _PigeonCodec extends StandardMessageCodec {
     } else if (value is HostTurnRole) {
       buffer.putUint8(133);
       writeValue(buffer, value.index);
-    } else if (value is HostMenuConversation) {
+    } else if (value is HostScreenLookStatus) {
       buffer.putUint8(134);
-      writeValue(buffer, value.encode());
-    } else if (value is HostMenuBarLabels) {
+      writeValue(buffer, value.index);
+    } else if (value is HostMenuConversation) {
       buffer.putUint8(135);
       writeValue(buffer, value.encode());
-    } else if (value is HostMenuBarState) {
+    } else if (value is HostMenuBarLabels) {
       buffer.putUint8(136);
       writeValue(buffer, value.encode());
-    } else if (value is HostRequest) {
+    } else if (value is HostMenuBarState) {
       buffer.putUint8(137);
       writeValue(buffer, value.encode());
-    } else if (value is HostHandshakeResult) {
+    } else if (value is HostRequest) {
       buffer.putUint8(138);
       writeValue(buffer, value.encode());
-    } else if (value is HostModelRequest) {
+    } else if (value is HostHandshakeResult) {
       buffer.putUint8(139);
       writeValue(buffer, value.encode());
-    } else if (value is HostModelLoadResult) {
+    } else if (value is HostModelRequest) {
       buffer.putUint8(140);
       writeValue(buffer, value.encode());
-    } else if (value is HostConversationTurn) {
+    } else if (value is HostModelLoadResult) {
       buffer.putUint8(141);
       writeValue(buffer, value.encode());
-    } else if (value is HostGenerationRequest) {
+    } else if (value is HostConversationTurn) {
       buffer.putUint8(142);
       writeValue(buffer, value.encode());
-    } else if (value is HostGenerationAcknowledgement) {
+    } else if (value is HostGenerationRequest) {
       buffer.putUint8(143);
       writeValue(buffer, value.encode());
-    } else if (value is HostCancellationAcknowledgement) {
+    } else if (value is HostGenerationAcknowledgement) {
       buffer.putUint8(144);
       writeValue(buffer, value.encode());
-    } else if (value is HostOperationCompletion) {
+    } else if (value is HostCancellationAcknowledgement) {
       buffer.putUint8(145);
       writeValue(buffer, value.encode());
-    } else if (value is HostGenerationEvent) {
+    } else if (value is HostOperationCompletion) {
       buffer.putUint8(146);
       writeValue(buffer, value.encode());
-    } else if (value is HostTransitionGeometry) {
+    } else if (value is HostGenerationEvent) {
       buffer.putUint8(147);
+      writeValue(buffer, value.encode());
+    } else if (value is HostTransitionGeometry) {
+      buffer.putUint8(148);
+      writeValue(buffer, value.encode());
+    } else if (value is HostScreenLookResult) {
+      buffer.putUint8(149);
       writeValue(buffer, value.encode());
     } else {
       super.writeValue(buffer, value);
@@ -1128,33 +1203,38 @@ class _PigeonCodec extends StandardMessageCodec {
         final value = readValue(buffer) as int?;
         return value == null ? null : HostTurnRole.values[value];
       case 134:
-        return HostMenuConversation.decode(readValue(buffer)!);
+        final value = readValue(buffer) as int?;
+        return value == null ? null : HostScreenLookStatus.values[value];
       case 135:
-        return HostMenuBarLabels.decode(readValue(buffer)!);
+        return HostMenuConversation.decode(readValue(buffer)!);
       case 136:
-        return HostMenuBarState.decode(readValue(buffer)!);
+        return HostMenuBarLabels.decode(readValue(buffer)!);
       case 137:
-        return HostRequest.decode(readValue(buffer)!);
+        return HostMenuBarState.decode(readValue(buffer)!);
       case 138:
-        return HostHandshakeResult.decode(readValue(buffer)!);
+        return HostRequest.decode(readValue(buffer)!);
       case 139:
-        return HostModelRequest.decode(readValue(buffer)!);
+        return HostHandshakeResult.decode(readValue(buffer)!);
       case 140:
-        return HostModelLoadResult.decode(readValue(buffer)!);
+        return HostModelRequest.decode(readValue(buffer)!);
       case 141:
-        return HostConversationTurn.decode(readValue(buffer)!);
+        return HostModelLoadResult.decode(readValue(buffer)!);
       case 142:
-        return HostGenerationRequest.decode(readValue(buffer)!);
+        return HostConversationTurn.decode(readValue(buffer)!);
       case 143:
-        return HostGenerationAcknowledgement.decode(readValue(buffer)!);
+        return HostGenerationRequest.decode(readValue(buffer)!);
       case 144:
-        return HostCancellationAcknowledgement.decode(readValue(buffer)!);
+        return HostGenerationAcknowledgement.decode(readValue(buffer)!);
       case 145:
-        return HostOperationCompletion.decode(readValue(buffer)!);
+        return HostCancellationAcknowledgement.decode(readValue(buffer)!);
       case 146:
-        return HostGenerationEvent.decode(readValue(buffer)!);
+        return HostOperationCompletion.decode(readValue(buffer)!);
       case 147:
+        return HostGenerationEvent.decode(readValue(buffer)!);
+      case 148:
         return HostTransitionGeometry.decode(readValue(buffer)!);
+      case 149:
+        return HostScreenLookResult.decode(readValue(buffer)!);
       default:
         return super.readValueOfType(type, buffer);
     }
@@ -1691,6 +1771,35 @@ class DesktopHostApi {
       isNullValid: false,
     );
     return pigeonVar_replyValue! as HostLoginItemStatus;
+  }
+
+  /// Takes one screenshot of the window the user was last working in, for a
+  /// question they just asked about it.
+  ///
+  /// The invited look and nothing more: capture happens only inside this
+  /// call, the user's tap is the consent, and the first call is where macOS
+  /// asks for Screen Recording. The previous look's file is deleted when
+  /// the next capture happens — the app is not a recorder, and keeps no
+  /// archive of the user's screen.
+  Future<HostScreenLookResult> captureScreenLook(HostRequest request) async {
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.local_agent_macos.DesktopHostApi.captureScreenLook$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channel = BasicMessageChannel<Object?>(
+      pigeonVar_channelName,
+      pigeonChannelCodec,
+      binaryMessenger: pigeonVar_binaryMessenger,
+    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(
+      <Object?>[request],
+    );
+    final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
+
+    final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: false,
+    );
+    return pigeonVar_replyValue! as HostScreenLookResult;
   }
 }
 

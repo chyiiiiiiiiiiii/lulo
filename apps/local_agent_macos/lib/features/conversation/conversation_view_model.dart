@@ -131,7 +131,15 @@ final class ConversationViewModel extends ChangeNotifier {
   ValueListenable<bool> get canSubmitListenable => _canSubmit;
 
   /// Starts generation for a normalized non-empty user message.
-  Future<void> submit(String text, {TranscriptRefinement? voiceInput}) async {
+  ///
+  /// [imagePath] attaches the invited look's screenshot to this question;
+  /// the runtime reads the file itself, and the picture belongs to this
+  /// turn alone.
+  Future<void> submit(
+    String text, {
+    TranscriptRefinement? voiceInput,
+    String? imagePath,
+  }) async {
     final String prompt = text.trim();
     if (prompt.isEmpty || !canSubmit) {
       return;
@@ -170,6 +178,7 @@ final class ConversationViewModel extends ChangeNotifier {
             channel: voiceInput == null
                 ? AnswerChannel.written
                 : AnswerChannel.spoken,
+            imagePath: imagePath,
             // What is on screen but possibly not in the runtime. After a
             // relaunch or a model swap the scrollback is read back from
             // storage while the model behind it starts empty; sending the

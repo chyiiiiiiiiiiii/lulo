@@ -352,6 +352,7 @@ final class _PigeonGenerationOperation {
           maxTokens: config.maxTokens,
           seed: config.seed,
           toolsJson: _toolsJson,
+          imagePath: request.imagePath,
         ),
       );
       if (_fenced) {

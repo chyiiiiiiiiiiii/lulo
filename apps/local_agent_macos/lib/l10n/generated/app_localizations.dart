@@ -1005,6 +1005,30 @@ abstract class AppLocalizations {
   /// **'The largest and slowest choice: it needs a recent high-end Mac, and on older machines the first word can take tens of seconds or the answer can fail partway. For long reading and writing, never for talking.'**
   String get modelDescriptionCapable;
 
+  /// No description provided for @lookAtScreenTooltip.
+  ///
+  /// In en, this message translates to:
+  /// **'Look at my screen'**
+  String get lookAtScreenTooltip;
+
+  /// No description provided for @lookDefaultPrompt.
+  ///
+  /// In en, this message translates to:
+  /// **'Look at my screen and tell me what you see. If something seems off or could be done better, say so.'**
+  String get lookDefaultPrompt;
+
+  /// No description provided for @lookDeniedNotice.
+  ///
+  /// In en, this message translates to:
+  /// **'Lulo can’t see the screen — allow Screen Recording for Lulo in System Settings › Privacy & Security.'**
+  String get lookDeniedNotice;
+
+  /// No description provided for @lookFailedNotice.
+  ///
+  /// In en, this message translates to:
+  /// **'That look didn’t work — nothing was captured.'**
+  String get lookFailedNotice;
+
   /// No description provided for @shareFrontmostApp.
   ///
   /// In en, this message translates to:

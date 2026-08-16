@@ -106,6 +106,10 @@ class AppDelegate: FlutterAppDelegate {
 
   /// Keeps the frontmost-app observation alive for the app's lifetime.
   private var frontmostAppObserver: NSObjectProtocol?
+
+  /// Takes the invited look at the screen; owned here beside the observer
+  /// that tells it which app the user was last in.
+  private var screenLook: ScreenLookController?
   private var hotKeyController: GlobalHotKeyController?
   private var hotKeySplitter: HotKeyHoldSplitter?
   private var dictationHotKey: GlobalHotKeyController?
@@ -280,6 +284,11 @@ class AppDelegate: FlutterAppDelegate {
     // macOS gives away freely, and it is all that crosses here. Whether a
     // question ever carries it is a setting applied on the other side.
     let ownBundleId = Bundle.main.bundleIdentifier
+    let screenLookController = ScreenLookController()
+    screenLookController.lastFrontmostBundleId =
+      NSWorkspace.shared.frontmostApplication?.bundleIdentifier == ownBundleId
+      ? nil : NSWorkspace.shared.frontmostApplication?.bundleIdentifier
+    self.screenLook = screenLookController
     frontmostAppObserver = NSWorkspace.shared.notificationCenter.addObserver(
       forName: NSWorkspace.didActivateApplicationNotification,
       object: nil,
@@ -294,6 +303,7 @@ class AppDelegate: FlutterAppDelegate {
       else {
         return
       }
+      screenLookController.lastFrontmostBundleId = activated.bundleIdentifier
       eventApi.onFrontmostAppChanged(name: name, completion: { _ in })
     }
     // The app the user was in when Lulo launched, so the first question is
@@ -333,7 +343,8 @@ class AppDelegate: FlutterAppDelegate {
       panelController: panelController,
       coordinator: coordinator,
       eventBridge: eventBridge,
-      menuBar: menuBarController
+      menuBar: menuBarController,
+      screenLook: screenLookController
     )
     DesktopHostApiSetup.setUp(
       binaryMessenger: binaryMessenger,

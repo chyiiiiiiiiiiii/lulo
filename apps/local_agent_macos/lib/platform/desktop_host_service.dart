@@ -236,6 +236,7 @@ final class DesktopGenerationRequest {
     this.history = const <DesktopConversationTurn>[],
     this.toolsJson,
     this.toolResponsesJson,
+    this.imagePath,
   });
 
   /// What was already said, oldest first, excluding [prompt].
@@ -284,6 +285,10 @@ final class DesktopGenerationRequest {
   /// of the same session: [prompt] is ignored, because the user's words
   /// were sent by the generation that asked for the tools.
   final String? toolResponsesJson;
+
+  /// A picture this question is about, as a path the runtime reads itself,
+  /// or null for a question made of words alone.
+  final String? imagePath;
 }
 
 /// Typed acknowledgement for generation start.
@@ -503,6 +508,33 @@ enum DesktopLoginItem {
   unavailable,
 }
 
+/// How one invited look at the screen ended.
+enum DesktopScreenLookStatus {
+  /// A screenshot exists at [DesktopScreenLook.path].
+  captured,
+
+  /// macOS refused: Screen Recording is off for this app.
+  denied,
+
+  /// This macOS cannot capture (the API needs macOS 14).
+  unavailable,
+
+  /// Permission was fine and the capture still failed.
+  failed,
+}
+
+/// One attempted look at the screen.
+final class DesktopScreenLook {
+  /// Creates a look result.
+  const DesktopScreenLook({required this.status, this.path = ''});
+
+  /// How it ended.
+  final DesktopScreenLookStatus status;
+
+  /// Where the screenshot was written, or empty unless captured.
+  final String path;
+}
+
 /// The narrow desktop-window capability the app shell needs.
 ///
 /// Declared separately from [DesktopHostService] so the shell can depend on the
@@ -557,6 +589,14 @@ abstract interface class DesktopPresentationHost {
   /// question synchronously and wants what is true now, not a history of
   /// switches. Whether it is ever used is a setting the reader applies.
   ValueListenable<String> get frontmostApp;
+
+  /// Takes one screenshot of the window the user was last working in.
+  ///
+  /// The invited look: capture happens only inside this call, the user's
+  /// tap is the consent, and the first call is where macOS asks for
+  /// Screen Recording. The app keeps no archive — each capture deletes
+  /// the previous look's file first.
+  Future<DesktopScreenLook> captureScreenLook();
 
   /// Tells the status-bar menu what to show the next time it opens.
   ///

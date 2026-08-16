@@ -101,6 +101,7 @@ final class PigeonDesktopHostService extends DesktopHostEventApi
           seed: generation.seed,
           toolsJson: generation.toolsJson,
           toolResponsesJson: generation.toolResponsesJson,
+          imagePath: generation.imagePath,
         ),
       ),
     );
@@ -216,6 +217,22 @@ final class PigeonDesktopHostService extends DesktopHostEventApi
 
   @override
   ValueListenable<String> get frontmostApp => _frontmostApp;
+
+  @override
+  Future<DesktopScreenLook> captureScreenLook() async {
+    final HostScreenLookResult result = await _invokeResult(
+      (HostRequest request) => _hostApi.captureScreenLook(request),
+    );
+    return DesktopScreenLook(
+      status: switch (result.status) {
+        HostScreenLookStatus.captured => DesktopScreenLookStatus.captured,
+        HostScreenLookStatus.denied => DesktopScreenLookStatus.denied,
+        HostScreenLookStatus.unavailable => DesktopScreenLookStatus.unavailable,
+        HostScreenLookStatus.failed => DesktopScreenLookStatus.failed,
+      },
+      path: result.path,
+    );
+  }
 
   @override
   void onFrontmostAppChanged(String name) {

@@ -127,8 +127,16 @@ something to say first.
 Stage 0 shipped the morning after this was written:
 `NSWorkspace.didActivateApplicationNotification` pushed over Pigeon,
 gated by Settings › 你的桌面 (off by default), joining the turn half
-beside the clock. Stage 1 is the first real vision feature and the first
-new TCC ask; it should ship with the invited-look interaction exactly and
-nothing more. The 12B question stays closed — the look above ran on the
+beside the clock. Stage 1 shipped the same day: an eye button in the
+composer takes one screenshot of the window the user was last working in
+(ScreenCaptureKit, macOS 14+, downscaled at capture), attaches it to the
+question — the field's words, or a default "what am I looking at" — and
+the runtime answers with the vision executor the shipped E4B already
+carried. Measured on this stack before building: enabling vision costs
+~0.5 s at engine load and nothing on text turns; a look is ~5.7 s end to
+end. The TCC ask happens inside the first press, which is the whole
+design: the tap is the consent, the scope, and the timing. Each capture
+deletes the previous look's file — the app keeps no archive of the
+user's screen. The 12B question stays closed — the look runs on the
 model already installed, and 17 s more per look would not buy a better
 glance.
