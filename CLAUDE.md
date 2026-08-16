@@ -195,6 +195,51 @@ a sandboxed app may write where the panel says and nowhere else. Nothing
 came back is reported rather than swallowed, and the section beside it names
 the sidecar that is most likely why.
 
+The shape of an answer follows the way the question arrived.
+`AnswerChannel` travels on `GenerationRequest`, written by the view model
+from whether the words came with a voice refinement, and
+`composeAgentPrompt` builds a `[語音回答方式]` block for spoken turns and a
+`[文字回答方式]` block for typed ones — reading rules, dash lists allowed,
+the same measured B length lines. Before this every typed answer was
+answered under rules written for the ear (「這是用說的」, no lists, a
+spoken sentence budget), which is why they read as curt. The channel
+lives in the stable half, so switching between typing and talking rebuilds
+the conversation once, the trade an edited profile already makes.
+
+Everything the model is handed that is not the question is labelled
+`[背景：…]` and carries one rule: what you happen to know, not part of the
+question, never recited up front. Without it the answer opened with
+「Lulo 看到您現在的時間已經是…，而且您正在使用 Warp 終端機」 in front of a
+question about food — a labelled section reads as something to use, and a
+clock is the easiest thing in one to say. `BackgroundRecitalProbeTests`
+scores both directions, because suppressing the recital must not make the
+facts unreachable: an unrelated question mentions the background 0/3,
+while 現在幾點 answers 01:05 3/3 and 我現在在用什麼 answers Warp 3/3.
+
+The interface absorbs the Markdown the instruction cannot prevent.
+`TerminalMarkdown` shows headings as their words rather than their hashes
+at every depth, renders list items into a bullet gutter with a hanging
+indent, and sets body leading at 1.55 — CJK needs more of it than Latin,
+and the wrapped line of a list used to crash into the margin. A 4B model
+told not to write Markdown sometimes writes it anyway; this is the layer
+where that stops being the reader's problem. `「-5 度」` stays a
+temperature and `「C# 和 F#」` stays content, because the space after the
+marker is load-bearing. Every assistant turn also carries 「唸給我聽」,
+which calls the voice service directly — going through the conversation
+controller would enable it, which starts listening, which is not what
+reading one answer aloud means.
+
+Stopping an answer stops it. `cancelGeneration` used to abandon the
+decode rather than end it, because on LiteRT-LM **v0.14.0**
+`CancelProcess` wedged the engine so completely it never recovered across
+four minutes — so a stopped answer went on decoding its whole 2048-token
+budget invisibly while the next question waited for it. On **v0.16.0**,
+re-measured by `CancelProbeTests`, the stream ends **27 ms** after
+`cancel()` and the engine answers again 2.7 s later. The drain stays and
+now resolves in milliseconds: two decodes must never overlap on one
+engine, which is a property of the engine rather than of a runtime
+version.
+
 A question can carry the name of the app the user is in — and only the
 name. `NSWorkspace.didActivateApplicationNotification` needs no
 permission; the AppDelegate reports every activation that is not Lulo
