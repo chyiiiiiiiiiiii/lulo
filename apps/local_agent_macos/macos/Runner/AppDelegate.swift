@@ -285,9 +285,6 @@ class AppDelegate: FlutterAppDelegate {
     // question ever carries it is a setting applied on the other side.
     let ownBundleId = Bundle.main.bundleIdentifier
     let screenLookController = ScreenLookController()
-    screenLookController.lastFrontmostBundleId =
-      NSWorkspace.shared.frontmostApplication?.bundleIdentifier == ownBundleId
-      ? nil : NSWorkspace.shared.frontmostApplication?.bundleIdentifier
     self.screenLook = screenLookController
     frontmostAppObserver = NSWorkspace.shared.notificationCenter.addObserver(
       forName: NSWorkspace.didActivateApplicationNotification,
@@ -303,7 +300,6 @@ class AppDelegate: FlutterAppDelegate {
       else {
         return
       }
-      screenLookController.lastFrontmostBundleId = activated.bundleIdentifier
       eventApi.onFrontmostAppChanged(name: name, completion: { _ in })
     }
     // The app the user was in when Lulo launched, so the first question is

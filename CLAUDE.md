@@ -208,7 +208,10 @@ titles and contents are deliberately not read: that is the line macOS
 draws with TCC, and `docs/decisions/the-companion-that-watches.md` is the
 staged plan for everything past it — and its Stage 1 ships too: 「看一下
 我的螢幕」, an eye button in the composer that takes one screenshot of the
-window the user came from (ScreenCaptureKit, macOS 14+), attaches it to
+whole display with Lulo's own windows excluded (ScreenCaptureKit, macOS
+14+ — aiming at "the window the user came from" was tried first and
+misfired on a menu-bar utility whose only window is an invisible black
+panel), attaches it to
 the question, and answers through the vision executor the shipped E4B
 already carried (`EngineConfig(visionBackend:)`, measured at ~0.5 s extra
 engine load, ~5.7 s a look, `VisionProbeTests`). The Screen Recording TCC

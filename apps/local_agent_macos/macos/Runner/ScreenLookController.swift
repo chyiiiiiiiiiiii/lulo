@@ -2,7 +2,7 @@ import AppKit
 import Foundation
 import ScreenCaptureKit
 
-/// Takes one screenshot of the window the user was last working in.
+/// Takes one screenshot of what the user sees, when they ask for it.
 ///
 /// The invited look, and deliberately nothing more: capture happens only
 /// inside `capture()`, which runs because the user pressed the button — the
@@ -16,14 +16,6 @@ import ScreenCaptureKit
 /// and it lives in the app's own temporary directory, which the system
 /// clears on its own schedule.
 final class ScreenLookController {
-  /// The window this capture aims for: the app the user was last in.
-  ///
-  /// Kept by the caller (the AppDelegate already watches activations for
-  /// the frontmost-app context) and read at capture time, because the act
-  /// of summoning Lulo makes Lulo frontmost — the look is at where the
-  /// user came from.
-  var lastFrontmostBundleId: String?
-
   /// Where looks are written; one file at most lives here.
   private let directory: URL
 
@@ -43,8 +35,18 @@ final class ScreenLookController {
     case failed
   }
 
-  /// Captures the front window of the last non-Lulo app, or the whole
-  /// display when that window cannot be found.
+  /// Captures what the user sees: the whole display, without Lulo's own
+  /// windows in the way.
+  ///
+  /// The first version aimed at "the front window of the app the user was
+  /// last in" to spend fewer pixels on more signal, and it misfired on its
+  /// first real use: the last activation belonged to a menu-bar utility
+  /// whose only window is an invisible black panel, and the look came back
+  /// a black rectangle. 「我的螢幕」 means what the eyes see — guessing
+  /// which window the user meant is a heuristic, and a wrong guess here
+  /// reads as the feature being broken. Lulo's own windows are excluded
+  /// because the summoned conversation covers the middle of the screen,
+  /// which is usually exactly where the thing being asked about is.
   func capture() async -> Outcome {
     guard #available(macOS 14.0, *) else {
       return .unavailable
@@ -65,26 +67,15 @@ final class ScreenLookController {
       guard let display = content.displays.first else {
         return .failed
       }
-      let target = content.windows.first { window in
-        window.owningApplication?.bundleIdentifier == lastFrontmostBundleId
-          && window.isOnScreen
-          && window.frame.width > 200
-          && window.frame.height > 200
+      let ownBundleId = Bundle.main.bundleIdentifier
+      let ownWindows = content.windows.filter { window in
+        window.owningApplication?.bundleIdentifier == ownBundleId
       }
-      let filter: SCContentFilter
-      let size: CGSize
-      if let target {
-        filter = SCContentFilter(desktopIndependentWindow: target)
-        size = target.frame.size
-      } else {
-        // No window worth aiming at — the whole display, which is what
-        // the user sees and therefore what "my screen" means.
-        filter = SCContentFilter(
-          display: display,
-          excludingWindows: []
-        )
-        size = CGSize(width: display.width, height: display.height)
-      }
+      let filter = SCContentFilter(
+        display: display,
+        excludingWindows: ownWindows
+      )
+      let size = CGSize(width: display.width, height: display.height)
       let configuration = SCStreamConfiguration()
       // Downscaled at capture: the vision encoder resizes anyway, and the
       // probe that measured 5.7 s a look did it at this scale. Full-res
