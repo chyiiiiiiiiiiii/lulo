@@ -516,7 +516,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get lookDeniedNotice =>
-      'Lulo can’t see the screen — allow Screen Recording for Lulo in System Settings › Privacy & Security.';
+      'Lulo can’t see the screen — allow Screen Recording for Lulo in System Settings › Privacy & Security. If you just allowed it, quit and reopen Lulo for it to take effect.';
 
   @override
   String get lookFailedNotice =>

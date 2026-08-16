@@ -199,7 +199,7 @@
   "modelDescriptionCapable": "The largest and slowest choice: it needs a recent high-end Mac, and on older machines the first word can take tens of seconds or the answer can fail partway. For long reading and writing, never for talking.",
   "lookAtScreenTooltip": "Look at my screen",
   "lookDefaultPrompt": "Look at my screen and tell me what you see. If something seems off or could be done better, say so.",
-  "lookDeniedNotice": "Lulo can\u2019t see the screen \u2014 allow Screen Recording for Lulo in System Settings \u203a Privacy & Security.",
+  "lookDeniedNotice": "Lulo can\u2019t see the screen \u2014 allow Screen Recording for Lulo in System Settings \u203a Privacy & Security. If you just allowed it, quit and reopen Lulo for it to take effect.",
   "lookFailedNotice": "That look didn\u2019t work \u2014 nothing was captured.",
   "sectionDesktop": "Your desktop",
   "shareFrontmostApp": "Let it know which app you\u2019re in",

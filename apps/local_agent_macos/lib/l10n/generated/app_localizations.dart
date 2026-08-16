@@ -1020,7 +1020,7 @@ abstract class AppLocalizations {
   /// No description provided for @lookDeniedNotice.
   ///
   /// In en, this message translates to:
-  /// **'Lulo can’t see the screen — allow Screen Recording for Lulo in System Settings › Privacy & Security.'**
+  /// **'Lulo can’t see the screen — allow Screen Recording for Lulo in System Settings › Privacy & Security. If you just allowed it, quit and reopen Lulo for it to take effect.'**
   String get lookDeniedNotice;
 
   /// No description provided for @lookFailedNotice.

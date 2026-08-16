@@ -153,7 +153,7 @@
   "modelDescriptionCapable": "最大也最慢的選擇：需要較新的高階 Mac，在較舊的機器上第一個字可能要等數十秒，甚至中途失敗。適合讀寫長文，不適合對話。",
   "lookAtScreenTooltip": "看一下我的螢幕",
   "lookDefaultPrompt": "看一下我的螢幕，說說你看到什麼。有什麼不對勁或可以做得更好的，直接說。",
-  "lookDeniedNotice": "Lulo 看不到螢幕 —— 請在「系統設定 › 隱私權與安全性」允許 Lulo 使用螢幕錄製。",
+  "lookDeniedNotice": "Lulo 看不到螢幕 —— 請在「系統設定 › 隱私權與安全性」允許 Lulo 使用螢幕錄製。剛剛才允許的話，要把 Lulo 退出重開才會生效。",
   "lookFailedNotice": "這次沒看成 —— 沒有擷取到畫面。",
   "sectionDesktop": "你的桌面",
   "shareFrontmostApp": "讓它知道你在用哪個 App",

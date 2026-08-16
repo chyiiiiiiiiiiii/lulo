@@ -491,7 +491,7 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get lookDeniedNotice =>
-      'Lulo 看不到螢幕 —— 請在「系統設定 › 隱私權與安全性」允許 Lulo 使用螢幕錄製。';
+      'Lulo 看不到螢幕 —— 請在「系統設定 › 隱私權與安全性」允許 Lulo 使用螢幕錄製。剛剛才允許的話，要把 Lulo 退出重開才會生效。';
 
   @override
   String get lookFailedNotice => '這次沒看成 —— 沒有擷取到畫面。';
