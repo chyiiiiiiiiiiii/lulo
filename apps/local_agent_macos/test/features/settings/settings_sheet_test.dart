@@ -21,13 +21,18 @@ void main() {
   );
   tearDownAll(downloads.dispose);
 
-  Widget sheet({required VoidCallback onClose}) => MaterialApp(
+  Widget sheet({
+    required VoidCallback onClose,
+    ValueChanged<AppSettings>? onChanged,
+    Locale? locale,
+  }) => MaterialApp(
     localizationsDelegates: AppLocalizations.localizationsDelegates,
     supportedLocales: AppLocalizations.supportedLocales,
+    locale: locale,
     home: SettingsSheet(
       agentProfile: InMemoryAgentProfileStore(),
       settings: const AppSettings(),
-      onChanged: (AppSettings _) {},
+      onChanged: onChanged ?? (AppSettings _) {},
       onChooseModel: () async => '',
       onClose: onClose,
       modelDownloads: downloads,
@@ -81,6 +86,50 @@ void main() {
 
     expect(find.byKey(const Key('setting-hearing-hold')), findsOneWidget);
     expect(find.byKey(const Key('setting-hearing-duplex')), findsOneWidget);
+  });
+
+  testWidgets('sharing the frontmost app is a switch the user flips', (
+    WidgetTester tester,
+  ) async {
+    AppSettings? changed;
+    await tester.pumpWidget(
+      sheet(onClose: () {}, onChanged: (AppSettings value) => changed = value),
+    );
+    await tester.pump();
+
+    await tester.dragUntilVisible(
+      find.byKey(const Key('setting-share-frontmost-app')),
+      find.byType(ListView),
+      const Offset(0, -160),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('setting-share-frontmost-app')));
+
+    expect(changed?.shareFrontmostApp, isTrue);
+  });
+
+  testWidgets('the always-listening path admits its English on screen', (
+    WidgetTester tester,
+  ) async {
+    // Holding the key was measured at 3.8% character error in English and
+    // the always-listening path at 13.4% — the same app, and nothing on
+    // screen said so. The note carries the numbers so "it misheard me"
+    // can be answered with "use the other button".
+    await tester.pumpWidget(sheet(onClose: () {}, locale: const Locale('en')));
+    await tester.pump();
+
+    await tester.dragUntilVisible(
+      find.byKey(const Key('setting-hearing-duplex')),
+      find.byType(ListView),
+      const Offset(0, -160),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      find.textContaining('13.4%'),
+      findsOneWidget,
+      reason: 'The measured gap belongs on screen, not only in a doc.',
+    );
   });
 
   testWidgets('the answer style is three named choices, not a number', (

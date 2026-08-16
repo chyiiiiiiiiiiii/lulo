@@ -45,11 +45,13 @@ final class AppComposition {
     ValueNotifier<String>? ttsVoice,
     AgentProfileStore? agentProfile,
     ValueNotifier<AnswerStyle>? answerStyle,
+    ValueNotifier<bool>? shareFrontmostApp,
     ValueNotifier<int>? voiceRequests,
     ValueNotifier<bool>? modelLoading,
   }) : voiceRequests = voiceRequests ?? ValueNotifier<int>(0),
        answerStyle =
            answerStyle ?? ValueNotifier<AnswerStyle>(AnswerStyle.balanced),
+       shareFrontmostApp = shareFrontmostApp ?? ValueNotifier<bool>(false),
        agentProfile = agentProfile ?? InMemoryAgentProfileStore(),
        ttsVoice = ttsVoice ?? ValueNotifier<String>('ryan'),
        transcriptRefiner =
@@ -85,6 +87,13 @@ final class AppComposition {
   /// reason `ttsVoice` is one: the setting can change while the model stays
   /// loaded, and reloading it to move a slider would cost seconds.
   final ValueNotifier<AnswerStyle> answerStyle;
+
+  /// Whether each question carries the name of the app the user is in.
+  ///
+  /// Fed from settings the way [answerStyle] is, and read by the context
+  /// provider at compose time — so flipping it applies to the next
+  /// question without anything reloading.
+  final ValueNotifier<bool> shareFrontmostApp;
 
   /// How Lulo talks, and where the user changes it.
   ///

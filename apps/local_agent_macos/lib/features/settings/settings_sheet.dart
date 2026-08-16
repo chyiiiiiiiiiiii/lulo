@@ -331,6 +331,20 @@ final class SettingsSheet extends StatelessWidget {
                           ),
                         ],
                       ),
+                      SettingsSection(
+                        title: words.sectionDesktop,
+                        children: <Widget>[
+                          SwitchListTile(
+                            key: const Key('setting-share-frontmost-app'),
+                            value: settings.shareFrontmostApp,
+                            title: Text(words.shareFrontmostApp),
+                            subtitle: Text(words.shareFrontmostAppNote),
+                            onChanged: (bool value) => onChanged(
+                              settings.copyWith(shareFrontmostApp: value),
+                            ),
+                          ),
+                        ],
+                      ),
                       AgentProfileSettings(store: agentProfile),
                       SettingsSection(
                         title: words.sectionTakingTurns,

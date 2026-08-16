@@ -436,6 +436,61 @@ void main() {
   // 40 pages do not fit in a 4096-token window and never were going to. What
   // goes in is chosen against the question, bounded, and reported — so the
   // user can check the answer against the file they can read themselves.
+  test('the app the user is in reaches the turn half, told not asked', () {
+    final AgentProfile profile = AgentProfile(
+      identity: const AgentIdentity(userName: 'Yii'),
+    );
+
+    final AgentPromptContext result = composeAgentPrompt(
+      profile: profile,
+      prompt: '我卡住了，怎麼辦？',
+      frontmostApp: 'Xcode',
+    );
+
+    // The turn half for the same reason the clock is: which app is front
+    // changes between questions, and the stable half is prefilled once.
+    expect(result.systemInstruction, isNot(contains('Xcode')));
+    expect(result.turnInstruction, contains('[桌面]'));
+    expect(result.turnInstruction, contains('Xcode'));
+    expect(result.turnInstruction, endsWith('[問題]\n我卡住了，怎麼辦？'));
+  });
+
+  test('the desktop line is written in the language of the question', () {
+    final AgentProfile profile = AgentProfile(
+      identity: const AgentIdentity(userName: 'Yii'),
+    );
+
+    final AgentPromptContext result = composeAgentPrompt(
+      profile: profile,
+      prompt: 'I am stuck. What should I try?',
+      frontmostApp: 'Xcode',
+    );
+
+    expect(result.turnInstruction, contains('[Desktop]'));
+    expect(result.turnInstruction, contains('Xcode'));
+  });
+
+  test('no frontmost app says nothing about the desktop at all', () {
+    final AgentProfile profile = AgentProfile(
+      identity: const AgentIdentity(userName: 'Yii'),
+    );
+
+    final AgentPromptContext withNull = composeAgentPrompt(
+      profile: profile,
+      prompt: '我卡住了',
+    );
+    final AgentPromptContext withEmpty = composeAgentPrompt(
+      profile: profile,
+      prompt: '我卡住了',
+      frontmostApp: '   ',
+    );
+
+    // Absent and blank are the same answer: a section head with nothing
+    // under it would read as the app hiding something.
+    expect(withNull.turnInstruction, isNot(contains('[桌面]')));
+    expect(withEmpty.turnInstruction, isNot(contains('[桌面]')));
+  });
+
   test('a question about a document brings the relevant part with it', () {
     final AgentPromptContext result = composeAgentPrompt(
       profile: AgentProfile(),

@@ -212,6 +212,19 @@ final class PigeonDesktopHostService extends DesktopHostEventApi
   @override
   Stream<String> get serviceText => _serviceText.stream;
 
+  final ValueNotifier<String> _frontmostApp = ValueNotifier<String>('');
+
+  @override
+  ValueListenable<String> get frontmostApp => _frontmostApp;
+
+  @override
+  void onFrontmostAppChanged(String name) {
+    if (_disposed) {
+      return;
+    }
+    _frontmostApp.value = name;
+  }
+
   @override
   void onMenuBarConversationChosen(String conversationId) {
     if (_disposed) {

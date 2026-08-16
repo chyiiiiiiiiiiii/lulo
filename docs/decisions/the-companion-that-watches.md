@@ -124,9 +124,10 @@ something to say first.
 
 ## What this unblocks tomorrow
 
-Stage 0 is an afternoon: `frontmostApplication` over the existing Pigeon
-surface into `composeAgentPrompt`'s turn half, behind a Settings switch,
-off by default. Stage 1 is the first real vision feature and the first
+Stage 0 shipped the morning after this was written:
+`NSWorkspace.didActivateApplicationNotification` pushed over Pigeon,
+gated by Settings › 你的桌面 (off by default), joining the turn half
+beside the clock. Stage 1 is the first real vision feature and the first
 new TCC ask; it should ship with the invited-look interaction exactly and
 nothing more. The 12B question stays closed — the look above ran on the
 model already installed, and 17 s more per look would not buy a better

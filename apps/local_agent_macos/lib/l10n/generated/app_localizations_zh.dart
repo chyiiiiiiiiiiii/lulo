@@ -200,7 +200,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get closeSettings => '關閉設定';
 
   @override
-  String get sectionDesktop => '在桌面上';
+  String get sectionDesktop => '你的桌面';
 
   @override
   String get keepOrbOnTop => '讓球體浮在其他視窗之上';
@@ -484,6 +484,13 @@ class AppLocalizationsZh extends AppLocalizations {
       '最大也最慢的選擇：需要較新的高階 Mac，在較舊的機器上第一個字可能要等數十秒，甚至中途失敗。適合讀寫長文，不適合對話。';
 
   @override
+  String get shareFrontmostApp => '讓它知道你在用哪個 App';
+
+  @override
+  String get shareFrontmostAppNote =>
+      '每個問題會帶上目前 App 的名稱 —— 只有名稱，不看視窗標題或內容。這樣說「我卡住了」它就知道你卡在哪裡。';
+
+  @override
   String get sectionHearing => '它怎麼聽你說話';
 
   @override
@@ -498,7 +505,7 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get hearingDuplexNote =>
-      '持續聆聽，所以你可以插話。它用你偏好語言裡它支援的第一個，在開始聆聽時就決定，整段對話不換。用別的語言講，它會當成那一個聽。';
+      '持續聆聽，所以你可以插話。它用你偏好語言裡它支援的第一個，在開始聆聽時就決定，整段對話不換。這條路聽英文比較差：量測是 13.4% 錯字率，按住麥克風鍵是 3.8% —— 講英文時按住鍵比較準。';
 
   @override
   String get sectionAnswerStyle => '它可以放多開';

@@ -19,6 +19,7 @@ final class AppSettings {
     this.ttsVoice = 'ryan',
     this.showVoiceEvidence = false,
     this.answerStyle = AnswerStyle.balanced,
+    this.shareFrontmostApp = false,
   });
 
   /// Reads settings written by [toJson], ignoring anything unrecognised.
@@ -50,6 +51,10 @@ final class AppSettings {
       answerStyle:
           AnswerStyle.values.asNameMap()[json['answerStyle']] ??
           defaults.answerStyle,
+      shareFrontmostApp: _boolOr(
+        json['shareFrontmostApp'],
+        defaults.shareFrontmostApp,
+      ),
     );
   }
 
@@ -83,6 +88,15 @@ final class AppSettings {
   /// something to read while having a conversation.
   final bool showVoiceEvidence;
 
+  /// Whether each question carries the name of the app the user is in.
+  ///
+  /// Off by default, because it is information leaving the user's desktop
+  /// for the model's context and that is theirs to switch on. The name of
+  /// the frontmost app is all this shares — never window titles or
+  /// contents, which macOS meters behind permissions this app does not
+  /// hold. See `docs/decisions/the-companion-that-watches.md`.
+  final bool shareFrontmostApp;
+
   /// Returns a copy with the named choices replaced.
   AppSettings copyWith({
     bool? keepOrbOnTop,
@@ -92,6 +106,7 @@ final class AppSettings {
     String? ttsVoice,
     bool? showVoiceEvidence,
     AnswerStyle? answerStyle,
+    bool? shareFrontmostApp,
   }) {
     return AppSettings(
       keepOrbOnTop: keepOrbOnTop ?? this.keepOrbOnTop,
@@ -102,6 +117,7 @@ final class AppSettings {
       ttsVoice: ttsVoice ?? this.ttsVoice,
       showVoiceEvidence: showVoiceEvidence ?? this.showVoiceEvidence,
       answerStyle: answerStyle ?? this.answerStyle,
+      shareFrontmostApp: shareFrontmostApp ?? this.shareFrontmostApp,
     );
   }
 
@@ -114,6 +130,7 @@ final class AppSettings {
     'ttsVoice': ttsVoice,
     'showVoiceEvidence': showVoiceEvidence,
     'answerStyle': answerStyle.name,
+    'shareFrontmostApp': shareFrontmostApp,
   };
 
   @override
@@ -125,7 +142,8 @@ final class AppSettings {
       other.modelPath == modelPath &&
       other.ttsVoice == ttsVoice &&
       other.showVoiceEvidence == showVoiceEvidence &&
-      other.answerStyle == answerStyle;
+      other.answerStyle == answerStyle &&
+      other.shareFrontmostApp == shareFrontmostApp;
 
   @override
   int get hashCode => Object.hash(
@@ -136,6 +154,7 @@ final class AppSettings {
     ttsVoice,
     showVoiceEvidence,
     answerStyle,
+    shareFrontmostApp,
   );
 
   @override

@@ -550,6 +550,14 @@ abstract interface class DesktopPresentationHost {
   /// back. This is that in one, from where they already are.
   Stream<String> get serviceText;
 
+  /// The visible name of the app the user was last in, or empty before any
+  /// switch has been seen.
+  ///
+  /// Latest-value rather than a stream, because its one reader composes a
+  /// question synchronously and wants what is true now, not a history of
+  /// switches. Whether it is ever used is a setting the reader applies.
+  ValueListenable<String> get frontmostApp;
+
   /// Tells the status-bar menu what to show the next time it opens.
   ///
   /// Pushed rather than pulled: AppKit builds the menu at the moment it is

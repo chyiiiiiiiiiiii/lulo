@@ -756,6 +756,7 @@ final class _PresentationSwitchState extends State<_PresentationSwitch>
   Future<void> _applySettings(AppSettings settings) async {
     widget.composition.ttsVoice.value = settings.ttsVoice;
     widget.composition.answerStyle.value = settings.answerStyle;
+    widget.composition.shareFrontmostApp.value = settings.shareFrontmostApp;
     await widget.composition.presentationHost?.setWindowBehaviour(
       keepOrbOnTop: settings.keepOrbOnTop,
       followAcrossSpaces: settings.followAcrossSpaces,

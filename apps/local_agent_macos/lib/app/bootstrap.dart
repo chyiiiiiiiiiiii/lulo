@@ -158,9 +158,16 @@ AppComposition createAppComposition({
   // the file the next question is composed against.
   final ValueNotifier<String> openDocument = ValueNotifier<String>('');
   final ValueNotifier<String?> openDocumentName = ValueNotifier<String?>(null);
+  final PigeonDesktopHostService desktopHostService =
+      PigeonDesktopHostService();
+  // Off until the user switches it on: which app they are in is theirs to
+  // share, and the native side reports it whether or not anyone uses it.
+  final ValueNotifier<bool> shareFrontmostApp = ValueNotifier<bool>(false);
   final AgentContextProvider agentContext = ProfileAgentContextProvider(
     () => profileStore.current,
     documentOf: () => openDocument.value,
+    frontmostAppOf: () =>
+        shareFrontmostApp.value ? desktopHostService.frontmostApp.value : '',
   );
   final DeadlineTranscriptRefiner transcriptRefiner = DeadlineTranscriptRefiner(
     const DeterministicTranscriptRefiner(),
@@ -186,8 +193,6 @@ AppComposition createAppComposition({
         service: fallbackStorage,
         release: () async => fallbackStorage.dispose(),
       );
-  final PigeonDesktopHostService desktopHostService =
-      PigeonDesktopHostService();
   // The one toolbox both the first model and every later swap offer. Built
   // over the storage the composition already owns; a second registered tool
   // starts here.
@@ -252,6 +257,7 @@ AppComposition createAppComposition({
     unfinishedEndings: () => profileStore.current.turnTaking.unfinished,
     agentProfile: profileStore,
     answerStyle: answerStyle,
+    shareFrontmostApp: shareFrontmostApp,
     // The model is chosen in settings, and the only part of the graph that has
     // to change when it does is what sits behind this one service.
     changeModel: (String modelPath) => inferenceService.replaceWith(

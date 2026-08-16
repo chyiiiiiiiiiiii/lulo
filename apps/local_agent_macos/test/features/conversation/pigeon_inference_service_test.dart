@@ -1198,6 +1198,9 @@ final class RecordingDesktopHostService implements DesktopHostService {
   Stream<String> get serviceText => const Stream<String>.empty();
 
   @override
+  ValueListenable<String> get frontmostApp => ValueNotifier<String>('');
+
+  @override
   Future<DesktopLoginItem> loginItem() async => DesktopLoginItem.off;
 
   @override

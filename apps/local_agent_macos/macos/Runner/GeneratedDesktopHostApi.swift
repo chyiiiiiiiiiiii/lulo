@@ -1620,6 +1620,15 @@ protocol DesktopHostEventApiProtocol {
   func onPresentationChangeRequested(target targetArg: HostPresentationMode, completion: @escaping (Result<Void, PigeonError>) -> Void)
   /// Asks the app to show its settings, from the menu bar or its shortcut.
   func onSettingsRequested(completion: @escaping (Result<Void, PigeonError>) -> Void)
+  /// The app the user activated, by its visible name.
+  ///
+  /// Sent on every activation of an app that is not this one — summoning
+  /// Lulo makes Lulo frontmost, and the question is about where the user
+  /// came from. Pushed rather than pulled because a question is composed
+  /// synchronously, and an app switch is a rare event where a poll would
+  /// be a channel hop on every turn. Whether it is ever *used* is a
+  /// setting, applied on the Dart side where the setting lives.
+  func onFrontmostAppChanged(name nameArg: String, completion: @escaping (Result<Void, PigeonError>) -> Void)
   /// Tells the app the window's frame has changed under its layout.
   ///
   /// The forms are laid out against the window's frame, and the frame belongs
@@ -1769,6 +1778,32 @@ class DesktopHostEventApi: DesktopHostEventApiProtocol {
     let channelName: String = "dev.flutter.pigeon.local_agent_macos.DesktopHostEventApi.onSettingsRequested\(messageChannelSuffix)"
     let channel = FlutterBasicMessageChannel(name: channelName, binaryMessenger: binaryMessenger, codec: codec)
     channel.sendMessage(nil) { response in
+      guard let listResponse = response as? [Any?] else {
+        completion(.failure(createConnectionError(withChannelName: channelName)))
+        return
+      }
+      if listResponse.count > 1 {
+        let code: String = listResponse[0] as! String
+        let message: String? = nilOrValue(listResponse[1])
+        let details: String? = nilOrValue(listResponse[2])
+        completion(.failure(PigeonError(code: code, message: message, details: details)))
+      } else {
+        completion(.success(()))
+      }
+    }
+  }
+  /// The app the user activated, by its visible name.
+  ///
+  /// Sent on every activation of an app that is not this one — summoning
+  /// Lulo makes Lulo frontmost, and the question is about where the user
+  /// came from. Pushed rather than pulled because a question is composed
+  /// synchronously, and an app switch is a rare event where a poll would
+  /// be a channel hop on every turn. Whether it is ever *used* is a
+  /// setting, applied on the Dart side where the setting lives.
+  func onFrontmostAppChanged(name nameArg: String, completion: @escaping (Result<Void, PigeonError>) -> Void) {
+    let channelName: String = "dev.flutter.pigeon.local_agent_macos.DesktopHostEventApi.onFrontmostAppChanged\(messageChannelSuffix)"
+    let channel = FlutterBasicMessageChannel(name: channelName, binaryMessenger: binaryMessenger, codec: codec)
+    channel.sendMessage([nameArg] as [Any?]) { response in
       guard let listResponse = response as? [Any?] else {
         completion(.failure(createConnectionError(withChannelName: channelName)))
         return

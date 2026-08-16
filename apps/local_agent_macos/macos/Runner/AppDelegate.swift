@@ -103,6 +103,9 @@ class AppDelegate: FlutterAppDelegate {
   /// after `applicationDidFinishLaunching` has returned.
   private var servicePanel: DesktopPanelControlling?
   private var serviceEvents: DesktopHostEventApi?
+
+  /// Keeps the frontmost-app observation alive for the app's lifetime.
+  private var frontmostAppObserver: NSObjectProtocol?
   private var hotKeyController: GlobalHotKeyController?
   private var hotKeySplitter: HotKeyHoldSplitter?
   private var dictationHotKey: GlobalHotKeyController?
@@ -270,6 +273,38 @@ class AppDelegate: FlutterAppDelegate {
     }
     installSettingsMenuItem { eventApi.onSettingsRequested(completion: { _ in }) }
     installFileMenu()
+    // Which app the user is in, told on every switch. Activating Lulo is
+    // deliberately not reported: summoning the agent makes it frontmost,
+    // and a question about "this" means the place the user came from.
+    // Needs no permission — the name of the frontmost app is the one fact
+    // macOS gives away freely, and it is all that crosses here. Whether a
+    // question ever carries it is a setting applied on the other side.
+    let ownBundleId = Bundle.main.bundleIdentifier
+    frontmostAppObserver = NSWorkspace.shared.notificationCenter.addObserver(
+      forName: NSWorkspace.didActivateApplicationNotification,
+      object: nil,
+      queue: .main
+    ) { notification in
+      guard
+        let activated = notification.userInfo?[NSWorkspace.applicationUserInfoKey]
+          as? NSRunningApplication,
+        activated.bundleIdentifier != ownBundleId,
+        let name = activated.localizedName,
+        !name.isEmpty
+      else {
+        return
+      }
+      eventApi.onFrontmostAppChanged(name: name, completion: { _ in })
+    }
+    // The app the user was in when Lulo launched, so the first question is
+    // not blind just because no switch has happened yet.
+    if let current = NSWorkspace.shared.frontmostApplication,
+      current.bundleIdentifier != ownBundleId,
+      let name = current.localizedName,
+      !name.isEmpty
+    {
+      eventApi.onFrontmostAppChanged(name: name, completion: { _ in })
+    }
     let eventSink = PigeonGenerationEventSink(api: eventApi)
     let eventBridge = GenerationEventBridge(
       sink: eventSink,

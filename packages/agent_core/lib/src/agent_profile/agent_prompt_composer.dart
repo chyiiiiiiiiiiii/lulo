@@ -89,6 +89,7 @@ AgentPromptContext composeAgentPrompt({
   required String prompt,
   DateTime? now,
   String? document,
+  String? frontmostApp,
   int maxDocumentCharacters = 1400,
   int maxProfileCharacters = 1200,
 }) {
@@ -244,6 +245,16 @@ AgentPromptContext composeAgentPrompt({
   final String clockSection = now == null
       ? ''
       : '${chinese ? '[現在]' : '[Now]'}\n${_clock(now, chinese: chinese)}';
+  // Which app is front changes between questions the way the clock does,
+  // so it lives in the same half for the same measured reason. Told, not
+  // fetched, like the clock: a fact this cheap and this current is
+  // context, not a tool. Blank and absent are the same answer.
+  final String desktopApp = frontmostApp?.trim() ?? '';
+  final String desktopSection = desktopApp.isEmpty
+      ? ''
+      : chinese
+      ? '[桌面]\n使用者正在使用 $desktopApp。'
+      : '[Desktop]\nThe user is currently in $desktopApp.';
   final DocumentPassages passages = document == null
       ? DocumentPassages(const <String>[])
       : passagesFor(
@@ -260,6 +271,7 @@ AgentPromptContext composeAgentPrompt({
   final String turnInstruction = <String>[
     if (memories.isNotEmpty) memories,
     if (clockSection.isNotEmpty) clockSection,
+    if (desktopSection.isNotEmpty) desktopSection,
     if (documentSection.isNotEmpty) documentSection,
     questionSection,
   ].join('\n\n');

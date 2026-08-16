@@ -1731,6 +1731,16 @@ abstract class DesktopHostEventApi {
   /// Asks the app to show its settings, from the menu bar or its shortcut.
   void onSettingsRequested();
 
+  /// The app the user activated, by its visible name.
+  ///
+  /// Sent on every activation of an app that is not this one — summoning
+  /// Lulo makes Lulo frontmost, and the question is about where the user
+  /// came from. Pushed rather than pulled because a question is composed
+  /// synchronously, and an app switch is a rare event where a poll would
+  /// be a channel hop on every turn. Whether it is ever *used* is a
+  /// setting, applied on the Dart side where the setting lives.
+  void onFrontmostAppChanged(String name);
+
   /// Tells the app the window's frame has changed under its layout.
   ///
   /// The forms are laid out against the window's frame, and the frame belongs
@@ -1908,6 +1918,31 @@ abstract class DesktopHostEventApi {
         pigeonVar_channel.setMessageHandler((Object? message) async {
           try {
             api.onSettingsRequested();
+            return wrapResponse(empty: true);
+          } on PlatformException catch (e) {
+            return wrapResponse(error: e);
+          } catch (e) {
+            return wrapResponse(
+              error: PlatformException(code: 'error', message: e.toString()),
+            );
+          }
+        });
+      }
+    }
+    {
+      final pigeonVar_channel = BasicMessageChannel<Object?>(
+        'dev.flutter.pigeon.local_agent_macos.DesktopHostEventApi.onFrontmostAppChanged$messageChannelSuffix',
+        pigeonChannelCodec,
+        binaryMessenger: binaryMessenger,
+      );
+      if (api == null) {
+        pigeonVar_channel.setMessageHandler(null);
+      } else {
+        pigeonVar_channel.setMessageHandler((Object? message) async {
+          final List<Object?> args = message! as List<Object?>;
+          final String arg_name = args[0]! as String;
+          try {
+            api.onFrontmostAppChanged(arg_name);
             return wrapResponse(empty: true);
           } on PlatformException catch (e) {
             return wrapResponse(error: e);

@@ -203,7 +203,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get closeSettings => 'Close settings';
 
   @override
-  String get sectionDesktop => 'On the desktop';
+  String get sectionDesktop => 'Your desktop';
 
   @override
   String get keepOrbOnTop => 'Keep the orb above other windows';
@@ -508,6 +508,13 @@ class AppLocalizationsEn extends AppLocalizations {
       'The largest and slowest choice: it needs a recent high-end Mac, and on older machines the first word can take tens of seconds or the answer can fail partway. For long reading and writing, never for talking.';
 
   @override
+  String get shareFrontmostApp => 'Let it know which app you’re in';
+
+  @override
+  String get shareFrontmostAppNote =>
+      'Each question carries the name of the app you’re in — the name only, never window titles or contents. It’s how “I’m stuck” knows where.';
+
+  @override
   String get sectionHearing => 'How it hears you';
 
   @override
@@ -522,7 +529,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get hearingDuplexNote =>
-      'Listens continuously so it can be interrupted, using the first of your preferred languages it supports — chosen when listening starts and kept for the whole conversation. Say something in another language and it will be heard as that one.';
+      'Listens continuously so it can be interrupted, using the first of your preferred languages it supports — chosen when listening starts and kept for the whole conversation. English is weaker on this path: measured at 13.4% character error against 3.8% when holding the key, so for English the microphone key hears better.';
 
   @override
   String get sectionAnswerStyle => 'How far it may roam';

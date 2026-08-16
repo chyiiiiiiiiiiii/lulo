@@ -13,6 +13,7 @@ final class ProfileAgentContextProvider implements AgentContextProvider {
     this.profileOf, {
     this.clock = DateTime.now,
     this.documentOf = _noDocument,
+    this.frontmostAppOf = _noFrontmostApp,
   });
 
   /// Returns the latest valid profile for a new turn.
@@ -33,16 +34,28 @@ final class ProfileAgentContextProvider implements AgentContextProvider {
   /// so an open document a question has nothing to do with costs nothing.
   final String Function() documentOf;
 
+  /// The app the user is in as this turn is composed, or empty to say
+  /// nothing about the desktop.
+  ///
+  /// Read at compose time like the clock and the document, and gated by
+  /// the caller: whether the desktop is shared at all is a setting, and
+  /// the setting's owner decides by returning empty.
+  final String Function() frontmostAppOf;
+
   @override
   AgentPromptContext compose(String prompt) {
     final String document = documentOf();
+    final String frontmostApp = frontmostAppOf();
     return composeAgentPrompt(
       profile: profileOf(),
       prompt: prompt,
       now: clock(),
       document: document.isEmpty ? null : document,
+      frontmostApp: frontmostApp.isEmpty ? null : frontmostApp,
     );
   }
 }
 
 String _noDocument() => '';
+
+String _noFrontmostApp() => '';

@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:agent_core/agent_core.dart';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:local_agent_macos/platform/desktop_host_service.dart';
 
@@ -28,6 +29,12 @@ final class FakePresentationHost implements DesktopPresentationHost {
 
   @override
   Stream<String> get serviceText => serviceTextController.stream;
+
+  @override
+  ValueListenable<String> get frontmostApp => frontmostAppValue;
+
+  /// The app the fake claims the user is in, settable by tests.
+  final ValueNotifier<String> frontmostAppValue = ValueNotifier<String>('');
 
   /// What the system is pretending to say about starting at login.
   DesktopLoginItem loginItemValue = DesktopLoginItem.off;

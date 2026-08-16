@@ -195,6 +195,24 @@ a sandboxed app may write where the panel says and nowhere else. Nothing
 came back is reported rather than swallowed, and the section beside it names
 the sidecar that is most likely why.
 
+A question can carry the name of the app the user is in — and only the
+name. `NSWorkspace.didActivateApplicationNotification` needs no
+permission; the AppDelegate reports every activation that is not Lulo
+itself (summoning the agent makes it frontmost, and 「我卡住了」 is about
+where the user came from), pushed over Pigeon because compose is
+synchronous and app switches are rare. It joins the **turn** half beside
+the clock, for the same measured prefill reason, and only when
+Settings › 你的桌面 is on — off by default, because information leaving
+the desktop for the model's context is the user's to opt into. Window
+titles and contents are deliberately not read: that is the line macOS
+draws with TCC, and `docs/decisions/the-companion-that-watches.md` is the
+staged plan for everything past it (the invited look measured feasible at
+7.6 s a screenshot; continuous watching and unprompted voice are written
+down as non-goals). The always-listening path's English gap is now on
+screen too: the hearing note in Settings carries the measured 13.4%
+against 3.8% for the held key, so 「它聽錯了」 can be answered with which
+button to hold.
+
 Text selected in another app reaches Lulo in one step. `NSServices` in
 `Info.plist` puts "Ask Lulo about this" in every app that handles text —
 which needs no Accessibility permission and works on the deployment target,

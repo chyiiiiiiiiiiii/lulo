@@ -14,6 +14,12 @@ void main() {
     expect(settings.copyWith(ttsVoice: 'dylan').ttsVoice, 'dylan');
   });
 
+  test('sharing the frontmost app is off until the user turns it on', () {
+    // The name of the app the user is in leaves their desktop for the
+    // model's context; that is theirs to opt into, never a default.
+    expect(const AppSettings().shareFrontmostApp, isFalse);
+  });
+
   test('an untouched install rests on the desktop, above other work', () {
     const AppSettings settings = AppSettings();
 
@@ -39,6 +45,7 @@ void main() {
       followAcrossSpaces: false,
       openConversationOnLaunch: true,
       modelPath: '/models/gemma.litertlm',
+      shareFrontmostApp: true,
     );
 
     await store.save(chosen);
