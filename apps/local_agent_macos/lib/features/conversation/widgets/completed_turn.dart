@@ -13,8 +13,17 @@ final class CompletedTurn extends StatefulWidget {
     required this.turn,
     this.onRegenerate,
     this.onRevise,
+    this.onSpeak,
     super.key,
   });
+
+  /// Reads this answer aloud, or null where there is no voice to read it.
+  ///
+  /// Typed answers are not spoken by default — the mode of the answer
+  /// follows the mode of the ask, and an answer written to be read has
+  /// lists and structure that do not want reciting. But hearing one should
+  /// never mean turning the microphone on and asking the question again.
+  final ValueChanged<String>? onSpeak;
 
   /// Asks this answer to be produced again, or null where it cannot be.
   ///
@@ -156,6 +165,11 @@ final class _CompletedTurnState extends State<CompletedTurn> {
                 onCopy: _copy,
                 onRegenerate: widget.onRegenerate,
                 onRevise: widget.onRevise == null ? null : _beginRevision,
+                // Never on the user's own turn: reading them back their own
+                // words is the one thing this must not offer.
+                onSpeak: widget.onSpeak == null || isUser
+                    ? null
+                    : () => widget.onSpeak!(turn.text),
               ),
           ],
         ),
@@ -177,12 +191,14 @@ final class _TurnActions extends StatefulWidget {
     required this.onCopy,
     this.onRegenerate,
     this.onRevise,
+    this.onSpeak,
   });
 
   final bool copied;
   final Future<void> Function() onCopy;
   final VoidCallback? onRegenerate;
   final VoidCallback? onRevise;
+  final VoidCallback? onSpeak;
 
   @override
   State<_TurnActions> createState() => _TurnActionsState();
@@ -211,6 +227,7 @@ final class _TurnActionsState extends State<_TurnActions> {
 
     final VoidCallback? onRegenerate = widget.onRegenerate;
     final VoidCallback? onRevise = widget.onRevise;
+    final VoidCallback? onSpeak = widget.onSpeak;
     return MouseRegion(
       onEnter: (_) => setState(() => _hovered = true),
       onExit: (_) => setState(() => _hovered = false),
@@ -241,6 +258,13 @@ final class _TurnActionsState extends State<_TurnActions> {
                   words.reviseTooltip,
                   Icons.edit_outlined,
                   onRevise,
+                ),
+              if (onSpeak != null)
+                action(
+                  'turn-speak',
+                  words.speakTooltip,
+                  Icons.volume_up_rounded,
+                  onSpeak,
                 ),
               if (widget.copied)
                 Padding(

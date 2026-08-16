@@ -1005,6 +1005,12 @@ abstract class AppLocalizations {
   /// **'The largest and slowest choice: it needs a recent high-end Mac, and on older machines the first word can take tens of seconds or the answer can fail partway. For long reading and writing, never for talking.'**
   String get modelDescriptionCapable;
 
+  /// No description provided for @speakTooltip.
+  ///
+  /// In en, this message translates to:
+  /// **'Read this aloud'**
+  String get speakTooltip;
+
   /// No description provided for @lookAtScreenTooltip.
   ///
   /// In en, this message translates to:

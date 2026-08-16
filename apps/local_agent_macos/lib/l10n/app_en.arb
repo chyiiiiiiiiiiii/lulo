@@ -197,6 +197,7 @@
   "modelDescriptionBalanced": "The balanced choice: answers fast enough to speak with, and strong enough for everyday conversation.",
   "modelDescriptionLight": "The light choice: quicker to fetch and to answer, with simpler answers.",
   "modelDescriptionCapable": "The largest and slowest choice: it needs a recent high-end Mac, and on older machines the first word can take tens of seconds or the answer can fail partway. For long reading and writing, never for talking.",
+  "speakTooltip": "Read this aloud",
   "lookAtScreenTooltip": "Look at my screen",
   "lookDefaultPrompt": "Look at my screen and tell me what you see. If something seems off or could be done better, say so.",
   "lookDeniedNotice": "Lulo can\u2019t see the screen \u2014 allow Screen Recording for Lulo in System Settings \u203a Privacy & Security. If you just allowed it, quit and reopen Lulo for it to take effect.",

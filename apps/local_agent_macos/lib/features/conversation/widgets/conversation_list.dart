@@ -19,6 +19,7 @@ final class ConversationList extends StatefulWidget {
     this.retryAvailable,
     this.onRegenerate,
     this.onRevise,
+    this.onSpeak,
     this.onBuild,
     this.onCompletedTurnsBuild,
     this.onActiveTurnBuild,
@@ -37,6 +38,9 @@ final class ConversationList extends StatefulWidget {
 
   /// Asks the newest question again, as the given text.
   final ValueChanged<String>? onRevise;
+
+  /// Reads one answer aloud, or null where there is no voice.
+  final ValueChanged<String>? onSpeak;
 
   /// Immutable terminal turns shown in history.
   final ValueListenable<List<Turn>> completedTurns;
@@ -315,7 +319,7 @@ extension on _ConversationListState {
     final VoidCallback? onRegenerate = regenerate ? widget.onRegenerate : null;
     final ValueChanged<String>? onRevise = revise ? widget.onRevise : null;
     if (available == null || (onRegenerate == null && onRevise == null)) {
-      return CompletedTurn(turn: turn);
+      return CompletedTurn(turn: turn, onSpeak: widget.onSpeak);
     }
     return ValueListenableBuilder<bool>(
       valueListenable: available,
@@ -324,6 +328,7 @@ extension on _ConversationListState {
             turn: turn,
             onRegenerate: ready ? onRegenerate : null,
             onRevise: ready ? onRevise : null,
+            onSpeak: widget.onSpeak,
           ),
     );
   }

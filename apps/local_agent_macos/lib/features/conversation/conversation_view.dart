@@ -344,6 +344,14 @@ final class _ConversationViewState extends State<ConversationView> {
                 completedTurns: _viewModel.completedTurnsListenable,
                 activeTurn: _viewModel.activeTurnListenable,
                 retryAvailable: _viewModel.canSubmitListenable,
+                // Straight to the voice, not through the conversation
+                // controller: reading one answer aloud must not require
+                // switching the microphone on, which is what enabling the
+                // controller would do.
+                onSpeak: widget.voiceService == null
+                    ? null
+                    : (String text) =>
+                          unawaited(widget.voiceService!.speak(text)),
                 onRegenerate: () =>
                     unawaited(_viewModel.regenerateLastAnswer()),
                 onRevise: (String text) =>

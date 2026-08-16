@@ -42,6 +42,56 @@ void main() {
     return platformCalls;
   }
 
+  testWidgets('an answer can be read aloud on demand', (
+    WidgetTester tester,
+  ) async {
+    // Typed answers are not spoken by default — the mode of the answer
+    // follows the mode of the ask — but hearing one should never require
+    // turning the microphone on and asking again.
+    final List<String> spoken = <String>[];
+    await tester.pumpWidget(
+      MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: Scaffold(
+          body: CompletedTurn(turn: answer, onSpeak: spoken.add),
+        ),
+      ),
+    );
+
+    await tester.tap(find.byKey(const Key('turn-speak')));
+    expect(spoken, <String>['好，我幫你查一下。']);
+  });
+
+  testWidgets('nothing to speak with means no speak button', (
+    WidgetTester tester,
+  ) async {
+    await pumpTurn(tester, answer);
+    expect(find.byKey(const Key('turn-speak')), findsNothing);
+  });
+
+  testWidgets('a question of the user\'s is never read back to them', (
+    WidgetTester tester,
+  ) async {
+    // Reading the user their own words is the one thing the button must
+    // not offer: they wrote it.
+    const Turn question = Turn(
+      role: TurnRole.user,
+      text: '幫我查一下',
+      status: TurnStatus.completed,
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: Scaffold(
+          body: CompletedTurn(turn: question, onSpeak: (String _) {}),
+        ),
+      ),
+    );
+    expect(find.byKey(const Key('turn-speak')), findsNothing);
+  });
+
   testWidgets('an answer can be taken away as text', (
     WidgetTester tester,
   ) async {

@@ -484,6 +484,9 @@ class AppLocalizationsZh extends AppLocalizations {
       '最大也最慢的選擇：需要較新的高階 Mac，在較舊的機器上第一個字可能要等數十秒，甚至中途失敗。適合讀寫長文，不適合對話。';
 
   @override
+  String get speakTooltip => '唸給我聽';
+
+  @override
   String get lookAtScreenTooltip => '看一下我的螢幕';
 
   @override
