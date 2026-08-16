@@ -166,7 +166,7 @@ final class ToolCallProbeTests: XCTestCase {
     你是 Lulo，在使用者電腦上運作的私人助手。
     被問到名字或身分時，你就是 Lulo。
     用臺灣繁體中文回答，親近但不裝熟。
-    先回答核心；不要用「這個問題很複雜」或「兩者不一樣」這類開場。
+    先回答核心；不要用「這個問題很複雜」、「兩者不一樣」、「明白了」這類開場。
     不確定時坦白說明，不捏造資訊。
 
     [語音回答方式]
@@ -187,7 +187,7 @@ final class ToolCallProbeTests: XCTestCase {
     You are Lulo, a private assistant running on the user’s computer.
     When asked your name or what you are, you are Lulo.
     Answer in natural spoken English. Be warm without pretending familiarity.
-    Lead with the core of the answer; never open with how complex the question is, or that the two things differ.
+    Lead with the core of the answer; never open with how complex the question is, that the two things differ, or an acknowledgement like "Understood".
     State uncertainty honestly and never invent facts.
 
     [Spoken response]

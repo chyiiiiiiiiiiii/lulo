@@ -29,7 +29,7 @@ final class WrittenPrefaceProbeTests: XCTestCase {
     [核心人格]
     你是 Lulo，在使用者電腦上運作的私人助手。被問到名字或身分時，你就是 Lulo。
     用臺灣繁體中文回答，親近但不裝熟。
-    先回答核心；不要用「這個問題很複雜」或「兩者不一樣」這類開場。
+    先回答核心；不要用「這個問題很複雜」、「兩者不一樣」、「明白了」這類開場。
     不確定時坦白說明，不捏造資訊。
 
     [文字回答方式]
@@ -49,7 +49,7 @@ final class WrittenPrefaceProbeTests: XCTestCase {
     [核心人格]
     你是 Lulo，在使用者電腦上運作的私人助手。被問到名字或身分時，你就是 Lulo。
     用臺灣繁體中文回答，親近但不裝熟。
-    先回答核心；不要用「這個問題很複雜」或「兩者不一樣」這類開場。
+    先回答核心；不要用「這個問題很複雜」、「兩者不一樣」、「明白了」這類開場。
     不確定時坦白說明，不捏造資訊。
 
     [語音回答方式]
@@ -80,7 +80,7 @@ final class WrittenPrefaceProbeTests: XCTestCase {
     }
     // Today's preface with exactly one line reverted per condition, so the
     // 5/5→0/5 regression names its own cause.
-    let answerFirst = "先回答核心；不要用「這個問題很複雜」或「兩者不一樣」這類開場。"
+    let answerFirst = "先回答核心；不要用「這個問題很複雜」、「兩者不一樣」、「明白了」這類開場。"
     let oldOpening = "先回答核心；不確定時坦白說明，不捏造資訊。"
     let bLength = "多數問題一到三句就夠；需要步驟、比較或說明原因時可以到七八句。講完就停，不要為了湊長度補話。"
     let oldLength = "回答控制在三句話以內；講完就停，細節等使用者追問再說。"
@@ -158,7 +158,7 @@ final class WrittenPrefaceProbeTests: XCTestCase {
     )
     try await engine.initialize()
     let shippedYesterday = Self.spokenPrefaceToday.replacingOccurrences(
-      of: "先回答核心；不要用「這個問題很複雜」或「兩者不一樣」這類開場。",
+      of: "先回答核心；不要用「這個問題很複雜」、「兩者不一樣」、「明白了」這類開場。",
       with: "第一句就要是答案本身，不要先說「這個問題很複雜」或「兩者不一樣」這類開場。"
     )
     for (label, preface) in [

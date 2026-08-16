@@ -244,9 +244,18 @@ cannot stop to call a tool first — the call is not an answer sentence.
 
 The table above says the active ingredient was never the absolutism: it
 was **naming the banned preambles**. So the line shipping now is
-「先回答核心；不要用「這個問題很複雜」或「兩者不一樣」這類開場。」 — the old
-opening plus the named ban — and it re-measures at 5/5 called on both
-channels with the preamble examples still in force.
+「先回答核心；不要用「這個問題很複雜」、「兩者不一樣」、「明白了」這類開場。」
+— the old opening plus the named ban — and it re-measures at 5/5 called
+on both channels with the preamble examples still in force. 「明白了」
+joined the list after a real conversation opened with 「Lulo 明白了，您現
+在想知道…」; the first attempt to add it also banned restating the
+question in general words — 「不要複述問題」 — and that clause alone took
+the spoken channel's tool calls from 5/5 to 0/5 while the written channel
+kept calling. The general clause went, the named example stayed, and both
+channels re-measure at 5/5. Two lessons, third confirmation each: name
+the failure instead of describing its category, and re-measure the whole
+preface after every edit, because the blast radius of a clause is not
+readable from its sentence.
 
 Dropping the absolutism cost something it had been buying silently:
 identity. Asked 你叫什麼名字 at temperature 0.7, the model answered

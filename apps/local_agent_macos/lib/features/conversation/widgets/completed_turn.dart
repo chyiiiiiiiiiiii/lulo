@@ -415,6 +415,13 @@ final class TerminalMarkdown extends StatelessWidget {
     );
   }
 
+  /// A line that is a Markdown heading: hashes, a space, then words.
+  ///
+  /// The space is load-bearing — 「C# 和 F#」 is content, not a heading —
+  /// and the match is anchored per line because headings arrive on their
+  /// own lines inside a paragraph block as often as between blocks.
+  static final RegExp _heading = RegExp(r'^#{1,6}\s+(.*)$', multiLine: true);
+
   static void _appendParagraphs(
     List<Widget> blocks,
     String text,
@@ -425,18 +432,46 @@ final class TerminalMarkdown extends StatelessWidget {
       if (trimmed.isEmpty) {
         continue;
       }
+      // The model is told not to write Markdown and a 4B model sometimes
+      // does anyway. The instruction cannot make that certain; this layer
+      // can — a heading is shown as its words, set apart by weight, never
+      // as its syntax.
+      final RegExpMatch? heading =
+          _heading.matchAsPrefix(trimmed) as RegExpMatch?;
+      if (heading != null && !trimmed.contains('\n')) {
+        blocks.add(
+          Padding(
+            padding: const EdgeInsets.only(top: 6, bottom: 3),
+            child: SelectableText.rich(
+              TextSpan(
+                style: Theme.of(context).textTheme.titleSmall,
+                children: _emphasisSpans(heading.group(1)!.trim()),
+              ),
+            ),
+          ),
+        );
+        continue;
+      }
       blocks.add(
         Padding(
           padding: const EdgeInsets.symmetric(vertical: 3),
           child: SelectableText.rich(
             TextSpan(
               style: Theme.of(context).textTheme.bodyMedium,
-              children: _emphasisSpans(trimmed),
+              children: _spansStrippingHeadings(trimmed),
             ),
           ),
         ),
       );
     }
+  }
+
+  /// Emphasis spans, with any heading line inside the paragraph shown as
+  /// its words rather than its hashes.
+  static List<InlineSpan> _spansStrippingHeadings(String text) {
+    return _emphasisSpans(
+      text.replaceAllMapped(_heading, (Match match) => match.group(1)!),
+    );
   }
 
   static List<InlineSpan> _emphasisSpans(String text) {

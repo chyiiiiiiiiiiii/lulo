@@ -151,7 +151,7 @@ AgentPromptContext composeAgentPrompt({
               // call a tool first. The active ingredient the length doc
               // records is naming the banned preambles, so the ban keeps
               // its examples and the first-sentence absolutism goes.
-              '先回答核心；不要用「這個問題很複雜」或「兩者不一樣」這類開場。',
+              '先回答核心；不要用「這個問題很複雜」、「兩者不一樣」、「明白了」這類開場。',
               '不確定時坦白說明，不捏造資訊。',
             ]
           : <String>[
@@ -162,7 +162,8 @@ AgentPromptContext composeAgentPrompt({
               // The English wording follows the Chinese, which is what was
               // measured; this side has not been.
               'Lead with the core of the answer; never open with how '
-                  'complex the question is, or that the two things differ.',
+                  'complex the question is, that the two things differ, '
+                  'or an acknowledgement like "Understood".',
               'State uncertainty honestly and never invent facts.',
             ],
     ),
