@@ -192,7 +192,12 @@ can read — so a file whose sandbox permission was never restored fails as
 
 `sessionId` is the conversation's id, and `SystemLiteRTLMRuntimeDriver` keeps
 one LiteRT-LM `Conversation` object per session for as long as the engine is
-loaded. The prompt sent for each turn is the **user's message alone** —
+loaded. One session is not a conversation at all: `memory-extraction` is
+taken and released around every run of the memory pass, which is the only
+caller that releases after each use rather than when something is deleted —
+a pass that kept its session would accumulate the whole day into a prompt
+that is supposed to be one sentence long. See
+[agent-profile.md](agent-profile.md). The prompt sent for each turn is the **user's message alone** —
 `PigeonInferenceService` passes `context: const <String>[]`.
 
 Two consequences follow and both are worth knowing before changing anything

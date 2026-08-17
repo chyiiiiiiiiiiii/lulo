@@ -6,6 +6,7 @@ import 'package:agent_core/agent_core.dart';
 import 'package:flutter/foundation.dart';
 
 import '../features/agent_profile/agent_context_provider.dart';
+import '../features/agent_profile/agent_memory_extractor.dart';
 import '../features/agent_profile/agent_profile_store.dart';
 import '../features/conversation/conversation_search_tool.dart';
 import '../features/conversation/conversation_storage_service.dart';
@@ -163,6 +164,11 @@ AppComposition createAppComposition({
   // Off until the user switches it on: which app they are in is theirs to
   // share, and the native side reports it whether or not anyone uses it.
   final ValueNotifier<bool> shareFrontmostApp = ValueNotifier<bool>(false);
+  // Off until the user switches it on, for the reason above it is: the
+  // profile is plaintext and the privacy slice `docs/features/agent-profile.md`
+  // names has not been built, so nothing writes facts about the user until
+  // they ask for it.
+  final ValueNotifier<bool> rememberFacts = ValueNotifier<bool>(false);
   final AgentContextProvider agentContext = ProfileAgentContextProvider(
     () => profileStore.current,
     documentOf: () => openDocument.value,
@@ -194,8 +200,16 @@ AppComposition createAppComposition({
         release: () async => fallbackStorage.dispose(),
       );
   // The one toolbox both the first model and every later swap offer. Built
-  // over the storage the composition already owns; a second registered tool
-  // starts here.
+  // over the storage and the profile store the composition already owns.
+  //
+  // `RememberTool` is deliberately not in here. It is built, bounded and
+  // tested, and gemma-4-E4B does not call it: 0/5 across eleven conditions,
+  // including the one where the user says 「記住我住在台南」 outright — while
+  // `search_conversations`, in the same toolbox on the same turn, fires 5/5.
+  // A declaration costs context on every turn, so an unregistered tool is
+  // what a measured 0/5 is worth. The write path it owns is what the second
+  // pass will call; see
+  // `docs/decisions/the-model-will-not-interrupt-itself-to-remember.md`.
   AgentToolbox buildToolbox() => AgentToolbox(<AgentTool>[
     ConversationSearchTool(
       searchConversations: storage.service.searchConversations,
@@ -227,8 +241,22 @@ AppComposition createAppComposition({
     rethrow;
   }
 
+  // Reads each finished turn for a fact about the user, in the runtime's
+  // one generation slot, and gives that slot up the moment a question wants
+  // it. Built over the swappable service rather than the one inside it, so
+  // a model swap swaps what the extraction runs on too.
+  final AgentMemoryExtractor memoryExtractor = AgentMemoryExtractor(
+    inference: inferenceService,
+    profileOf: () => profileStore.current,
+    save: profileStore.save,
+    enabled: () => rememberFacts.value,
+  );
+
   return AppComposition(
     () async {
+      // First: it holds a generation, and everything below tears down what
+      // that generation is running on.
+      await memoryExtractor.dispose();
       await inferenceService.dispose();
       await storage.release();
       await desktopHostService.dispose();
@@ -237,6 +265,8 @@ AppComposition createAppComposition({
       transcriptProposalProvider?.dispose();
       transcriptShadowEvidence?.clear();
     },
+    betweenTurns: memoryExtractor,
+    rememberFacts: rememberFacts,
     storageService: storage.service,
     inferenceService: inferenceService,
     settingsStore: store,

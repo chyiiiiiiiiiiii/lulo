@@ -533,6 +533,40 @@ class AppLocalizationsEn extends AppLocalizations {
       'Each question carries the name of the app you’re in — the name only, never window titles or contents. It’s how “I’m stuck” knows where.';
 
   @override
+  String get rememberFacts => 'Let it remember things about you';
+
+  @override
+  String get rememberFactsNote =>
+      'After each answer it reads what you said for one durable fact — where you live, how you want to be answered — and keeps it in the profile below, where you can switch any of them off. Everything stays on this machine, in plain text.';
+
+  @override
+  String get profileMemoryByAgent => 'Lulo remembered this';
+
+  @override
+  String get profileMemoryByUser => 'You wrote this';
+
+  @override
+  String get profileMemoryByDeveloper => 'From the profile file';
+
+  @override
+  String get profileForgetLearned => 'Forget everything Lulo has learned';
+
+  @override
+  String get profileForgetLearnedNote =>
+      'Deletes only what Lulo wrote by itself. What you typed here, and what came from the profile file, stays.';
+
+  @override
+  String profileForgetLearnedCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'Forget the $count things Lulo learned',
+      one: 'Forget the 1 thing Lulo learned',
+    );
+    return '$_temp0';
+  }
+
+  @override
   String get sectionHearing => 'How it hears you';
 
   @override

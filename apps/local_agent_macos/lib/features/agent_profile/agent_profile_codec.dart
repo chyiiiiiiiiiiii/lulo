@@ -61,6 +61,9 @@ Map<String, Object?> encodeAgentProfile(AgentProfile profile) {
           'content': memory.content,
           'triggers': <String>[...memory.triggers],
           'enabled': memory.enabled,
+          'source': memory.source.name,
+          if (memory.createdAt != null)
+            'createdAt': memory.createdAt!.toIso8601String(),
         },
     ],
     'vocabulary': <String>[...profile.vocabulary],
@@ -107,6 +110,14 @@ AgentProfileDecodeResult decodeAgentProfile(Object? json) {
             content: _string(item['content'], ''),
             triggers: _strings(item['triggers']),
             enabled: _boolean(item['enabled'], true),
+            // An entry with no `source` predates provenance, and what those
+            // entries actually are is hand-written — which is exactly what
+            // `developer` means, so the default is the truth rather than a
+            // placeholder.
+            source:
+                AgentMemorySource.values.asNameMap()[item['source']] ??
+                AgentMemorySource.developer,
+            createdAt: _time(item['createdAt']),
           ),
         );
       } on ArgumentError {
@@ -188,6 +199,14 @@ List<String> _strings(Object? value) => value is List<Object?>
 AgentResponseLength _responseLength(Object? value) =>
     AgentResponseLength.values.asNameMap()[value] ??
     AgentResponseLength.concise;
+
+/// A timestamp, or null for anything that is not one.
+///
+/// Null rather than a fallback of now: this column exists so a memory can be
+/// attributed, and a decoder that invented a creation time would fill it
+/// with a fact nobody checked.
+DateTime? _time(Object? value) =>
+    value is String ? DateTime.tryParse(value) : null;
 
 AgentMemoryKind _memoryKind(Object? value) =>
     AgentMemoryKind.values.asNameMap()[value] ?? AgentMemoryKind.personal;

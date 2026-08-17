@@ -343,6 +343,19 @@ final class SettingsSheet extends StatelessWidget {
                               settings.copyWith(shareFrontmostApp: value),
                             ),
                           ),
+                          // Beside it because it is the same question asked
+                          // about something else the user owns: the profile
+                          // is plaintext, so nothing is written about them
+                          // until they say so.
+                          SwitchListTile(
+                            key: const Key('setting-remember-facts'),
+                            value: settings.rememberFacts,
+                            title: Text(words.rememberFacts),
+                            subtitle: Text(words.rememberFactsNote),
+                            onChanged: (bool value) => onChanged(
+                              settings.copyWith(rememberFacts: value),
+                            ),
+                          ),
                         ],
                       ),
                       AgentProfileSettings(store: agentProfile),

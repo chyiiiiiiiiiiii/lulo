@@ -191,6 +191,47 @@ Three things about that diagram are load-bearing and easy to lose:
   measurement behind it — see
   [decisions/half-duplex-voice.md](decisions/half-duplex-voice.md).
 
+## The two turns that diagram does not show
+
+A tool call breaks the straight line above, and so does the work the app
+does with the model when nobody is talking to it. Both matter to anyone
+reading the flow for the first time.
+
+**A tool round is a second host generation.** The model emitting a tool call
+*ends* the generation on the Swift side — the event is terminal there — so
+Dart runs the tool and starts a fresh host generation on the same session,
+carrying the results. The turn the user sees never notices; `GenerationStarted`
+fires once however many rounds happen underneath it. Three rounds maximum.
+
+```mermaid
+sequenceDiagram
+    participant Dart as Dart<br/>_PigeonGenerationOperation
+    participant Box as Dart<br/>AgentToolbox
+    participant LLM as Swift → LiteRT-LM
+
+    Dart->>LLM: startGeneration(toolsJson)
+    LLM-->>Dart: toolCall — terminal for this generation
+    Dart->>Box: route by name, run, encode
+    Box-->>Dart: results
+    Dart->>LLM: startGeneration(<id>-tools-1, same session,<br/>toolResponsesJson)
+    LLM-->>Dart: deltas → completed
+```
+
+**An aside is a generation with no conversation around it.** A
+`GenerationRequest` carrying `instruction` sends that string as the whole
+system instruction — no persona, no memories, no clock — and turns the
+toolbox off. The memory extraction pass is the first one.
+
+The constraint that governs both: **the runtime has one generation slot.**
+`LiteRTLMRuntimeBackend` refuses a second `startGeneration` with
+`generationBusy`. A tool round is safe because it is the same turn taking
+its own slot back; an aside is not, so `BetweenTurns.yieldSlot()` is awaited
+before every question and the aside is cancelled to make room. The user
+always wins the slot.
+
+Details, and the measurements behind the no-persona and no-tools rules, in
+[features/conversation.md](features/conversation.md).
+
 ## Typed by hand, not spoken
 
 The same path minus the ears: `ConversationComposer` calls
@@ -204,7 +245,8 @@ tested without audio at all.
 | What | Where | Lifetime |
 |---|---|---|
 | Conversations | SQLite via drift, `~/Library/Application Support/Lulo/conversations.db` | Forever, on the calling isolate |
-| Settings (model path, voice, window behaviour) | `FileSettingsStore`, same directory | Forever |
+| Settings (model path, voice, window behaviour, what may be remembered) | `FileSettingsStore`, same directory | Forever |
+| Who the agent is, and what it remembers about the user | `agent_profile.json`, same directory — hand-editable, watched in debug | Forever, and now written by the app as well as read |
 | Downloaded models | `~/Library/Application Support/Lulo/models` | Forever |
 | Model weights in memory | `InferenceCoordinator` actor | App lifetime, swappable |
 | TTS weights in memory | The sidecar | Across app launches |

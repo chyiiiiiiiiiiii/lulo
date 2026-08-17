@@ -138,6 +138,11 @@ final class AgentProfileSettings extends StatelessWidget {
                                 content: item.content,
                                 triggers: item.triggers,
                                 enabled: enabled,
+                                // Carried, not defaulted. Switching a
+                                // memory off and on again must not turn an
+                                // agent-written one into a developer one.
+                                source: item.source,
+                                createdAt: item.createdAt,
                               )
                             else
                               item,
@@ -153,6 +158,44 @@ final class AgentProfileSettings extends StatelessWidget {
                       ),
                     ),
                   ),
+                // Only when there is something to forget, and it says how
+                // many. The one-button version of "I do not trust what it
+                // picked up" — and the reason it deletes by source rather
+                // than everything is that the user's own entries and the
+                // profile file's are not what they distrust.
+                if (profile.memories.any(
+                  (AgentMemory m) => m.source == AgentMemorySource.agent,
+                ))
+                  ListTile(
+                    key: const Key('profile-forget-learned'),
+                    dense: true,
+                    leading: Icon(
+                      Icons.auto_delete_outlined,
+                      color: Theme.of(context).colorScheme.error,
+                    ),
+                    title: Text(
+                      words.profileForgetLearnedCount(
+                        profile.memories
+                            .where(
+                              (AgentMemory m) =>
+                                  m.source == AgentMemorySource.agent,
+                            )
+                            .length,
+                      ),
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.error,
+                      ),
+                    ),
+                    subtitle: Text(words.profileForgetLearnedNote),
+                    onTap: () => save(
+                      (AgentProfile p) => p.copyWith(
+                        memories: <AgentMemory>[
+                          for (final AgentMemory item in p.memories)
+                            if (item.source != AgentMemorySource.agent) item,
+                        ],
+                      ),
+                    ),
+                  ),
                 Padding(
                   // The same inset the word lists sit at, so the two adding
                   // fields line up rather than one running the full width.
@@ -160,20 +203,23 @@ final class AgentProfileSettings extends StatelessWidget {
                   child: _AddField(
                     fieldKey: const Key('profile-add-memory'),
                     hint: words.profileAddMemoryHint,
+                    // Through the same write path the agent's own memories
+                    // go through, so one place owns the length bound, the
+                    // ceiling, the duplicate check, and the rule that a
+                    // triggerless memory has to be a kind that can be
+                    // recalled. A rejected write leaves the list alone,
+                    // which is what the field's own emptiness then says.
                     onAdd: (String content) => save(
                       (AgentProfile p) => p.copyWith(
-                        memories: <AgentMemory>[
-                          ...p.memories,
-                          AgentMemory(
-                            id: _memoryId(p),
-                            // Personal, always: a memory with no triggers is
-                            // only ever eligible when it is personal or a
-                            // preference, so any other kind added here would
-                            // be saved and then never used.
-                            kind: AgentMemoryKind.personal,
-                            content: content,
-                          ),
-                        ],
+                        memories: writeAgentMemory(
+                          profile: p,
+                          content: content,
+                          // Typed here, on purpose, so it is not screened:
+                          // an instruction the user writes themselves is one
+                          // they meant.
+                          source: AgentMemorySource.user,
+                          now: DateTime.now(),
+                        ).memories,
                       ),
                     ),
                   ),
@@ -252,21 +298,6 @@ final class AgentProfileSettings extends StatelessWidget {
       },
     );
   }
-}
-
-/// An id no existing memory is using.
-///
-/// Counted rather than timestamped so the same edit made twice in the same
-/// microsecond cannot collide, and so a profile file stays readable.
-String _memoryId(AgentProfile profile) {
-  final Set<String> taken = <String>{
-    for (final AgentMemory memory in profile.memories) memory.id,
-  };
-  int next = profile.memories.length + 1;
-  while (taken.contains('memory-$next')) {
-    next += 1;
-  }
-  return 'memory-$next';
 }
 
 AgentPersonality _personalityWith(
@@ -381,6 +412,28 @@ final class _WordList extends StatelessWidget {
 }
 
 /// One remembered fact: whether it counts, and a way to forget it.
+/// Who wrote a memory and when, as one short line under it.
+///
+/// The date is plain `YYYY-MM-DD` rather than 「三天前」: a memory list is
+/// read when something in it looks wrong, and at that moment an exact date
+/// is what lets it be lined up against a conversation. Absent for entries
+/// written before provenance existed, which say only where they came from.
+String _provenance(BuildContext context, AgentMemory memory) {
+  final AppLocalizations words = AppLocalizations.of(context);
+  final String who = switch (memory.source) {
+    AgentMemorySource.agent => words.profileMemoryByAgent,
+    AgentMemorySource.user => words.profileMemoryByUser,
+    AgentMemorySource.developer => words.profileMemoryByDeveloper,
+  };
+  final DateTime? when = memory.createdAt;
+  if (when == null) {
+    return who;
+  }
+  final String month = when.month.toString().padLeft(2, '0');
+  final String day = when.day.toString().padLeft(2, '0');
+  return '$who · ${when.year}-$month-$day';
+}
+
 final class _MemoryRow extends StatelessWidget {
   const _MemoryRow({
     required this.memory,
@@ -407,6 +460,13 @@ final class _MemoryRow extends StatelessWidget {
             ? null
             : TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
       ),
+      // Who wrote it, and when. Not decoration: a memory the agent extracted
+      // by itself can be an ordinary fact or a directive laundered into the
+      // shape of one, and `memory-is-an-attack-surface.md` measures that the
+      // second kind is not distinguishable by pattern. The person reading
+      // this row is the classifier that still works, and they cannot be one
+      // without being told which rows nobody checked.
+      subtitle: Text(_provenance(context, memory)),
       trailing: IconButton(
         key: Key('profile-forget-${memory.id}'),
         tooltip: AppLocalizations.of(context).profileForget,

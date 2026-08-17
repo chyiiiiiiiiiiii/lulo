@@ -27,6 +27,7 @@ final class GenerationRequest {
     this.history = const <Turn>[],
     this.channel = AnswerChannel.spoken,
     this.imagePath,
+    this.instruction,
   });
 
   /// The conversation that owns the request.
@@ -56,6 +57,31 @@ final class GenerationRequest {
   /// A path rather than bytes because the runtime reads the file itself,
   /// and megabytes of pixels have no business riding a message channel.
   final String? imagePath;
+
+  /// The whole system instruction to send, instead of composing one from
+  /// the profile — which makes this an **aside** rather than a turn.
+  ///
+  /// An aside is work the app does with the model that is not part of the
+  /// conversation: the memory extraction pass, today, and whatever else
+  /// wants the model to read something rather than to talk to someone.
+  /// [prompt] travels as written, with no clock, no memories and no
+  /// document around it.
+  ///
+  /// It also turns the toolbox off, and that is a measurement rather than
+  /// tidiness — `RememberProbeTests` scored the extraction pass 15/15 with
+  /// no tools registered, and offering tools it must not call would measure
+  /// two things at once. The persona is off for a stronger reason still:
+  /// `answer-length-should-follow-the-question.md` records it overriding an
+  /// output format three separate times, and an aside is nothing *but* an
+  /// output format.
+  ///
+  /// The runtime has one generation slot, so an aside in flight is a
+  /// question refused as busy. Whoever starts one owns giving it up — see
+  /// `AgentMemoryExtractor`.
+  final String? instruction;
+
+  /// Whether this is an aside rather than a turn in the conversation.
+  bool get isAside => instruction != null;
 }
 
 /// A generation tracked independently from its inference implementation.

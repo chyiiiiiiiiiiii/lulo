@@ -46,12 +46,15 @@ final class AppComposition {
     AgentProfileStore? agentProfile,
     ValueNotifier<AnswerStyle>? answerStyle,
     ValueNotifier<bool>? shareFrontmostApp,
+    ValueNotifier<bool>? rememberFacts,
     ValueNotifier<int>? voiceRequests,
     ValueNotifier<bool>? modelLoading,
+    this.betweenTurns,
   }) : voiceRequests = voiceRequests ?? ValueNotifier<int>(0),
        answerStyle =
            answerStyle ?? ValueNotifier<AnswerStyle>(AnswerStyle.balanced),
        shareFrontmostApp = shareFrontmostApp ?? ValueNotifier<bool>(false),
+       rememberFacts = rememberFacts ?? ValueNotifier<bool>(false),
        agentProfile = agentProfile ?? InMemoryAgentProfileStore(),
        ttsVoice = ttsVoice ?? ValueNotifier<String>('ryan'),
        transcriptRefiner =
@@ -71,6 +74,13 @@ final class AppComposition {
          inferenceService: inferenceService,
        );
 
+  /// Work that borrows the runtime between turns, or null when nothing does.
+  ///
+  /// One object, shared by every conversation the app opens, because what it
+  /// is borrowing is the runtime's single generation slot — one per view
+  /// model would be several things queueing for a resource there is one of.
+  final BetweenTurns? betweenTurns;
+
   /// Bumped whenever something outside the conversation asks it to listen.
   ///
   /// A counter rather than a flag because the answer to "start listening" is
@@ -87,6 +97,14 @@ final class AppComposition {
   /// reason `ttsVoice` is one: the setting can change while the model stays
   /// loaded, and reloading it to move a slider would cost seconds.
   final ValueNotifier<AnswerStyle> answerStyle;
+
+  /// Whether finished turns are read for facts about the user.
+  ///
+  /// Off by default and surfaced beside [shareFrontmostApp], because it is
+  /// the same kind of permission: the profile is local but plaintext, and
+  /// `docs/features/agent-profile.md` makes a privacy slice the precondition
+  /// for writing to it automatically.
+  final ValueNotifier<bool> rememberFacts;
 
   /// Whether each question carries the name of the app the user is in.
   ///
@@ -241,6 +259,7 @@ final class AppComposition {
       ),
       conversationId: conversationId,
       startFresh: startFresh,
+      betweenTurns: betweenTurns,
     );
   }
 

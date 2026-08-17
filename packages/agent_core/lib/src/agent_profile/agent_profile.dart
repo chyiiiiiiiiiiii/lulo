@@ -229,6 +229,29 @@ enum AgentMemoryKind {
   vocabulary,
 }
 
+/// Who put a memory in the profile.
+///
+/// Provenance is the first control OWASP's memory-poisoning guidance asks
+/// for, ahead of encryption and ahead of filtering: *every memory entry
+/// should record where it came from*. Without it there is no way to answer
+/// the only question that matters after something goes wrong — did the user
+/// say this, or did the agent decide it?
+///
+/// It is not decoration here. [agent] entries are written without anyone
+/// looking, from a transcript of whatever the microphone heard, and they
+/// are screened at the write path in a way the other two are not. See
+/// `screenAgentMemory`.
+enum AgentMemorySource {
+  /// Hand-authored in `agent_profile.json` by whoever set the app up.
+  developer,
+
+  /// Typed by the user into the settings sheet.
+  user,
+
+  /// Extracted from a finished turn by the second pass.
+  agent,
+}
+
 /// One explicit personal fact, selected by explainable string triggers.
 final class AgentMemory {
   /// Creates a validated memory with explicitly owned triggers.
@@ -238,6 +261,8 @@ final class AgentMemory {
     required String content,
     List<String> triggers = const <String>[],
     this.enabled = true,
+    this.source = AgentMemorySource.developer,
+    this.createdAt,
   }) : id = _required(id, 'id'),
        content = _required(content, 'content'),
        triggers = List<String>.unmodifiable(triggers);
@@ -257,6 +282,17 @@ final class AgentMemory {
   /// Whether this memory may currently be selected.
   final bool enabled;
 
+  /// Who put this here. Defaults to [AgentMemorySource.developer], which is
+  /// what every entry written before provenance existed actually was.
+  final AgentMemorySource source;
+
+  /// When it was written, or null for an entry that predates the field.
+  ///
+  /// Null rather than a guessed timestamp: a profile hand-edited last year
+  /// has no creation time, and inventing one would put a false fact in the
+  /// column that exists to make the others checkable.
+  final DateTime? createdAt;
+
   static String _required(String value, String name) {
     if (value.trim().isEmpty) {
       throw ArgumentError.value(value, name, 'Must not be empty.');
@@ -271,11 +307,40 @@ final class AgentMemory {
       other.kind == kind &&
       other.content == content &&
       _listEquals(other.triggers, triggers) &&
-      other.enabled == enabled;
+      other.enabled == enabled &&
+      other.source == source &&
+      other.createdAt == createdAt;
 
   @override
-  int get hashCode =>
-      Object.hash(id, kind, content, Object.hashAll(triggers), enabled);
+  int get hashCode => Object.hash(
+    id,
+    kind,
+    content,
+    Object.hashAll(triggers),
+    enabled,
+    source,
+    createdAt,
+  );
+}
+
+/// An id no memory in [profile] is using.
+///
+/// Counted rather than timestamped so the same edit made twice in the same
+/// microsecond cannot collide, and so a profile file stays readable.
+///
+/// Shared because two things now add memories and they add them to the same
+/// file: the settings sheet, where the user types one, and the `remember`
+/// tool, where the model decides one is worth keeping. Two private copies of
+/// this would be two id schemes in one list.
+String nextAgentMemoryId(AgentProfile profile) {
+  final Set<String> taken = <String>{
+    for (final AgentMemory memory in profile.memories) memory.id,
+  };
+  int next = profile.memories.length + 1;
+  while (taken.contains('memory-$next')) {
+    next += 1;
+  }
+  return 'memory-$next';
 }
 
 /// The complete developer-authored context available to prompt composition.

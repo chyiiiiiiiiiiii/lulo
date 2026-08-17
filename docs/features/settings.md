@@ -1,6 +1,6 @@
 # Settings
 
-Five choices in a JSON file. The interesting part is not the store, it is that
+Nine choices in a JSON file. The interesting part is not the store, it is that
 every one of them is honoured live by something outside the sheet — nothing is
 kept that the app cannot act on, and nothing waits for a save button.
 
@@ -33,7 +33,7 @@ the user their preferences and failing to start costs them their agent.
 than requiring a whole valid object, so a field written by a later version, or
 one that has since been removed, does not stop the rest from being read.
 
-## The six, and who acts on them
+## The nine, and who acts on them
 
 | Setting | Default | Read live by |
 |---|---|---|
@@ -43,10 +43,24 @@ one that has since been removed, does not stop the rest from being read.
 | `modelPath` | `''` | `AppComposition.useModel` → `SwappableInferenceService.replaceWith`; and `main.dart` before the graph is built |
 | `ttsVoice` | `'ryan'` | `AppComposition.ttsVoice`, a `ValueNotifier` read by `PigeonVoiceService` at the moment of each `speak` |
 | `showVoiceEvidence` | false | `ConversationView`, which draws `VoiceTurnHud` under the conversation. An instrument for tuning turn-taking, not a feature — see [voice.md](voice.md) |
+| `answerStyle` | `balanced` | `AppComposition.answerStyle`, a `ValueNotifier` the inference service reads when it builds each request — the sampler travels in the request, so moving it reloads nothing |
+| `shareFrontmostApp` | **false** | `ProfileAgentContextProvider.frontmostAppOf`, at the moment each question is composed |
+| `rememberFacts` | **false** | `AgentMemoryExtractor`, read once per finished turn — see [agent-profile.md](agent-profile.md) |
 
 The first two travel through `setWindowBehaviour` on the pigeon boundary;
 see [presence.md](presence.md) for what they mean to AppKit. `modelPath` is
 the expensive one — see [model.md](model.md).
+
+The last two are the two that default to **off**, and they are the two that
+are not about how the app behaves but about what it is allowed to know.
+`shareFrontmostApp` lets a question carry the name of the app you are in;
+`rememberFacts` lets a finished turn be read for one durable fact about you
+and written into the profile. Both are read live rather than captured, so
+switching either off stops the next turn without reloading anything, and
+`AppSettings` reads an absent key as false — a settings file written before
+either existed is not consent to either. See
+[../decisions/memory-is-an-attack-surface.md](../decisions/memory-is-an-attack-surface.md)
+for why the second one ships off rather than on.
 
 `ttsVoice` is the one that is deliberately *not* passed as a value.
 `PigeonVoiceService` is constructed with `voiceOf: () => ttsVoice.value`, so a
@@ -91,6 +105,7 @@ sequenceDiagram
     App->>App: setState(_settings)
     Note over App,Panel: _applySettings — the window and the<br/>voice hear it before the disk does
     App->>Comp: ttsVoice.value = settings.ttsVoice
+    App->>Comp: answerStyle / shareFrontmostApp /<br/>rememberFacts notifiers
     App->>Panel: setWindowBehaviour(keepOrbOnTop,<br/>followAcrossSpaces) — pigeon
     Panel->>Panel: applyWindowBehaviour(for: storedMode)<br/>+ applySpaceBehaviour()
     App->>Store: save(settings) → settings.json

@@ -136,6 +136,64 @@ profile-derived context is capped at 1,200 characters. It never cuts a memory
 in half, never copies the conversation archive into the profile, and never
 logs profile or memory content. Diagnostics may use stable memory IDs.
 
+## Writing: one path, and it supersedes
+
+Three things write memories, and all of them go through
+`writeAgentMemory` in `agent_core` so that one place owns the bounds:
+the settings sheet's add field, `RememberTool`, and the extraction pass.
+
+Every entry records **who wrote it** — `AgentMemorySource` is `developer`
+(hand-authored in the file), `user` (typed into Settings) or `agent`
+(extracted by the second pass) — plus `createdAt` where it is known. That
+is provenance, and it is the first control OWASP's memory-poisoning
+guidance asks for. It also decides screening: content written by the
+`agent` path is checked for instruction shapes and secrets before it is
+persisted, and content the user typed is not, because an instruction they
+wrote on purpose is one they meant. See
+[../decisions/memory-is-an-attack-surface.md](../decisions/memory-is-an-attack-surface.md).
+
+It takes a `replaces` list, and that is the point of it. **Append-only
+memory is worse than no memory:** a profile that learns 「使用者住在台北」 in
+March and 「使用者搬到台南了」 in August keeps both, both are triggerless
+personal memories, both are eligible for the same turn, and the model is
+handed two contradictory facts at two shares of the 1,200-character budget.
+
+What it enforces:
+
+- 160 characters per memory, 60 memories total — both sized against the
+  prompt budget above, not against language.
+- The same sentence twice is `unchanged`, not a second row. Compared
+  case-folded, space-stripped, and without a trailing full stop, because a
+  model rewrites its own wording between turns.
+- A **replacement is never blocked by the ceiling**. A cap that stops
+  corrections makes the list unfixable exactly when it is most full of
+  things worth fixing.
+- A superseded id is never reused for the memory that superseded it.
+- A triggerless `project` or `vocabulary` is stored as `personal`, because
+  the selector above would never surface it otherwise — a write that
+  reports success and cannot be read back is the worst of the outcomes.
+
+What it deliberately does **not** do is guess what supersedes what. That is
+semantics, and a string-similarity threshold cannot separate a rewrite from
+a contradiction across two languages; the numbers are in
+[../decisions/the-model-will-not-interrupt-itself-to-remember.md](../decisions/the-model-will-not-interrupt-itself-to-remember.md).
+The caller says.
+
+## Where written memories come from
+
+Not a tool. `RememberTool` exists, is bounded and tested, and is **not
+registered** — gemma-4-E4B does not call it, 0/5 across eleven conditions,
+including one where the user says 「記住我住在台南」 outright. Asked to
+remember, it answers 「我記住了」 and writes nothing.
+
+What works instead is a second pass, measured at 15/15 recall and 0/15 false
+keeps: after a turn finishes, `AgentMemoryExtractor` sends what the user
+said to the same model with no persona and no tools, and reads back one
+sentence or `NONE`. When the profile already holds memories they are listed
+in that prompt, so one pass both keeps a fact and names what it retires.
+
+**It is off by default.** See the privacy boundary below.
+
 ## Prompt order
 
 Each local-model request is composed immediately before native generation,
@@ -201,6 +259,31 @@ the conversation from stored history.
 ## Privacy boundary
 
 The profile is local but currently plaintext. Do not put passwords, recovery
-phrases, identity numbers, medical records or financial secrets in it. Storage
-encryption, sensitive-category policy and public memory controls require their
-own privacy slice before automatic memory writing is enabled.
+phrases, identity numbers, medical records or financial secrets in it.
+
+Automatic memory writing exists and **starts off**. The `rememberFacts`
+setting, beside `shareFrontmostApp` in Settings, is what turns it on;
+`AppSettings` reads a missing key as false, so a settings file written
+before the feature is never read as consent. Nothing is written about the
+user until they ask for it, and everything that is written is a row on this
+sheet with a switch and a forget button.
+
+This document used to make storage encryption, a sensitive-category policy
+and public memory controls the precondition for automatic writing. Two of
+those are now built and the third is retired:
+
+- **A way to see what was kept without opening a JSON file** — every row
+  says who wrote it and when, and one action forgets everything the agent
+  wrote while leaving what you typed alone.
+- **A sensitive-category policy** — `screenAgentMemory` refuses credentials
+  and identifiers on the `agent` path. Deliberately about credentials
+  rather than topics: a rule broad enough to catch 「我最近在看醫生」 would
+  refuse a large share of what a person says about themselves.
+- **Encryption at rest** — retired rather than deferred. Every directory
+  above the profile is `0700` and FileVault covers the disk, so the threats
+  it stood for are the OS's and already handled; the reasoning is in
+  [../decisions/memory-is-an-attack-surface.md](../decisions/memory-is-an-attack-surface.md).
+
+The default stays off regardless. Those were preconditions for it being
+*reasonable*, not a switch that flips itself — whether an assistant should
+write down what it hears is the user's call, not a checklist's.

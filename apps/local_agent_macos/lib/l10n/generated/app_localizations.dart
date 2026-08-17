@@ -1047,6 +1047,54 @@ abstract class AppLocalizations {
   /// **'Each question carries the name of the app you’re in — the name only, never window titles or contents. It’s how “I’m stuck” knows where.'**
   String get shareFrontmostAppNote;
 
+  /// No description provided for @rememberFacts.
+  ///
+  /// In en, this message translates to:
+  /// **'Let it remember things about you'**
+  String get rememberFacts;
+
+  /// No description provided for @rememberFactsNote.
+  ///
+  /// In en, this message translates to:
+  /// **'After each answer it reads what you said for one durable fact — where you live, how you want to be answered — and keeps it in the profile below, where you can switch any of them off. Everything stays on this machine, in plain text.'**
+  String get rememberFactsNote;
+
+  /// No description provided for @profileMemoryByAgent.
+  ///
+  /// In en, this message translates to:
+  /// **'Lulo remembered this'**
+  String get profileMemoryByAgent;
+
+  /// No description provided for @profileMemoryByUser.
+  ///
+  /// In en, this message translates to:
+  /// **'You wrote this'**
+  String get profileMemoryByUser;
+
+  /// No description provided for @profileMemoryByDeveloper.
+  ///
+  /// In en, this message translates to:
+  /// **'From the profile file'**
+  String get profileMemoryByDeveloper;
+
+  /// No description provided for @profileForgetLearned.
+  ///
+  /// In en, this message translates to:
+  /// **'Forget everything Lulo has learned'**
+  String get profileForgetLearned;
+
+  /// No description provided for @profileForgetLearnedNote.
+  ///
+  /// In en, this message translates to:
+  /// **'Deletes only what Lulo wrote by itself. What you typed here, and what came from the profile file, stays.'**
+  String get profileForgetLearnedNote;
+
+  /// No description provided for @profileForgetLearnedCount.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{Forget the 1 thing Lulo learned} other{Forget the {count} things Lulo learned}}'**
+  String profileForgetLearnedCount(int count);
+
   /// No description provided for @sectionHearing.
   ///
   /// In en, this message translates to:

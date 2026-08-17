@@ -27,7 +27,7 @@ flowchart TD
     voice -. "the text pipeline it coordinates" .-> conv["features/conversation.md<br/>turns, generation, drift storage"]
 
     voice -. "who speaks" .-> set["features/settings.md<br/>six choices, and who acts on each"]
-    conv -. "who answers and what it remembers" .-> profile["features/agent-profile.md<br/>personality, relevant structured memory"]
+    conv -. "who answers and what it remembers" .-> profile["features/agent-profile.md<br/>personality, memory it recalls<br/>and now also writes"]
     pres -. "window behaviour" .-> set
     model -. "modelPath, the expensive one" .-> set
 ```
@@ -75,6 +75,8 @@ explanation.
 | [decisions/taiwan-mandarin-voice-candidates.md](decisions/taiwan-mandarin-voice-candidates.md) | Measured, not yet adopted |
 | [decisions/no-dart-audio-engine.md](decisions/no-dart-audio-engine.md) | Written — read before adding any audio package |
 | [decisions/half-duplex-voice.md](decisions/half-duplex-voice.md) | Superseded, kept for the method error |
+| [decisions/memory-is-an-attack-surface.md](decisions/memory-is-an-attack-surface.md) | Threat-modelled — read before widening what the extraction pass may read |
+| [decisions/the-model-will-not-interrupt-itself-to-remember.md](decisions/the-model-will-not-interrupt-itself-to-remember.md) | Measured and shipped off by default — read before registering a tool, changing the extraction prompt, or turning memory on by default |
 
 ## A note on branches
 

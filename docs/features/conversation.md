@@ -286,6 +286,118 @@ side keeping one LiteRT-LM `Conversation` per session id, alive for as long as
 the model is loaded. The consequence is stated plainly in [model.md](model.md)
 under *What the model remembers*.
 
+## Tools: declared in Dart, routed in Dart
+
+The model can decide, mid-answer, that it needs something it does not have.
+What exists, what it may do, and what the model is told about it are all
+product decisions, so all of them live in Dart and the runtime only renders
+and reports. The reasoning is
+[decisions/tools-declared-in-dart-loop-in-dart.md](../decisions/tools-declared-in-dart-loop-in-dart.md);
+this is the path.
+
+Three pieces, all in `agent_core/src/conversation/agent_tool.dart`:
+
+- **`AgentTool`** — a name, a description, an OpenAPI property map, and
+  `call`. The description is the whole interface the model reasons about,
+  so it is written for the model rather than for a reader of code.
+- **`AgentToolbox`** — the set offered on a conversation. It refuses two
+  tools under one name at construction, renders `declarationsJson`, and
+  **routes**: `call(AgentToolCall)` finds the tool by the name the model
+  wrote and runs it.
+- **`AgentToolCall` / `AgentToolResult`** — the wire shapes, decoded
+  defensively. Malformed JSON is an empty list, not a throw.
+
+```mermaid
+sequenceDiagram
+    participant VM as ConversationViewModel
+    participant Op as _PigeonGenerationOperation
+    participant Box as AgentToolbox
+    participant Tool as ConversationSearchTool
+    participant Host as Swift → LiteRT-LM
+
+    VM->>Op: generate(request)
+    Op->>Host: startGeneration(… toolsJson: declarationsJson)
+    Host-->>Op: deltas
+    Note over Host: the model emits a tool call —<br/>terminal for this host generation
+    Host-->>Op: toolCall event (JSON)
+    Op->>Box: call(name, arguments)
+    Box->>Tool: call(arguments)
+    Tool-->>Box: {"matches": …}
+    Box-->>Op: AgentToolResult
+    Op->>Host: startGeneration(continuation id,<br/>same session, toolResponsesJson)
+    Host-->>Op: deltas, then completed
+    Op-->>VM: one turn, which never saw any of this
+```
+
+Four things in that diagram are load-bearing:
+
+- **A tool call ends the host generation.** The continuation is a *new*
+  host generation on the same session, with id `<generation>-tools-<n>`, and
+  the operation re-aims its event filter at it. `GenerationStarted` is
+  emitted once for the whole turn however many rounds it spends.
+- **Three rounds, then the turn fails.** `maxToolRounds` — a model looping
+  on tools would otherwise hold the machine forever.
+- **Nothing throws.** A name no tool owns, a tool that throws, a malformed
+  argument: each becomes `{"error": …}` handed back to the model. The name
+  and the failure came from the model's side of the conversation, and the
+  turn has to survive them the way it survives any other wrong answer.
+- **An empty toolbox costs what no toolbox cost.** `toolsJson` stays nil and
+  the conversation is configured exactly as it was before the feature.
+
+### What is registered, and what deliberately is not
+
+`search_conversations` only. It is local, read-only, over data the app
+already owns, so a permission layer over it would be a layer over nothing —
+and gemma-4-E4B calls it 5/5 on the question its description names, 0/5 on
+questions it does not.
+
+The clock is **not** a tool, and neither is the app the user is in. Told in
+the turn instruction they measure 5/5 at no latency; offered as a tool the
+clock measured 0/5. The dividing line, written down in
+[decisions/tool-calling-readiness.md](../decisions/tool-calling-readiness.md):
+cheap, small, always-available facts are context; tools are for side effects
+and for lookups that are expensive or variable.
+
+`remember` is built, bounded, tested — and **not registered**, because the
+same model that calls `search_conversations` 5/5 never calls it, in eleven
+conditions, including one where the user says 「記住我住在台南」 outright. See
+[decisions/the-model-will-not-interrupt-itself-to-remember.md](../decisions/the-model-will-not-interrupt-itself-to-remember.md).
+That measurement is why the next section exists.
+
+## Asides: work with the model that is not the conversation
+
+Some things the app wants from the model are not turns. Reading a finished
+turn for a fact worth remembering is the first of them.
+
+A `GenerationRequest` carrying `instruction` is an **aside**: the string
+travels as the whole system instruction instead of one composed from the
+profile, `prompt` travels as written with no clock or memories around it,
+and the toolbox is off. All three are measurements rather than tidiness —
+the persona overrides output formats, and the extraction pass was measured
+with no tools.
+
+**The runtime has one generation slot.** `LiteRTLMRuntimeBackend` refuses a
+second `startGeneration` with `generationBusy`. So an aside in flight is the
+user's next question refused, and that shapes the whole design:
+
+- `BetweenTurns` (`agent_core`) is the interface: `consider(said)` after a
+  finished turn, `yieldSlot()` before a question.
+- `ConversationViewModel` awaits `yieldSlot()` before every `startGeneration`
+  and calls `consider` only on `GenerationCompleted` — never on a cancelled
+  or failed turn.
+- `AgentMemoryExtractor` implements it: one pass at a time, a turn arriving
+  mid-pass **replaces** whatever was waiting rather than queueing behind it,
+  and `yieldSlot` cancels in flight and drops the backlog.
+
+The user always wins the slot. A fact can be read out of the next thing they
+say; a question that came back "busy" cannot be un-refused.
+
+One trap worth its own line, because it was a real hang: cancelling a
+subscription is silent — no terminal event, no `onDone` — so a pass whose
+listener is torn down waits forever, never releasing its session and never
+letting the next one start. The extractor holds the reply completer and
+settles it by hand in `yieldSlot`.
+
 ## Traps
 
 Ranked by how quietly they break.

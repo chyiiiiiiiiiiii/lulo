@@ -20,6 +20,7 @@ final class AppSettings {
     this.showVoiceEvidence = false,
     this.answerStyle = AnswerStyle.balanced,
     this.shareFrontmostApp = false,
+    this.rememberFacts = false,
   });
 
   /// Reads settings written by [toJson], ignoring anything unrecognised.
@@ -55,6 +56,7 @@ final class AppSettings {
         json['shareFrontmostApp'],
         defaults.shareFrontmostApp,
       ),
+      rememberFacts: _boolOr(json['rememberFacts'], defaults.rememberFacts),
     );
   }
 
@@ -97,6 +99,13 @@ final class AppSettings {
   /// hold. See `docs/decisions/the-companion-that-watches.md`.
   final bool shareFrontmostApp;
 
+  /// Whether finished turns are read for one durable fact about the user.
+  ///
+  /// False unless the user has said otherwise, and it stays false on a
+  /// settings file that predates the feature — an absent key must never
+  /// read as consent.
+  final bool rememberFacts;
+
   /// Returns a copy with the named choices replaced.
   AppSettings copyWith({
     bool? keepOrbOnTop,
@@ -107,6 +116,7 @@ final class AppSettings {
     bool? showVoiceEvidence,
     AnswerStyle? answerStyle,
     bool? shareFrontmostApp,
+    bool? rememberFacts,
   }) {
     return AppSettings(
       keepOrbOnTop: keepOrbOnTop ?? this.keepOrbOnTop,
@@ -118,6 +128,7 @@ final class AppSettings {
       showVoiceEvidence: showVoiceEvidence ?? this.showVoiceEvidence,
       answerStyle: answerStyle ?? this.answerStyle,
       shareFrontmostApp: shareFrontmostApp ?? this.shareFrontmostApp,
+      rememberFacts: rememberFacts ?? this.rememberFacts,
     );
   }
 
@@ -131,6 +142,7 @@ final class AppSettings {
     'showVoiceEvidence': showVoiceEvidence,
     'answerStyle': answerStyle.name,
     'shareFrontmostApp': shareFrontmostApp,
+    'rememberFacts': rememberFacts,
   };
 
   @override
@@ -143,7 +155,8 @@ final class AppSettings {
       other.ttsVoice == ttsVoice &&
       other.showVoiceEvidence == showVoiceEvidence &&
       other.answerStyle == answerStyle &&
-      other.shareFrontmostApp == shareFrontmostApp;
+      other.shareFrontmostApp == shareFrontmostApp &&
+      other.rememberFacts == rememberFacts;
 
   @override
   int get hashCode => Object.hash(
@@ -155,6 +168,7 @@ final class AppSettings {
     showVoiceEvidence,
     answerStyle,
     shareFrontmostApp,
+    rememberFacts,
   );
 
   @override

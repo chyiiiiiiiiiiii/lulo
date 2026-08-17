@@ -64,6 +64,51 @@ void main() {
     expect(read.profile, written);
   });
 
+  test('provenance survives, or every agent memory becomes a hand-written '
+      'one', () {
+    // The failure this codec's own comment warns about, applied to the one
+    // pair of fields where losing it destroys an audit trail: a `source`
+    // that is written but not read — or read but not written — turns every
+    // memory the agent wrote into a developer-authored one the first time
+    // the user changes anything else on the settings sheet.
+    final DateTime when = DateTime(2026, 8, 17, 9, 30);
+    final AgentProfile before = AgentProfile(
+      memories: <AgentMemory>[
+        AgentMemory(
+          id: 'memory-1',
+          kind: AgentMemoryKind.personal,
+          content: '使用者搬到台南了。',
+          source: AgentMemorySource.agent,
+          createdAt: when,
+        ),
+        AgentMemory(
+          id: 'memory-2',
+          kind: AgentMemoryKind.preference,
+          content: '使用者希望回答短一點。',
+          source: AgentMemorySource.user,
+          createdAt: when,
+        ),
+        AgentMemory(
+          id: 'memory-3',
+          kind: AgentMemoryKind.personal,
+          content: '手寫的，沒有時間戳。',
+        ),
+      ],
+    );
+
+    final AgentProfile after = decodeAgentProfile(
+      jsonDecode(jsonEncode(encodeAgentProfile(before))),
+    ).profile;
+
+    expect(after.memories, before.memories);
+    expect(after.memories[0].source, AgentMemorySource.agent);
+    expect(after.memories[0].createdAt, when);
+    expect(after.memories[1].source, AgentMemorySource.user);
+    // An entry that never had a creation time does not acquire one.
+    expect(after.memories[2].source, AgentMemorySource.developer);
+    expect(after.memories[2].createdAt, isNull);
+  });
+
   test('the built-in profile survives the same trip', () {
     // The vocabulary is the trap: the decoder reads a missing list as empty
     // rather than as the built-in one, so an encoder that left it out would

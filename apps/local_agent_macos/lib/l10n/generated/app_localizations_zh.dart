@@ -507,6 +507,40 @@ class AppLocalizationsZh extends AppLocalizations {
       '每個問題會帶上目前 App 的名稱 —— 只有名稱，不看視窗標題或內容。這樣說「我卡住了」它就知道你卡在哪裡。';
 
   @override
+  String get rememberFacts => '讓它記住關於你的事';
+
+  @override
+  String get rememberFactsNote =>
+      '每次回答完，它會從你說的話裡找一件值得長期記住的事 —— 住在哪、希望怎麼被回答 —— 存進下面的記憶清單，你隨時可以關掉或刪掉。全部留在這台機器上，而且是明文。';
+
+  @override
+  String get profileMemoryByAgent => 'Lulo 自己記的';
+
+  @override
+  String get profileMemoryByUser => '你寫的';
+
+  @override
+  String get profileMemoryByDeveloper => '來自 profile 檔';
+
+  @override
+  String get profileForgetLearned => '忘掉 Lulo 自己學到的所有東西';
+
+  @override
+  String get profileForgetLearnedNote =>
+      '只刪掉 Lulo 自己寫的。你在這裡打的、還有 profile 檔裡的，都會留著。';
+
+  @override
+  String profileForgetLearnedCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '忘掉 Lulo 學到的 $count 件事',
+      one: '忘掉 Lulo 學到的 1 件事',
+    );
+    return '$_temp0';
+  }
+
+  @override
   String get sectionHearing => '它怎麼聽你說話';
 
   @override

@@ -76,6 +76,17 @@ model calls fine under the persona, so paying an extra prefill+decode per
 turn to route around a problem that is not there buys latency and a second
 KV cache for nothing.
 
+That rejection still stands **for tool use**, and a two-pass design has
+since been built for something else, so the two need keeping apart. The
+memory pass in `AgentMemoryExtractor` is not a dispatcher deciding whether
+to call a tool; it does work the model provably will not do mid-turn at all
+— 0/5 at calling a `remember` tool under any condition. It also runs
+*after* the answer rather than in front of it, so it costs the user nothing
+in latency, where the dispatcher would have paid a prefill before every
+reply. If a future change makes it decide tool use, or moves it ahead of
+the answer, this paragraph is the one it has to argue with. See
+`the-model-will-not-interrupt-itself-to-remember.md`.
+
 **Tool calls as a repository-level event** (surfacing
 `GenerationToolCallsRequested` to the caller and letting the repository
 drive) would put the loop where durable runs, retry, and the voice path
@@ -128,3 +139,19 @@ context; tools are for side effects and for lookups that are expensive or
 variable. The next candidates over that line — reminders, opening a file
 the user names — each arrive with the permission question, and the answer
 belongs in the Dart loop, which is why the loop lives where it does.
+
+A second tool was built and is **not registered**. `remember` is complete,
+bounded and tested, and gemma-4-E4B never calls it — 0/5 across eleven
+conditions, against `search_conversations` at 5/5 in the same toolbox on
+the same turn. A declaration costs context on every turn, so an
+unregistered tool is what a measured zero is worth; the write path it owns
+is driven by the extraction pass instead. Re-register it and re-run
+`RememberProbeTests` when the model changes. See
+`the-model-will-not-interrupt-itself-to-remember.md`.
+
+One thing that is now a tool-adjacent path and is not a tool: an **aside**,
+a `GenerationRequest` carrying `instruction`, which sends its own system
+text with no persona and no toolbox. It is how the app does work with the
+model that is not a conversation turn. It shares the runtime's single
+generation slot with real turns, which is why `BetweenTurns.yieldSlot()`
+exists — see `features/conversation.md`.

@@ -26,12 +26,14 @@ final class ConversationViewModel extends ChangeNotifier {
     ConversationId? conversationId,
     bool startFresh = false,
     BatchScheduler batchScheduler = const TimerBatchScheduler(),
+    BetweenTurns? betweenTurns,
   }) : this._(
          repository,
          idFactory,
          conversationId,
          startFresh,
          batchScheduler,
+         betweenTurns,
        );
 
   ConversationViewModel._(
@@ -40,6 +42,7 @@ final class ConversationViewModel extends ChangeNotifier {
     ConversationId? conversationId,
     bool startFresh,
     BatchScheduler batchScheduler,
+    this._betweenTurns,
   ) {
     // Tokens arrive on the model's clock; the view repaints on the display's.
     // The batcher aligns the two so one frame of deltas is one rebuild.
@@ -52,6 +55,18 @@ final class ConversationViewModel extends ChangeNotifier {
 
   final ConversationRepository _repository;
   final ConversationIdFactory _idFactory;
+
+  /// Work that borrows the runtime between turns, or null when nothing does.
+  ///
+  /// The runtime has one generation slot, so this is offered every finished
+  /// turn and made to give the slot back before every question.
+  final BetweenTurns? _betweenTurns;
+
+  /// The last question sent, offered to [_betweenTurns] once it is answered.
+  ///
+  /// Held rather than read back off the projection because a turn can be
+  /// retried and re-asked, and what was *sent* is what was read.
+  String? _lastPrompt;
   ConversationProjection _projection = ConversationProjection(
     completedTurns: const <Turn>[],
   );
@@ -152,6 +167,13 @@ final class ConversationViewModel extends ChangeNotifier {
     }
     _stopRequested = false;
     _stopOperation = null;
+    // Before anything reaches the host. An extraction still on the runtime
+    // would refuse this question as busy, and a refused question is not
+    // something the user can be asked to work around.
+    await _betweenTurns?.yieldSlot();
+    if (_disposed) {
+      return;
+    }
 
     final ConversationId conversationId = _conversationId ??= _idFactory();
     // Read before the new turn joins it: the prompt travels as the prompt,
@@ -188,6 +210,7 @@ final class ConversationViewModel extends ChangeNotifier {
           ),
         )
         .listen(_onEvent, onError: _onOperationError, onDone: _onOperationDone);
+    _lastPrompt = prompt;
     _canSubmit.value = false;
   }
 
@@ -293,6 +316,13 @@ final class ConversationViewModel extends ChangeNotifier {
           return;
         }
         _finishActiveTurn(TurnStatus.completed);
+        // Only on a completed turn, and only after it: the slot is free
+        // now, and a question the user cancelled or that failed is not one
+        // they finished saying anything with.
+        final String? said = _lastPrompt;
+        if (said != null) {
+          _betweenTurns?.consider(said);
+        }
       case GenerationCancelled(:final GenerationId generationId):
         if (generationId != _activeGenerationId) {
           return;

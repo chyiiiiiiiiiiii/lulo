@@ -757,6 +757,7 @@ final class _PresentationSwitchState extends State<_PresentationSwitch>
     widget.composition.ttsVoice.value = settings.ttsVoice;
     widget.composition.answerStyle.value = settings.answerStyle;
     widget.composition.shareFrontmostApp.value = settings.shareFrontmostApp;
+    widget.composition.rememberFacts.value = settings.rememberFacts;
     await widget.composition.presentationHost?.setWindowBehaviour(
       keepOrbOnTop: settings.keepOrbOnTop,
       followAcrossSpaces: settings.followAcrossSpaces,

@@ -327,12 +327,20 @@ final class _PigeonGenerationOperation {
         return;
       }
       onSessionStarted(request.conversationId.value);
-      final AgentPromptContext context = agentContext.compose(
-        request.prompt,
-        channel: request.channel,
-      );
+      // An aside brings its own instruction and is not a conversation turn:
+      // no persona around it, no memories, no clock, and — see
+      // `GenerationRequest.instruction` — no tools either.
+      final String? aside = request.instruction;
+      final AgentPromptContext context = aside == null
+          ? agentContext.compose(request.prompt, channel: request.channel)
+          : AgentPromptContext(
+              systemInstruction: aside,
+              turnInstruction: request.prompt,
+              selectedMemoryIds: const <String>[],
+              profileCharacterCount: aside.length,
+            );
       _systemInstruction = context.systemInstruction;
-      final AgentToolbox? tools = toolbox;
+      final AgentToolbox? tools = aside == null ? toolbox : null;
       _toolsJson = tools == null || tools.isEmpty
           ? null
           : tools.declarationsJson;
