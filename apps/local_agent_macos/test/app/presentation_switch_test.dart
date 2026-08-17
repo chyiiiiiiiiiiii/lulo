@@ -316,11 +316,11 @@ void main() {
     await tester.pump();
 
     // The title, the messages and the composer share one content column, so
-    // the title's leading edge is the composer's leading edge — at this size
-    // and at every other.
+    // the title's leading edge is the edge of the composer's glass card —
+    // the visual frame — at this size and at every other.
     double titleLeads() => tester.getTopLeft(find.text('Lulo')).dx;
     double composerLeads() => tester
-        .getTopLeft(find.byKey(const Key('conversation-composer-field')))
+        .getTopLeft(find.byKey(const Key('conversation-composer-glass')))
         .dx;
     expect(titleLeads(), composerLeads());
 

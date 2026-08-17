@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:ui';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -9,6 +10,12 @@ import '../../voice/voice_conversation_controller.dart';
 import 'conversation_content_column.dart';
 
 /// Desktop-first prompt composer that owns all of its UI controllers.
+///
+/// Drawn as a floating glass card: a dark translucent frame over the
+/// conversation, which scrolls beneath it. The field sits on the glass with
+/// no frame of its own, and the controls live on a row below it — the mic on
+/// the left, the look and the send on the right, the send as the one filled
+/// accent on the card.
 final class ConversationComposer extends StatefulWidget {
   /// Creates a desktop prompt composer.
   const ConversationComposer({
@@ -151,12 +158,16 @@ final class _ConversationComposerState extends State<ConversationComposer> {
     return ValueListenableBuilder<bool>(
       valueListenable: widget.canSubmit,
       builder: (BuildContext context, bool canSubmit, Widget? child) {
+        final ThemeData theme = Theme.of(context);
+        final ColorScheme colors = theme.colorScheme;
+        final bool dark = theme.brightness == Brightness.dark;
+        final AppLocalizations words = AppLocalizations.of(context);
         return Padding(
           padding: const EdgeInsets.fromLTRB(
             conversationContentMargin,
-            12,
+            8,
             conversationContentMargin,
-            24,
+            16,
           ),
           child: ConversationContentColumn(
             child: CallbackShortcuts(
@@ -170,61 +181,149 @@ final class _ConversationComposerState extends State<ConversationComposer> {
                   const SingleActivator(LogicalKeyboardKey.escape): () =>
                       unawaited(_stop()),
               },
-              child: TextField(
-                key: const Key('conversation-composer-field'),
-                controller: _controller,
-                focusNode: _focusNode,
-                minLines: 1,
-                maxLines: 6,
-                textInputAction: TextInputAction.newline,
-                decoration: InputDecoration(
-                  hintText: AppLocalizations.of(context).composerHint,
-                  filled: true,
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(22),
-                    borderSide: BorderSide.none,
-                  ),
-                  contentPadding: const EdgeInsets.fromLTRB(18, 14, 8, 14),
-                  prefixIcon: widget.voice == null
-                      ? null
-                      : _HoldToTalkButton(voice: widget.voice!),
-                  suffixIcon: canSubmit
-                      ? Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: <Widget>[
-                            if (widget.onLook != null)
-                              IconButton(
-                                key: const Key('conversation-look-button'),
-                                tooltip: AppLocalizations.of(
-                                  context,
-                                ).lookAtScreenTooltip,
-                                onPressed: _look,
-                                icon: const Icon(Icons.remove_red_eye_outlined),
-                              ),
-                            IconButton(
-                              key: const Key('conversation-submit-button'),
-                              tooltip: AppLocalizations.of(context).sendTooltip,
-                              onPressed: _controller.text.trim().isEmpty
-                                  ? null
-                                  : _submit,
-                              icon: const Icon(Icons.arrow_upward_rounded),
-                            ),
-                          ],
-                        )
-                      : IconButton(
-                          key: const Key('conversation-stop-button'),
-                          tooltip: AppLocalizations.of(
-                            context,
-                          ).stopAnswerTooltip,
-                          onPressed: _stop,
-                          icon: const Icon(Icons.stop_rounded),
+              // The shadow lives outside the clip — a translucent card
+              // cannot cast one from inside its own glass.
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(24),
+                  boxShadow: <BoxShadow>[
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: dark ? 0.32 : 0.1),
+                      blurRadius: 24,
+                      offset: const Offset(0, 8),
+                    ),
+                  ],
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(24),
+                  child: BackdropFilter(
+                    filter: ImageFilter.blur(sigmaX: 28, sigmaY: 28),
+                    child: Container(
+                      key: const Key('conversation-composer-glass'),
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(24),
+                        color: dark
+                            ? colors.surfaceContainerHigh.withValues(
+                                alpha: 0.62,
+                              )
+                            : colors.surface.withValues(alpha: 0.72),
+                        border: Border.all(
+                          color: dark
+                              ? Colors.white.withValues(alpha: 0.09)
+                              : Colors.black.withValues(alpha: 0.06),
                         ),
+                      ),
+                      padding: const EdgeInsets.fromLTRB(8, 4, 8, 8),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: <Widget>[
+                          TextField(
+                            key: const Key('conversation-composer-field'),
+                            controller: _controller,
+                            focusNode: _focusNode,
+                            minLines: 1,
+                            maxLines: 6,
+                            textInputAction: TextInputAction.newline,
+                            style: theme.textTheme.bodyLarge,
+                            decoration: InputDecoration(
+                              hintText: words.composerHint,
+                              hintStyle: theme.textTheme.bodyLarge?.copyWith(
+                                color: colors.onSurfaceVariant.withValues(
+                                  alpha: 0.75,
+                                ),
+                              ),
+                              // The card is the frame; a second one inside
+                              // it would be a box in a box.
+                              filled: false,
+                              border: InputBorder.none,
+                              contentPadding: const EdgeInsets.fromLTRB(
+                                12,
+                                12,
+                                12,
+                                6,
+                              ),
+                            ),
+                          ),
+                          Row(
+                            children: <Widget>[
+                              if (widget.voice != null)
+                                _HoldToTalkButton(voice: widget.voice!),
+                              const Spacer(),
+                              if (canSubmit) ...<Widget>[
+                                if (widget.onLook != null)
+                                  IconButton(
+                                    key: const Key('conversation-look-button'),
+                                    tooltip: words.lookAtScreenTooltip,
+                                    onPressed: _look,
+                                    style: _ghostButton(colors),
+                                    icon: const Icon(
+                                      Icons.remove_red_eye_outlined,
+                                      size: 19,
+                                    ),
+                                  ),
+                                const SizedBox(width: 6),
+                                IconButton(
+                                  key: const Key('conversation-submit-button'),
+                                  tooltip: words.sendTooltip,
+                                  onPressed: _controller.text.trim().isEmpty
+                                      ? null
+                                      : _submit,
+                                  style: _accentButton(colors),
+                                  icon: const Icon(
+                                    Icons.arrow_upward_rounded,
+                                    size: 20,
+                                  ),
+                                ),
+                              ] else
+                                IconButton(
+                                  key: const Key('conversation-stop-button'),
+                                  tooltip: words.stopAnswerTooltip,
+                                  onPressed: _stop,
+                                  style: _accentButton(colors),
+                                  icon: const Icon(
+                                    Icons.stop_rounded,
+                                    size: 20,
+                                  ),
+                                ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
                 ),
               ),
             ),
           ),
         );
       },
+    );
+  }
+
+  /// The one filled control on the card: send while writing, stop while
+  /// an answer streams. Disabled it recedes into the glass instead of
+  /// greying out into a second visual language.
+  static ButtonStyle _accentButton(ColorScheme colors) {
+    return IconButton.styleFrom(
+      backgroundColor: colors.primary,
+      foregroundColor: colors.onPrimary,
+      disabledBackgroundColor: colors.onSurface.withValues(alpha: 0.08),
+      disabledForegroundColor: colors.onSurface.withValues(alpha: 0.35),
+      minimumSize: const Size(34, 34),
+      maximumSize: const Size(34, 34),
+      padding: EdgeInsets.zero,
+    );
+  }
+
+  /// Quiet circular controls that only announce themselves on hover.
+  static ButtonStyle _ghostButton(ColorScheme colors) {
+    return IconButton.styleFrom(
+      foregroundColor: colors.onSurfaceVariant,
+      hoverColor: colors.onSurface.withValues(alpha: 0.08),
+      minimumSize: const Size(34, 34),
+      maximumSize: const Size(34, 34),
+      padding: EdgeInsets.zero,
     );
   }
 }
@@ -260,16 +359,29 @@ final class _HoldToTalkButton extends StatelessWidget {
           child: Tooltip(
             message: AppLocalizations.of(context).holdToTalkHint,
             child: AnimatedScale(
-              scale: held ? 1.15 : 1,
+              scale: held ? 1.12 : 1,
               duration: const Duration(milliseconds: 120),
               curve: Curves.easeOutCubic,
-              child: Icon(
-                held ? Icons.mic_rounded : Icons.mic_none_rounded,
-                color: held
-                    ? colors.primary
-                    : voice.enabled
-                    ? colors.onSurfaceVariant
-                    : colors.onSurfaceVariant.withValues(alpha: 0.45),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 120),
+                width: 34,
+                height: 34,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: held
+                      ? colors.primary.withValues(alpha: 0.18)
+                      : Colors.transparent,
+                ),
+                child: Icon(
+                  held ? Icons.mic_rounded : Icons.mic_none_rounded,
+                  size: 19,
+                  color: held
+                      ? colors.primary
+                      : voice.enabled
+                      ? colors.onSurfaceVariant
+                      : colors.onSurfaceVariant.withValues(alpha: 0.45),
+                ),
               ),
             ),
           ),

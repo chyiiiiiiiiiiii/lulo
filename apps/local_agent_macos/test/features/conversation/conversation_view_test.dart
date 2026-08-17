@@ -45,6 +45,37 @@ void main() {
     expect(find.byKey(const Key('conversation-model-loading')), findsNothing);
   });
 
+  testWidgets('the conversation scrolls under the glass composer', (
+    tester,
+  ) async {
+    final _Harness harness = _Harness();
+    await tester.pumpWidget(harness.app());
+    // One more frame: the overlay reports its measured height, and the list
+    // takes it as bottom inset.
+    await tester.pump();
+
+    final Rect overlay = tester.getRect(
+      find.byKey(const Key('conversation-bottom-overlay')),
+    );
+    final Rect surface = tester.getRect(
+      find.byKey(const Key('conversation-scroll-surface')),
+    );
+    // The scroll surface extends beneath the overlay — that is what makes
+    // the composer's translucency read as glass instead of paint.
+    expect(surface.bottom, greaterThan(overlay.top));
+    // And nothing is lost under it: the scrollable pads its bottom by at
+    // least the overlay's height, so the last message can always clear it.
+    final SingleChildScrollView scroll = tester.widget(
+      find.byKey(const Key('conversation-scroll-surface')),
+    );
+    expect(
+      scroll.padding!.resolve(TextDirection.ltr).bottom,
+      greaterThanOrEqualTo(overlay.height),
+    );
+
+    await _finish(tester);
+  });
+
   testWidgets('empty conversation presents a focused composer', (tester) async {
     final _Harness harness = _Harness();
     await tester.pumpWidget(harness.app());

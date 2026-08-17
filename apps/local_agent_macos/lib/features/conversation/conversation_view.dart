@@ -194,6 +194,9 @@ final class _ConversationViewState extends State<ConversationView> {
   /// answering "why did it do that?" with "ask it again".
   final VoiceTurnLog _turnLog = VoiceTurnLog();
 
+  /// The measured height of the glass floating over the list's tail.
+  double _bottomInset = 0;
+
   /// Where being cut off mid-thought is counted, so the words this speaker
   /// trails off on can be suggested rather than guessed.
   ///
@@ -340,48 +343,129 @@ final class _ConversationViewState extends State<ConversationView> {
               presenceShaderLoader: widget.presenceShaderLoader,
             ),
             Expanded(
-              child: ConversationList(
-                completedTurns: _viewModel.completedTurnsListenable,
-                activeTurn: _viewModel.activeTurnListenable,
-                retryAvailable: _viewModel.canSubmitListenable,
-                // Straight to the voice, not through the conversation
-                // controller: reading one answer aloud must not require
-                // switching the microphone on, which is what enabling the
-                // controller would do.
-                onSpeak: widget.voiceService == null
-                    ? null
-                    : (String text) =>
-                          unawaited(widget.voiceService!.speak(text)),
-                onRegenerate: () =>
-                    unawaited(_viewModel.regenerateLastAnswer()),
-                onRevise: (String text) =>
-                    unawaited(_viewModel.reviseLastQuestion(text)),
-                onBuild: () =>
-                    widget.buildObserver?.conversationListBuilds += 1,
-                onCompletedTurnsBuild: () =>
-                    widget.buildObserver?.completedTurnsBuilds += 1,
-                onActiveTurnBuild: () =>
-                    widget.buildObserver?.activeStreamingTurnBuilds += 1,
+              // The conversation and the glass over it. The list scrolls
+              // beneath the composer — that is what its translucency is for
+              // — and takes the overlay's measured height as bottom inset so
+              // the last message can always clear the glass.
+              child: Stack(
+                children: <Widget>[
+                  ConversationList(
+                    completedTurns: _viewModel.completedTurnsListenable,
+                    activeTurn: _viewModel.activeTurnListenable,
+                    retryAvailable: _viewModel.canSubmitListenable,
+                    bottomInset: _bottomInset,
+                    // Straight to the voice, not through the conversation
+                    // controller: reading one answer aloud must not require
+                    // switching the microphone on, which is what enabling the
+                    // controller would do.
+                    onSpeak: widget.voiceService == null
+                        ? null
+                        : (String text) =>
+                              unawaited(widget.voiceService!.speak(text)),
+                    onRegenerate: () =>
+                        unawaited(_viewModel.regenerateLastAnswer()),
+                    onRevise: (String text) =>
+                        unawaited(_viewModel.reviseLastQuestion(text)),
+                    onBuild: () =>
+                        widget.buildObserver?.conversationListBuilds += 1,
+                    onCompletedTurnsBuild: () =>
+                        widget.buildObserver?.completedTurnsBuilds += 1,
+                    onActiveTurnBuild: () =>
+                        widget.buildObserver?.activeStreamingTurnBuilds += 1,
+                  ),
+                  Positioned(
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    child: _ReportHeight(
+                      onHeight: _takeBottomInset,
+                      child: Column(
+                        key: const Key('conversation-bottom-overlay'),
+                        mainAxisSize: MainAxisSize.min,
+                        children: <Widget>[
+                          if (widget.modelLoading != null)
+                            _ModelLoadingNotice(loading: widget.modelLoading!),
+                          if (_voice != null) _HeardSoFar(voice: _voice!),
+                          if (widget.showVoiceEvidence)
+                            VoiceTurnHud(log: _turnLog),
+                          ConversationComposer(
+                            canSubmit: _viewModel.canSubmitListenable,
+                            onSubmit: _viewModel.submit,
+                            onStop: _viewModel.stop,
+                            voice: _voice,
+                            onBuild: () =>
+                                widget.buildObserver?.composerBuilds += 1,
+                            seed: widget.composerSeed,
+                            onLook: widget.screenLook == null
+                                ? null
+                                : (String text) =>
+                                      unawaited(_lookAtScreen(text)),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
               ),
-            ),
-            if (widget.modelLoading != null)
-              _ModelLoadingNotice(loading: widget.modelLoading!),
-            if (_voice != null) _HeardSoFar(voice: _voice!),
-            if (widget.showVoiceEvidence) VoiceTurnHud(log: _turnLog),
-            ConversationComposer(
-              canSubmit: _viewModel.canSubmitListenable,
-              onSubmit: _viewModel.submit,
-              onStop: _viewModel.stop,
-              voice: _voice,
-              onBuild: () => widget.buildObserver?.composerBuilds += 1,
-              seed: widget.composerSeed,
-              onLook: widget.screenLook == null
-                  ? null
-                  : (String text) => unawaited(_lookAtScreen(text)),
             ),
           ],
         ),
       ),
+    );
+  }
+
+  /// Takes the overlay's measured height, rebuilding only when it changes —
+  /// which is once at first layout and again when the composer grows a line,
+  /// never on a streaming delta.
+  void _takeBottomInset(double height) {
+    if ((height - _bottomInset).abs() < 0.5) {
+      return;
+    }
+    setState(() => _bottomInset = height);
+  }
+}
+
+/// Reports its child's laid-out height, after the frame that changed it.
+final class _ReportHeight extends StatefulWidget {
+  const _ReportHeight({required this.onHeight, required this.child});
+
+  final ValueChanged<double> onHeight;
+  final Widget child;
+
+  @override
+  State<_ReportHeight> createState() => _ReportHeightState();
+}
+
+final class _ReportHeightState extends State<_ReportHeight> {
+  double? _reported;
+
+  /// After the frame, because the notification arrives mid-layout and the
+  /// size is only trustworthy once layout is done.
+  void _scheduleReport() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) {
+        return;
+      }
+      final double? height = context.size?.height;
+      if (height == null || _reported == height) {
+        return;
+      }
+      _reported = height;
+      widget.onHeight(height);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // The first measurement; growth afterwards — the composer gaining a line
+    // — arrives as a size-changed notification without this rebuilding.
+    _scheduleReport();
+    return NotificationListener<SizeChangedLayoutNotification>(
+      onNotification: (SizeChangedLayoutNotification _) {
+        _scheduleReport();
+        return true;
+      },
+      child: SizeChangedLayoutNotifier(child: widget.child),
     );
   }
 }

@@ -23,8 +23,16 @@ final class ConversationList extends StatefulWidget {
     this.onBuild,
     this.onCompletedTurnsBuild,
     this.onActiveTurnBuild,
+    this.bottomInset = 0,
     super.key,
   });
+
+  /// Extra bottom padding, the measured height of whatever floats over the
+  /// list's tail — the glass composer and its notices.
+  ///
+  /// The list scrolls under that glass on purpose; this inset is what keeps
+  /// the last message able to clear it.
+  final double bottomInset;
 
   /// Whether a retry can be started now, or null to offer none.
   ///
@@ -235,7 +243,8 @@ final class _ConversationListState extends State<ConversationList> {
               Positioned(
                 left: 0,
                 right: 0,
-                bottom: 16,
+                // Above the glass, not under it.
+                bottom: 16 + widget.bottomInset,
                 child: Center(
                   child: _ScrollToBottomButton(onPressed: _returnToBottom),
                 ),
@@ -250,9 +259,11 @@ final class _ConversationListState extends State<ConversationList> {
     return SingleChildScrollView(
       key: const Key('conversation-scroll-surface'),
       controller: _scrollController,
-      padding: const EdgeInsets.symmetric(
-        horizontal: conversationContentMargin,
-        vertical: _verticalPadding,
+      padding: EdgeInsets.fromLTRB(
+        conversationContentMargin,
+        _verticalPadding,
+        conversationContentMargin,
+        _verticalPadding + widget.bottomInset,
       ),
       // The turns live in the same centred column as the header and the
       // composer, so a message's edge lines up with both at any window size.

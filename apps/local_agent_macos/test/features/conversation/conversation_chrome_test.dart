@@ -26,11 +26,12 @@ void main() {
     await tester.pump();
 
     // The window buttons live on the line above the title, so the title sits
-    // on the content column's own edge — which is the composer's edge.
+    // on the content column's own edge — which is the edge of the composer's
+    // glass card, the visual frame the field now sits inside.
     expect(
       tester.getTopLeft(find.text('Lulo')).dx,
       tester
-          .getTopLeft(find.byKey(const Key('conversation-composer-field')))
+          .getTopLeft(find.byKey(const Key('conversation-composer-glass')))
           .dx,
       reason: 'The title and the composer do not share a leading edge.',
     );
