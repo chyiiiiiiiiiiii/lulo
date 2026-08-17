@@ -15,6 +15,8 @@ import '../features/presence/agent_presence_controller.dart';
 import '../features/presence/agent_presence_orb.dart';
 import '../features/presence/agent_presence_state.dart';
 import '../features/presence/desktop_orb_surface.dart';
+import '../features/presence/notice/notice_glance_card.dart';
+import '../features/presence/notice/presence_notice.dart';
 import '../features/presence/presence_flight.dart';
 import '../features/settings/app_settings.dart';
 import '../features/settings/settings_sheet.dart';
@@ -177,6 +179,16 @@ final class _PresentationSwitchState extends State<_PresentationSwitch>
   ConversationId? _openConversation;
   bool _startFresh = false;
 
+  /// The notice the user just opened by summoning a lit orb, if any.
+  ///
+  /// Shown as a card over the conversation until dismissed. Only ever set on
+  /// a transition into the expanded form, which is the moment the glance
+  /// was recorded.
+  PresenceNotice? _glanced;
+
+  /// The form last seen by [_glanceOnExpand], so only transitions count.
+  DesktopPresentation? _glancedPresentation;
+
   @override
   void initState() {
     super.initState();
@@ -199,6 +211,18 @@ final class _PresentationSwitchState extends State<_PresentationSwitch>
     _requests = widget.composition.presentationHost?.presentationRequests
         .listen(_flyTo);
     _presence.semanticStateListenable.addListener(_followPresenceIntoMenuBar);
+    // The notice center must not light over an answer being thought about or
+    // spoken, even while the orb rests, and the presence is owned here.
+    _presence.semanticStateListenable.addListener(_syncPresenceIdle);
+    _syncPresenceIdle();
+    // Every road into the conversation — a click on the orb, the hotkey, the
+    // menu bar — lands on this one notifier, so the glance is recorded here
+    // rather than on each road.
+    _glancedPresentation =
+        widget.composition.presentationHost?.presentation.value;
+    widget.composition.presentationHost?.presentation.addListener(
+      _glanceOnExpand,
+    );
     unawaited(_loadStage());
     final Future<void> settingsLoaded = _loadSettings();
     unawaited(settingsLoaded.then((void _) => _refreshMenuBar()));
@@ -262,6 +286,29 @@ final class _PresentationSwitchState extends State<_PresentationSwitch>
     final DesktopPresentation? mode =
         widget.composition.presentationHost?.presentation.value;
     _leaving.value = mode == DesktopPresentation.orb ? 1 : 0;
+  }
+
+  /// Tells the notice center whether the presence is idle right now.
+  void _syncPresenceIdle() {
+    widget.composition.presenceIdle.value =
+        _presence.semanticStateListenable.value == AgentPresenceState.idle;
+  }
+
+  /// Records the user opening Lulo, and keeps what a lit orb was showing.
+  void _glanceOnExpand() {
+    final DesktopPresentation? mode =
+        widget.composition.presentationHost?.presentation.value;
+    if (mode == _glancedPresentation) {
+      return;
+    }
+    _glancedPresentation = mode;
+    if (mode != DesktopPresentation.expanded) {
+      return;
+    }
+    final PresenceNotice? noticed = widget.composition.noticeCenter.glance();
+    if (noticed != null && mounted) {
+      setState(() => _glanced = noticed);
+    }
   }
 
   /// Fetches [entry], then thinks with it as soon as it is whole.
@@ -801,6 +848,10 @@ final class _PresentationSwitchState extends State<_PresentationSwitch>
     _presence.semanticStateListenable.removeListener(
       _followPresenceIntoMenuBar,
     );
+    _presence.semanticStateListenable.removeListener(_syncPresenceIdle);
+    widget.composition.presentationHost?.presentation.removeListener(
+      _glanceOnExpand,
+    );
     unawaited(_menuConversations?.cancel());
     unawaited(_menuVoice?.cancel());
     unawaited(_serviceText?.cancel());
@@ -1172,6 +1223,7 @@ final class _PresentationSwitchState extends State<_PresentationSwitch>
                       if (_showingSettings && expanded && !travelling)
                         SettingsSheet(
                           agentProfile: widget.composition.agentProfile,
+                          noticeCenter: widget.composition.noticeCenter,
                           settings: _settings,
                           onChanged: (AppSettings settings) =>
                               unawaited(_changeSettings(settings)),
@@ -1207,6 +1259,14 @@ final class _PresentationSwitchState extends State<_PresentationSwitch>
                           closeDocument: _closeDocument,
                           openDocumentName: widget.composition.openDocumentName,
                         ),
+                      // What the lit orb was holding, shown at the moment the
+                      // user opened it and gone the moment they say so.
+                      if (_glanced != null && expanded && !travelling)
+                        NoticeGlanceCard(
+                          notice: _glanced!,
+                          profile: widget.composition.agentProfile,
+                          onDismiss: () => setState(() => _glanced = null),
+                        ),
                     ],
                   ),
                 ),
@@ -1232,12 +1292,20 @@ final class _PresentationSwitchState extends State<_PresentationSwitch>
             else if (!expanded)
               Positioned.fromRect(
                 rect: stage.orb,
-                child: DesktopOrbSurface(
-                  orb: _orb(extent: desktopOrbExtent, showLabel: false),
-                  presenceShaderLoader: widget.presenceShaderLoader,
-                  onSummon: () =>
-                      host.setPresentation(DesktopPresentation.expanded),
-                  onDragBy: host.moveWindowBy,
+                child: ValueListenableBuilder<PresenceNotice?>(
+                  valueListenable: widget.composition.noticeCenter.lit,
+                  builder:
+                      (BuildContext context, PresenceNotice? lit, Widget? _) {
+                        return DesktopOrbSurface(
+                          orb: _orb(extent: desktopOrbExtent, showLabel: false),
+                          presenceShaderLoader: widget.presenceShaderLoader,
+                          noticed: lit != null,
+                          onSummon: () => host.setPresentation(
+                            DesktopPresentation.expanded,
+                          ),
+                          onDragBy: host.moveWindowBy,
+                        );
+                      },
                 ),
               ),
           ],

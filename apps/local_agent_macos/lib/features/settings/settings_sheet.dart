@@ -11,6 +11,8 @@ import '../agent_profile/agent_profile_store.dart';
 import '../conversation/widgets/conversation_content_column.dart';
 import '../model/model_catalog.dart';
 import '../model/model_download_manager.dart';
+import '../presence/notice/presence_notice.dart';
+import '../presence/notice/presence_notice_center.dart';
 import '../sidecar/sidecar_health.dart';
 import '../voice/tts_voices.dart';
 import 'agent_profile_settings.dart';
@@ -35,6 +37,7 @@ final class SettingsSheet extends StatelessWidget {
     required this.onUseModel,
     this.loginItem,
     this.setLaunchAtLogin,
+    this.noticeCenter,
     this.sidecarProbe,
     this.transcribeRecording,
     this.saveHeldTranscript,
@@ -47,6 +50,12 @@ final class SettingsSheet extends StatelessWidget {
 
   /// Who Lulo is and how it talks, read and written in place.
   final AgentProfileStore agentProfile;
+
+  /// The quiet light's ledger, or null on a surface without one.
+  ///
+  /// This sheet is where a muted kind is re-enabled — the only way it ever
+  /// lights again — and where the tallies that muted it can be read.
+  final PresenceNoticeCenter? noticeCenter;
 
   /// Download state for the curated models, owned by the app.
   final ModelDownloadManager modelDownloads;
@@ -356,6 +365,8 @@ final class SettingsSheet extends StatelessWidget {
                               settings.copyWith(rememberFacts: value),
                             ),
                           ),
+                          if (noticeCenter != null)
+                            NoticeLedgerTile(center: noticeCenter!),
                         ],
                       ),
                       AgentProfileSettings(store: agentProfile),
@@ -959,6 +970,53 @@ final class _DocumentSectionState extends State<_DocumentSection> {
                     ),
             ),
           ],
+        );
+      },
+    );
+  }
+}
+
+/// The quiet light's row: what it has done, and the way back on when it has
+/// muted itself.
+///
+/// The tallies are the document's own numbers — lit and opened, per kind —
+/// and the re-enable button is deliberately the only control: there is no
+/// way to make the light louder, only to let it try again.
+final class NoticeLedgerTile extends StatelessWidget {
+  /// Creates the row over the notice [center].
+  const NoticeLedgerTile({required this.center, super.key});
+
+  /// The ledger being read, and where re-enabling lands.
+  final PresenceNoticeCenter center;
+
+  @override
+  Widget build(BuildContext context) {
+    final AppLocalizations words = AppLocalizations.of(context);
+    return ValueListenableBuilder<int>(
+      valueListenable: center.revision,
+      builder: (BuildContext context, int _, Widget? _) {
+        final PresenceNoticeTally tally = center.tallyOf(
+          PresenceNoticeKind.memoryWrite,
+        );
+        return ListTile(
+          key: const Key('setting-notice-ledger'),
+          title: Text(words.noticesMemoryWriteLabel),
+          subtitle: Text(
+            tally.muted
+                ? '${words.noticesMemoryWriteNote}\n'
+                      '${words.noticesTally(tally.litCount, tally.glancedCount)}'
+                      ' · ${words.noticesMutedNote}'
+                : '${words.noticesMemoryWriteNote}\n'
+                      '${words.noticesTally(tally.litCount, tally.glancedCount)}',
+          ),
+          trailing: tally.muted
+              ? TextButton(
+                  key: const Key('setting-notice-reenable'),
+                  onPressed: () =>
+                      center.reenable(PresenceNoticeKind.memoryWrite),
+                  child: Text(words.noticesReenable),
+                )
+              : null,
         );
       },
     );

@@ -149,6 +149,32 @@ class AppLocalizationsEn extends AppLocalizations {
       'Lulo, your local assistant. Click to open the conversation, or drag to move it.';
 
   @override
+  String get desktopOrbNoticedLabel =>
+      'Lulo, your local assistant. It quietly noted something — click to look, or drag to move it.';
+
+  @override
+  String get noticeDismiss => 'Got it';
+
+  @override
+  String get noticesMemoryWriteLabel => 'The quiet light for kept memories';
+
+  @override
+  String get noticesMemoryWriteNote =>
+      'When Lulo keeps a fact while resting, the orb glows once — no sound, no popup. Open it or ignore it; a light you keep ignoring goes dark by itself.';
+
+  @override
+  String noticesTally(int lit, int glanced) {
+    return 'Lit $lit times · opened $glanced';
+  }
+
+  @override
+  String get noticesMutedNote =>
+      'It kept going unopened, so it has gone dark. It stays dark until you light it again.';
+
+  @override
+  String get noticesReenable => 'Light it again';
+
+  @override
   String get firstRunTitle => 'Lulo runs on this Mac';
 
   @override

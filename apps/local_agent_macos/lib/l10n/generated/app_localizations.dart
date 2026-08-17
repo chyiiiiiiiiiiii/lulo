@@ -369,6 +369,48 @@ abstract class AppLocalizations {
   /// **'Lulo, your local assistant. Click to open the conversation, or drag to move it.'**
   String get desktopOrbLabel;
 
+  /// No description provided for @desktopOrbNoticedLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Lulo, your local assistant. It quietly noted something — click to look, or drag to move it.'**
+  String get desktopOrbNoticedLabel;
+
+  /// No description provided for @noticeDismiss.
+  ///
+  /// In en, this message translates to:
+  /// **'Got it'**
+  String get noticeDismiss;
+
+  /// No description provided for @noticesMemoryWriteLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'The quiet light for kept memories'**
+  String get noticesMemoryWriteLabel;
+
+  /// No description provided for @noticesMemoryWriteNote.
+  ///
+  /// In en, this message translates to:
+  /// **'When Lulo keeps a fact while resting, the orb glows once — no sound, no popup. Open it or ignore it; a light you keep ignoring goes dark by itself.'**
+  String get noticesMemoryWriteNote;
+
+  /// No description provided for @noticesTally.
+  ///
+  /// In en, this message translates to:
+  /// **'Lit {lit} times · opened {glanced}'**
+  String noticesTally(int lit, int glanced);
+
+  /// No description provided for @noticesMutedNote.
+  ///
+  /// In en, this message translates to:
+  /// **'It kept going unopened, so it has gone dark. It stays dark until you light it again.'**
+  String get noticesMutedNote;
+
+  /// No description provided for @noticesReenable.
+  ///
+  /// In en, this message translates to:
+  /// **'Light it again'**
+  String get noticesReenable;
+
   /// No description provided for @firstRunTitle.
   ///
   /// In en, this message translates to:

@@ -109,4 +109,32 @@ void main() {
     await tester.pump();
     expect(summons, 1, reason: 'A tap must still open the conversation.');
   });
+
+  testWidgets('a noticed orb glows and says so to assistive technology', (
+    WidgetTester tester,
+  ) async {
+    Future<void> pumpNoticed(bool noticed) {
+      return tester.pumpWidget(
+        MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: DesktopOrbSurface(onSummon: () {}, noticed: noticed),
+        ),
+      );
+    }
+
+    await pumpNoticed(false);
+    await tester.pump();
+    final BuildContext context = tester.element(find.byType(DesktopOrbSurface));
+    final AppLocalizations words = AppLocalizations.of(context);
+    expect(find.bySemanticsLabel(words.desktopOrbLabel), findsOneWidget);
+    expect(find.byKey(const Key('orb-notice-glow')), findsNothing);
+
+    await pumpNoticed(true);
+    await tester.pump(const Duration(milliseconds: 700));
+    // A visual-only signal would be invisible to VoiceOver, and the resting
+    // orb kept its gesture layer precisely for assistive technology.
+    expect(find.bySemanticsLabel(words.desktopOrbNoticedLabel), findsOneWidget);
+    expect(find.byKey(const Key('orb-notice-glow')), findsOneWidget);
+  });
 }

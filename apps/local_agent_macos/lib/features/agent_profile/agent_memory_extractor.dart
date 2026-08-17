@@ -41,6 +41,7 @@ final class AgentMemoryExtractor implements BetweenTurns {
     required Future<void> Function(AgentProfile profile) save,
     bool Function()? enabled,
     DateTime Function() writtenAt = DateTime.now,
+    this._onKept,
   }) : _runtime = inference,
        _profile = profileOf,
        _write = save,
@@ -73,6 +74,14 @@ final class AgentMemoryExtractor implements BetweenTurns {
   /// Injected so a test can state a time instead of racing the machine's,
   /// the same way `ProfileAgentContextProvider` takes its clock.
   final DateTime Function() _clock;
+
+  /// Told each sentence after it has actually landed in the profile.
+  ///
+  /// After — not before, not instead. The remember tool's measured failure
+  /// was confirming a write that never happened, and a light that inherits
+  /// that shape would be worse than no light. A pass that is cancelled,
+  /// screened, or refused says nothing here.
+  final void Function(String fact)? _onKept;
 
   /// The session an extraction runs in, released after every one.
   ///
@@ -286,6 +295,7 @@ final class AgentMemoryExtractor implements BetweenTurns {
       return;
     }
     await _write(current.copyWith(memories: write.memories));
+    _onKept?.call(found.fact);
   }
 
   Future<void> _releaseQuietly() async {

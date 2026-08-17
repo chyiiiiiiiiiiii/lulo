@@ -25,6 +25,7 @@ which is not an aesthetic choice — it is what the measurements left.
 | `lib/features/presence/desktop_orb_surface.dart` | The resting form, and the accessibility path into it |
 | `lib/features/presence/agent_presence_orb.dart` | The orb itself: shader, fallback, motion budget |
 | `lib/features/presence/agent_presence_state.dart`, `agent_presence_controller.dart` | Six states, their blend, and the audio envelope |
+| `lib/features/presence/notice/` | The quiet light: kinds and outcomes, the budgets and tripwires of [`an-ignored-light-stays-ignored.md`](../decisions/an-ignored-light-stays-ignored.md), the ledger file beside the profile, and the glance card |
 | `lib/platform/pigeon_desktop_host_service.dart` | The Dart side of the window boundary |
 
 Tests: `macos/RunnerTests/DesktopPanelControllerTests.swift` (the stage, in a

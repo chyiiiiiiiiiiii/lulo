@@ -16,6 +16,9 @@ import '../features/conversation/swappable_inference_service.dart';
 import '../features/model/model_catalog.dart';
 import '../features/model/model_download_manager.dart';
 import '../features/model/model_file_service.dart';
+import '../features/presence/notice/presence_notice.dart';
+import '../features/presence/notice/presence_notice_center.dart';
+import '../features/presence/notice/presence_notice_ledger.dart';
 import '../features/settings/app_settings.dart';
 import '../features/sidecar/sidecar_health.dart';
 import '../features/transcript_refiner/deadline_transcript_refiner.dart';
@@ -241,6 +244,24 @@ AppComposition createAppComposition({
     rethrow;
   }
 
+  // Kept current by the shell that owns the presence controller, read by the
+  // notice center's resting answer below.
+  final ValueNotifier<bool> presenceIdle = ValueNotifier<bool>(true);
+  // The budgets and tripwires of `an-ignored-light-stays-ignored.md`, over a
+  // ledger beside the profile. A notice may light only while the user is not
+  // already looking at Lulo: the orb form, idle.
+  final PresenceNoticeCenter noticeCenter = PresenceNoticeCenter(
+    store: createPresenceNoticeStore(),
+    resting: () =>
+        desktopHostService.presentation.value == DesktopPresentation.orb &&
+        presenceIdle.value,
+  );
+  unawaited(noticeCenter.load());
+  // The app-switch channel doubles as evidence the user is at the machine —
+  // read locally for the seen-or-unseen judgement, never sent anywhere, and
+  // independent of whether they chose to share the app's name with the model.
+  desktopHostService.frontmostApp.addListener(noticeCenter.noteActivity);
+
   // Reads each finished turn for a fact about the user, in the runtime's
   // one generation slot, and gives that slot up the moment a question wants
   // it. Built over the swappable service rather than the one inside it, so
@@ -250,6 +271,10 @@ AppComposition createAppComposition({
     profileOf: () => profileStore.current,
     save: profileStore.save,
     enabled: () => rememberFacts.value,
+    // A kept fact is the first notice kind: the surface silent memory
+    // shipped without. Called only after the write has landed.
+    onKept: (String fact) =>
+        noticeCenter.trigger(PresenceNoticeKind.memoryWrite, fact),
   );
 
   return AppComposition(
@@ -257,6 +282,7 @@ AppComposition createAppComposition({
       // First: it holds a generation, and everything below tears down what
       // that generation is running on.
       await memoryExtractor.dispose();
+      desktopHostService.frontmostApp.removeListener(noticeCenter.noteActivity);
       await inferenceService.dispose();
       await storage.release();
       await desktopHostService.dispose();
@@ -266,6 +292,8 @@ AppComposition createAppComposition({
       transcriptShadowEvidence?.clear();
     },
     betweenTurns: memoryExtractor,
+    noticeCenter: noticeCenter,
+    presenceIdle: presenceIdle,
     rememberFacts: rememberFacts,
     storageService: storage.service,
     inferenceService: inferenceService,
@@ -417,6 +445,23 @@ SettingsStore createSettingsStore() {
   }
   return FileSettingsStore(
     directory: Directory('$home/Library/Application Support/Lulo'),
+  );
+}
+
+/// Opens the notice ledger beside Lulo's other application data.
+///
+/// In memory where there is no home to write to, the same trade the other
+/// stores make: measurement forgotten rather than the app refusing to start.
+PresenceNoticeStore createPresenceNoticeStore({String? home}) {
+  final String? resolvedHome = home ?? Platform.environment['HOME'];
+  if (resolvedHome == null || resolvedHome.isEmpty) {
+    return InMemoryPresenceNoticeStore();
+  }
+  final Directory directory = Directory(
+    '$resolvedHome/Library/Application Support/Lulo',
+  )..createSync(recursive: true);
+  return FilePresenceNoticeStore(
+    file: File('${directory.path}/presence_notices.json'),
   );
 }
 

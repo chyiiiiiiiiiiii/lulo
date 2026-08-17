@@ -148,6 +148,30 @@ class AppLocalizationsZh extends AppLocalizations {
   String get desktopOrbLabel => 'Lulo，你的本機助理。點一下開啟對話，或拖曳移動。';
 
   @override
+  String get desktopOrbNoticedLabel => 'Lulo，你的本機助理。有件事靜靜記下了 —— 點一下看看，或拖曳移動。';
+
+  @override
+  String get noticeDismiss => '知道了';
+
+  @override
+  String get noticesMemoryWriteLabel => '記下記憶時的安靜亮光';
+
+  @override
+  String get noticesMemoryWriteNote =>
+      'Lulo 在休息時記下一件事，orb 會安靜亮一下 —— 不出聲、不彈窗。想看就點開；一直被忽略的燈會自己熄掉。';
+
+  @override
+  String noticesTally(int lit, int glanced) {
+    return '亮過 $lit 次 · 打開 $glanced 次';
+  }
+
+  @override
+  String get noticesMutedNote => '一直沒被打開，燈已經自己熄了；要再亮需要你重新點亮。';
+
+  @override
+  String get noticesReenable => '讓它再亮';
+
+  @override
   String get firstRunTitle => 'Lulo 跑在這台 Mac 上';
 
   @override

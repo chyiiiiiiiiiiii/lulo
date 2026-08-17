@@ -12,6 +12,8 @@ import '../features/conversation/inference_service.dart';
 import '../features/model/model_catalog.dart';
 import '../features/model/model_download_manager.dart';
 import '../features/model/model_file_service.dart';
+import '../features/presence/notice/presence_notice_center.dart';
+import '../features/presence/notice/presence_notice_ledger.dart';
 import '../features/settings/app_settings.dart';
 import '../features/sidecar/sidecar_health.dart';
 import '../features/transcript_refiner/transcript_shadow_coordinator.dart';
@@ -49,8 +51,17 @@ final class AppComposition {
     ValueNotifier<bool>? rememberFacts,
     ValueNotifier<int>? voiceRequests,
     ValueNotifier<bool>? modelLoading,
+    PresenceNoticeCenter? noticeCenter,
+    ValueNotifier<bool>? presenceIdle,
     this.betweenTurns,
-  }) : voiceRequests = voiceRequests ?? ValueNotifier<int>(0),
+  }) : noticeCenter =
+           noticeCenter ??
+           PresenceNoticeCenter(
+             store: InMemoryPresenceNoticeStore(),
+             resting: _neverResting,
+           ),
+       presenceIdle = presenceIdle ?? ValueNotifier<bool>(true),
+       voiceRequests = voiceRequests ?? ValueNotifier<int>(0),
        answerStyle =
            answerStyle ?? ValueNotifier<AnswerStyle>(AnswerStyle.balanced),
        shareFrontmostApp = shareFrontmostApp ?? ValueNotifier<bool>(false),
@@ -73,6 +84,19 @@ final class AppComposition {
          storageService: storageService,
          inferenceService: inferenceService,
        );
+
+  /// Where a trigger becomes, or fails to become, a quietly lit orb.
+  ///
+  /// The default one never lights — its resting answer is always no — so a
+  /// preview or a widget test that builds the app without asking for the
+  /// feature measures nothing and shows nothing.
+  final PresenceNoticeCenter noticeCenter;
+
+  /// Whether the presence is idle, kept current by the shell that owns it.
+  ///
+  /// The notice center's resting answer reads this: a light must not compete
+  /// with an answer being thought about or spoken, even while the orb rests.
+  final ValueNotifier<bool> presenceIdle;
 
   /// Work that borrows the runtime between turns, or null when nothing does.
   ///
@@ -301,10 +325,13 @@ final class AppComposition {
       return;
     }
     _disposed = true;
+    noticeCenter.dispose();
     modelDownloads.dispose();
     transcriptShadow?.dispose();
     await _disposeServices();
   }
+
+  static bool _neverResting() => false;
 }
 
 List<String> _emptyVocabulary() => const <String>[];

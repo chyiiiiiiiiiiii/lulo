@@ -28,9 +28,18 @@ final class DesktopOrbSurface extends StatefulWidget {
     this.onDragBy,
     this.controller,
     this.orb,
+    this.noticed = false,
     this.presenceShaderLoader = loadAgentPresenceShader,
     super.key,
   });
+
+  /// Whether something is quietly waiting to be glanced at.
+  ///
+  /// The whole of Stage 2's interaction surface: a soft glow behind the orb
+  /// and a changed accessibility label, nothing else. No sound, no popup, no
+  /// motion — being cheap to ignore is what the light is, and the app's only
+  /// response to it being ignored is recorded elsewhere, in the ledger.
+  final bool noticed;
 
   /// The orb to rest here, or null to build one belonging to this surface.
   ///
@@ -145,7 +154,9 @@ final class _DesktopOrbSurfaceState extends State<DesktopOrbSurface> {
           },
           child: Semantics(
             button: true,
-            label: AppLocalizations.of(context).desktopOrbLabel,
+            label: widget.noticed
+                ? AppLocalizations.of(context).desktopOrbNoticedLabel
+                : AppLocalizations.of(context).desktopOrbLabel,
             child: Center(
               child: AnimatedScale(
                 // A restrained hover response: enough to read as alive without
@@ -157,15 +168,33 @@ final class _DesktopOrbSurfaceState extends State<DesktopOrbSurface> {
                     : 1,
                 duration: const Duration(milliseconds: 180),
                 curve: Curves.easeOutCubic,
-                child:
-                    widget.orb ??
-                    AgentPresenceOrb(
-                      controller: _controller,
-                      shaderLoader: widget.presenceShaderLoader,
-                      extent: desktopOrbExtent,
-                      showLabel: false,
-                      continuousMotion: true,
-                    ),
+                child: DecoratedBox(
+                  key: widget.noticed ? const Key('orb-notice-glow') : null,
+                  // A static halo: the light waits, it does not wave.
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    boxShadow: widget.noticed
+                        ? <BoxShadow>[
+                            BoxShadow(
+                              color: Theme.of(
+                                context,
+                              ).colorScheme.primary.withValues(alpha: 0.4),
+                              blurRadius: 26,
+                              spreadRadius: 2,
+                            ),
+                          ]
+                        : const <BoxShadow>[],
+                  ),
+                  child:
+                      widget.orb ??
+                      AgentPresenceOrb(
+                        controller: _controller,
+                        shaderLoader: widget.presenceShaderLoader,
+                        extent: desktopOrbExtent,
+                        showLabel: false,
+                        continuousMotion: true,
+                      ),
+                ),
               ),
             ),
           ),

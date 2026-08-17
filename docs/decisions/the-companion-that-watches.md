@@ -105,7 +105,10 @@ nothing else happens. The user glances or doesn't. Opening it shows what
 Lulo noticed and would offer. Voice never initiates; text never pops
 over the work. This stage needs Stage 1's permission plus real trigger
 design, and it should be measured against the only test that matters:
-does the user open it, or learn to ignore it?
+does the user open it, or learn to ignore it? That test is now written
+down as budgets and tripwires the app enforces on itself, fixed before
+any Stage 2 code —
+[an-ignored-light-stays-ignored.md](an-ignored-light-stays-ignored.md).
 
 **Non-goals, written down so they stay decided:** continuous capture or
 recording (a different product with a different price), acting on the
