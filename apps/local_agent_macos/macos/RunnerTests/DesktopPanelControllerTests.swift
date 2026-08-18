@@ -164,6 +164,50 @@ final class DesktopPanelControllerTests: XCTestCase {
     wait(for: [settled], timeout: 2)
   }
 
+  func testTheConversationRestsOnFrostedGlassAndTheOrbOnBareDesktop() {
+    let controller = Self.makeController()
+    let backdrop = controller.conversationBackdrop!
+    // The glass blurs what is behind the window, not the conversation itself.
+    XCTAssertEqual(backdrop.blendingMode, .behindWindow)
+    XCTAssertEqual(backdrop.state, .active)
+    // Beneath the Flutter view, or it would frost the conversation too.
+    let stage = controller.retainedPanel.contentView!
+    let backdropIndex = stage.subviews.firstIndex(of: backdrop)
+    let hostedIndex = stage.subviews.firstIndex(
+      of: controller.retainedViewController.view
+    )
+    XCTAssertNotNil(backdropIndex)
+    XCTAssertNotNil(hostedIndex)
+    XCTAssertLessThan(backdropIndex!, hostedIndex!)
+
+    // The conversation is the visible form by default, so the glass is there.
+    XCTAssertFalse(backdrop.isHidden)
+    // The resting orb sits on the bare desktop; a glass rectangle behind it
+    // would frame the vapour in a window again.
+    controller.setPresentationMode(.orb)
+    XCTAssertTrue(backdrop.isHidden)
+    controller.setPresentationMode(.expanded)
+    XCTAssertFalse(backdrop.isHidden)
+  }
+
+  func testTheGlassStaysAwayWhileTheChangeOfFormIsDrawn() {
+    let controller = Self.makeController()
+    let backdrop = controller.conversationBackdrop!
+
+    // Collapsing: the conversation shrinks out from under a full-size pane of
+    // glass, so the glass has to leave the moment the flight starts.
+    _ = controller.beginTransition(to: .orb)
+    XCTAssertTrue(backdrop.isHidden)
+    controller.endTransition(.orb)
+    XCTAssertTrue(backdrop.isHidden)
+
+    // Summoning: the glass waits until the conversation has landed.
+    _ = controller.beginTransition(to: .expanded)
+    XCTAssertTrue(backdrop.isHidden)
+    controller.endTransition(.expanded)
+    XCTAssertFalse(backdrop.isHidden)
+  }
+
   private static func makeController() -> DesktopPanelController {
     let panel = NSPanel(
       contentRect: NSRect(x: 0, y: 0, width: 480, height: 640),

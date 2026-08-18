@@ -45,6 +45,22 @@ void main() {
     expect(find.byKey(const Key('conversation-model-loading')), findsNothing);
   });
 
+  testWidgets('the conversation surface is glass over the desktop, not paint', (
+    tester,
+  ) async {
+    // The window behind this Scaffold is clear and the native side blurs the
+    // desktop through it; an opaque surface here would paint that glass back
+    // out, which is exactly what it did.
+    final _Harness harness = _Harness();
+    await tester.pumpWidget(harness.app());
+
+    final Scaffold scaffold = tester.widget(find.byType(Scaffold));
+    final Color background = scaffold.backgroundColor!;
+    expect(background.a, lessThan(1.0));
+    // Still tinted: bare blur under white text is not readable either.
+    expect(background.a, greaterThan(0.0));
+  });
+
   testWidgets('the conversation scrolls under the glass composer', (
     tester,
   ) async {

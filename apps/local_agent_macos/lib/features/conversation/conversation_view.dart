@@ -19,6 +19,13 @@ import 'widgets/conversation_composer.dart';
 import 'widgets/conversation_content_column.dart';
 import 'widgets/conversation_list.dart';
 
+/// How much of the surface colour tints the frosted glass under it.
+///
+/// The desktop behind the window is blurred by the native backdrop; this is
+/// the coverage that keeps the words readable over it while the blur still
+/// shows through.
+const double conversationSurfaceOpacity = 0.72;
+
 /// Optional build instrumentation used by rendering-isolation tests.
 final class ConversationBuildObserver {
   /// Number of top-level chrome builds.
@@ -316,7 +323,13 @@ final class _ConversationViewState extends State<ConversationView> {
   Widget build(BuildContext context) {
     widget.buildObserver?.chromeBuilds += 1;
     return Scaffold(
-      backgroundColor: Theme.of(context).colorScheme.surface,
+      // Not the opaque surface: the window behind this Scaffold is clear and
+      // the native side blurs the desktop through it, so this is a tint over
+      // glass. Opaque would paint the glass back out; bare glass would leave
+      // the words on an unreadable blur.
+      backgroundColor: Theme.of(
+        context,
+      ).colorScheme.surface.withValues(alpha: conversationSurfaceOpacity),
       body: SafeArea(
         child: Column(
           children: <Widget>[
