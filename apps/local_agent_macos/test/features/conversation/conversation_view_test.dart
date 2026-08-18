@@ -56,7 +56,9 @@ void main() {
 
     final Scaffold scaffold = tester.widget(find.byType(Scaffold));
     final Color background = scaffold.backgroundColor!;
-    expect(background.a, lessThan(1.0));
+    // Low enough that the blurred desktop actually shows through: at 0.72
+    // the tint swallowed the glass and the window read as paint again.
+    expect(background.a, lessThan(0.6));
     // Still tinted: bare blur under white text is not readable either.
     expect(background.a, greaterThan(0.0));
   });

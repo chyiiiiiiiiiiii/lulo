@@ -259,4 +259,34 @@ void main() {
     expect(find.byKey(const Key('turn-revise-field')), findsNothing);
     expect(find.text('明天天氣如何'), findsOneWidget);
   });
+
+  testWidgets('a turn bubble is glass over the window, not paint', (
+    WidgetTester tester,
+  ) async {
+    // The window behind the conversation blurs the desktop through it, and a
+    // bubble wide enough to fill the window painted that glass back out over
+    // most of the surface. Behind a bubble the desktop should still be there
+    // — dimmer, not gone.
+    Color bubbleColorAround(Finder content) {
+      final Iterable<Container> containers = tester.widgetList<Container>(
+        find.ancestor(of: content, matching: find.byType(Container)),
+      );
+      final BoxDecoration decoration = containers
+          .map((Container container) => container.decoration)
+          .whereType<BoxDecoration>()
+          .first;
+      return decoration.color!;
+    }
+
+    await pumpTurn(tester, answer);
+    expect(bubbleColorAround(find.byType(TerminalMarkdown)).a, lessThan(1.0));
+
+    const Turn question = Turn(
+      role: TurnRole.user,
+      text: '明天天氣如何',
+      status: TurnStatus.completed,
+    );
+    await pumpTurn(tester, question);
+    expect(bubbleColorAround(find.text('明天天氣如何')).a, lessThan(1.0));
+  });
 }

@@ -23,8 +23,9 @@ import 'widgets/conversation_list.dart';
 ///
 /// The desktop behind the window is blurred by the native backdrop; this is
 /// the coverage that keeps the words readable over it while the blur still
-/// shows through.
-const double conversationSurfaceOpacity = 0.72;
+/// shows through. 0.72 was tried first and swallowed the glass — the
+/// material carries a dark tint of its own, so the two stack.
+const double conversationSurfaceOpacity = 0.5;
 
 /// Optional build instrumentation used by rendering-isolation tests.
 final class ConversationBuildObserver {

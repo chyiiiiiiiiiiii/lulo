@@ -43,7 +43,10 @@ final class ActiveStreamingTurn extends StatelessWidget {
                   vertical: 12,
                 ),
                 decoration: BoxDecoration(
-                  color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                  // The completed bubble's glass, for the same hand-off
+                  // reason as the renderer below.
+                  color: Theme.of(context).colorScheme.surfaceContainerHighest
+                      .withValues(alpha: turnBubbleOpacity),
                   borderRadius: BorderRadius.circular(18),
                 ),
                 // The same renderer the completed bubble uses. A raw-text

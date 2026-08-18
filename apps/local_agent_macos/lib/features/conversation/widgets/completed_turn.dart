@@ -6,6 +6,14 @@ import 'package:flutter/services.dart';
 
 import '../../../l10n/generated/app_localizations.dart';
 
+/// How much of a turn bubble's colour covers the glass beneath it.
+///
+/// An assistant bubble is wide enough to fill the window, and painted opaque
+/// it took the frosted glass back out over most of the surface. Stacked on
+/// `conversationSurfaceOpacity`, so behind a bubble the desktop is dimmer,
+/// not gone.
+const double turnBubbleOpacity = 0.55;
+
 /// A terminal user or assistant turn.
 final class CompletedTurn extends StatefulWidget {
   /// Creates a terminal turn presentation.
@@ -122,9 +130,13 @@ final class _CompletedTurnState extends State<CompletedTurn> {
               margin: const EdgeInsets.only(top: 6),
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
               decoration: BoxDecoration(
-                color: isUser
-                    ? Theme.of(context).colorScheme.primaryContainer
-                    : Theme.of(context).colorScheme.surfaceContainerHighest,
+                color:
+                    (isUser
+                            ? Theme.of(context).colorScheme.primaryContainer
+                            : Theme.of(
+                                context,
+                              ).colorScheme.surfaceContainerHighest)
+                        .withValues(alpha: turnBubbleOpacity),
                 borderRadius: BorderRadius.circular(18),
               ),
               child: Column(
