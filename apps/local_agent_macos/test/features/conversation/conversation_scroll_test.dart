@@ -1,4 +1,5 @@
 import 'package:agent_core/agent_core.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:local_agent_macos/features/conversation/widgets/conversation_list.dart';
@@ -180,6 +181,34 @@ void main() {
       _position(tester).pixels,
       _position(tester).maxScrollExtent,
       reason: 'Coming back to the newest answer did not resume following it.',
+    );
+  });
+
+  testWidgets('a mouse wheel reads the conversation back', (
+    WidgetTester tester,
+  ) async {
+    // A Mac conversation is mostly read with a wheel or two trackpad fingers,
+    // not by dragging the list like a phone — and only the drag was tested.
+    final _Conversation conversation = _Conversation();
+    addTearDown(conversation.dispose);
+
+    await tester.pumpWidget(conversation.surface());
+    conversation.completedTurns.value = _turns(20);
+    await tester.pump();
+    await tester.pump();
+
+    final Offset center = tester.getCenter(
+      find.byKey(const Key('conversation-scroll-surface')),
+    );
+    final TestPointer pointer = TestPointer(1, PointerDeviceKind.mouse);
+    pointer.hover(center);
+    await tester.sendEventToBinding(pointer.scroll(const Offset(0, -240)));
+    await tester.pump();
+
+    expect(
+      _position(tester).pixels,
+      lessThan(_position(tester).maxScrollExtent),
+      reason: 'The wheel turned and the conversation did not move.',
     );
   });
 }

@@ -229,8 +229,43 @@ final class DesktopPanelController: NSObject, DesktopPanelControlling, NSWindowD
   /// controller.
   private(set) var retainedViewController: NSViewController!
   private var retainedStage: StagePassThroughView!
-  /// The frosted glass the conversation rests on, hidden with the orb.
-  private(set) var conversationBackdrop: NSVisualEffectView!
+
+  /// The frosted glass under the conversation, as a window of its own.
+  ///
+  /// Deliberately not a view inside the conversation's window: an
+  /// NSVisualEffectView blurring behind that window intermittently took the
+  /// window's whole mouse with it — every click and every scroll — measured
+  /// 2026-08-18 on the same build with the view in and out of the stage. A
+  /// separate window that ignores the mouse outright cannot repeat that,
+  /// whatever the window server makes of the blur. Without the pane the
+  /// panel is clear for the orb's sake, and the conversation's translucent
+  /// surface would sit over whatever windows happen to be behind it, crisp
+  /// and unreadable.
+  private(set) lazy var glassWindow: NSWindow = {
+    let glass = NSWindow(
+      contentRect: retainedPanel.frame,
+      styleMask: [.borderless],
+      backing: .buffered,
+      defer: false
+    )
+    glass.isOpaque = false
+    glass.backgroundColor = .clear
+    glass.hasShadow = false
+    glass.ignoresMouseEvents = true
+    glass.isReleasedWhenClosed = false
+    glass.animationBehavior = .none
+    let pane = NSVisualEffectView(frame: glass.contentLayoutRect)
+    pane.autoresizingMask = [.width, .height]
+    pane.blendingMode = .behindWindow
+    pane.material = .hudWindow
+    pane.state = .active
+    // The same rounding the Flutter side draws (`windowCornerRadius`),
+    // applied as a mask because a plain layer radius does not clip a
+    // behind-window blur's backdrop.
+    pane.maskImage = Self.roundedCornerMask(radius: 12)
+    glass.contentView = pane
+    return glass
+  }()
 
   /// Built the first time the agent rests, never during init.
   private lazy var orbInput: OrbInputPanel = OrbInputPanel(
@@ -258,21 +293,6 @@ final class DesktopPanelController: NSObject, DesktopPanelControlling, NSWindowD
     // answers the mouse, so `contentViewController` cannot own the content.
     let stage = StagePassThroughView(frame: panel.contentLayoutRect)
     stage.autoresizingMask = [.width, .height]
-    // Under the Flutter view, because the panel itself is clear for the orb's
-    // sake: without this pane the conversation's translucent surface would sit
-    // over whatever windows happen to be behind it, crisp and unreadable. The
-    // glass blurs the desktop the way the system's own translucent windows do.
-    let backdrop = NSVisualEffectView(frame: panel.contentLayoutRect)
-    backdrop.autoresizingMask = [.width, .height]
-    backdrop.blendingMode = .behindWindow
-    backdrop.material = .hudWindow
-    backdrop.state = .active
-    // The same rounding the Flutter side draws (`windowCornerRadius`), applied
-    // as a mask because a plain layer radius does not clip a behind-window
-    // blur's backdrop.
-    backdrop.maskImage = Self.roundedCornerMask(radius: 12)
-    conversationBackdrop = backdrop
-    stage.addSubview(backdrop)
     let hosted = content.viewController.view
     stage.addSubview(hosted)
     retainedViewController = content.viewController
@@ -310,17 +330,26 @@ final class DesktopPanelController: NSObject, DesktopPanelControlling, NSWindowD
     panel.setFrameAutosaveName("")
     panel.delegate = self
     applyWindowBehaviour(for: storedMode)
-    updateBackdropVisibility()
+    updateGlass()
     updateInteractiveRect()
   }
 
-  /// Shows the glass only while the conversation is the settled form.
+  /// Rides the glass under the conversation, and only under the conversation.
   ///
   /// The resting orb sits on the bare desktop, and during a change of form the
   /// conversation shrinks out from under what would be a full-size pane, so
-  /// both hide it.
-  private func updateBackdropVisibility() {
-    conversationBackdrop.isHidden = storedMode == .orb || isTransitioning
+  /// both take it away.
+  private func updateGlass() {
+    if storedMode == .expanded && !isTransitioning {
+      glassWindow.setFrame(retainedPanel.frame, display: false)
+      glassWindow.level = retainedPanel.level
+      if glassWindow.parent !== retainedPanel {
+        retainedPanel.addChildWindow(glassWindow, ordered: .below)
+      }
+    } else if glassWindow.parent != nil {
+      retainedPanel.removeChildWindow(glassWindow)
+      glassWindow.orderOut(nil)
+    }
   }
 
   /// A stretchable rounded rectangle for the glass's corners.
@@ -416,7 +445,7 @@ final class DesktopPanelController: NSObject, DesktopPanelControlling, NSWindowD
     storedMode = mode
     Self.applyTitlebarChrome(for: mode, on: retainedPanel)
     applyWindowBehaviour(for: mode)
-    updateBackdropVisibility()
+    updateGlass()
     let chromed = performanceTimestamp()
     placeStageIfNeeded()
     // Each form has its home: the orb the screen's corner, the conversation
@@ -628,7 +657,7 @@ final class DesktopPanelController: NSObject, DesktopPanelControlling, NSWindowD
     // moving away from it.
     rememberExpandedFrame()
     isTransitioning = true
-    updateBackdropVisibility()
+    updateGlass()
     Self.applyTitlebarChrome(for: .orb, on: retainedPanel)
     retainedStage.interactiveRect = .zero
     retainedPanel.orderFrontRegardless()
@@ -681,7 +710,7 @@ final class DesktopPanelController: NSObject, DesktopPanelControlling, NSWindowD
     }
     requestedAt = nil
     isTransitioning = false
-    updateBackdropVisibility()
+    updateGlass()
     // Handed back to the pointer, which decides it from where the cursor is.
     updateInteractiveRect()
   }
@@ -798,6 +827,8 @@ final class DesktopPanelController: NSObject, DesktopPanelControlling, NSWindowD
       return
     }
     rememberExpandedFrame()
+    // Moving is inherited from being a child window; resizing is not.
+    updateGlass()
     updateInteractiveRect()
     onGeometryChanged?(currentGeometry())
   }

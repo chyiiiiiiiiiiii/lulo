@@ -166,46 +166,70 @@ final class DesktopPanelControllerTests: XCTestCase {
 
   func testTheConversationRestsOnFrostedGlassAndTheOrbOnBareDesktop() {
     let controller = Self.makeController()
-    let backdrop = controller.conversationBackdrop!
-    // The glass blurs what is behind the window, not the conversation itself.
-    XCTAssertEqual(backdrop.blendingMode, .behindWindow)
-    XCTAssertEqual(backdrop.state, .active)
-    // Beneath the Flutter view, or it would frost the conversation too.
-    let stage = controller.retainedPanel.contentView!
-    let backdropIndex = stage.subviews.firstIndex(of: backdrop)
-    let hostedIndex = stage.subviews.firstIndex(
-      of: controller.retainedViewController.view
-    )
-    XCTAssertNotNil(backdropIndex)
-    XCTAssertNotNil(hostedIndex)
-    XCTAssertLessThan(backdropIndex!, hostedIndex!)
+    let glass = controller.glassWindow
+    // A window of its own underneath the conversation, never a view inside
+    // it: an NSVisualEffectView in the conversation's own window
+    // intermittently took the window's whole mouse with it — every click
+    // and every scroll — and a window that ignores the mouse outright
+    // cannot repeat that.
+    XCTAssertTrue(glass.ignoresMouseEvents)
+    let pane = glass.contentView as? NSVisualEffectView
+    XCTAssertEqual(pane?.blendingMode, .behindWindow)
+    XCTAssertEqual(pane?.state, .active)
 
-    // The conversation is the visible form by default, so the glass is there.
-    XCTAssertFalse(backdrop.isHidden)
+    // The conversation is the visible form by default, so the glass rides
+    // under it, at its exact frame.
+    XCTAssertTrue(
+      controller.retainedPanel.childWindows?.contains(glass) ?? false
+    )
+    XCTAssertEqual(glass.frame, controller.retainedPanel.frame)
     // The resting orb sits on the bare desktop; a glass rectangle behind it
     // would frame the vapour in a window again.
     controller.setPresentationMode(.orb)
-    XCTAssertTrue(backdrop.isHidden)
+    XCTAssertFalse(
+      controller.retainedPanel.childWindows?.contains(glass) ?? false
+    )
+    XCTAssertFalse(glass.isVisible)
     controller.setPresentationMode(.expanded)
-    XCTAssertFalse(backdrop.isHidden)
+    XCTAssertTrue(
+      controller.retainedPanel.childWindows?.contains(glass) ?? false
+    )
   }
 
   func testTheGlassStaysAwayWhileTheChangeOfFormIsDrawn() {
     let controller = Self.makeController()
-    let backdrop = controller.conversationBackdrop!
+    let glass = controller.glassWindow
+    func underConversation() -> Bool {
+      controller.retainedPanel.childWindows?.contains(glass) ?? false
+    }
 
     // Collapsing: the conversation shrinks out from under a full-size pane of
     // glass, so the glass has to leave the moment the flight starts.
     _ = controller.beginTransition(to: .orb)
-    XCTAssertTrue(backdrop.isHidden)
+    XCTAssertFalse(underConversation())
     controller.endTransition(.orb)
-    XCTAssertTrue(backdrop.isHidden)
+    XCTAssertFalse(underConversation())
 
     // Summoning: the glass waits until the conversation has landed.
     _ = controller.beginTransition(to: .expanded)
-    XCTAssertTrue(backdrop.isHidden)
+    XCTAssertFalse(underConversation())
     controller.endTransition(.expanded)
-    XCTAssertFalse(backdrop.isHidden)
+    XCTAssertTrue(underConversation())
+  }
+
+  func testTheGlassFollowsAResizedConversation() {
+    let controller = Self.makeController()
+    let panel = controller.retainedPanel
+    // Moving is inherited from being a child window; resizing is not, and a
+    // pane left at the old size pokes out of the corner of a shrunk window.
+    panel.setFrame(
+      NSRect(x: 40, y: 60, width: 900, height: 700),
+      display: false
+    )
+    controller.windowDidResize(
+      Notification(name: NSWindow.didResizeNotification, object: panel)
+    )
+    XCTAssertEqual(controller.glassWindow.frame, panel.frame)
   }
 
   private static func makeController() -> DesktopPanelController {
