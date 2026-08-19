@@ -119,6 +119,92 @@ void main() {
     expect(result.selectedTranscript, 'say now');
   });
 
+  test('repairs a near-miss of a protected term when unsure', () async {
+    // The full-duplex recogniser's worst zh errors are phonetic neighbours
+    // of the vocabulary: Flater for Flutter, NLX for MLX. Measured against
+    // the corpus, an LLM refiner made these worse (it guessed); a bounded
+    // edit-distance match against the protected list can only restore a
+    // listed spelling, never invent one.
+    final TranscriptRefinement result = await refiner.refine(
+      _request('我剛剛把 Flater和 NLX的版本都更新了。', <String>['Flutter', 'MLX'], 0.31),
+    );
+
+    expect(result.selectedTranscript, '我剛剛把 Flutter和 MLX的版本都更新了。');
+    expect(result.edits.single.kind, TranscriptEditKind.vocabulary);
+  });
+
+  test('a confident transcript is not second-guessed', () async {
+    // Correct words score 0.88-1.00 and errors 0.78 or below, so a high
+    // score means the recogniser heard what was said — a near-miss of the
+    // vocabulary in it is a word the user actually chose, like dark mode
+    // beside a vocabulary that lists Dart.
+    final TranscriptRefinement result = await refiner.refine(
+      _request('幫我開 dark mode。', <String>['Dart'], 0.95),
+    );
+
+    expect(result.selectedTranscript, '幫我開 dark mode。');
+    expect(result.status, TranscriptRefinementStatus.unchanged);
+  });
+
+  test('an unscored transcript is not second-guessed either', () async {
+    // The hold key's transcripts carry no confidence, and its recogniser's
+    // errors are correctly spelled ordinary words — exactly the ones this
+    // pass would damage. No score, no repair.
+    final TranscriptRefinement result = await refiner.refine(
+      _request('幫我開 dark mode。', <String>['Dart']),
+    );
+
+    expect(result.selectedTranscript, '幫我開 dark mode。');
+  });
+
+  test('a sentence with no CJK keeps its ordinary words', () async {
+    // The measured near-miss errors are zh code-switching; in an English
+    // sentence a word near the vocabulary is usually an English word.
+    final TranscriptRefinement result = await refiner.refine(
+      _request('I would never flatter you.', <String>['Flutter'], 0.31),
+    );
+
+    expect(result.selectedTranscript, 'I would never flatter you.');
+  });
+
+  test('two edits away is a different word, not a near-miss', () async {
+    // codex sits two edits from Xcode and is a product the user actually
+    // says. Short terms get one edit of slack; two would swallow it.
+    final TranscriptRefinement result = await refiner.refine(
+      _request('先用 codex檢查一次。', <String>['Xcode'], 0.31),
+    );
+
+    expect(result.selectedTranscript, '先用 codex檢查一次。');
+  });
+
+  test('a near-miss torn between two terms is left alone', () async {
+    final TranscriptRefinement result = await refiner.refine(
+      _request('打開 NLX看看。', <String>['MLX', 'NLS'], 0.31),
+    );
+
+    expect(result.selectedTranscript, '打開 NLX看看。');
+  });
+
+  test('a correction outranks a near-miss repair', () async {
+    // The user has said what this word should be; the repair must not
+    // rewrite it afterwards.
+    final TranscriptRefinement result = await refiner.refine(
+      TranscriptRefinementRequest(
+        rawTranscript: '更新 Flater吧',
+        locale: 'zh-TW',
+        protectedVocabulary: const <String>['Flutter'],
+        misheard: const <MisheardWord>[
+          MisheardWord(heard: 'Flater', meant: 'Flet'),
+        ],
+        deadline: const Duration(milliseconds: 50),
+        heardConfidence: 0.31,
+      ),
+    );
+
+    expect(result.selectedTranscript, '更新 Flet吧');
+    expect(result.edits.single.kind, TranscriptEditKind.correction);
+  });
+
   test('no corrections leaves the transcript exactly as it was', () async {
     const DeterministicTranscriptRefiner refiner =
         DeterministicTranscriptRefiner();
@@ -140,9 +226,11 @@ void main() {
 TranscriptRefinementRequest _request(
   String raw, [
   List<String> vocabulary = const <String>[],
+  double? heardConfidence,
 ]) => TranscriptRefinementRequest(
   rawTranscript: raw,
   locale: 'zh-TW',
   protectedVocabulary: vocabulary,
   deadline: const Duration(milliseconds: 250),
+  heardConfidence: heardConfidence,
 );

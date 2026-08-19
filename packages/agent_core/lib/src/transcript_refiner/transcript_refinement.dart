@@ -95,6 +95,7 @@ final class TranscriptRefinementRequest {
     required List<String> protectedVocabulary,
     required this.deadline,
     List<MisheardWord> misheard = const <MisheardWord>[],
+    this.heardConfidence,
   }) : protectedVocabulary = List<String>.unmodifiable(protectedVocabulary),
        misheard = List<MisheardWord>.unmodifiable(misheard);
 
@@ -109,6 +110,14 @@ final class TranscriptRefinementRequest {
 
   /// Corrections the user has already made once, to be made again.
   final List<MisheardWord> misheard;
+
+  /// The recogniser's weakest-span score for [rawTranscript], where one was
+  /// measured, and null wherever nothing scored it — a re-heard or held
+  /// transcript is somebody else's words and carries no score here.
+  ///
+  /// A refiner may only second-guess a transcript the recogniser itself
+  /// doubted: see [HeardConfidence].
+  final double? heardConfidence;
 
   /// Maximum caller-approved refinement time.
   final Duration deadline;

@@ -1,0 +1,40 @@
+{
+  "schemaVersion": 1,
+  "corpusId": "zh-TW-v1",
+  "candidates": [
+    {
+      "kind": "transcript",
+      "runId": "full-duplex-zh-TW-v1",
+      "adapter": {
+        "name": "apple-speech-transcriber",
+        "version": "SpeechTranscriber locale=zh-TW bias=app-vocabulary"
+      },
+      "caseCount": 12,
+      "summary": {
+        "meanRawLiteralCer": 0.2719599613349613,
+        "meanRawSpokenCer": 0.14636800492063648,
+        "meanRawHeardCer": 0.06042629397892555,
+        "meanRefinedLiteralCer": null,
+        "meanRefinedSpokenCer": null,
+        "meanRefinedHeardCer": null
+      }
+    },
+    {
+      "kind": "transcript",
+      "runId": "full-duplex-zh-TW-v1-qwen-shadow",
+      "adapter": {
+        "name": "qwen-mlx-transcript-refiner",
+        "version": "1"
+      },
+      "caseCount": 12,
+      "summary": {
+        "meanRawLiteralCer": 0.2719599613349613,
+        "meanRawSpokenCer": 0.14636800492063648,
+        "meanRawHeardCer": 0.06042629397892555,
+        "meanRefinedLiteralCer": 0.2835340354090354,
+        "meanRefinedSpokenCer": 0.16211760619655355,
+        "meanRefinedHeardCer": 0.07617589525484263
+      }
+    }
+  ]
+}

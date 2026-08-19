@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "corpusId": "zh-TW-v1",
+  "candidates": [
+    {
+      "kind": "transcript",
+      "runId": "full-duplex-zh-TW-v1-qwen-shadow",
+      "adapter": {
+        "name": "qwen-mlx-transcript-refiner",
+        "version": "1"
+      },
+      "caseCount": 12,
+      "summary": {
+        "meanRawLiteralCer": 0.2719599613349613,
+        "meanRawSpokenCer": 0.14636800492063648,
+        "meanRawHeardCer": 0.06042629397892555,
+        "meanRefinedLiteralCer": 0.3026147232397232,
+        "meanRefinedSpokenCer": 0.18642344497607657,
+        "meanRefinedHeardCer": 0.10458583813846972
+      }
+    }
+  ]
+}
