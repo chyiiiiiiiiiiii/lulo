@@ -107,7 +107,8 @@ final class SecondAudioEngineTests: XCTestCase {
           warm: warm,
           analyzerFormat: analyzerFormat,
           mute: MuteBox(),
-          heldSpeech: HeldSpeechCaptureBox()
+          heldSpeech: HeldSpeechCaptureBox(),
+          utteranceRing: UtteranceRingBox()
         )
       }()
       finished.signal()
@@ -175,7 +176,8 @@ final class SecondAudioEngineTests: XCTestCase {
       warm: warm,
       analyzerFormat: analyzerFormat,
       mute: MuteBox(),
-      heldSpeech: HeldSpeechCaptureBox()
+      heldSpeech: HeldSpeechCaptureBox(),
+      utteranceRing: UtteranceRingBox()
     )
     let elapsed = (ProcessInfo.processInfo.systemUptime - started) * 1000
 

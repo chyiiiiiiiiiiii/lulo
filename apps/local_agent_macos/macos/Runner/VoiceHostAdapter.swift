@@ -76,6 +76,21 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
   /// recogniser evaluation.
   private let heldSpeech = HeldSpeechCaptureBox()
 
+  /// The streaming session's last minute of audio, so a doubted utterance
+  /// can be re-heard by the batch recogniser.
+  private let utteranceRing = UtteranceRingBox()
+
+  /// When the audio of the utterance on screen began, as the ring's clock
+  /// tells it, or infinite when no utterance has been heard.
+  ///
+  /// Set from the utterance's first volatile with the same 1.5s margin the
+  /// endpointer uses, because recognition trails the voice it heard. Kept
+  /// past the final on purpose: the re-hear request arrives after.
+  private var utteranceAudioStartedAt: TimeInterval = .infinity
+
+  /// Whether the next non-empty volatile starts a new utterance's audio.
+  private var utteranceAudioOpen = false
+
   /// How much silence after speech means the user has finished talking.
   ///
   /// The transcriber's own endpointing waits out several seconds, and the
@@ -206,9 +221,40 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
     speakEpochBox.epoch = speakEpoch
     turn.listeningStopped()
     mute.muted = false
+    // The audio window closes with the session: a re-hear that arrives
+    // after a stop must not carve a clip out of a dead session's tail.
+    utteranceAudioStartedAt = .infinity
+    utteranceAudioOpen = false
     endSession()
     emit(.listeningStopped)
     completion(.success(()))
+  }
+
+  func reHearUtterance(completion: @escaping (Result<String, Error>) -> Void) {
+    // The second listen for a doubted sentence: the same audio the
+    // streaming recogniser just settled, carved from the session ring and
+    // put to the batch recogniser that hears this user better. Empty for
+    // "nothing to re-hear" and "could not answer" alike — the caller's
+    // streamed transcript stands either way.
+    let start = utteranceAudioStartedAt
+    guard start.isFinite, let clip = utteranceRing.clip(since: start) else {
+      completion(.success(""))
+      return
+    }
+    let terms = vocabulary.all
+    Task { @MainActor in
+      guard let url = await HeldSpeech.writeHeldClip(clip) else {
+        completion(.success(""))
+        return
+      }
+      let heard = await HeldSpeech.transcribeHeld(url, terms: terms)
+      NSLog(
+        "Lulo voice: re-heard %.1fs -> %d chars",
+        Double(clip.samples.count) / clip.sampleRate,
+        heard?.count ?? -1
+      )
+      completion(.success(heard ?? ""))
+    }
   }
 
   func finalizeUtterance(completion: @escaping (Result<Void, Error>) -> Void) {
@@ -763,7 +809,8 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
         warm: warm,
         analyzerFormat: analyzerFormat,
         mute: muteBox,
-        heldSpeech: heldSpeechBox
+        heldSpeech: heldSpeechBox,
+        utteranceRing: utteranceRing
       )
     } catch {
       // A warm engine that will not take a session is not worth keeping.
@@ -821,6 +868,10 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
                   ? ProcessInfo.processInfo.systemUptime - asked
                   : -1
                 self.turn.settled()
+                // The audio window stays where it is — the re-hear request
+                // arrives after this final — but the next volatile belongs
+                // to a new utterance.
+                self.utteranceAudioOpen = false
                 NSLog(
                   "Lulo voice: final (%d chars) %.2fs after the ask, "
                     + "weakest span %@",
@@ -846,10 +897,16 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
                   self.turn.outstanding > 0 ? " WHILE SPEAKING" : "",
                   self.mute.muted ? " muted" : ""
                 )
-                self.turn.heardVolatile(
-                  text: text,
-                  at: ProcessInfo.processInfo.systemUptime
-                )
+                let heardAt = ProcessInfo.processInfo.systemUptime
+                if !self.utteranceAudioOpen {
+                  // Recognition trails the voice it heard: the first
+                  // volatile can arrive over a second after the words
+                  // began, so the audio window opens behind it by the same
+                  // margin the endpointer allows.
+                  self.utteranceAudioOpen = true
+                  self.utteranceAudioStartedAt = heardAt - 1.5
+                }
+                self.turn.heardVolatile(text: text, at: heardAt)
               }
             }
             guard !text.isEmpty else { return }
@@ -1110,7 +1167,8 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
     warm: WarmVoiceEngine,
     analyzerFormat: AVAudioFormat,
     mute: MuteBox,
-    heldSpeech: HeldSpeechCaptureBox
+    heldSpeech: HeldSpeechCaptureBox,
+    utteranceRing: UtteranceRingBox
   ) throws -> ListeningGraph {
     let engine = warm.engine
     let input = engine.inputNode
@@ -1158,15 +1216,19 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
       else {
         return
       }
-      vad.observe(rms: rms, at: ProcessInfo.processInfo.systemUptime)
-      heldSpeechBox.append(
-        Array(
-          UnsafeBufferPointer(
-            start: mono.floatChannelData![0],
-            count: Int(mono.frameLength)
-          )
-        ),
-        sampleRate: mono.format.sampleRate
+      let now = ProcessInfo.processInfo.systemUptime
+      vad.observe(rms: rms, at: now)
+      let monoSamples = Array(
+        UnsafeBufferPointer(
+          start: mono.floatChannelData![0],
+          count: Int(mono.frameLength)
+        )
+      )
+      heldSpeechBox.append(monoSamples, sampleRate: mono.format.sampleRate)
+      utteranceRing.append(
+        monoSamples,
+        sampleRate: mono.format.sampleRate,
+        at: now
       )
       builder.yield(AnalyzerInput(buffer: converted))
     }
@@ -1585,6 +1647,65 @@ final class HeldSpeechCaptureBox: @unchecked Sendable {
     let clip = HeldSpeechClip(samples: samples, sampleRate: rate)
     samples.removeAll(keepingCapacity: false)
     return clip
+  }
+}
+
+/// The streaming session's last minute of microphone audio, kept so a
+/// settled utterance the recogniser doubted can be listened to again.
+///
+/// The batch recogniser is measured 2-4x better than the streaming one on
+/// the same audio, but it needs the audio — which the streaming path used
+/// to feed to the analyzer and drop. This ring holds it, time-addressed,
+/// so `reHearUtterance` can carve out exactly the utterance that settled.
+/// Appends land on the audio thread, clips are taken on the main one; the
+/// lock is held only long enough to move samples.
+final class UtteranceRingBox: @unchecked Sendable {
+  private let lock = NSLock()
+  private var samples: [Float] = []
+  private var rate: Double = 0
+  private var endsAt: TimeInterval = .infinity
+  private let capacitySeconds: TimeInterval
+
+  init(capacitySeconds: TimeInterval = 60) {
+    self.capacitySeconds = capacitySeconds
+  }
+
+  /// Adds one tap buffer, [now] being the uptime its last sample was heard.
+  func append(_ newSamples: [Float], sampleRate: Double, at now: TimeInterval) {
+    lock.lock()
+    defer { lock.unlock() }
+    if rate != sampleRate {
+      // A device swap changes the clock; old samples stitched onto the new
+      // one would play at the wrong speed.
+      samples.removeAll(keepingCapacity: true)
+      rate = sampleRate
+    }
+    samples.append(contentsOf: newSamples)
+    endsAt = now
+    // Trimmed in chunks rather than per append: removeFirst shifts the
+    // whole array, so doing it every 85ms buffer would move the full
+    // minute of audio each time.
+    let capacity = Int(capacitySeconds * rate)
+    if samples.count > capacity + capacity / 4 {
+      samples.removeFirst(samples.count - capacity)
+    }
+  }
+
+  /// The audio heard from [start] to the latest sample, or nil where the
+  /// ring holds nothing of it.
+  func clip(since start: TimeInterval) -> HeldSpeechClip? {
+    lock.lock()
+    defer { lock.unlock() }
+    guard rate > 0, !samples.isEmpty, endsAt.isFinite, start < endsAt else {
+      return nil
+    }
+    let wanted = Int((endsAt - start) * rate)
+    let count = min(samples.count, wanted)
+    guard count > 0 else { return nil }
+    return HeldSpeechClip(
+      samples: Array(samples.suffix(count)),
+      sampleRate: rate
+    )
   }
 }
 

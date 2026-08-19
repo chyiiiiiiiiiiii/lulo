@@ -54,6 +54,9 @@ final class PigeonVoiceService implements VoiceService, VoiceHostEvents {
       _guard(() => _host.useSpokenVocabulary(terms));
 
   @override
+  Future<String> reHearUtterance() => _host.reHearUtterance();
+
+  @override
   Future<String> chooseRecording() => _host.chooseRecording();
 
   @override

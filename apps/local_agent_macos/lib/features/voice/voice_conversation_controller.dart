@@ -62,6 +62,7 @@ final class VoiceConversationController extends ChangeNotifier {
     FloorControl Function() floorControl = _standardFloorControl,
     List<String> Function() unfinishedEndings = _noUnfinishedEndings,
     CutOffLedger? cutOffs,
+    Duration reHearDeadline = const Duration(seconds: 4),
   }) : this._(
          voice,
          conversation,
@@ -75,6 +76,7 @@ final class VoiceConversationController extends ChangeNotifier {
          floorControl,
          unfinishedEndings,
          cutOffs,
+         reHearDeadline,
        );
 
   VoiceConversationController._(
@@ -90,6 +92,7 @@ final class VoiceConversationController extends ChangeNotifier {
     this._floorControl,
     this._unfinishedEndings,
     this._cutOffs,
+    this._reHearDeadline,
   ) {
     _events = _voice.events.listen(_onVoiceEvent);
     _conversation.completedTurnsListenable.addListener(_onTurnsChanged);
@@ -149,6 +152,12 @@ final class VoiceConversationController extends ChangeNotifier {
   /// from the person talking rather than from a list somebody wrote about
   /// their language.
   final CutOffLedger? _cutOffs;
+
+  /// How long a doubted sentence is worth holding for the second listen.
+  ///
+  /// The batch recogniser answers in about 1.3s; a sidecar that has not
+  /// answered by now is not going to, and the streamed sentence stands.
+  final Duration _reHearDeadline;
 
   /// The question before the one being asked now, and when it was asked, so
   /// a cut-off can be recognised by its shape after the fact.
@@ -561,7 +570,7 @@ final class VoiceConversationController extends ChangeNotifier {
             _yieldToTheUser(from: 'final', heard: text);
           }
         }
-        unawaited(_refineFinalUtterance(text));
+        unawaited(_refineFinalUtterance(text, reHearable: true));
       case SpeakingStarted():
         _speaking = true;
         notifyListeners();
@@ -904,9 +913,13 @@ final class VoiceConversationController extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> _refineFinalUtterance(String raw) async {
+  Future<void> _refineFinalUtterance(
+    String raw, {
+    bool reHearable = false,
+  }) async {
     final int epoch = ++_refinementEpoch;
     final List<String> vocabulary = _protectedVocabulary();
+    double? confidence = _lastHeardConfidence;
     // The shadow gets the raw transcript, and the live path additionally
     // applies the user's corrections — so the two are not comparable on an
     // utterance a correction fired on. That was tried the other way and
@@ -926,6 +939,27 @@ final class VoiceConversationController extends ChangeNotifier {
         deadline: const Duration(milliseconds: 250),
       ),
     );
+    // The second listen, for a sentence the streaming recogniser doubted:
+    // the batch recogniser is measured 2-4x better on the same audio, so a
+    // doubted sentence is worth its ~1.3s. What comes back replaces the
+    // streamed words wholesale — and the doubt with them, because the score
+    // belonged to the recogniser whose words were discarded. Empty or late
+    // collapses to the streamed sentence standing, doubt and all. Only the
+    // streaming path asks: the hold key's text already came from the batch
+    // recogniser, and its score here would be another utterance's.
+    if (reHearable && HeardConfidence.isDoubtful(confidence)) {
+      final String reheard = await _voice.reHearUtterance().timeout(
+        _reHearDeadline,
+        onTimeout: () => '',
+      );
+      if (_disposed || !_enabled || epoch != _refinementEpoch) {
+        return;
+      }
+      if (reheard.trim().isNotEmpty) {
+        raw = reheard.trim();
+        confidence = null;
+      }
+    }
     final TranscriptRefinement refinement = await _transcriptRefiner.refine(
       TranscriptRefinementRequest(
         rawTranscript: raw,
@@ -933,6 +967,11 @@ final class VoiceConversationController extends ChangeNotifier {
         protectedVocabulary: vocabulary,
         misheard: _misheard(),
         deadline: const Duration(milliseconds: 250),
+        // Only where the score describes this very text: on the held path
+        // the last streaming score belongs to some earlier utterance, and a
+        // stale doubt would license the refiner to second-guess words the
+        // batch recogniser already heard well.
+        heardConfidence: reHearable ? confidence : null,
       ),
     );
     if (_disposed || !_enabled || epoch != _refinementEpoch) {
@@ -942,7 +981,7 @@ final class VoiceConversationController extends ChangeNotifier {
     // two facts from two components, joined here because this is the only
     // place that holds both.
     final TranscriptRefinement heard = refinement.withHeardConfidence(
-      _lastHeardConfidence,
+      confidence,
     );
     if (_conversation.canSubmit) {
       _cancelPendingResume();

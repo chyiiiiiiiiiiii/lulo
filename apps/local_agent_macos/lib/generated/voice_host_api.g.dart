@@ -424,6 +424,33 @@ class VoiceHostApi {
     );
   }
 
+  /// Re-hears the utterance that just settled with the batch recogniser and
+  /// returns what it heard, or empty when it could not be reached, heard
+  /// nothing, or there was no utterance to re-hear.
+  ///
+  /// The streaming session's microphone samples are kept in a bounded ring
+  /// for exactly this: a settled transcript the recogniser doubted can be
+  /// listened to again by the recogniser that hears this user better. The
+  /// same Breeze-ASR-25 sidecar the hold key uses.
+  Future<String> reHearUtterance() async {
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.local_agent_macos.VoiceHostApi.reHearUtterance$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channel = BasicMessageChannel<Object?>(
+      pigeonVar_channelName,
+      pigeonChannelCodec,
+      binaryMessenger: pigeonVar_binaryMessenger,
+    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(null);
+    final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
+
+    final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: false,
+    );
+    return pigeonVar_replyValue! as String;
+  }
+
   /// Asks the user for a recording to transcribe and returns its path, or
   /// empty if they backed out.
   ///

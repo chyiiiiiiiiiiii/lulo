@@ -143,6 +143,16 @@ abstract interface class VoiceService {
   /// substitution cannot.
   Future<void> useSpokenVocabulary(List<String> terms);
 
+  /// Asks the batch recogniser to listen again to the utterance that just
+  /// settled, and returns what it heard — or empty when it could not be
+  /// reached, heard nothing, or there was no utterance to re-hear.
+  ///
+  /// The second listen exists because the streaming recogniser is measured
+  /// 2-4x worse than the batch one on the same audio, and it scores its own
+  /// doubt: see [HeardConfidence]. Costs about 1.3s, so the caller only asks
+  /// on a doubted sentence.
+  Future<String> reHearUtterance();
+
   /// Asks the user for a recording and returns its path, or empty if they
   /// backed out.
   Future<String> chooseRecording();

@@ -283,8 +283,12 @@ The other half is a recogniser this app does not control. `SpeechTranscriber`
 is the only streaming option on the platform, the vocabulary bias has now twice
 been measured changing nothing, and the errors it makes are ordinary English
 words rather than nonsense — so nothing downstream can detect them either.
-What is left is `AgentProfile.misheard`, one substitution at a time, and
-telling the user which door hears them better.
+What softens this is that the streaming recogniser scores its own doubt, and
+a doubted final now takes the batch path automatically:
+[the second listen](#the-second-listen) re-runs the same audio through
+Breeze before anything is submitted. What is left for the sentences it
+scores confidently and hears wrongly is `AgentProfile.misheard`, one
+substitution at a time, and telling the user which door hears them better.
 
 ## Endpointing
 
@@ -678,6 +682,47 @@ push-to-talk fragments are joined first and refined once. The production
 path uses a local deterministic refiner behind a 250 ms deadline. Timeout,
 exception, rejection, overlap, or disposal selects the exact recognizer text.
 
+The deterministic refiner also repairs a **near-miss of a protected term** —
+`Flater` → `Flutter`, `NLX` → `MLX` — but only when three things line up:
+the request carries a weakest-span score below `HeardConfidence.trusted`
+(so a confidently heard `dark mode` is never second-guessed into `Dart`,
+and hold-key text, which carries no score, is never touched), the sentence
+contains CJK (the measured near-miss errors are zh code-switching; in an
+English sentence a word near the vocabulary is usually an English word),
+and the token sits within one edit of a unique nearest term — two for terms
+of six letters or more, which is what lets `Flater` reach `Flutter` while
+`codex` stays two edits clear of `Xcode`. A word the user has taught a
+correction for is skipped, or the repair would erase the text the
+correction matches on. The bound is the point: an LLM given the same job
+was measured making the transcript worse — see
+[../../benchmarks/voice_eval/evidence/qwen-refiner-shadow/README.md](../../benchmarks/voice_eval/evidence/qwen-refiner-shadow/README.md)
+— because these errors are phonetic neighbours of the true words, and
+without the sound a model can only guess. An edit-distance match against
+the protected list can only restore a listed spelling, never invent one.
+
+### The second listen
+
+A doubted streaming final is re-heard by the batch recogniser before it is
+refined or submitted. The gate is the same score: on a `FinalTranscript`
+whose weakest span is below `HeardConfidence.trusted`, the controller calls
+`reHearUtterance` and waits up to 4s. The host carves the utterance's audio
+out of `UtteranceRingBox` — a session-scoped, time-addressed ring of the
+last minute of mono microphone samples, appended on the audio thread by the
+same tap that feeds the analyzer — from 1.5s before the utterance's first
+volatile (recognition trails the voice it heard, the same margin the
+endpointer uses) through the latest sample, writes it as a held clip, and
+puts it to the Breeze sidecar on `127.0.0.1:46558`.
+
+What comes back replaces the streamed words wholesale, and the doubt with
+them: the turn carries no `heardConfidence`, because the score belonged to
+the recogniser whose words were discarded, and the near-miss repair stands
+down for the same reason. Empty, unreachable, and late all collapse to the
+streamed sentence standing, doubt and all. Only the streaming path asks —
+the hold key's text already came from the batch recogniser — and the ~1.3s
+the second listen costs is paid only on sentences that were going to be
+wrong: measured on the same corpus, the streaming recogniser's heard CER is
+6.0% zh / 13.4% en against Breeze's 1.6% / 3.8%.
+
 Every voice-authored user turn keeps the raw transcript, applied proposal,
 status, redacted edit metadata, refiner identity, version, and elapsed time in
 the same SQLite row. Inference and the conversation UI use the selected text,
@@ -814,9 +859,13 @@ Dart on `FinalTranscript.confidence`, is joined to the refiner's selection in
 
 Deliberately **not persisted**: a caveat is worth reading in the moment and
 would otherwise cost a schema migration for a mark nobody revisits, so
-restored turns carry null and show nothing. Marking is all this does —
-repairing a misheard sentence against the full model was measured at
-0.7–1.0s warm and is a separate decision that still needs its own evidence.
+restored turns carry null and show nothing. The caption now marks only the
+sentences the second listen could not save: a doubted final is re-heard by
+the batch recogniser first (see
+[the second listen](#the-second-listen)), and a re-heard sentence carries
+no score at all. Repairing against an LLM instead was measured and made
+things worse —
+[qwen-refiner-shadow](../../benchmarks/voice_eval/evidence/qwen-refiner-shadow/README.md).
 See [../decisions/voice-turn-latency.md](../decisions/voice-turn-latency.md).
 
 The three stages are the refinement (`FinalTranscript` → `submit`), the

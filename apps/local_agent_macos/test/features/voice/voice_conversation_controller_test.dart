@@ -477,6 +477,103 @@ void main() {
     );
   });
 
+  test('a doubted final is re-heard before it is submitted', () async {
+    // The streaming recogniser is 2-4x worse than the batch one on the same
+    // audio, and it says when it is unsure. A doubted sentence is worth the
+    // second listen; what Breeze heard is what the model should answer.
+    await controller.enable();
+    voice.reHearAnswer = '我剛剛把 Flutter和 MLX的版本都更新了。';
+    voice.hear(
+      const FinalTranscript('我剛剛把 Flater和 NLX的版本都更新了。', confidence: 0.31),
+    );
+    await pump();
+    await pump();
+
+    final GenerationRequest sent = await inference.requestReceived;
+    expect(voice.calls, contains('reHearUtterance'));
+    expect(sent.prompt, '我剛剛把 Flutter和 MLX的版本都更新了。');
+    final Turn asked = vm.completedTurnsListenable.value.firstWhere(
+      (Turn turn) => turn.role == TurnRole.user,
+    );
+    // The words are the batch recogniser's now; the streaming recogniser's
+    // doubt does not belong to them, so no caveat is shown.
+    expect(asked.voiceInput?.heardConfidence, isNull);
+    // The turn's raw evidence is the batch recogniser's own text, the same
+    // provenance a held transcript has.
+    expect(asked.voiceInput?.rawTranscript, '我剛剛把 Flutter和 MLX的版本都更新了。');
+  });
+
+  test('a trusted final is not re-heard', () async {
+    await controller.enable();
+    voice.reHearAnswer = '不該用到的句子';
+    voice.hear(const FinalTranscript('介紹台北。', confidence: 0.97));
+    await pump();
+    await pump();
+
+    final GenerationRequest sent = await inference.requestReceived;
+    expect(voice.calls, isNot(contains('reHearUtterance')));
+    expect(sent.prompt, '介紹台北。');
+  });
+
+  test('re-hearing nothing leaves the streamed sentence standing', () async {
+    // Unreachable and heard-nothing collapse to the same answer here: the
+    // streamed transcript stands, doubt and all.
+    await controller.enable();
+    voice.reHearAnswer = '';
+    voice.hear(const FinalTranscript('計算怎麼吃', confidence: 0.48));
+    await pump();
+    await pump();
+
+    final GenerationRequest sent = await inference.requestReceived;
+    expect(sent.prompt, '計算怎麼吃');
+    final Turn asked = vm.completedTurnsListenable.value.firstWhere(
+      (Turn turn) => turn.role == TurnRole.user,
+    );
+    expect(asked.voiceInput?.heardConfidence, 0.48);
+  });
+
+  test('a second listen that never answers does not hold the turn', () async {
+    // The sidecar can hang as well as fail. The deadline collapses a hung
+    // listen to the same answer as an unreachable one: the streamed
+    // sentence stands, and the user is not left talking to a stuck app.
+    controller.dispose();
+    controller = VoiceConversationController(
+      voice: voice,
+      conversation: vm,
+      reHearDeadline: const Duration(milliseconds: 1),
+    );
+    await controller.enable();
+    voice.reHearHold = Completer<String>();
+    voice.hear(const FinalTranscript('計算怎麼吃', confidence: 0.48));
+    await pump();
+    await Future<void>.delayed(const Duration(milliseconds: 20));
+
+    final GenerationRequest sent = await inference.requestReceived;
+    expect(sent.prompt, '計算怎麼吃');
+  });
+
+  test('a held transcript is never re-heard', () async {
+    // The hold key's text already came from the batch recogniser; a second
+    // listen could only repeat it. The stale streaming score from an
+    // earlier utterance must not trigger one either.
+    await controller.enable();
+    voice.reHearAnswer = '';
+    voice.hear(const FinalTranscript('嗯', confidence: 0.31));
+    await pump();
+    await pump();
+    voice.calls.clear();
+    voice.reHearAnswer = '不該用到的句子';
+    voice.hear(const HoldToTalkPressed());
+    await pump();
+    voice.hear(const HoldToTalkReleased());
+    await pump();
+    voice.hear(const HeldTranscript('幫我跑 Dart test'));
+    await pump();
+    await pump();
+
+    expect(voice.calls, isNot(contains('reHearUtterance')));
+  });
+
   test('the log says why the agent did or did not stop', () async {
     // These rulings already went to debugPrint, which is the wrong place:
     // the person who needs to know why the agent kept talking is the one
@@ -2373,6 +2470,9 @@ final class _NeverStartsVoice implements VoiceService {
 
   @override
   Future<String> transcribeRecording(String path) async => '';
+
+  @override
+  Future<String> reHearUtterance() async => '';
 
   @override
   Future<void> startListening() => Completer<void>().future;

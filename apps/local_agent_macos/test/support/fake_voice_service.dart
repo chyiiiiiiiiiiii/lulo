@@ -37,6 +37,19 @@ final class FakeVoiceService implements VoiceService {
     unfinishedEndings.add(List<String>.unmodifiable(endings));
   }
 
+  /// What [reHearUtterance] answers.
+  String reHearAnswer = '';
+
+  /// When set, [reHearUtterance] answers with this future instead — a
+  /// sidecar that is still thinking, or never answers at all.
+  Completer<String>? reHearHold;
+
+  @override
+  Future<String> reHearUtterance() {
+    calls.add('reHearUtterance');
+    return reHearHold?.future ?? Future<String>.value(reHearAnswer);
+  }
+
   /// What [chooseRecording] answers.
   String recordingToChoose = '';
 

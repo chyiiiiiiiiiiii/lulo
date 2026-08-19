@@ -332,6 +332,15 @@ protocol VoiceHostApi {
   /// word has already been misheard, and repairing it there is guessing at
   /// what was said. Replaces the previous list wholesale.
   func useSpokenVocabulary(terms: [String], completion: @escaping (Result<Void, Error>) -> Void)
+  /// Re-hears the utterance that just settled with the batch recogniser and
+  /// returns what it heard, or empty when it could not be reached, heard
+  /// nothing, or there was no utterance to re-hear.
+  ///
+  /// The streaming session's microphone samples are kept in a bounded ring
+  /// for exactly this: a settled transcript the recogniser doubted can be
+  /// listened to again by the recogniser that hears this user better. The
+  /// same Breeze-ASR-25 sidecar the hold key uses.
+  func reHearUtterance(completion: @escaping (Result<String, Error>) -> Void)
   /// Asks the user for a recording to transcribe and returns its path, or
   /// empty if they backed out.
   ///
@@ -492,6 +501,29 @@ class VoiceHostApiSetup {
       }
     } else {
       useSpokenVocabularyChannel.setMessageHandler(nil)
+    }
+    /// Re-hears the utterance that just settled with the batch recogniser and
+    /// returns what it heard, or empty when it could not be reached, heard
+    /// nothing, or there was no utterance to re-hear.
+    ///
+    /// The streaming session's microphone samples are kept in a bounded ring
+    /// for exactly this: a settled transcript the recogniser doubted can be
+    /// listened to again by the recogniser that hears this user better. The
+    /// same Breeze-ASR-25 sidecar the hold key uses.
+    let reHearUtteranceChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.local_agent_macos.VoiceHostApi.reHearUtterance\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
+    if let api = api {
+      reHearUtteranceChannel.setMessageHandler { _, reply in
+        api.reHearUtterance { result in
+          switch result {
+          case .success(let res):
+            reply(wrapResult(res))
+          case .failure(let error):
+            reply(wrapError(error))
+          }
+        }
+      }
+    } else {
+      reHearUtteranceChannel.setMessageHandler(nil)
     }
     /// Asks the user for a recording to transcribe and returns its path, or
     /// empty if they backed out.

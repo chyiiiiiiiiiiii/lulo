@@ -128,6 +128,17 @@ abstract class VoiceHostApi {
   @async
   void useSpokenVocabulary(List<String> terms);
 
+  /// Re-hears the utterance that just settled with the batch recogniser and
+  /// returns what it heard, or empty when it could not be reached, heard
+  /// nothing, or there was no utterance to re-hear.
+  ///
+  /// The streaming session's microphone samples are kept in a bounded ring
+  /// for exactly this: a settled transcript the recogniser doubted can be
+  /// listened to again by the recogniser that hears this user better. The
+  /// same Breeze-ASR-25 sidecar the hold key uses.
+  @async
+  String reHearUtterance();
+
   /// Asks the user for a recording to transcribe and returns its path, or
   /// empty if they backed out.
   ///
