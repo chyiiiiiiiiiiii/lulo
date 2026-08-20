@@ -62,7 +62,7 @@ final class VoiceConversationController extends ChangeNotifier {
     FloorControl Function() floorControl = _standardFloorControl,
     List<String> Function() unfinishedEndings = _noUnfinishedEndings,
     CutOffLedger? cutOffs,
-    Duration reHearDeadline = const Duration(seconds: 4),
+    Duration reHearDeadline = const Duration(seconds: 8),
   }) : this._(
          voice,
          conversation,
@@ -155,8 +155,13 @@ final class VoiceConversationController extends ChangeNotifier {
 
   /// How long a doubted sentence is worth holding for the second listen.
   ///
-  /// The batch recogniser answers in about 1.3s; a sidecar that has not
-  /// answered by now is not going to, and the streamed sentence stands.
+  /// Measured live: the batch recogniser answered a 4.4s clip in 3.9s and
+  /// a 9.3s one in 2.8s — the first ask of a session pays a warm-up, so a
+  /// 4s deadline missed it by a tenth. Eight covers the warm-up and any
+  /// utterance the ring can hold; the second listen only happens on
+  /// sentences that were going to be wrong, so the wait buys correctness
+  /// rather than costing responsiveness. A sidecar quiet past this is not
+  /// going to answer, and the streamed sentence stands.
   final Duration _reHearDeadline;
 
   /// The question before the one being asked now, and when it was asked, so

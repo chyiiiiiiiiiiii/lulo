@@ -34,6 +34,35 @@ final class UtteranceRingTests: XCTestCase {
     XCTAssertNil(ring.clip(since: 2.0))
   }
 
+  func testAClipCanEndBeforeTheLatestSample() {
+    // The re-hear fires a beat after the endpointer's silence, so the tail
+    // of the ring is quiet room the batch recogniser only wastes time on.
+    // An until-bound carves the utterance without its trailing silence.
+    let ring = UtteranceRingBox(capacitySeconds: 60)
+    ring.append([Float](repeating: 0.1, count: 100), sampleRate: 100, at: 1.0)
+    ring.append([Float](repeating: 0.2, count: 100), sampleRate: 100, at: 2.0)
+    ring.append([Float](repeating: 0.3, count: 100), sampleRate: 100, at: 3.0)
+
+    let clip = ring.clip(since: 0, until: 2.0)
+    XCTAssertEqual(clip?.samples.count, 200)
+    XCTAssertEqual(clip?.samples.last, 0.2)
+  }
+
+  func testAnUntilPastTheEndTakesTheWholeTail() {
+    let ring = UtteranceRingBox(capacitySeconds: 60)
+    ring.append([Float](repeating: 0.1, count: 100), sampleRate: 100, at: 1.0)
+
+    XCTAssertEqual(ring.clip(since: 0, until: 9)?.samples.count, 100)
+  }
+
+  func testAnUntilBeforeTheStartHasNoClip() {
+    let ring = UtteranceRingBox(capacitySeconds: 60)
+    ring.append([Float](repeating: 0.1, count: 100), sampleRate: 100, at: 1.0)
+
+    XCTAssertNil(ring.clip(since: 0.5, until: 0.5))
+    XCTAssertNil(ring.clip(since: 0.5, until: 0.2))
+  }
+
   func testTheRingStaysBounded() {
     // Ten "seconds" of audio into a two-second ring: the oldest samples
     // must be gone, and what survives is the newest tail.

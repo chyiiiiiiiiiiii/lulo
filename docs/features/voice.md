@@ -705,13 +705,17 @@ the protected list can only restore a listed spelling, never invent one.
 A doubted streaming final is re-heard by the batch recogniser before it is
 refined or submitted. The gate is the same score: on a `FinalTranscript`
 whose weakest span is below `HeardConfidence.trusted`, the controller calls
-`reHearUtterance` and waits up to 4s. The host carves the utterance's audio
-out of `UtteranceRingBox` — a session-scoped, time-addressed ring of the
-last minute of mono microphone samples, appended on the audio thread by the
-same tap that feeds the analyzer — from 1.5s before the utterance's first
+`reHearUtterance` and waits up to 8s — measured live, the first ask of a
+session pays a warm-up that put a 4.4s clip at 3.9s, and a 4s deadline
+missed it by a tenth. The host carves the utterance's audio out of
+`UtteranceRingBox` — a session-scoped, time-addressed ring of the last
+minute of mono microphone samples, appended on the audio thread by the same
+tap that feeds the analyzer — from 1.5s before the utterance's first
 volatile (recognition trails the voice it heard, the same margin the
-endpointer uses) through the latest sample, writes it as a held clip, and
-puts it to the Breeze sidecar on `127.0.0.1:46558`.
+endpointer uses) to 0.3s before the final settled (the endpointer already
+waited out its silence; the room after it is dead time the recogniser runs
+at roughly real time to hear), writes it as a held clip, and puts it to the
+Breeze sidecar on `127.0.0.1:46558`.
 
 What comes back replaces the streamed words wholesale, and the doubt with
 them: the turn carries no `heardConfidence`, because the score belonged to

@@ -91,6 +91,14 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
   /// Whether the next non-empty volatile starts a new utterance's audio.
   private var utteranceAudioOpen = false
 
+  /// When the utterance on screen settled, as the ring's clock tells it.
+  ///
+  /// The re-hear clips to just before this instant: the endpointer waited
+  /// out at least 0.55s of silence before asking, so everything after
+  /// (settled - 0.3s) is quiet room the batch recogniser would only spend
+  /// real time listening to.
+  private var utteranceAudioSettledAt: TimeInterval = .infinity
+
   /// How much silence after speech means the user has finished talking.
   ///
   /// The transcriber's own endpointing waits out several seconds, and the
@@ -224,6 +232,7 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
     // The audio window closes with the session: a re-hear that arrives
     // after a stop must not carve a clip out of a dead session's tail.
     utteranceAudioStartedAt = .infinity
+    utteranceAudioSettledAt = .infinity
     utteranceAudioOpen = false
     endSession()
     emit(.listeningStopped)
@@ -237,7 +246,14 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
     // "nothing to re-hear" and "could not answer" alike — the caller's
     // streamed transcript stands either way.
     let start = utteranceAudioStartedAt
-    guard start.isFinite, let clip = utteranceRing.clip(since: start) else {
+    // 0.3s back from the settle keeps at least a beat of trailing silence
+    // (the endpointer waited out 0.55s or more before asking) while cutting
+    // the second-plus of quiet room between the silence, the final's
+    // arrival, and this call — time the batch recogniser would otherwise
+    // spend listening to nothing at roughly real time.
+    let end = utteranceAudioSettledAt - 0.3
+    guard start.isFinite, let clip = utteranceRing.clip(since: start, until: end)
+    else {
       completion(.success(""))
       return
     }
@@ -872,6 +888,8 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
                 // arrives after this final — but the next volatile belongs
                 // to a new utterance.
                 self.utteranceAudioOpen = false
+                self.utteranceAudioSettledAt =
+                  ProcessInfo.processInfo.systemUptime
                 NSLog(
                   "Lulo voice: final (%d chars) %.2fs after the ask, "
                     + "weakest span %@",
@@ -1691,19 +1709,30 @@ final class UtteranceRingBox: @unchecked Sendable {
     }
   }
 
-  /// The audio heard from [start] to the latest sample, or nil where the
-  /// ring holds nothing of it.
-  func clip(since start: TimeInterval) -> HeldSpeechClip? {
+  /// The audio heard from [start] to [end] (or to the latest sample), or
+  /// nil where the ring holds nothing of it.
+  ///
+  /// The until-bound exists because the re-hear fires a beat after the
+  /// endpointer's silence: the tail of the ring is quiet room, and the
+  /// batch recogniser runs near real time, so every second of it is a
+  /// second the user waits for nothing.
+  func clip(
+    since start: TimeInterval,
+    until end: TimeInterval = .infinity
+  ) -> HeldSpeechClip? {
     lock.lock()
     defer { lock.unlock() }
     guard rate > 0, !samples.isEmpty, endsAt.isFinite, start < endsAt else {
       return nil
     }
-    let wanted = Int((endsAt - start) * rate)
-    let count = min(samples.count, wanted)
+    let boundedEnd = min(end, endsAt)
+    guard start < boundedEnd else { return nil }
+    let dropped = min(samples.count, Int((endsAt - boundedEnd) * rate))
+    let available = samples.count - dropped
+    let count = min(available, Int((boundedEnd - start) * rate))
     guard count > 0 else { return nil }
     return HeldSpeechClip(
-      samples: Array(samples.suffix(count)),
+      samples: Array(samples[(available - count)..<available]),
       sampleRate: rate
     )
   }
