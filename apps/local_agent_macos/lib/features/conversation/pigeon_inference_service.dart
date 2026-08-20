@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:agent_core/agent_core.dart';
+import 'package:flutter/foundation.dart';
 
 import '../../generated/desktop_host_api.g.dart';
 import '../../platform/desktop_host_service.dart';
@@ -419,6 +420,12 @@ final class _PigeonGenerationOperation {
         controller.add(GenerationCancelled(generationId));
         unawaited(_finish());
       case HostGenerationEventType.failed:
+        // The bubble says "回答失敗" and nothing else on purpose; this line
+        // is where the reason survives for whoever reads the log.
+        debugPrint(
+          'Lulo turn: host reported failure — '
+          '${event.failureCode?.name ?? 'no failure code'}',
+        );
         controller.add(
           GenerationFailed(
             generationId: generationId,
@@ -570,6 +577,16 @@ final class _PigeonGenerationOperation {
 }
 
 ConversationFailure _safeConversationFailure(Object error) {
+  // The failure the user sees deliberately says almost nothing, which
+  // twice made a live "回答失敗" undiagnosable: the log held no trace of
+  // what actually threw. The truncated original goes to the log — error
+  // types and protocol codes, not conversation content, are what land
+  // here — and the sanitized message goes to the screen.
+  final String detail = error.toString();
+  debugPrint(
+    'Lulo turn: failure sanitized — ${error.runtimeType}: '
+    '${detail.length > 300 ? detail.substring(0, 300) : detail}',
+  );
   if (error case DesktopHostFailure(:final message)) {
     return ConversationFailure(message);
   }

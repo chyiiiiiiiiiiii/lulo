@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:agent_core/agent_core.dart';
+import 'package:flutter/foundation.dart';
 
 import 'conversation_storage_service.dart';
 import 'inference_service.dart';
@@ -460,6 +461,13 @@ final class _GenerationOperation {
       return;
     }
     _terminal = true;
+    // The turn will read "failed" and nothing else wherever it is shown;
+    // this line is where the reason survives for whoever reads the log.
+    final String detail = error.toString();
+    debugPrint(
+      'Lulo turn: generation errored — ${error.runtimeType}: '
+      '${detail.length > 300 ? detail.substring(0, 300) : detail}',
+    );
 
     final Generation? generation = _generation;
     try {
