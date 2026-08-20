@@ -1066,6 +1066,15 @@ final class VoiceConversationController extends ChangeNotifier {
       // prefill cancel never notifies, so the dispatch guard is lifted
       // here, where the end is always visible.
       _stopRequestedForActive = false;
+      if (_pttProtected && !_speaking && !_speechRequested) {
+        // The protected answer is over on both fronts — written out and
+        // read out. SpeakingFinished alone cannot be trusted with this:
+        // when the answer's last chunk has nothing sayable, the final
+        // SpeakingFinished lands while the model is still writing, no
+        // later Speaking event ever comes, and a shield nobody lifts
+        // locks the session into push-to-talk for good.
+        _pttProtected = false;
+      }
     }
     final TranscriptRefinement? pending = _pendingUtterance;
     if (pending == null || !_enabled || !_conversation.canSubmit) {

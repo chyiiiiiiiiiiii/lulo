@@ -1164,6 +1164,50 @@ void main() {
     );
   });
 
+  test('the shield lifts even when speech drains before the answer', () async {
+    // The shield clears on SpeakingFinished — but only if the generation
+    // has also finished. When the answer's last chunk has nothing sayable
+    // (a code block, a bare emoji), the final SpeakingFinished arrives
+    // while the model is still writing, no later Speaking event ever
+    // comes, and the shield stays up forever: every open-conversation
+    // sentence after that is silently dropped. Observed live — one hold
+    // locked the app into push-to-talk for the rest of the session.
+    await controller.enable();
+    controller.holdToTalkPressed();
+    voice.hear(const FinalTranscript('講一個長故事'));
+    await pump();
+    controller.holdToTalkReleased();
+    await pump();
+    final Generation generation = await generationStarted();
+    inference.emit(
+      GenerationDelta(generationId: generation.id, delta: '從前有座山，山裡有座廟。'),
+    );
+    await pump();
+    await pump();
+    expect(voice.spoken, isNotEmpty);
+
+    // The speech drains while the model is still writing...
+    voice.hear(const SpeakingFinished());
+    await pump();
+    // ...and what it writes after that is nothing the voice can say.
+    inference.emit(
+      GenerationDelta(generationId: generation.id, delta: '\n```\ncode\n```'),
+    );
+    inference.emit(GenerationCompleted(generation.id));
+    await pump();
+    await pump();
+
+    voice.hear(const FinalTranscript('現在幾點', confidence: 0.97));
+    await pump();
+    await pump();
+    expect(
+      inference.requests,
+      hasLength(2),
+      reason: 'Open conversation must come back once the protected answer '
+          'is over, however its last chunk ended.',
+    );
+  });
+
   test('a resumed answer keeps its language', () async {
     // The interrupted sentence outlives the turn, but _activeLang does not:
     // it resets to null the moment the active turn clears. Resuming with a
