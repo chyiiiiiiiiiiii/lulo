@@ -387,7 +387,16 @@ actor SystemLiteRTLMRuntimeDriver: LiteRTLMRuntimeDriving {
   }
 
   func cancel(sessionId: String) async throws {
-    try conversations[sessionId]?.cancel()
+    // Removed, not merely cancelled. A conversation `cancel()` has stopped
+    // is dead for good: every later `sendMessageStream` on it throws
+    // `CANCELLED: Task cancelled` immediately — measured by
+    // `CancelSameSessionProbeTests`, and observed live as every answer
+    // after a barge-in failing for the rest of the session.
+    // `CancelProbeTests` proved the *engine* recovers in seconds, but only
+    // ever asked a fresh conversation. Dropping the entry sends the next
+    // turn down the rebuild path, which re-seeds from history: one
+    // prefill, the same trade a changed system instruction already makes.
+    try conversations.removeValue(forKey: sessionId)?.cancel()
   }
 
   func resetSession(sessionId: String) async throws {
@@ -773,6 +782,16 @@ public actor LiteRTLMRuntimeBackend: RuntimeBackend {
       }
       await completeGeneration(generationId: generationId, token: token)
     } catch {
+      // The failed event carries only "Local inference failed", and for a
+      // cancelled decode this catch is routine — so without this line the
+      // one error that matters is indistinguishable from the one that
+      // does not, which is exactly how a dead conversation failed every
+      // turn for a whole session before anyone could see why.
+      NSLog(
+        "Lulo runtime: generation %@ ended by throw — %@",
+        generationId,
+        String(describing: error)
+      )
       await failGeneration(generationId: generationId, token: token)
     }
     // If this decode was the abandoned one, the engine is free again.
