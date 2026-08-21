@@ -6,11 +6,21 @@ user has started talking, that they have stopped, and that they have started
 again over an answer they no longer want. Every one of those is a heuristic
 with a way to fail silently.
 
-> **State.** Full duplex is **on**: voice processing is enabled on both the
-> input and the output node, the microphone stays open while the agent
-> speaks, and the user can talk over an answer. The half-duplex path below
-> is the fallback for hardware where voice processing cannot be enabled.
-> See [../decisions/full-duplex-voice.md](../decisions/full-duplex-voice.md)
+> **State.** The always-listening session is **opt-in**: Settings › Taking
+> turns › Live conversation, off by default. Holding to talk — the composer
+> mic button or ⌘⇧Space — is the product's default door, and a session a
+> hold opened closes itself once the answer is over. Three reasons, all
+> measured: the hold key's recogniser is 2-4x more accurate on the same
+> audio; the open microphone runs voice-processed, which ducks every other
+> app's audio system-wide for as long as it listens; and an always-open
+> microphone transcribes a room that is mostly not talking to the agent.
+>
+> When the switch is on, full duplex works as documented below: voice
+> processing on both the input and the output node, the microphone open
+> while the agent speaks, the user able to talk over an answer. The
+> half-duplex path is the fallback for hardware where voice processing
+> cannot be enabled. See
+> [../decisions/full-duplex-voice.md](../decisions/full-duplex-voice.md)
 > — including why two measurements in a row concluded the opposite.
 
 ## The files
@@ -288,7 +298,9 @@ a doubted final now takes the batch path automatically:
 [the second listen](#the-second-listen) re-runs the same audio through
 Breeze before anything is submitted. What is left for the sentences it
 scores confidently and hears wrongly is `AgentProfile.misheard`, one
-substitution at a time, and telling the user which door hears them better.
+substitution at a time. "Telling the user which door hears them better"
+was resolved at the product level instead: the better door is the default
+one, and the always-listening path sits behind its own switch, off.
 
 ## Endpointing
 

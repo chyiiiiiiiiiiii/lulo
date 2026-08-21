@@ -21,6 +21,7 @@ final class AppSettings {
     this.answerStyle = AnswerStyle.balanced,
     this.shareFrontmostApp = false,
     this.rememberFacts = false,
+    this.liveConversation = false,
   });
 
   /// Reads settings written by [toJson], ignoring anything unrecognised.
@@ -57,6 +58,10 @@ final class AppSettings {
         defaults.shareFrontmostApp,
       ),
       rememberFacts: _boolOr(json['rememberFacts'], defaults.rememberFacts),
+      liveConversation: _boolOr(
+        json['liveConversation'],
+        defaults.liveConversation,
+      ),
     );
   }
 
@@ -106,6 +111,16 @@ final class AppSettings {
   /// read as consent.
   final bool rememberFacts;
 
+  /// Whether the microphone may stay open for an always-on conversation.
+  ///
+  /// Off by default, and off on any settings file that predates the switch:
+  /// an absent key must never open a microphone. The always-listening
+  /// recogniser is measured 2-4x worse than the hold key on the same audio,
+  /// and while the session runs its voice-processed input ducks every other
+  /// app's audio system-wide — so holding to talk is the product's answer,
+  /// and this switch exists for whoever wants the open microphone anyway.
+  final bool liveConversation;
+
   /// Returns a copy with the named choices replaced.
   AppSettings copyWith({
     bool? keepOrbOnTop,
@@ -117,6 +132,7 @@ final class AppSettings {
     AnswerStyle? answerStyle,
     bool? shareFrontmostApp,
     bool? rememberFacts,
+    bool? liveConversation,
   }) {
     return AppSettings(
       keepOrbOnTop: keepOrbOnTop ?? this.keepOrbOnTop,
@@ -129,6 +145,7 @@ final class AppSettings {
       answerStyle: answerStyle ?? this.answerStyle,
       shareFrontmostApp: shareFrontmostApp ?? this.shareFrontmostApp,
       rememberFacts: rememberFacts ?? this.rememberFacts,
+      liveConversation: liveConversation ?? this.liveConversation,
     );
   }
 
@@ -143,6 +160,7 @@ final class AppSettings {
     'answerStyle': answerStyle.name,
     'shareFrontmostApp': shareFrontmostApp,
     'rememberFacts': rememberFacts,
+    'liveConversation': liveConversation,
   };
 
   @override
@@ -156,7 +174,8 @@ final class AppSettings {
       other.showVoiceEvidence == showVoiceEvidence &&
       other.answerStyle == answerStyle &&
       other.shareFrontmostApp == shareFrontmostApp &&
-      other.rememberFacts == rememberFacts;
+      other.rememberFacts == rememberFacts &&
+      other.liveConversation == liveConversation;
 
   @override
   int get hashCode => Object.hash(
@@ -169,6 +188,7 @@ final class AppSettings {
     answerStyle,
     shareFrontmostApp,
     rememberFacts,
+    liveConversation,
   );
 
   @override

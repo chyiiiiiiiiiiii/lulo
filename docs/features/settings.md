@@ -46,6 +46,7 @@ one that has since been removed, does not stop the rest from being read.
 | `answerStyle` | `balanced` | `AppComposition.answerStyle`, a `ValueNotifier` the inference service reads when it builds each request — the sampler travels in the request, so moving it reloads nothing |
 | `shareFrontmostApp` | **false** | `ProfileAgentContextProvider.frontmostAppOf`, at the moment each question is composed |
 | `rememberFacts` | **false** | `AgentMemoryExtractor`, read once per finished turn — see [agent-profile.md](agent-profile.md) |
+| `liveConversation` | **false** | `ConversationView.liveConversationToggle` — whether the chrome offers the always-on microphone toggle at all. Off, holding to talk is the only door, and a session a hold opened closes after its turn — see [voice.md](voice.md) |
 
 The first two travel through `setWindowBehaviour` on the pigeon boundary;
 see [presence.md](presence.md) for what they mean to AppKit. `modelPath` is

@@ -1104,6 +1104,7 @@ final class _PresentationSwitchState extends State<_PresentationSwitch>
         unfinishedEndings: widget.composition.unfinishedEndings,
         presenceShaderLoader: widget.presenceShaderLoader,
         showVoiceEvidence: _settings.showVoiceEvidence,
+        liveConversationToggle: _settings.liveConversation,
         presenceController: _presence,
         presenceAnchorKey: _anchorKey,
         presenceOrb: hostsOrb

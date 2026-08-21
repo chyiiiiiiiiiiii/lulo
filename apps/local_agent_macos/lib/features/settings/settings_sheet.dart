@@ -374,6 +374,15 @@ final class SettingsSheet extends StatelessWidget {
                         title: words.sectionTakingTurns,
                         children: <Widget>[
                           SwitchListTile(
+                            key: const Key('setting-live-conversation'),
+                            value: settings.liveConversation,
+                            title: Text(words.liveConversation),
+                            subtitle: Text(words.liveConversationNote),
+                            onChanged: (bool value) => onChanged(
+                              settings.copyWith(liveConversation: value),
+                            ),
+                          ),
+                          SwitchListTile(
                             key: const Key('setting-show-voice-evidence'),
                             value: settings.showVoiceEvidence,
                             title: Text(words.showVoiceEvidence),

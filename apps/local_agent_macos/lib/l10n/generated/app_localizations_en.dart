@@ -378,6 +378,13 @@ class AppLocalizationsEn extends AppLocalizations {
   String get sectionTakingTurns => 'Taking turns';
 
   @override
+  String get liveConversation => 'Live conversation';
+
+  @override
+  String get liveConversationNote =>
+      'Keeps the microphone open so you can talk any time — and quiets every other app\'s audio while it listens. Off, hold the mic button or ⌘⇧Space to talk.';
+
+  @override
   String get showVoiceEvidence => 'Show why it took the floor';
 
   @override

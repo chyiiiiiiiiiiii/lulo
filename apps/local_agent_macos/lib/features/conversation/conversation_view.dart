@@ -91,6 +91,7 @@ final class ConversationView extends StatefulWidget {
     this.presenceOrb,
     this.presenceAnchorKey,
     this.showVoiceEvidence = false,
+    this.liveConversationToggle = false,
     this.voiceRequests,
     this.screenLook,
     super.key,
@@ -112,6 +113,13 @@ final class ConversationView extends StatefulWidget {
   /// are judgement calls, and one that cannot be seen firing is
   /// indistinguishable from a bug.
   final bool showVoiceEvidence;
+
+  /// Whether the chrome offers the always-on microphone toggle.
+  ///
+  /// Off by default: holding to talk is the product's answer, and a toggle
+  /// that opens an always-listening, audio-ducking session is offered only
+  /// after the user asked for it in Settings.
+  final bool liveConversationToggle;
 
   /// Presence to project conversation state into, or null to own one.
   final AgentPresenceController? presenceController;
@@ -336,6 +344,7 @@ final class _ConversationViewState extends State<ConversationView> {
           children: <Widget>[
             _ConversationChrome(
               voice: _voice,
+              liveConversationToggle: widget.liveConversationToggle,
               holdingToTalk: _voice == null ? null : _holdingToTalk,
               agentSpeaking: _voice == null ? null : _agentSpeaking,
               onToggleVoice: _toggleVoice,
@@ -540,6 +549,7 @@ FloorControl _builtInFloorControl() => FloorControl.standard;
 final class _ConversationChrome extends StatelessWidget {
   const _ConversationChrome({
     required this.voice,
+    required this.liveConversationToggle,
     required this.holdingToTalk,
     required this.agentSpeaking,
     required this.onToggleVoice,
@@ -559,6 +569,9 @@ final class _ConversationChrome extends StatelessWidget {
   final ValueListenable<bool>? holdingToTalk;
   final ValueListenable<bool>? agentSpeaking;
   final VoidCallback onToggleVoice;
+
+  /// Whether the always-on microphone toggle is offered at all.
+  final bool liveConversationToggle;
   final VoidCallback? onShowHistory;
   final ValueListenable<List<Turn>> completedTurns;
   final ValueListenable<Turn?> activeTurn;
@@ -603,7 +616,7 @@ final class _ConversationChrome extends StatelessWidget {
             shaderLoader: presenceShaderLoader,
           ),
           const Spacer(),
-          if (voice != null)
+          if (voice != null && liveConversationToggle)
             AnimatedBuilder(
               animation: voice!,
               builder: (BuildContext context, Widget? _) => IconButton(

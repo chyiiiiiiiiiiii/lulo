@@ -92,6 +92,23 @@ void main() {
     expect(loaded.followAcrossSpaces, isTrue);
   });
 
+  test('live conversation stays off unless the user turned it on', () {
+    // Off is the product's answer, not a compromise: the always-listening
+    // path is measured 2-4x worse than holding the key, and while it runs
+    // the voice-processed microphone ducks every other app's audio
+    // system-wide. A settings file that predates the switch reads as off —
+    // an absent key must never open a microphone.
+    expect(const AppSettings().liveConversation, isFalse);
+    expect(
+      AppSettings.fromJson(const <String, Object?>{}).liveConversation,
+      isFalse,
+    );
+
+    const AppSettings chosen = AppSettings(liveConversation: true);
+    expect(AppSettings.fromJson(chosen.toJson()).liveConversation, isTrue);
+    expect(chosen.copyWith(liveConversation: false).liveConversation, isFalse);
+  });
+
   test('the answer style survives being written and read back', () {
     const AppSettings written = AppSettings(answerStyle: AnswerStyle.steady);
 

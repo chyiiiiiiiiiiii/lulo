@@ -258,6 +258,16 @@ final class VoiceConversationController extends ChangeNotifier {
   bool _pttSettling = false;
   bool _pttProtected = false;
 
+  /// Whether the current session exists only because a hold opened it.
+  ///
+  /// The ears open for the hold, not for the day: a session the user never
+  /// switched on themselves closes again once its turn is over — spoken out
+  /// and written out — because an open microphone is not free. It runs
+  /// voice-processed, which ducks every other app's audio system-wide, and
+  /// it transcribes a room that is mostly not talking to the agent. A
+  /// session opened by [enable] directly is the user's choice and stays.
+  bool _sessionOpenedByHold = false;
+
   /// Whether this hold has a batch recogniser behind it (the hotkey path
   /// captures audio natively; the composer button does not), and what it
   /// heard once it answers.
@@ -428,6 +438,9 @@ final class VoiceConversationController extends ChangeNotifier {
     if (_enabled || _enabling) {
       return;
     }
+    // Whoever is enabling, this is now a deliberate session until a hold
+    // says otherwise — the hold path marks it after this returns.
+    _sessionOpenedByHold = false;
     _enabling = true;
     _failure = null;
     notifyListeners();
@@ -589,6 +602,7 @@ final class VoiceConversationController extends ChangeNotifier {
           // conversation resumes.
           _pttProtected = false;
         }
+        _maybeCloseHoldSession();
         notifyListeners();
       case VoiceFailed(:final String message):
         // A dead pipeline must not leave the button lit as listening —
@@ -836,8 +850,15 @@ final class VoiceConversationController extends ChangeNotifier {
       if (!_enabling) {
         unawaited(
           enable().then((_) {
+            if (_enabled) {
+              _sessionOpenedByHold = true;
+            }
             if (_holdIntent && _enabled) {
               _beginHold();
+            } else {
+              // Released (or failed) before the ears finished opening: a
+              // session nobody is holding must not stay open.
+              _maybeCloseHoldSession();
             }
           }),
         );
@@ -845,6 +866,23 @@ final class VoiceConversationController extends ChangeNotifier {
       return;
     }
     _beginHold();
+  }
+
+  /// Closes a session a hold opened, once nothing is left of its turn.
+  ///
+  /// Checked wherever a turn can end — speech finishing, the generation
+  /// ending, a hold that produced nothing — because no single event is
+  /// guaranteed to come last, the same reality the shield already lives
+  /// with.
+  void _maybeCloseHoldSession() {
+    if (!_sessionOpenedByHold || _pttHeld || _holdIntent || _pttSettling) {
+      return;
+    }
+    if (!_conversation.canSubmit || _speaking || _speechRequested) {
+      return;
+    }
+    _sessionOpenedByHold = false;
+    unawaited(disable());
   }
 
   void _beginHold() {
@@ -910,6 +948,9 @@ final class VoiceConversationController extends ChangeNotifier {
     _pttBatchText = null;
     _pttFinals.clear();
     if (question.isEmpty || !_enabled) {
+      // Pressed, nothing heard, released: there is no answer coming whose
+      // end could close a session this hold opened.
+      _maybeCloseHoldSession();
       notifyListeners();
       return;
     }
@@ -1080,6 +1121,7 @@ final class VoiceConversationController extends ChangeNotifier {
         // locks the session into push-to-talk for good.
         _pttProtected = false;
       }
+      _maybeCloseHoldSession();
     }
     final TranscriptRefinement? pending = _pendingUtterance;
     if (pending == null || !_enabled || !_conversation.canSubmit) {

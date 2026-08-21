@@ -38,6 +38,28 @@ void main() {
     expect(find.byKey(const Key('conversation-voice-button')), findsNothing);
   });
 
+  testWidgets('the always-on toggle hides until its setting turns it on', (
+    WidgetTester tester,
+  ) async {
+    // The open microphone is opt-in now: holding to talk is the product's
+    // answer, and a toggle that opens an always-listening, audio-ducking
+    // session has to be asked for in Settings before it is offered at all.
+    final FakeVoiceService voice = FakeVoiceService();
+    await tester.pumpWidget(
+      MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: ConversationView(
+          viewModelFactory: viewModel,
+          voiceService: voice,
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.byKey(const Key('conversation-voice-button')), findsNothing);
+  });
+
   testWidgets('the microphone button opens and closes the ears', (
     WidgetTester tester,
   ) async {
@@ -48,6 +70,7 @@ void main() {
         localizationsDelegates: AppLocalizations.localizationsDelegates,
         supportedLocales: AppLocalizations.supportedLocales,
         home: ConversationView(
+          liveConversationToggle: true,
           viewModelFactory: viewModel,
           voiceService: voice,
         ),
@@ -74,6 +97,7 @@ void main() {
         localizationsDelegates: AppLocalizations.localizationsDelegates,
         supportedLocales: AppLocalizations.supportedLocales,
         home: ConversationView(
+          liveConversationToggle: true,
           viewModelFactory: viewModel,
           voiceService: voice,
         ),
@@ -100,6 +124,7 @@ void main() {
         localizationsDelegates: AppLocalizations.localizationsDelegates,
         supportedLocales: AppLocalizations.supportedLocales,
         home: ConversationView(
+          liveConversationToggle: true,
           viewModelFactory: viewModel,
           voiceService: voice,
         ),
@@ -143,6 +168,7 @@ void main() {
         // default would be asserting the harness's language.
         locale: const Locale('zh'),
         home: ConversationView(
+          liveConversationToggle: true,
           viewModelFactory: viewModel,
           voiceService: voice,
         ),
@@ -173,6 +199,7 @@ void main() {
         localizationsDelegates: AppLocalizations.localizationsDelegates,
         supportedLocales: AppLocalizations.supportedLocales,
         home: ConversationView(
+          liveConversationToggle: true,
           viewModelFactory: viewModel,
           voiceService: voice,
         ),

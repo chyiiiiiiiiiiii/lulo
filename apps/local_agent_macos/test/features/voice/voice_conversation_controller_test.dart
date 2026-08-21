@@ -736,11 +736,10 @@ void main() {
     endings = <String>['我的意思是說', '就是說'];
     voice.hear(const FinalTranscript('再說一次。'));
     await pump();
-    expect(
-      voice.unfinishedEndings.last,
-      <String>['我的意思是說', '就是說'],
-      reason: 'A word added mid-session lands on the next turn.',
-    );
+    expect(voice.unfinishedEndings.last, <String>[
+      '我的意思是說',
+      '就是說',
+    ], reason: 'A word added mid-session lands on the next turn.');
   });
 
   test(
@@ -995,6 +994,104 @@ void main() {
     expect(voice.spoken.last, cutOff);
   });
 
+  test('a hold that opened the ears closes them after the answer', () async {
+    // The ears open for the hold, not for the day. A session the user never
+    // switched on stays open only as long as its turn: holding the key is
+    // walkie-talkie, and a walkie-talkie does not keep transmitting — or
+    // keep the whole system's audio ducked — after the reply.
+    expect(controller.enabled, isFalse);
+    controller.holdToTalkPressed();
+    await pump();
+    await pump();
+    expect(controller.enabled, isTrue);
+    voice.hear(const FinalTranscript('今天天氣如何'));
+    await pump();
+    controller.holdToTalkReleased();
+    await pump();
+    await pump();
+    final Generation generation = await generationStarted();
+    inference.emit(
+      GenerationDelta(generationId: generation.id, delta: '出太陽，很熱。'),
+    );
+    inference.emit(GenerationCompleted(generation.id));
+    await pump();
+    await pump();
+    voice.hear(const SpeakingFinished());
+    await pump();
+    await pump();
+
+    expect(controller.enabled, isFalse);
+    expect(voice.calls, contains('stopListening'));
+  });
+
+  test('a hold during an open session leaves the ears open', () async {
+    // The user switched the microphone on themselves; a hold inside that
+    // session borrows it and gives it back, open.
+    await controller.enable();
+    controller.holdToTalkPressed();
+    voice.hear(const FinalTranscript('今天天氣如何'));
+    await pump();
+    controller.holdToTalkReleased();
+    await pump();
+    await pump();
+    final Generation generation = await generationStarted();
+    inference.emit(
+      GenerationDelta(generationId: generation.id, delta: '出太陽，很熱。'),
+    );
+    inference.emit(GenerationCompleted(generation.id));
+    await pump();
+    await pump();
+    voice.hear(const SpeakingFinished());
+    await pump();
+    await pump();
+
+    expect(controller.enabled, isTrue);
+  });
+
+  test('an empty hold closes the ears it opened', () async {
+    // Pressed, nothing heard, released: there is no answer to wait out, and
+    // the session must not stay open on the strength of a misfire.
+    expect(controller.enabled, isFalse);
+    controller.holdToTalkPressed();
+    await pump();
+    await pump();
+    controller.holdToTalkReleased();
+    await pump();
+    await pump();
+    await pump();
+
+    expect(controller.enabled, isFalse);
+  });
+
+  test('holding again keeps the ears open for the next turn', () async {
+    // The next hold arriving while the last answer plays is the user
+    // carrying the conversation on; the transient session hands itself to
+    // the new turn instead of closing under it.
+    expect(controller.enabled, isFalse);
+    controller.holdToTalkPressed();
+    await pump();
+    await pump();
+    voice.hear(const FinalTranscript('今天天氣如何'));
+    await pump();
+    controller.holdToTalkReleased();
+    await pump();
+    await pump();
+    final Generation generation = await generationStarted();
+    inference.emit(GenerationDelta(generationId: generation.id, delta: '出太陽。'));
+    await pump();
+    await pump();
+    // The user presses again before the answer is done.
+    controller.holdToTalkPressed();
+    await pump();
+    inference.emit(GenerationCompleted(generation.id));
+    await pump();
+    voice.hear(const SpeakingFinished());
+    await pump();
+    await pump();
+
+    expect(controller.enabled, isTrue);
+  });
+
   test('the hotkey held and released asks the question', () async {
     // The global hotkey is push-to-talk from anywhere: pressed takes the
     // floor, released sends — same contract as the composer button.
@@ -1203,7 +1300,8 @@ void main() {
     expect(
       inference.requests,
       hasLength(2),
-      reason: 'Open conversation must come back once the protected answer '
+      reason:
+          'Open conversation must come back once the protected answer '
           'is over, however its last chunk ended.',
     );
   });
@@ -2374,11 +2472,9 @@ void main() {
 
     expect(voice.spoken, hasLength(2));
     expect(voice.spoken[1], 'Flutter。是一套跨平台的開發框架，用一份程式碼同時建構多個平台的應用。');
-    expect(
-      voice.spokenLanguages.toSet(),
-      <String?>{'zh'},
-      reason: 'One answer flipped language mid-thought.',
-    );
+    expect(voice.spokenLanguages.toSet(), <String?>{
+      'zh',
+    }, reason: 'One answer flipped language mid-thought.');
   });
 
   test('nothing heard while disabled goes anywhere', () async {

@@ -361,6 +361,13 @@ class AppLocalizationsZh extends AppLocalizations {
   String get sectionTakingTurns => '輪流講話';
 
   @override
+  String get liveConversation => '即時對話';
+
+  @override
+  String get liveConversationNote =>
+      '麥克風保持開啟，隨時開口就能對話——但聆聽期間系統其他聲音都會被壓低。關閉時，長按麥克風鍵或 ⌘⇧Space 講話。';
+
+  @override
   String get showVoiceEvidence => '顯示它為什麼接話或讓話';
 
   @override

@@ -110,6 +110,8 @@
   "voiceLabel": "聲音",
   "voiceNote": "念出來的回答用的是這台電腦上的合成器。",
   "sectionTakingTurns": "輪流講話",
+  "liveConversation": "即時對話",
+  "liveConversationNote": "麥克風保持開啟，隨時開口就能對話——但聆聽期間系統其他聲音都會被壓低。關閉時，長按麥克風鍵或 \u2318\u21e7Space 講話。",
   "showVoiceEvidence": "顯示它為什麼接話或讓話",
   "showVoiceEvidenceNote": "在對話下方持續記錄：哪些被當成附和而忽略、哪些插了話、每一輪花了多久。",
   "sectionSummoning": "叫出來",

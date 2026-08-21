@@ -759,6 +759,18 @@ abstract class AppLocalizations {
   /// **'Taking turns'**
   String get sectionTakingTurns;
 
+  /// No description provided for @liveConversation.
+  ///
+  /// In en, this message translates to:
+  /// **'Live conversation'**
+  String get liveConversation;
+
+  /// No description provided for @liveConversationNote.
+  ///
+  /// In en, this message translates to:
+  /// **'Keeps the microphone open so you can talk any time — and quiets every other app\'s audio while it listens. Off, hold the mic button or ⌘⇧Space to talk.'**
+  String get liveConversationNote;
+
   /// No description provided for @showVoiceEvidence.
   ///
   /// In en, this message translates to:

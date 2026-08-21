@@ -157,6 +157,8 @@
   "voiceLabel": "Voice",
   "voiceNote": "Spoken answers use the resident local synthesizer.",
   "sectionTakingTurns": "Taking turns",
+  "liveConversation": "Live conversation",
+  "liveConversationNote": "Keeps the microphone open so you can talk any time — and quiets every other app's audio while it listens. Off, hold the mic button or \u2318\u21e7Space to talk.",
   "showVoiceEvidence": "Show why it took the floor",
   "showVoiceEvidenceNote": "A running account under the conversation: what was ignored as an acknowledgement, what cut in, and what each turn cost.",
   "sectionSummoning": "Summoning",
