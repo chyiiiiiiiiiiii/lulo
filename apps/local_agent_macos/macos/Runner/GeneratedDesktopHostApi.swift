@@ -996,6 +996,148 @@ struct HostTransitionGeometry: Hashable {
   }
 }
 
+/// One place Apple Maps returned for a query.
+///
+/// Generated class from Pigeon that represents data sent in messages.
+struct HostPlaceHit: Hashable {
+  /// What the place calls itself.
+  var name: String
+  /// Where it is, as Apple formats the address.
+  var address: String
+
+
+  // swift-format-ignore: AlwaysUseLowerCamelCase
+  static func fromList(_ pigeonVar_list: [Any?]) -> HostPlaceHit? {
+    let name = pigeonVar_list[0] as! String
+    let address = pigeonVar_list[1] as! String
+
+    return HostPlaceHit(
+      name: name,
+      address: address
+    )
+  }
+  func toList() -> [Any?] {
+    return [
+      name,
+      address,
+    ]
+  }
+  static func == (lhs: HostPlaceHit, rhs: HostPlaceHit) -> Bool {
+    if Swift.type(of: lhs) != Swift.type(of: rhs) {
+      return false
+    }
+    return deepEqualsGeneratedDesktopHostApi(lhs.name, rhs.name) && deepEqualsGeneratedDesktopHostApi(lhs.address, rhs.address)
+  }
+
+  func hash(into hasher: inout Hasher) {
+    hasher.combine("HostPlaceHit")
+    deepHashGeneratedDesktopHostApi(value: name, hasher: &hasher)
+    deepHashGeneratedDesktopHostApi(value: address, hasher: &hasher)
+  }
+}
+
+/// One event read from the user's calendar.
+///
+/// Generated class from Pigeon that represents data sent in messages.
+struct HostCalendarEvent: Hashable {
+  /// What the event is called.
+  var title: String
+  /// Start, ISO-8601 local time.
+  var startIso: String
+  /// End, ISO-8601 local time.
+  var endIso: String
+  /// Which calendar it lives on.
+  var calendar: String
+  /// Whether it spans whole days rather than hours.
+  var allDay: Bool
+
+
+  // swift-format-ignore: AlwaysUseLowerCamelCase
+  static func fromList(_ pigeonVar_list: [Any?]) -> HostCalendarEvent? {
+    let title = pigeonVar_list[0] as! String
+    let startIso = pigeonVar_list[1] as! String
+    let endIso = pigeonVar_list[2] as! String
+    let calendar = pigeonVar_list[3] as! String
+    let allDay = pigeonVar_list[4] as! Bool
+
+    return HostCalendarEvent(
+      title: title,
+      startIso: startIso,
+      endIso: endIso,
+      calendar: calendar,
+      allDay: allDay
+    )
+  }
+  func toList() -> [Any?] {
+    return [
+      title,
+      startIso,
+      endIso,
+      calendar,
+      allDay,
+    ]
+  }
+  static func == (lhs: HostCalendarEvent, rhs: HostCalendarEvent) -> Bool {
+    if Swift.type(of: lhs) != Swift.type(of: rhs) {
+      return false
+    }
+    return deepEqualsGeneratedDesktopHostApi(lhs.title, rhs.title) && deepEqualsGeneratedDesktopHostApi(lhs.startIso, rhs.startIso) && deepEqualsGeneratedDesktopHostApi(lhs.endIso, rhs.endIso) && deepEqualsGeneratedDesktopHostApi(lhs.calendar, rhs.calendar) && deepEqualsGeneratedDesktopHostApi(lhs.allDay, rhs.allDay)
+  }
+
+  func hash(into hasher: inout Hasher) {
+    hasher.combine("HostCalendarEvent")
+    deepHashGeneratedDesktopHostApi(value: title, hasher: &hasher)
+    deepHashGeneratedDesktopHostApi(value: startIso, hasher: &hasher)
+    deepHashGeneratedDesktopHostApi(value: endIso, hasher: &hasher)
+    deepHashGeneratedDesktopHostApi(value: calendar, hasher: &hasher)
+    deepHashGeneratedDesktopHostApi(value: allDay, hasher: &hasher)
+  }
+}
+
+/// A calendar read, carrying whether it was allowed to happen.
+///
+/// Authorization travels with the events because their absence is
+/// ambiguous without it: an empty window means "free" only when the app
+/// was allowed to look, and the model must be able to tell the difference.
+///
+/// Generated class from Pigeon that represents data sent in messages.
+struct HostCalendarAnswer: Hashable {
+  /// Whether the user has granted calendar access.
+  var authorized: Bool
+  /// The events in the asked window.
+  var events: [HostCalendarEvent]
+
+
+  // swift-format-ignore: AlwaysUseLowerCamelCase
+  static func fromList(_ pigeonVar_list: [Any?]) -> HostCalendarAnswer? {
+    let authorized = pigeonVar_list[0] as! Bool
+    let events = pigeonVar_list[1] as! [HostCalendarEvent]
+
+    return HostCalendarAnswer(
+      authorized: authorized,
+      events: events
+    )
+  }
+  func toList() -> [Any?] {
+    return [
+      authorized,
+      events,
+    ]
+  }
+  static func == (lhs: HostCalendarAnswer, rhs: HostCalendarAnswer) -> Bool {
+    if Swift.type(of: lhs) != Swift.type(of: rhs) {
+      return false
+    }
+    return deepEqualsGeneratedDesktopHostApi(lhs.authorized, rhs.authorized) && deepEqualsGeneratedDesktopHostApi(lhs.events, rhs.events)
+  }
+
+  func hash(into hasher: inout Hasher) {
+    hasher.combine("HostCalendarAnswer")
+    deepHashGeneratedDesktopHostApi(value: authorized, hasher: &hasher)
+    deepHashGeneratedDesktopHostApi(value: events, hasher: &hasher)
+  }
+}
+
 /// One attempted look at the screen.
 ///
 /// Generated class from Pigeon that represents data sent in messages.
@@ -1105,6 +1247,12 @@ private class GeneratedDesktopHostApiPigeonCodecReader: FlutterStandardReader {
     case 148:
       return HostTransitionGeometry.fromList(self.readValue() as! [Any?])
     case 149:
+      return HostPlaceHit.fromList(self.readValue() as! [Any?])
+    case 150:
+      return HostCalendarEvent.fromList(self.readValue() as! [Any?])
+    case 151:
+      return HostCalendarAnswer.fromList(self.readValue() as! [Any?])
+    case 152:
       return HostScreenLookResult.fromList(self.readValue() as! [Any?])
     default:
       return super.readValue(ofType: type)
@@ -1174,8 +1322,17 @@ private class GeneratedDesktopHostApiPigeonCodecWriter: FlutterStandardWriter {
     } else if let value = value as? HostTransitionGeometry {
       super.writeByte(148)
       super.writeValue(value.toList())
-    } else if let value = value as? HostScreenLookResult {
+    } else if let value = value as? HostPlaceHit {
       super.writeByte(149)
+      super.writeValue(value.toList())
+    } else if let value = value as? HostCalendarEvent {
+      super.writeByte(150)
+      super.writeValue(value.toList())
+    } else if let value = value as? HostCalendarAnswer {
+      super.writeByte(151)
+      super.writeValue(value.toList())
+    } else if let value = value as? HostScreenLookResult {
+      super.writeByte(152)
       super.writeValue(value.toList())
     } else {
       super.writeValue(value)
@@ -1201,6 +1358,21 @@ class GeneratedDesktopHostApiPigeonCodec: FlutterStandardMessageCodec, @unchecke
 /// Generated protocol from Pigeon that represents a handler of messages from Flutter.
 protocol DesktopHostApi {
   func handshake(request: HostRequest, completion: @escaping (Result<HostHandshakeResult, Error>) -> Void)
+  /// Searches Apple Maps for places matching [query] and returns real
+  /// names with addresses, or an empty list when nothing matched or the
+  /// search failed.
+  ///
+  /// Runs natively because `MKLocalSearch` is a system framework: the
+  /// query goes where the user's own Maps searches go, with no key to
+  /// manage and no third party learning what was asked. No location is
+  /// attached — the caller puts the city or district in the query instead.
+  func searchPlaces(request: HostRequest, query: String, completion: @escaping (Result<[HostPlaceHit], Error>) -> Void)
+  /// Reads the user's calendar events between [startIso] and [endIso].
+  ///
+  /// Access is EventKit's own permission: the first call has the system
+  /// ask the user directly, and a denial comes back as `authorized: false`
+  /// rather than an empty window pretending to be a free day.
+  func readCalendar(request: HostRequest, startIso: String, endIso: String, completion: @escaping (Result<HostCalendarAnswer, Error>) -> Void)
   func loadModel(request: HostRequest, model: HostModelRequest, completion: @escaping (Result<HostModelLoadResult, Error>) -> Void)
   func startGeneration(request: HostRequest, generation: HostGenerationRequest, completion: @escaping (Result<HostGenerationAcknowledgement, Error>) -> Void)
   func cancelGeneration(request: HostRequest, generationId: String, completion: @escaping (Result<HostCancellationAcknowledgement, Error>) -> Void)
@@ -1295,6 +1467,56 @@ class DesktopHostApiSetup {
       }
     } else {
       handshakeChannel.setMessageHandler(nil)
+    }
+    /// Searches Apple Maps for places matching [query] and returns real
+    /// names with addresses, or an empty list when nothing matched or the
+    /// search failed.
+    ///
+    /// Runs natively because `MKLocalSearch` is a system framework: the
+    /// query goes where the user's own Maps searches go, with no key to
+    /// manage and no third party learning what was asked. No location is
+    /// attached — the caller puts the city or district in the query instead.
+    let searchPlacesChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.local_agent_macos.DesktopHostApi.searchPlaces\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
+    if let api = api {
+      searchPlacesChannel.setMessageHandler { message, reply in
+        let args = message as! [Any?]
+        let requestArg = args[0] as! HostRequest
+        let queryArg = args[1] as! String
+        api.searchPlaces(request: requestArg, query: queryArg) { result in
+          switch result {
+          case .success(let res):
+            reply(wrapResult(res))
+          case .failure(let error):
+            reply(wrapError(error))
+          }
+        }
+      }
+    } else {
+      searchPlacesChannel.setMessageHandler(nil)
+    }
+    /// Reads the user's calendar events between [startIso] and [endIso].
+    ///
+    /// Access is EventKit's own permission: the first call has the system
+    /// ask the user directly, and a denial comes back as `authorized: false`
+    /// rather than an empty window pretending to be a free day.
+    let readCalendarChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.local_agent_macos.DesktopHostApi.readCalendar\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
+    if let api = api {
+      readCalendarChannel.setMessageHandler { message, reply in
+        let args = message as! [Any?]
+        let requestArg = args[0] as! HostRequest
+        let startIsoArg = args[1] as! String
+        let endIsoArg = args[2] as! String
+        api.readCalendar(request: requestArg, startIso: startIsoArg, endIso: endIsoArg) { result in
+          switch result {
+          case .success(let res):
+            reply(wrapResult(res))
+          case .failure(let error):
+            reply(wrapError(error))
+          }
+        }
+      }
+    } else {
+      readCalendarChannel.setMessageHandler(nil)
     }
     let loadModelChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.local_agent_macos.DesktopHostApi.loadModel\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
     if let api = api {

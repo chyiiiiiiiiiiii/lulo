@@ -8,10 +8,12 @@ import 'package:flutter/foundation.dart';
 import '../features/agent_profile/agent_context_provider.dart';
 import '../features/agent_profile/agent_memory_extractor.dart';
 import '../features/agent_profile/agent_profile_store.dart';
+import '../features/conversation/calendar_tool.dart';
 import '../features/conversation/conversation_search_tool.dart';
 import '../features/conversation/conversation_storage_service.dart';
 import '../features/conversation/drift_conversation_storage_service.dart';
 import '../features/conversation/pigeon_inference_service.dart';
+import '../features/conversation/place_search_tool.dart';
 import '../features/conversation/swappable_inference_service.dart';
 import '../features/model/model_catalog.dart';
 import '../features/model/model_download_manager.dart';
@@ -216,6 +218,38 @@ AppComposition createAppComposition({
   AgentToolbox buildToolbox() => AgentToolbox(<AgentTool>[
     ConversationSearchTool(
       searchConversations: storage.service.searchConversations,
+    ),
+    // Both exist because their absence was watched failing: asked for
+    // quiet cafés, the model invented three shops and promised to search
+    // Google Maps. System frameworks rather than third-party APIs — the
+    // place query goes where the user's own Maps searches go, and the
+    // calendar is read behind EventKit's own permission dialog.
+    PlaceSearchTool(
+      searchPlaces: (String query) async => <PlaceHit>[
+        for (final DesktopPlaceHit hit in await desktopHostService.searchPlaces(
+          query,
+        ))
+          PlaceHit(name: hit.name, address: hit.address),
+      ],
+    ),
+    CalendarTool(
+      readCalendar: (DateTime from, DateTime to) async {
+        final DesktopCalendarAnswer answer = await desktopHostService
+            .readCalendar(from: from, to: to);
+        return CalendarWindowAnswer(
+          authorized: answer.authorized,
+          events: <CalendarEventHit>[
+            for (final DesktopCalendarEvent event in answer.events)
+              CalendarEventHit(
+                title: event.title,
+                start: event.start,
+                end: event.end,
+                calendar: event.calendar,
+                allDay: event.allDay,
+              ),
+          ],
+        );
+      },
     ),
   ]);
   // Owned here so it survives a model swap: the service behind it is replaced,

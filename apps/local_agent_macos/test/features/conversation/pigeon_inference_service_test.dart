@@ -1237,6 +1237,25 @@ final class RecordingDesktopHostService implements DesktopHostService {
   @override
   Future<String> chooseTextFile() async => '';
 
+
+  /// What [searchPlaces] answers.
+  List<DesktopPlaceHit> placesToFind = const <DesktopPlaceHit>[];
+
+  @override
+  Future<List<DesktopPlaceHit>> searchPlaces(String query) async =>
+      placesToFind;
+
+  /// What [readCalendar] answers.
+  DesktopCalendarAnswer calendarAnswer = const DesktopCalendarAnswer(
+    authorized: true,
+    events: <DesktopCalendarEvent>[],
+  );
+
+  @override
+  Future<DesktopCalendarAnswer> readCalendar({
+    required DateTime from,
+    required DateTime to,
+  }) async => calendarAnswer;
   @override
   Stream<String> get serviceText => const Stream<String>.empty();
 

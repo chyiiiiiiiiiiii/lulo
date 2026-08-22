@@ -114,6 +114,57 @@ abstract interface class DesktopHostService implements DesktopPresentationHost {
   Future<void> dispose();
 }
 
+/// One place Apple Maps returned: a real name at a real address.
+final class DesktopPlaceHit {
+  /// Creates the hit.
+  const DesktopPlaceHit({required this.name, required this.address});
+
+  /// What the place calls itself.
+  final String name;
+
+  /// Where it is, as Apple formats it.
+  final String address;
+}
+
+/// One event read from the user's calendar.
+final class DesktopCalendarEvent {
+  /// Creates the event.
+  const DesktopCalendarEvent({
+    required this.title,
+    required this.start,
+    required this.end,
+    required this.calendar,
+    required this.allDay,
+  });
+
+  /// What the event is called.
+  final String title;
+
+  /// When it starts, local time.
+  final DateTime start;
+
+  /// When it ends, local time.
+  final DateTime end;
+
+  /// Which calendar it lives on.
+  final String calendar;
+
+  /// Whether it spans whole days rather than hours.
+  final bool allDay;
+}
+
+/// A calendar read, carrying whether it was allowed to happen.
+final class DesktopCalendarAnswer {
+  /// Creates the answer.
+  const DesktopCalendarAnswer({required this.authorized, required this.events});
+
+  /// Whether the user has granted calendar access.
+  final bool authorized;
+
+  /// The events in the asked window.
+  final List<DesktopCalendarEvent> events;
+}
+
 /// Truthful capabilities returned by the native runtime handshake.
 final class DesktopRuntimeCapabilities {
   /// Creates an immutable capability snapshot.
@@ -632,6 +683,22 @@ abstract interface class DesktopPresentationHost {
   /// rather than handed to a helper: the grant `NSOpenPanel` issues belongs
   /// to this process, and this is the process doing the reading.
   Future<String> chooseTextFile();
+
+  /// Searches Apple Maps for places matching [query].
+  ///
+  /// Empty when nothing matched or the search failed. No location is
+  /// attached; the caller names the city or district in the query.
+  Future<List<DesktopPlaceHit>> searchPlaces(String query);
+
+  /// Reads the user's calendar between [from] and [to], local time.
+  ///
+  /// The first read has the system ask the user for calendar access; a
+  /// denial comes back as an unauthorized answer, never as an empty
+  /// window pretending to be a free day.
+  Future<DesktopCalendarAnswer> readCalendar({
+    required DateTime from,
+    required DateTime to,
+  });
 
   /// Applies the user's choices about how the resting orb behaves.
   Future<void> setWindowBehaviour({

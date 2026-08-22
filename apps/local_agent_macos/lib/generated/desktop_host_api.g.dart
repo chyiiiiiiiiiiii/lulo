@@ -1065,6 +1065,162 @@ class HostTransitionGeometry {
   int get hashCode => _deepHash(<Object?>[runtimeType, ..._toList()]);
 }
 
+/// One place Apple Maps returned for a query.
+class HostPlaceHit {
+  HostPlaceHit({required this.name, required this.address});
+
+  /// What the place calls itself.
+  String name;
+
+  /// Where it is, as Apple formats the address.
+  String address;
+
+  List<Object?> _toList() {
+    return <Object?>[name, address];
+  }
+
+  Object encode() {
+    return _toList();
+  }
+
+  static HostPlaceHit decode(Object result) {
+    result as List<Object?>;
+    return HostPlaceHit(
+      name: result[0]! as String,
+      address: result[1]! as String,
+    );
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  bool operator ==(Object other) {
+    if (other is! HostPlaceHit || other.runtimeType != runtimeType) {
+      return false;
+    }
+    if (identical(this, other)) {
+      return true;
+    }
+    return _deepEquals(name, other.name) && _deepEquals(address, other.address);
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  int get hashCode => _deepHash(<Object?>[runtimeType, ..._toList()]);
+}
+
+/// One event read from the user's calendar.
+class HostCalendarEvent {
+  HostCalendarEvent({
+    required this.title,
+    required this.startIso,
+    required this.endIso,
+    required this.calendar,
+    required this.allDay,
+  });
+
+  /// What the event is called.
+  String title;
+
+  /// Start, ISO-8601 local time.
+  String startIso;
+
+  /// End, ISO-8601 local time.
+  String endIso;
+
+  /// Which calendar it lives on.
+  String calendar;
+
+  /// Whether it spans whole days rather than hours.
+  bool allDay;
+
+  List<Object?> _toList() {
+    return <Object?>[title, startIso, endIso, calendar, allDay];
+  }
+
+  Object encode() {
+    return _toList();
+  }
+
+  static HostCalendarEvent decode(Object result) {
+    result as List<Object?>;
+    return HostCalendarEvent(
+      title: result[0]! as String,
+      startIso: result[1]! as String,
+      endIso: result[2]! as String,
+      calendar: result[3]! as String,
+      allDay: result[4]! as bool,
+    );
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  bool operator ==(Object other) {
+    if (other is! HostCalendarEvent || other.runtimeType != runtimeType) {
+      return false;
+    }
+    if (identical(this, other)) {
+      return true;
+    }
+    return _deepEquals(title, other.title) &&
+        _deepEquals(startIso, other.startIso) &&
+        _deepEquals(endIso, other.endIso) &&
+        _deepEquals(calendar, other.calendar) &&
+        _deepEquals(allDay, other.allDay);
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  int get hashCode => _deepHash(<Object?>[runtimeType, ..._toList()]);
+}
+
+/// A calendar read, carrying whether it was allowed to happen.
+///
+/// Authorization travels with the events because their absence is
+/// ambiguous without it: an empty window means "free" only when the app
+/// was allowed to look, and the model must be able to tell the difference.
+class HostCalendarAnswer {
+  HostCalendarAnswer({required this.authorized, required this.events});
+
+  /// Whether the user has granted calendar access.
+  bool authorized;
+
+  /// The events in the asked window.
+  List<HostCalendarEvent> events;
+
+  List<Object?> _toList() {
+    return <Object?>[authorized, events];
+  }
+
+  Object encode() {
+    return _toList();
+  }
+
+  static HostCalendarAnswer decode(Object result) {
+    result as List<Object?>;
+    return HostCalendarAnswer(
+      authorized: result[0]! as bool,
+      events: (result[1]! as List<Object?>).cast<HostCalendarEvent>(),
+    );
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  bool operator ==(Object other) {
+    if (other is! HostCalendarAnswer || other.runtimeType != runtimeType) {
+      return false;
+    }
+    if (identical(this, other)) {
+      return true;
+    }
+    return _deepEquals(authorized, other.authorized) &&
+        _deepEquals(events, other.events);
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  int get hashCode => _deepHash(<Object?>[runtimeType, ..._toList()]);
+}
+
 /// One attempted look at the screen.
 class HostScreenLookResult {
   HostScreenLookResult({required this.status, required this.path});
@@ -1176,8 +1332,17 @@ class _PigeonCodec extends StandardMessageCodec {
     } else if (value is HostTransitionGeometry) {
       buffer.putUint8(148);
       writeValue(buffer, value.encode());
-    } else if (value is HostScreenLookResult) {
+    } else if (value is HostPlaceHit) {
       buffer.putUint8(149);
+      writeValue(buffer, value.encode());
+    } else if (value is HostCalendarEvent) {
+      buffer.putUint8(150);
+      writeValue(buffer, value.encode());
+    } else if (value is HostCalendarAnswer) {
+      buffer.putUint8(151);
+      writeValue(buffer, value.encode());
+    } else if (value is HostScreenLookResult) {
+      buffer.putUint8(152);
       writeValue(buffer, value.encode());
     } else {
       super.writeValue(buffer, value);
@@ -1234,6 +1399,12 @@ class _PigeonCodec extends StandardMessageCodec {
       case 148:
         return HostTransitionGeometry.decode(readValue(buffer)!);
       case 149:
+        return HostPlaceHit.decode(readValue(buffer)!);
+      case 150:
+        return HostCalendarEvent.decode(readValue(buffer)!);
+      case 151:
+        return HostCalendarAnswer.decode(readValue(buffer)!);
+      case 152:
         return HostScreenLookResult.decode(readValue(buffer)!);
       default:
         return super.readValueOfType(type, buffer);
@@ -1277,6 +1448,68 @@ class DesktopHostApi {
       isNullValid: false,
     );
     return pigeonVar_replyValue! as HostHandshakeResult;
+  }
+
+  /// Searches Apple Maps for places matching [query] and returns real
+  /// names with addresses, or an empty list when nothing matched or the
+  /// search failed.
+  ///
+  /// Runs natively because `MKLocalSearch` is a system framework: the
+  /// query goes where the user's own Maps searches go, with no key to
+  /// manage and no third party learning what was asked. No location is
+  /// attached — the caller puts the city or district in the query instead.
+  Future<List<HostPlaceHit>> searchPlaces(
+    HostRequest request,
+    String query,
+  ) async {
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.local_agent_macos.DesktopHostApi.searchPlaces$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channel = BasicMessageChannel<Object?>(
+      pigeonVar_channelName,
+      pigeonChannelCodec,
+      binaryMessenger: pigeonVar_binaryMessenger,
+    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(
+      <Object?>[request, query],
+    );
+    final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
+
+    final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: false,
+    );
+    return (pigeonVar_replyValue! as List<Object?>).cast<HostPlaceHit>();
+  }
+
+  /// Reads the user's calendar events between [startIso] and [endIso].
+  ///
+  /// Access is EventKit's own permission: the first call has the system
+  /// ask the user directly, and a denial comes back as `authorized: false`
+  /// rather than an empty window pretending to be a free day.
+  Future<HostCalendarAnswer> readCalendar(
+    HostRequest request,
+    String startIso,
+    String endIso,
+  ) async {
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.local_agent_macos.DesktopHostApi.readCalendar$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channel = BasicMessageChannel<Object?>(
+      pigeonVar_channelName,
+      pigeonChannelCodec,
+      binaryMessenger: pigeonVar_binaryMessenger,
+    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(
+      <Object?>[request, startIso, endIso],
+    );
+    final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
+
+    final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: false,
+    );
+    return pigeonVar_replyValue! as HostCalendarAnswer;
   }
 
   Future<HostModelLoadResult> loadModel(

@@ -346,10 +346,27 @@ Four things in that diagram are load-bearing:
 
 ### What is registered, and what deliberately is not
 
-`search_conversations` only. It is local, read-only, over data the app
-already owns, so a permission layer over it would be a layer over nothing —
-and gemma-4-E4B calls it 5/5 on the question its description names, 0/5 on
-questions it does not.
+Three tools, each held to the same measured bar — gemma-4-E4B calls it on
+the question its description names and never on questions it does not:
+
+- **`search_conversations`** — local, read-only, over data the app already
+  owns, so a permission layer over it would be a layer over nothing. 5/5
+  on 「我們之前聊過什麼」, 0/5 elsewhere.
+- **`search_places`** — Apple Maps local search (`MKLocalSearch`), because
+  its absence was watched failing: asked for quiet cafés, the model
+  invented three shops and promised to search Google Maps. A system
+  framework rather than a third-party API — the query goes where the
+  user's own Maps searches go, with no key and no third party. No location
+  is attached; the description tells the model to put the city or district
+  in the query, and it does. Probed 5/5 recall, 0 spurious
+  (`PlaceCalendarToolProbeTests`).
+- **`read_calendar`** — read-only EventKit, behind the system's own
+  permission dialog. A denial reaches the model as a denial, never as an
+  empty window pretending to be a free day. Probed 5/5 recall (with the
+  clock told in the turn, which production always does — without a date
+  the model calls with empty arguments), 0 spurious. Writing events is
+  deliberately absent: it is a side effect that deserves its own consent
+  story before it exists.
 
 The clock is **not** a tool, and neither is the app the user is in. Told in
 the turn instruction they measure 5/5 at no latency; offered as a tool the

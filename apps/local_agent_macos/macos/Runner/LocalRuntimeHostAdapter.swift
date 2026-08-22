@@ -1,6 +1,8 @@
 import Dispatch
 import AppKit
+import EventKit
 import Foundation
+import MapKit
 import UniformTypeIdentifiers
 import InferenceService
 
@@ -352,6 +354,114 @@ final class LocalRuntimeDesktopHostApi: DesktopHostApi {
         return
       }
       completion(.success(url.path))
+    }
+  }
+
+  /// One store for the process: EventKit keys the user's grant to it, and
+  /// a fresh store per call would re-ask questions the user has answered.
+  private static let eventStore = EKEventStore()
+
+  func searchPlaces(
+    request: HostRequest,
+    query: String,
+    completion: @escaping (Result<[HostPlaceHit], Error>) -> Void
+  ) {
+    do {
+      try validatePanelRequest(request)
+    } catch {
+      completion(.failure(error))
+      return
+    }
+    let searchRequest = MKLocalSearch.Request()
+    searchRequest.naturalLanguageQuery = query
+    // No region and no location on purpose: the caller puts the city or
+    // district in the query, and the search goes out exactly as typed —
+    // the same query the user's own Maps app would send.
+    MKLocalSearch(request: searchRequest).start { response, error in
+      if let error {
+        // Failed and empty read the same to the conversation — no places —
+        // but not to whoever is diagnosing why.
+        NSLog("Lulo tools: place search failed (%@)", String(describing: error))
+        completion(.success([]))
+        return
+      }
+      let hits = (response?.mapItems ?? []).compactMap {
+        item -> HostPlaceHit? in
+        guard let name = item.name, !name.isEmpty else { return nil }
+        let address = item.placemark.title ?? ""
+        return HostPlaceHit(name: name, address: address)
+      }
+      NSLog("Lulo tools: place search heard %d places", hits.count)
+      completion(.success(hits))
+    }
+  }
+
+  func readCalendar(
+    request: HostRequest,
+    startIso: String,
+    endIso: String,
+    completion: @escaping (Result<HostCalendarAnswer, Error>) -> Void
+  ) {
+    do {
+      try validatePanelRequest(request)
+    } catch {
+      completion(.failure(error))
+      return
+    }
+    let formatter = DateFormatter()
+    formatter.locale = Locale(identifier: "en_US_POSIX")
+    formatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ss"
+    guard
+      let start = formatter.date(from: String(startIso.prefix(19))),
+      let end = formatter.date(from: String(endIso.prefix(19)))
+    else {
+      completion(.success(HostCalendarAnswer(authorized: true, events: [])))
+      return
+    }
+    let deliver: (Bool) -> Void = { granted in
+      guard granted else {
+        completion(
+          .success(HostCalendarAnswer(authorized: false, events: []))
+        )
+        return
+      }
+      let store = Self.eventStore
+      let predicate = store.predicateForEvents(
+        withStart: start,
+        end: end,
+        calendars: nil
+      )
+      let events = store.events(matching: predicate).map { event in
+        HostCalendarEvent(
+          title: event.title ?? "",
+          startIso: formatter.string(from: event.startDate),
+          endIso: formatter.string(from: event.endDate),
+          calendar: event.calendar?.title ?? "",
+          allDay: event.isAllDay
+        )
+      }
+      NSLog("Lulo tools: calendar read %d events", events.count)
+      completion(.success(HostCalendarAnswer(authorized: true, events: events)))
+    }
+    switch EKEventStore.authorizationStatus(for: .event) {
+    case .fullAccess, .authorized:
+      deliver(true)
+    case .denied, .restricted, .writeOnly:
+      deliver(false)
+    case .notDetermined:
+      // The system's own dialog, asked at the moment the capability is
+      // first wanted rather than at launch.
+      if #available(macOS 14.0, *) {
+        Self.eventStore.requestFullAccessToEvents { granted, _ in
+          DispatchQueue.main.async { deliver(granted) }
+        }
+      } else {
+        Self.eventStore.requestAccess(to: .event) { granted, _ in
+          DispatchQueue.main.async { deliver(granted) }
+        }
+      }
+    @unknown default:
+      deliver(false)
     }
   }
 

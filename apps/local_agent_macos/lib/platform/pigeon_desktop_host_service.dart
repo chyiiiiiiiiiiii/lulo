@@ -373,6 +373,44 @@ final class PigeonDesktopHostService extends DesktopHostEventApi
   Future<String> chooseTextFile() => _invokeResult(_hostApi.chooseTextFile);
 
   @override
+  Future<List<DesktopPlaceHit>> searchPlaces(String query) async {
+    final List<HostPlaceHit> hits = await _invokeResult(
+      (HostRequest request) => _hostApi.searchPlaces(request, query),
+    );
+    return <DesktopPlaceHit>[
+      for (final HostPlaceHit hit in hits)
+        DesktopPlaceHit(name: hit.name, address: hit.address),
+    ];
+  }
+
+  @override
+  Future<DesktopCalendarAnswer> readCalendar({
+    required DateTime from,
+    required DateTime to,
+  }) async {
+    // Second precision without zone: the host parses exactly this shape,
+    // and both sides mean local wall time.
+    String local(DateTime moment) => moment.toIso8601String().substring(0, 19);
+    final HostCalendarAnswer answer = await _invokeResult(
+      (HostRequest request) =>
+          _hostApi.readCalendar(request, local(from), local(to)),
+    );
+    return DesktopCalendarAnswer(
+      authorized: answer.authorized,
+      events: <DesktopCalendarEvent>[
+        for (final HostCalendarEvent event in answer.events)
+          DesktopCalendarEvent(
+            title: event.title,
+            start: DateTime.tryParse(event.startIso) ?? from,
+            end: DateTime.tryParse(event.endIso) ?? from,
+            calendar: event.calendar,
+            allDay: event.allDay,
+          ),
+      ],
+    );
+  }
+
+  @override
   Future<String> saveTextFile({
     required String suggestedName,
     required String contents,

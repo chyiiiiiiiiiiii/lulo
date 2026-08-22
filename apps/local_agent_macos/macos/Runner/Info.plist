@@ -26,6 +26,10 @@
 	<string>$(PRODUCT_COPYRIGHT)</string>
 	<key>NSMainNibFile</key>
 	<string>MainMenu</string>
+	<key>NSCalendarsFullAccessUsageDescription</key>
+	<string>Lulo reads your calendar only when you ask about your schedule.</string>
+	<key>NSCalendarsUsageDescription</key>
+	<string>Lulo reads your calendar only when you ask about your schedule.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Lulo listens so you can talk to it like a friend. Audio never leaves this Mac.</string>
 	<key>NSPrincipalClass</key>

@@ -23,6 +23,25 @@ final class FakePresentationHost implements DesktopPresentationHost {
   @override
   Future<String> chooseTextFile() async => textFileToChoose;
 
+  /// What [searchPlaces] answers.
+  List<DesktopPlaceHit> placesToFind = const <DesktopPlaceHit>[];
+
+  @override
+  Future<List<DesktopPlaceHit>> searchPlaces(String query) async =>
+      placesToFind;
+
+  /// What [readCalendar] answers.
+  DesktopCalendarAnswer calendarAnswer = const DesktopCalendarAnswer(
+    authorized: true,
+    events: <DesktopCalendarEvent>[],
+  );
+
+  @override
+  Future<DesktopCalendarAnswer> readCalendar({
+    required DateTime from,
+    required DateTime to,
+  }) async => calendarAnswer;
+
   /// Text a Services menu is pretending to have sent.
   final StreamController<String> serviceTextController =
       StreamController<String>.broadcast();

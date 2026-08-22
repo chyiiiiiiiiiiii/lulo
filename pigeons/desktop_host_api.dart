@@ -346,10 +346,88 @@ class HostTransitionGeometry {
   bool fullScreen;
 }
 
+/// One place Apple Maps returned for a query.
+class HostPlaceHit {
+  /// Creates the hit.
+  HostPlaceHit({required this.name, required this.address});
+
+  /// What the place calls itself.
+  final String name;
+
+  /// Where it is, as Apple formats the address.
+  final String address;
+}
+
+/// One event read from the user's calendar.
+class HostCalendarEvent {
+  /// Creates the event.
+  HostCalendarEvent({
+    required this.title,
+    required this.startIso,
+    required this.endIso,
+    required this.calendar,
+    required this.allDay,
+  });
+
+  /// What the event is called.
+  final String title;
+
+  /// Start, ISO-8601 local time.
+  final String startIso;
+
+  /// End, ISO-8601 local time.
+  final String endIso;
+
+  /// Which calendar it lives on.
+  final String calendar;
+
+  /// Whether it spans whole days rather than hours.
+  final bool allDay;
+}
+
+/// A calendar read, carrying whether it was allowed to happen.
+///
+/// Authorization travels with the events because their absence is
+/// ambiguous without it: an empty window means "free" only when the app
+/// was allowed to look, and the model must be able to tell the difference.
+class HostCalendarAnswer {
+  /// Creates the answer.
+  HostCalendarAnswer({required this.authorized, required this.events});
+
+  /// Whether the user has granted calendar access.
+  final bool authorized;
+
+  /// The events in the asked window.
+  final List<HostCalendarEvent> events;
+}
+
 @HostApi()
 abstract class DesktopHostApi {
   @async
   HostHandshakeResult handshake(HostRequest request);
+
+  /// Searches Apple Maps for places matching [query] and returns real
+  /// names with addresses, or an empty list when nothing matched or the
+  /// search failed.
+  ///
+  /// Runs natively because `MKLocalSearch` is a system framework: the
+  /// query goes where the user's own Maps searches go, with no key to
+  /// manage and no third party learning what was asked. No location is
+  /// attached — the caller puts the city or district in the query instead.
+  @async
+  List<HostPlaceHit> searchPlaces(HostRequest request, String query);
+
+  /// Reads the user's calendar events between [startIso] and [endIso].
+  ///
+  /// Access is EventKit's own permission: the first call has the system
+  /// ask the user directly, and a denial comes back as `authorized: false`
+  /// rather than an empty window pretending to be a free day.
+  @async
+  HostCalendarAnswer readCalendar(
+    HostRequest request,
+    String startIso,
+    String endIso,
+  );
 
   @async
   HostModelLoadResult loadModel(HostRequest request, HostModelRequest model);
