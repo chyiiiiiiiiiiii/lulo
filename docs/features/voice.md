@@ -122,6 +122,29 @@ flight, and additionally resets the whole speech state (`speakEpoch`,
 arrived must not leave the microphone muted for the session that comes next.
 `pipelineFailed` does exactly the same reset for the same reason.
 
+### The warm engine, and why it is bare
+
+Building the audio graph costs about a second; the press cannot pay it in
+front of the user, so an engine is kept built and waiting. What it is NOT
+allowed to carry is voice processing: the Voice-Processing I/O unit puts
+the whole system into call mode — **every other app's audio is ducked from
+the moment the unit exists, microphone open or not**. The first warm engine
+carried it, and Spotify went quiet the moment the app launched; endSession
+then recycled the used engine, unit and all, back into the pool, so the
+room stayed quiet until quit. The user heard it before the code knew.
+
+So the split is: `makeBareEngine` (the graph, the main mixer touched, no
+voice processing — safe to keep warm) and `finishWarmEngine` (the
+transport decision and the AUVP enable, 17-81ms, run at the press — which
+also reads the output the user has *now*, not the one they had at launch).
+A used engine is dropped, never recycled, so the unit deallocates and the
+audio comes back; endSession re-warms a bare one for the next press. And
+on the hold path the session closes **at the send** — the recogniser has
+its audio, the answer plays through the sidecar's own output — so the
+ducking lasts exactly as long as the input does.
+`testAWarmEngineDoesNotHoldTheMicrophone` and
+`testAWarmEngineDoesNotDuckTheSystemAudio` keep the two halves honest.
+
 ### The node graph
 
 ```mermaid
@@ -310,7 +333,19 @@ one, and the always-listening path sits behind its own switch, off.
 
 ## Endpointing
 
-Three mechanisms decide that the user has stopped talking, in order of speed:
+On a hold, the release IS the endpoint: the user has said the sentence is
+over, and `holdToTalkReleased` asks for the finalize itself rather than
+waiting for any mechanism below to notice the silence. And because
+recognition trails the voice by up to a second, a hold released the moment
+the sentence ends can beat its own words to the release — the release
+waits out the trailing backstop whenever nothing has settled yet, and the
+first final to land submits at once. It used to submit the empty
+transcript instead, which closed the transient session under the words
+still in flight; the user had learned to keep holding until text appeared,
+which is the app training the person.
+
+For the always-listening session, three mechanisms decide that the user
+has stopped talking, in order of speed:
 
 | Mechanism | Where | Latency | Role |
 |---|---|---|---|
