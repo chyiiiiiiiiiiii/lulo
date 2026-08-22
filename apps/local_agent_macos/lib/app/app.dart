@@ -18,6 +18,7 @@ import '../features/presence/desktop_orb_surface.dart';
 import '../features/presence/notice/notice_glance_card.dart';
 import '../features/presence/notice/presence_notice.dart';
 import '../features/presence/presence_flight.dart';
+import '../features/presence/transition_frame_probe.dart';
 import '../features/settings/app_settings.dart';
 import '../features/settings/settings_sheet.dart';
 import '../features/voice/voice_service.dart';
@@ -896,6 +897,9 @@ final class _PresentationSwitchState extends State<_PresentationSwitch>
     return frame.future;
   }
 
+  /// Watches what each change of form costs in frames; numbers only.
+  final TransitionFrameProbe _transitionFrames = TransitionFrameProbe();
+
   /// Draws the presence travelling, then lets the window settle into [target].
   Future<void> _flyTo(DesktopPresentation target) async {
     final DesktopPresentationHost? host = widget.composition.presentationHost;
@@ -903,6 +907,19 @@ final class _PresentationSwitchState extends State<_PresentationSwitch>
       return;
     }
     final bool collapsing = target == DesktopPresentation.orb;
+    _transitionFrames.start(collapsing ? 'collapse' : 'expand');
+    try {
+      await _flyToMeasured(host, target, collapsing: collapsing);
+    } finally {
+      _transitionFrames.stop();
+    }
+  }
+
+  Future<void> _flyToMeasured(
+    DesktopPresentationHost host,
+    DesktopPresentation target, {
+    required bool collapsing,
+  }) async {
     // The travelling presence is ornament. A user who asked the system for
     // less motion gets the change of form itself, at once.
     final bool reduceMotion =

@@ -61,6 +61,41 @@ final class _CompletedTurnState extends State<CompletedTurn> {
   bool _copied = false;
   TextEditingController? _revision;
 
+  /// The Markdown for this turn's text, built once and reused.
+  ///
+  /// The transcript is a plain Column, so every ancestor rebuild re-runs
+  /// every turn's build — and re-parsing the Markdown and re-creating its
+  /// SelectableTexts each time stalled the UI thread for 90-176ms on a
+  /// long conversation, measured by `TransitionFrameProbe` at the moment
+  /// the window opened. Handing back the identical instance is Flutter's
+  /// own short-circuit: the element sees the same object and skips the
+  /// whole subtree. Theme and locale changes still reach it — inherited
+  /// widgets notify their dependents directly, without the parent.
+  Widget? _markdown;
+  String? _markdownOf;
+
+  Widget _terminalMarkdown(String text) {
+    if (_markdown == null || _markdownOf != text) {
+      _markdown = TerminalMarkdown(text);
+      _markdownOf = text;
+    }
+    return _markdown!;
+  }
+
+  /// The user's own words, built once for the same reason as the Markdown:
+  /// a SelectableText carries EditableText machinery that is not free to
+  /// re-create for every turn on every ancestor rebuild.
+  Widget? _userText;
+  String? _userTextOf;
+
+  Widget _selectableUserText(String text) {
+    if (_userText == null || _userTextOf != text) {
+      _userText = SelectableText(text);
+      _userTextOf = text;
+    }
+    return _userText!;
+  }
+
   @override
   void dispose() {
     _copiedNotice?.cancel();
@@ -149,9 +184,9 @@ final class _CompletedTurnState extends State<CompletedTurn> {
                       onCancel: _endRevision,
                     )
                   else if (isUser)
-                    SelectableText(turn.text)
+                    _selectableUserText(turn.text)
                   else
-                    TerminalMarkdown(turn.text),
+                    _terminalMarkdown(turn.text),
                   if (HeardConfidence.isDoubtful(
                     turn.voiceInput?.heardConfidence,
                   ))

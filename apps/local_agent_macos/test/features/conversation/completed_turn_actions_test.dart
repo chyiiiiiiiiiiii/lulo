@@ -289,4 +289,62 @@ void main() {
     await pumpTurn(tester, question);
     expect(bubbleColorAround(find.text('明天天氣如何')).a, lessThan(1.0));
   });
+
+  testWidgets('an unchanged turn reuses its Markdown instead of reparsing', (
+    WidgetTester tester,
+  ) async {
+    // The transcript is a plain Column, so every ancestor rebuild re-runs
+    // every turn's build. With the Markdown re-parsed and its
+    // SelectableTexts re-created each time, opening the window stalled the
+    // UI thread for 90-176ms on a long conversation — measured by
+    // TransitionFrameProbe. An identical widget instance is Flutter's own
+    // short-circuit: the element sees the same object and skips the whole
+    // subtree.
+    final GlobalKey<_RebuilderState> rebuilder = GlobalKey<_RebuilderState>();
+    await tester.pumpWidget(
+      MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: Scaffold(
+          body: _Rebuilder(
+            key: rebuilder,
+            // Built the way the transcript builds it: a fresh instance with
+            // fresh closures on every ancestor rebuild, never const.
+            child: () => CompletedTurn(turn: answer, onSpeak: (String _) {}),
+          ),
+        ),
+      ),
+    );
+    final TerminalMarkdown before = tester.widget<TerminalMarkdown>(
+      find.byType(TerminalMarkdown),
+    );
+
+    rebuilder.currentState!.rebuild();
+    await tester.pump();
+
+    final TerminalMarkdown after = tester.widget<TerminalMarkdown>(
+      find.byType(TerminalMarkdown),
+    );
+    expect(
+      identical(before, after),
+      isTrue,
+      reason: 'A rebuild with the same text must not rebuild the Markdown.',
+    );
+  });
+}
+
+/// Rebuilds its child factory on demand, the way any ancestor setState does.
+final class _Rebuilder extends StatefulWidget {
+  const _Rebuilder({required this.child, super.key});
+  final Widget Function() child;
+  @override
+  State<_Rebuilder> createState() => _RebuilderState();
+}
+
+final class _RebuilderState extends State<_Rebuilder> {
+  /// Forces a fresh build, recreating the child widget instance.
+  void rebuild() => setState(() {});
+
+  @override
+  Widget build(BuildContext context) => widget.child();
 }
