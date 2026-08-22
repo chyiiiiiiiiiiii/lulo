@@ -1048,6 +1048,42 @@ void main() {
     expect(controller.enabled, isTrue);
   });
 
+  test('the transient session waits for the answer to be spoken', () async {
+    // A short answer's speech is dispatched from the completed turn, after
+    // the generation ends — so "the generation ended and nothing is
+    // speaking" is exactly the moment the answer is ABOUT to be spoken,
+    // not proof it has been. Closing there silences every short answer:
+    // observed live as two questions answered in text and never aloud.
+    expect(controller.enabled, isFalse);
+    controller.holdToTalkPressed();
+    await pump();
+    await pump();
+    voice.hear(const FinalTranscript('今天天氣如何'));
+    await pump();
+    controller.holdToTalkReleased();
+    await pump();
+    await pump();
+    final Generation generation = await generationStarted();
+    // No sentence end until the very completion: nothing dispatches to the
+    // voice while the model streams.
+    inference.emit(
+      GenerationDelta(generationId: generation.id, delta: '出太陽'),
+    );
+    inference.emit(GenerationCompleted(generation.id));
+    await pump();
+    await pump();
+
+    expect(
+      voice.spoken,
+      isNotEmpty,
+      reason: 'The answer must be spoken before the session may close.',
+    );
+    voice.hear(const SpeakingFinished());
+    await pump();
+    await pump();
+    expect(controller.enabled, isFalse);
+  });
+
   test('an empty hold closes the ears it opened', () async {
     // Pressed, nothing heard, released: there is no answer to wait out, and
     // the session must not stay open on the strength of a misfire.

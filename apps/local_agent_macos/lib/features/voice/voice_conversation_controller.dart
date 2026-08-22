@@ -881,6 +881,29 @@ final class VoiceConversationController extends ChangeNotifier {
     if (!_conversation.canSubmit || _speaking || _speechRequested) {
       return;
     }
+    if (_pendingUtterance != null) {
+      return;
+    }
+    // The answer must have been handed to the voice, not merely written.
+    // canSubmit flips the moment the generation ends, but the completed
+    // turn reaches _onTurnsChanged only after it is persisted — and in the
+    // shipped app that gap is real: closing in it disables the controller,
+    // whose turn listener then skips the unspoken answer without a sound.
+    // Two questions were answered in text and never aloud before this
+    // guard. When it defers, the dispatch loop's own closing check runs
+    // after the turn is spoken for.
+    final List<Turn> turns = _conversation.completedTurnsListenable.value;
+    if (_spokenThrough < turns.length) {
+      return;
+    }
+    // A question sitting as the newest completed turn is one whose answer
+    // has not even been written yet — the user turn persists before the
+    // generation claims the submission lock, so canSubmit alone cannot be
+    // trusted at that instant. An empty history is a hold that produced
+    // nothing, which has no answer to wait for.
+    if (turns.isNotEmpty && turns.last.role != TurnRole.assistant) {
+      return;
+    }
     _sessionOpenedByHold = false;
     unawaited(disable());
   }
@@ -1365,6 +1388,11 @@ final class VoiceConversationController extends ChangeNotifier {
         _speakAloud(turn.text.substring(alreadySpoken), decidedBy: turn.text);
       }
     }
+    // The turn just handled may have had nothing sayable, in which case no
+    // SpeakingFinished will ever close a transient session — and when the
+    // completed turn arrives after canSubmit, this is the first closing
+    // check that runs with the whole answer accounted for.
+    _maybeCloseHoldSession();
   }
 
   @override
