@@ -913,6 +913,11 @@ final class VoiceConversationController extends ChangeNotifier {
     _pttSettling = false;
     _pttFinals.clear();
     _pttProtected = false;
+    // The last send closed the ears early; a new hold is exactly the
+    // moment they are needed again.
+    if (!_listening) {
+      unawaited(_voice.startListening());
+    }
     _pttAwaitsBatch = _holdIntentBatch;
     _pttBatchText = null;
     _pttSubmitBackstop?.cancel();
@@ -979,6 +984,17 @@ final class VoiceConversationController extends ChangeNotifier {
     }
     _pttProtected = true;
     unawaited(_refineFinalUtterance(question));
+    // The question is sent: the recogniser has its audio and the answer
+    // is spoken by the sidecar's own player, so the microphone — and the
+    // system-wide audio ducking its voice processing drags along — has no
+    // reason to outlive the send. Only for a session a hold opened; one
+    // the user switched on themselves stays open, ducking and all,
+    // because staying open is what they asked for. The controller stays
+    // enabled so the answer is still dispatched to the voice; the full
+    // disable, with nothing left to stop, comes when the turn is over.
+    if (_sessionOpenedByHold) {
+      unawaited(_voice.stopListening());
+    }
     notifyListeners();
   }
 

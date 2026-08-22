@@ -1084,6 +1084,73 @@ void main() {
     expect(controller.enabled, isFalse);
   });
 
+  test('the ears close the moment the held question is sent', () async {
+    // Ducking exists for input quality and nothing else: the moment the
+    // question is submitted, the recogniser has its audio and the answer
+    // is spoken by the sidecar's own player, so the microphone — and the
+    // system-wide audio ducking its voice processing drags along — has no
+    // reason to outlive the send. The user hears their music come back
+    // while the agent thinks.
+    expect(controller.enabled, isFalse);
+    controller.holdToTalkPressed();
+    await pump();
+    await pump();
+    voice.hear(const FinalTranscript('今天天氣如何'));
+    await pump();
+    controller.holdToTalkReleased();
+    await pump();
+    await pump();
+
+    expect(
+      voice.calls,
+      contains('stopListening'),
+      reason: 'The microphone must close at the send, not after the '
+          'answer.',
+    );
+
+    // The answer still arrives, written and spoken, ears closed.
+    final Generation generation = await generationStarted();
+    inference.emit(
+      GenerationDelta(generationId: generation.id, delta: '出太陽，很熱。'),
+    );
+    inference.emit(GenerationCompleted(generation.id));
+    await pump();
+    await pump();
+    expect(voice.spoken, isNotEmpty);
+    voice.hear(const SpeakingFinished());
+    await pump();
+    await pump();
+    expect(controller.enabled, isFalse);
+  });
+
+  test('holding again after the send reopens the ears', () async {
+    // The early close must not leave the next press talking to a dead
+    // session: pressing again while the answer is still being written is
+    // the interruption the hold flow promises, and it needs a microphone.
+    expect(controller.enabled, isFalse);
+    controller.holdToTalkPressed();
+    await pump();
+    await pump();
+    voice.hear(const FinalTranscript('今天天氣如何'));
+    await pump();
+    controller.holdToTalkReleased();
+    await pump();
+    await pump();
+    final int opens = voice.calls
+        .where((String call) => call == 'startListening')
+        .length;
+
+    controller.holdToTalkPressed();
+    await pump();
+    await pump();
+
+    expect(
+      voice.calls.where((String call) => call == 'startListening').length,
+      greaterThan(opens),
+      reason: 'A new hold after the early close must reopen the ears.',
+    );
+  });
+
   test('an empty hold closes the ears it opened', () async {
     // Pressed, nothing heard, released: there is no answer to wait out, and
     // the session must not stay open on the strength of a misfire.

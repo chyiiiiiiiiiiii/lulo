@@ -9,11 +9,17 @@ with a way to fail silently.
 > **State.** The always-listening session is **opt-in**: Settings › Taking
 > turns › Live conversation, off by default. Holding to talk — the composer
 > mic button or ⌘⇧Space — is the product's default door, and a session a
-> hold opened closes itself once the answer is over. Three reasons, all
+> hold opened closes **at the send**: the recogniser has its audio and the
+> answer is spoken by the sidecar's own player, so the microphone — and
+> the system-wide audio ducking its voice processing drags along — ends
+> the moment the question is submitted, and the user's music comes back
+> while the agent thinks. A new hold reopens the ears. Three reasons, all
 > measured: the hold key's recogniser is 2-4x more accurate on the same
 > audio; the open microphone runs voice-processed, which ducks every other
 > app's audio system-wide for as long as it listens; and an always-open
 > microphone transcribes a room that is mostly not talking to the agent.
+> Ducking exists for input quality and nothing else, so it lasts exactly
+> as long as the input does.
 >
 > When the switch is on, full duplex works as documented below: voice
 > processing on both the input and the output node, the microphone open
