@@ -948,6 +948,10 @@ final class VoiceConversationController extends ChangeNotifier {
     _pttHeld = false;
     _pttSettling = true;
     notifyListeners();
+    // Letting go IS the endpoint: the user has said the sentence is over.
+    // Without this, the settle waited on the VAD noticing 0.8s of silence
+    // or the 1.5s fallback — dead air between the release and the send.
+    unawaited(_voice.finalizeUtterance());
     if (_pttAwaitsBatch) {
       // The batch recogniser is listening to the same audio and answers
       // in a beat or two; Apple's streamed guess is only its backstop.
@@ -955,9 +959,18 @@ final class VoiceConversationController extends ChangeNotifier {
         _pttBatchWait,
         _submitHeldSpeech,
       );
-    } else if (_partialTranscript.trim().isEmpty) {
+    } else if (_pttFinals.isNotEmpty && _partialTranscript.trim().isEmpty) {
+      // The tail has already settled; there is nothing to wait for.
       _submitHeldSpeech();
     } else {
+      // Nothing settled yet — including nothing AT ALL yet. Recognition
+      // trails the voice by up to a second, so a hold released the moment
+      // the sentence ends can beat its own words to the release, and
+      // submitting the empty transcript here threw the whole utterance
+      // away: the empty send closed the transient session, and the words
+      // arrived moments later to a microphone that no longer existed. The
+      // user had learned to keep holding until text appeared, which is
+      // the app training the person. The words are coming; wait for them.
       _pttSubmitBackstop = _utteranceScheduler.schedule(
         _pttTrailingWait,
         _submitHeldSpeech,

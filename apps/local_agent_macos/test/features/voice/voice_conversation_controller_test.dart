@@ -1084,6 +1084,45 @@ void main() {
     expect(controller.enabled, isFalse);
   });
 
+  test('releasing the hold asks the transcriber to settle at once', () async {
+    // Letting go IS the endpoint: the user has said the sentence is over.
+    // Waiting for the VAD to notice 0.8s of silence, or the 1.5s settle
+    // fallback, is a beat of dead air between the release and the send.
+    await controller.enable();
+    controller.holdToTalkPressed();
+    voice.hear(const PartialTranscript('今天天氣'));
+    await pump();
+    controller.holdToTalkReleased();
+    await pump();
+
+    expect(voice.calls, contains('finalizeUtterance'));
+  });
+
+  test('a quick release waits for the words instead of sending nothing', () async {
+    // Recognition trails the voice by up to a second, so a hold released
+    // the moment the sentence ends can beat its own words to the release.
+    // Submitting the empty transcript there threw the whole utterance
+    // away — the user learned to keep holding until text appeared, which
+    // is the app training the person. The words are coming; wait for them.
+    await controller.enable();
+    controller.holdToTalkPressed();
+    await pump();
+    controller.holdToTalkReleased();
+    await pump();
+    expect(
+      inference.requests,
+      isEmpty,
+      reason: 'Nothing must be sent while the words are still coming.',
+    );
+
+    voice.hear(const FinalTranscript('今天天氣如何'));
+    await pump();
+    await pump();
+
+    final GenerationRequest sent = await inference.requestReceived;
+    expect(sent.prompt, '今天天氣如何');
+  });
+
   test('the ears close the moment the held question is sent', () async {
     // Ducking exists for input quality and nothing else: the moment the
     // question is submitted, the recogniser has its audio and the answer
@@ -1153,7 +1192,16 @@ void main() {
 
   test('an empty hold closes the ears it opened', () async {
     // Pressed, nothing heard, released: there is no answer to wait out, and
-    // the session must not stay open on the strength of a misfire.
+    // the session must not stay open on the strength of a misfire. The
+    // release now waits out the trailing backstop first — words can trail
+    // the release by a second — so the scheduler here fires immediately to
+    // stand in for that wait having passed with nothing arriving.
+    controller.dispose();
+    controller = VoiceConversationController(
+      voice: voice,
+      conversation: vm,
+      utteranceScheduler: MicrotaskBatchScheduler(),
+    );
     expect(controller.enabled, isFalse);
     controller.holdToTalkPressed();
     await pump();
