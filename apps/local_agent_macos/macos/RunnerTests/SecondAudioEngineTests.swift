@@ -225,6 +225,25 @@ final class SecondAudioEngineTests: XCTestCase {
       "a warm engine opened the microphone; keeping one is not safe"
     )
   }
+
+  @available(macOS 26.0, *)
+  func testAWarmEngineDoesNotDuckTheSystemAudio() throws {
+    // The other half of the same trade, learned in use: voice processing
+    // puts the whole system into call mode — every other app's audio is
+    // ducked — from the moment the Voice-Processing I/O unit exists,
+    // microphone open or not. A warm engine that carries it means Spotify
+    // goes quiet the moment the app launches and stays quiet while nobody
+    // is talking. The warm engine is a bare graph; voice processing is
+    // enabled at the press, where the ducking belongs.
+    let bare = try VoiceHostAdapter.makeBareEngine()
+    defer { bare.stop() }
+
+    XCTAssertFalse(
+      bare.inputNode.isVoiceProcessingEnabled,
+      "a warm engine carried voice processing: system audio is ducked "
+        + "while nobody is talking"
+    )
+  }
 }
 
 /// Carries a value out of a background queue in a test.

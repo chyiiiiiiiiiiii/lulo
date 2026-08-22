@@ -118,14 +118,16 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
   private let mute = MuteBox()
 
   /// An engine built and waiting, so a press of the microphone button pays
-  /// 80-90 ms instead of 1100.
+  /// the AUVP initialization (17-81ms) instead of the ~1s graph build.
   ///
   /// Holds no microphone: building one leaves
   /// `kAudioDevicePropertyDeviceIsRunningSomewhere` false, and only
-  /// `engine.start()` turns it true. That is the whole reason keeping one is
-  /// allowed, and `testAWarmEngineDoesNotHoldTheMicrophone` is what keeps it
-  /// honest.
-  private var warmEngine: WarmVoiceEngine?
+  /// `engine.start()` turns it true. And it holds no voice processing —
+  /// which is what ducks every other app's audio system-wide — because
+  /// that is enabled at the press by `finishWarmEngine`.
+  /// `testAWarmEngineDoesNotHoldTheMicrophone` and
+  /// `testAWarmEngineDoesNotDuckTheSystemAudio` keep both halves honest.
+  private var warmEngine: AVAudioEngine?
 
   /// A warm-up in flight, so two of them never run at once.
   private var warmingUp: Task<Void, Never>?
@@ -1065,8 +1067,39 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
   /// `engine.start()` runs. `testAWarmEngineDoesNotHoldTheMicrophone` pins
   /// that, because the day it stops holding, this app is listening before
   /// anyone asked.
-  nonisolated static func makeWarmEngine() throws -> WarmVoiceEngine {
+  /// Builds the engine without its voice processing: the half that is safe
+  /// to keep warm.
+  ///
+  /// Voice processing puts the whole system into call mode — every other
+  /// app's audio is ducked from the moment the Voice-Processing I/O unit
+  /// exists, microphone open or not. Learned in use: Spotify went quiet
+  /// the moment the app launched, and stayed quiet while nobody was
+  /// talking, because the warm engine carried the unit. So the warm half
+  /// is the bare graph (with the main mixer touched, which must happen
+  /// before voice processing ever reshapes it), and [finishWarmEngine]
+  /// enables the unit at the press — where the ducking belongs, measured
+  /// at 17-81ms of AUVP initialization against the ~1s the bare build
+  /// costs.
+  nonisolated static func makeBareEngine() throws -> AVAudioEngine {
     let engine = AVAudioEngine()
+    _ = engine.inputNode
+    _ = engine.mainMixerNode
+    return engine
+  }
+
+  nonisolated static func makeWarmEngine() throws -> WarmVoiceEngine {
+    try finishWarmEngine(makeBareEngine())
+  }
+
+  /// Decides this press's audio arrangement and enables voice processing.
+  ///
+  /// Run at the press rather than at warm-up, for two reasons that point
+  /// the same way: the ducking starts here, and the output transport the
+  /// decision reads is the one the user has *now*, not the one they had
+  /// at launch.
+  nonisolated static func finishWarmEngine(
+    _ engine: AVAudioEngine
+  ) throws -> WarmVoiceEngine {
     let input = engine.inputNode
     var duplex = false
     var openMic = false
@@ -1337,9 +1370,11 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
     if let warmingUp {
       await warmingUp.value
     }
-    if let warm = warmEngine {
+    if let bare = warmEngine {
       warmEngine = nil
-      return warm
+      return try await Task.detached(priority: .userInitiated) {
+        try Self.finishWarmEngine(bare)
+      }.value
     }
     return try await Task.detached(priority: .userInitiated) {
       try Self.makeWarmEngine()
@@ -1368,7 +1403,7 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
     warmingUp = Task { @MainActor [weak self] in
       let startedAt = ProcessInfo.processInfo.systemUptime
       let built = try? await Task.detached(priority: .utility) {
-        try Self.makeWarmEngine()
+        try Self.makeBareEngine()
       }.value
       // What the warm-up really costs in this app, as opposed to in a test
       // host or a bare script. Both of those were measured and neither is
@@ -1381,12 +1416,12 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
         (ProcessInfo.processInfo.systemUptime - startedAt) * 1000
       )
       guard let self else {
-        built?.engine.stop()
+        built?.stop()
         return
       }
       self.warmingUp = nil
       guard self.warmEngine == nil, let built else {
-        built?.engine.stop()
+        built?.stop()
         return
       }
       self.warmEngine = built
@@ -1395,7 +1430,7 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
 
   /// Throws away the waiting engine, when what it was built against is gone.
   private func discardWarmEngine() {
-    warmEngine?.engine.stop()
+    warmEngine?.stop()
     warmEngine = nil
   }
 
@@ -1414,18 +1449,15 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
     session.builder.finish()
     session.engine.inputNode.removeTap(onBus: 0)
     session.engine.stop()
-    // Back to the warm pool. The tap is off and the engine is stopped, which
-    // is exactly the state one is kept in — what is left is the player node,
-    // which has to be detached or every session leaves another attached to
-    // an engine that now outlives them all.
+    // NOT back to the warm pool, deliberately. This engine carries the
+    // Voice-Processing I/O unit, and that unit ducks every other app's
+    // audio system-wide for as long as it exists — recycling it kept
+    // Spotify quiet from the first press to app quit. Dropped instead, so
+    // the unit deallocates and the room's audio comes back; the re-warm
+    // below builds a bare engine that carries no such unit.
     if let player = session.playerNode {
       session.engine.detach(player)
     }
-    warmEngine = WarmVoiceEngine(
-      engine: session.engine,
-      fullDuplex: fullDuplex,
-      openMicWithoutCanceller: openMicWithoutCanceller
-    )
     let analyzer = session.analyzer
     let resultsTask = session.resultsTask
     // Finalization drains what the transcriber still holds — the trailing
@@ -1446,6 +1478,11 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
     // of its own. Leaving this set would let the refresh decide the terms
     // were already in force and skip applying them to it.
     appliedVocabulary = []
+    // The next press deserves the same fast start this one had. Holding to
+    // talk opens and closes a session per turn now, so a warm engine that
+    // was only ever built at launch would make every turn after the first
+    // pay the ~1s build in front of the user.
+    warmUpEngine()
   }
 
   /// The device changed under the running engine: rebuild on the settled
