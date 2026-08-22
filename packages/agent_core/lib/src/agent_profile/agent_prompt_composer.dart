@@ -135,6 +135,22 @@ AgentPromptContext composeAgentPrompt({
       chinese
           ? <String>[
               '你是 ${profile.identity.agentName}，在使用者電腦上運作的私人助手。',
+              // The capability line exists because its absence was watched
+              // failing: asked for quiet cafés, the model invented three
+              // shops and then promised to「立刻去 Google Map 搜尋」— in an
+              // app with no web, no maps, no location. Every clause and its
+              // position were probed against the real model
+              // (WrittenPrefaceProbeTests): 「沒有即時資訊」 taught it not
+              // to call the clock and invent a confident wrong time — 5/5
+              // to 0/5 — so the tools are exempted FIRST and positively;
+              // and the line sits before the identity anchor because after
+              // it the name leaked as 「我是 Gemma 4」 at one seed in five.
+              // This exact wording, in this exact slot, measures 5/5 tool
+              // calls on both channels with persona intact. Do not edit it
+              // without re-running the probe.
+              '工具能做到的，先用工具再回答。'
+                  '工具之外你不能上網、沒有地圖、沒有定位：這些事直接說做不到，'
+                  '不要承諾去查，也不要編造店名、地址、網址。',
               // The identity anchor. Reworking the opening line for tool
               // calling cost the name three times in five at temperature
               // 0.7 — 「我叫 Gemma 4」 — and one specific sentence about
@@ -153,20 +169,18 @@ AgentPromptContext composeAgentPrompt({
               // its examples and the first-sentence absolutism goes.
               '先回答核心；不要用「這個問題很複雜」、「兩者不一樣」、「明白了」這類開場。',
               '不確定時坦白說明，不捏造資訊。',
-              // The capability line exists because its absence was watched
-              // failing: asked for quiet cafés, the model invented three
-              // shops and then promised to「立刻去 Google Map 搜尋」— in an
-              // app with no web, no maps, no location. A small model fills
-              // silence with confidence, so what it cannot reach has to be
-              // named, and the promise itself banned: fabricated addresses
-              // read as answers. Worded as fact-about-self, not as a rule
-              // list, and kept to two sentences — this file records what
-              // longer additions have cost before.
-              '你不能上網：沒有網頁搜尋、地圖、定位、即時資訊。'
-                  '做不到的事直接說做不到，不要承諾去查，也不要編造店名、地址、網址這類可查證的細節。',
             ]
           : <String>[
               'You are ${profile.identity.agentName}, a private assistant running on the user’s computer.',
+              // Mirrors the Chinese, which is what was probed; this side
+              // has not been. Same order for the same reason: tools
+              // exempted first and positively, the boundary after, the
+              // identity anchor behind both.
+              'When a tool can do the job, use the tool before answering. '
+                  'Beyond your tools you have no web, no maps, no '
+                  'location: say plainly when something is out of reach, '
+                  'never promise to look things up, and never invent shop '
+                  'names, addresses, or URLs.',
               'When asked your name or what you are, you are '
                   '${profile.identity.agentName}.',
               'Answer in natural spoken English. Be warm without pretending familiarity.',
@@ -176,13 +190,6 @@ AgentPromptContext composeAgentPrompt({
                   'complex the question is, that the two things differ, '
                   'or an acknowledgement like "Understood".',
               'State uncertainty honestly and never invent facts.',
-              // The English wording follows the Chinese, which is what was
-              // watched failing; this side has not been.
-              'You have no internet access: no web search, no maps, no '
-                  'location, no live information. Say plainly when '
-                  'something is out of reach — never promise to look '
-                  'things up, and never invent checkable details like '
-                  'shop names, addresses, or URLs.',
             ],
     ),
     _section(

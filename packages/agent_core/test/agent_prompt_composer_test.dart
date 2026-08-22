@@ -124,15 +124,26 @@ void main() {
       profile: AgentProfile(),
       prompt: '幫我找附近安靜的咖啡廳',
     );
+    // The exact wording and its slot before the identity anchor are load-
+    // bearing, probed by WrittenPrefaceProbeTests: naming「即時資訊」as
+    // absent taught the model not to call the clock (5/5 to 0/5), and the
+    // line after the anchor leaked the name as Gemma. Tools are exempted
+    // first and positively.
+    expect(zh.systemInstruction, contains('工具能做到的，先用工具再回答'));
     expect(zh.systemInstruction, contains('不能上網'));
-    expect(zh.systemInstruction, contains('地圖'));
     expect(zh.systemInstruction, contains('不要承諾去查'));
+    expect(
+      zh.systemInstruction.indexOf('不能上網'),
+      lessThan(zh.systemInstruction.indexOf('被問到名字或身分時')),
+      reason: 'The capability line after the identity anchor leaked the '
+          'name as Gemma at one seed in five.',
+    );
 
     final AgentPromptContext en = composeAgentPrompt(
       profile: AgentProfile(),
       prompt: 'Find me a quiet cafe nearby',
     );
-    expect(en.systemInstruction, contains('no web search'));
+    expect(en.systemInstruction, contains('no web, no maps'));
     expect(en.systemInstruction, contains('never promise to look'));
   });
 
