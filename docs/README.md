@@ -74,6 +74,7 @@ explanation.
 | [decisions/full-duplex-voice.md](decisions/full-duplex-voice.md) | Written |
 | [decisions/taiwan-mandarin-voice-candidates.md](decisions/taiwan-mandarin-voice-candidates.md) | Measured, not yet adopted |
 | [decisions/no-dart-audio-engine.md](decisions/no-dart-audio-engine.md) | Written — read before adding any audio package |
+| [decisions/silence-in-front-of-the-voice-is-latency.md](decisions/silence-in-front-of-the-voice-is-latency.md) | Measured and shipped — read before raising `STREAM_INTERVAL` or loosening the onset trim |
 | [decisions/half-duplex-voice.md](decisions/half-duplex-voice.md) | Superseded, kept for the method error |
 | [decisions/memory-is-an-attack-surface.md](decisions/memory-is-an-attack-surface.md) | Threat-modelled — read before widening what the extraction pass may read |
 | [decisions/the-model-will-not-interrupt-itself-to-remember.md](decisions/the-model-will-not-interrupt-itself-to-remember.md) | Measured and shipped off by default — read before registering a tool, changing the extraction prompt, or turning memory on by default |

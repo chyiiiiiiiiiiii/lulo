@@ -74,7 +74,8 @@ so a canned answer means the runtime is working, not that the model failed.
 ### Python TTS sidecar — `~/dev/lulo-tts` (separate repository)
 
 `server.py`, a `ThreadingHTTPServer` on `127.0.0.1:46557` holding
-`mlx-community/Qwen3-TTS-12Hz-0.6B-CustomVoice-8bit` resident in MLX. Kept
+`mlx-community/Qwen3-TTS-12Hz-0.6B-Base-8bit` resident in MLX, cloning its
+voice from one fixed reference recording (`voices/ryan.wav`). Kept
 alive by a launchd agent, `com.lulo.tts`, with `RunAtLoad` and `KeepAlive`.
 
 It is out of tree, and deliberately so: the model takes long enough to load
@@ -168,7 +169,7 @@ sequenceDiagram
     Host->>Host: mute the microphone feed — half duplex
     Host-->>Voice: SpeakingStarted
     Host->>TTS: POST /speak {text, voice, lang}
-    Note over TTS: Qwen3-TTS streams ~0.8s chunks —<br/>each plays as it renders
+    Note over TTS: Qwen3-TTS streams ~0.4s chunks, its<br/>leading silence trimmed off the first one —<br/>each plays as it renders
     TTS-->>User: sound
     TTS-->>Host: 200, once playback has drained
 

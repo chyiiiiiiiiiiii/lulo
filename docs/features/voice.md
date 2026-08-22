@@ -641,18 +641,23 @@ the work is not.
 *is* the `SpeakingFinished` signal. The adapter's 120s timeout is the ceiling;
 `/stop` gets 3s and is fired and forgotten.
 
-Synthesis streams. The model yields ~0.8s chunks (`STREAM_INTERVAL = 0.8`) and
+Synthesis streams. The model yields ~0.4s chunks (`STREAM_INTERVAL = 0.4`) and
 each plays the moment it arrives through `sounddevice`, with
 `PLAYER_MIN_BUFFER_S = 0.4` — the library default of 1.5s would swallow most
-of the win. 0.4s intervals were tried and occasionally sent a benchmark
-sentence into a babble loop; 0.8 stayed stable and still puts the first sound
-under half a second.
+of the win.
 
-Pacing is steered through the CustomVoice instruct, not the model's `speed`
-parameter, which is a no-op for `qwen3_tts`. Mandarin defaults to a drawl
-(~3.8 chars/s); `語速快一點` brings it to conversational (~5.4). English is
-already at pace, and the same instruct written in English measurably *slowed*
-it down, so English gets none.
+Two things in front of the voice were latency and nothing else, and both are
+gone — see
+[decisions/silence-in-front-of-the-voice-is-latency.md](../decisions/silence-in-front-of-the-voice-is-latency.md).
+The model puts 0.2s to 0.9s of digital silence at the head of an utterance,
+which `onset.py` now trims off the first chunk; and the chunk interval is the
+floor under how soon any first chunk can exist, which halving moved from
+0.62s to 0.33s. Read that record before raising either number back.
+
+Pacing comes from the reference recording. The voice is cloned from
+`voices/ryan.wav`, and cloning imitates the reference's pace — which retired
+the CustomVoice `語速快一點` instruct that used to do this job. The model's
+`speed` parameter remains a no-op for `qwen3_tts`.
 
 Two short sentences are rendered at boot (`_warm_up`) through the exact
 streaming settings the requests use, so the first real utterance does not pay
@@ -822,7 +827,7 @@ The adapter is chatty on purpose. `Console.app`, or `log stream`, filtered on
 The sidecar's own log gives the latency that matters:
 
 ```
-14:26:03 lulo-tts: first-chunk 0.42s, 3.1s audio for 47 chars
+11:12:19 lulo-tts: first-chunk 0.37s (-0.36s lead), 2.7s audio for 15 chars
 ```
 
 ## What one turn costs
@@ -831,11 +836,11 @@ Four logs, written by whoever can see the thing, account for one turn end to
 end without attaching a profiler. In order:
 
 ```
-Lulo voice: endpointing after 0.87s of silence          # the room went quiet
-Lulo voice: final (23 chars) 0.31s after the ask        # the question exists
-Lulo latency: refine 0.01s + think 0.29s + write 0.24s  # …to something sayable
+Lulo voice: endpointing after 0.87s of silence             # the room went quiet
+Lulo voice: final (23 chars) 0.31s after the ask           # the question exists
+Lulo latency: refine 0.01s + think 0.29s + write 0.24s     # …to something sayable
               = 0.54s to the first 12 characters spoken
-14:26:03 lulo-tts: render first-chunk 0.48s             # …to a sound
+14:26:03 lulo-tts: render first-chunk 0.30s (-0.35s lead)  # …to a sound
 ```
 
 `VoiceTurnLatency` owns the third. It is a measurement and nothing else: it
