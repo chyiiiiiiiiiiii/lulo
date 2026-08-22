@@ -153,6 +153,17 @@ AgentPromptContext composeAgentPrompt({
               // its examples and the first-sentence absolutism goes.
               '先回答核心；不要用「這個問題很複雜」、「兩者不一樣」、「明白了」這類開場。',
               '不確定時坦白說明，不捏造資訊。',
+              // The capability line exists because its absence was watched
+              // failing: asked for quiet cafés, the model invented three
+              // shops and then promised to「立刻去 Google Map 搜尋」— in an
+              // app with no web, no maps, no location. A small model fills
+              // silence with confidence, so what it cannot reach has to be
+              // named, and the promise itself banned: fabricated addresses
+              // read as answers. Worded as fact-about-self, not as a rule
+              // list, and kept to two sentences — this file records what
+              // longer additions have cost before.
+              '你不能上網：沒有網頁搜尋、地圖、定位、即時資訊。'
+                  '做不到的事直接說做不到，不要承諾去查，也不要編造店名、地址、網址這類可查證的細節。',
             ]
           : <String>[
               'You are ${profile.identity.agentName}, a private assistant running on the user’s computer.',
@@ -165,6 +176,13 @@ AgentPromptContext composeAgentPrompt({
                   'complex the question is, that the two things differ, '
                   'or an acknowledgement like "Understood".',
               'State uncertainty honestly and never invent facts.',
+              // The English wording follows the Chinese, which is what was
+              // watched failing; this side has not been.
+              'You have no internet access: no web search, no maps, no '
+                  'location, no live information. Say plainly when '
+                  'something is out of reach — never promise to look '
+                  'things up, and never invent checkable details like '
+                  'shop names, addresses, or URLs.',
             ],
     ),
     _section(

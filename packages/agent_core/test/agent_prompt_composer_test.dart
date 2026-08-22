@@ -113,6 +113,29 @@ void main() {
     expect(zh.systemInstruction, contains('被問到名字或身分時，你就是 Lulo'));
   });
 
+  test('the instruction says what the agent cannot reach', () {
+    // Asked for quiet cafés, the model described three invented shops and
+    // then promised to "go search Google Maps right now" — an app with no
+    // web, no maps, and no location. A capability it does not have must be
+    // named as absent, because the model fills silence with confidence:
+    // the promise reads as a feature and the fabricated addresses that
+    // follow read as answers.
+    final AgentPromptContext zh = composeAgentPrompt(
+      profile: AgentProfile(),
+      prompt: '幫我找附近安靜的咖啡廳',
+    );
+    expect(zh.systemInstruction, contains('不能上網'));
+    expect(zh.systemInstruction, contains('地圖'));
+    expect(zh.systemInstruction, contains('不要承諾去查'));
+
+    final AgentPromptContext en = composeAgentPrompt(
+      profile: AgentProfile(),
+      prompt: 'Find me a quiet cafe nearby',
+    );
+    expect(en.systemInstruction, contains('no web search'));
+    expect(en.systemInstruction, contains('never promise to look'));
+  });
+
   test('the length names what makes an answer long, not just a ceiling', () {
     // A ceiling is read as a target. Measured against the real model, 「三句話
     // 以內」 produced four answers of exactly three sentences to four
