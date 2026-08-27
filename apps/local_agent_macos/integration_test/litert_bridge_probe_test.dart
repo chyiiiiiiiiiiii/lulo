@@ -14,59 +14,57 @@ const String _modelPath = String.fromEnvironment('LOCAL_MODEL_PATH');
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
 
-  testWidgets(
-    'the native bridge streams real Gemma events',
-    (WidgetTester tester) async {
-      expect(_modelPath, isNotEmpty);
+  testWidgets('the native bridge streams real Gemma events', (
+    WidgetTester tester,
+  ) async {
+    expect(_modelPath, isNotEmpty);
 
-      final PigeonDesktopHostService host = PigeonDesktopHostService();
-      final PigeonInferenceService service = PigeonInferenceService(
-        desktopHostService: host,
-        config: LocalModelConfig(
-          modelId: 'gemma-4-E4B-it',
-          modelPath: _modelPath,
-          contextSize: 4096,
-          maxTokens: 48,
-          seed: 7,
-        ),
-      );
+    final PigeonDesktopHostService host = PigeonDesktopHostService();
+    final PigeonInferenceService service = PigeonInferenceService(
+      desktopHostService: host,
+      config: LocalModelConfig(
+        modelId: 'gemma-4-E4B-it',
+        modelPath: _modelPath,
+        contextSize: 4096,
+        maxTokens: 48,
+        seed: 7,
+      ),
+    );
 
-      final List<String> observed = <String>[];
-      final StringBuffer text = StringBuffer();
+    final List<String> observed = <String>[];
+    final StringBuffer text = StringBuffer();
 
-      await for (final GenerationEvent event in service.generate(
-        const GenerationRequest(
-          conversationId: ConversationId('probe-conversation'),
-          prompt: 'Reply with exactly one short sentence about local AI.',
-        ),
-      )) {
-        switch (event) {
-          case GenerationStarted():
-            observed.add('started');
-          case GenerationDelta(:final String delta):
-            observed.add('delta');
-            text.write(delta);
-          case GenerationCompleted():
-            observed.add('completed');
-          case GenerationCancelled():
-            observed.add('cancelled');
-          case GenerationFailed():
-            observed.add('failed');
-        }
+    await for (final GenerationEvent event in service.generate(
+      const GenerationRequest(
+        conversationId: ConversationId('probe-conversation'),
+        prompt: 'Reply with exactly one short sentence about local AI.',
+      ),
+    )) {
+      switch (event) {
+        case GenerationStarted():
+          observed.add('started');
+        case GenerationDelta(:final String delta):
+          observed.add('delta');
+          text.write(delta);
+        case GenerationCompleted():
+          observed.add('completed');
+        case GenerationCancelled():
+          observed.add('cancelled');
+        case GenerationFailed():
+          observed.add('failed');
       }
+    }
 
-      await service.dispose();
-      await host.dispose();
+    await service.dispose();
+    await host.dispose();
 
-      expect(observed.first, 'started');
-      expect(observed.last, 'completed');
-      expect(
-        observed.where((String kind) => kind == 'delta'),
-        isNotEmpty,
-        reason: 'Real generation must stream at least one delta.',
-      );
-      expect(text.toString().trim(), isNotEmpty);
-    },
-    timeout: const Timeout(Duration(minutes: 10)),
-  );
+    expect(observed.first, 'started');
+    expect(observed.last, 'completed');
+    expect(
+      observed.where((String kind) => kind == 'delta'),
+      isNotEmpty,
+      reason: 'Real generation must stream at least one delta.',
+    );
+    expect(text.toString().trim(), isNotEmpty);
+  }, timeout: const Timeout(Duration(minutes: 10)));
 }

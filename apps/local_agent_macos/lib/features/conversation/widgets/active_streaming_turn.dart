@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../../../l10n/generated/app_localizations.dart';
 import 'completed_turn.dart';
+import 'streaming_markdown.dart';
 
 /// The isolated repaint and rebuild boundary for streamed output.
 final class ActiveStreamingTurn extends StatelessWidget {
@@ -54,10 +55,12 @@ final class ActiveStreamingTurn extends StatelessWidget {
                 // the bubble visibly shrank the moment completion swapped
                 // in the block renderer with its tighter spacing — the
                 // same layout for both is what makes the hand-off
-                // invisible.
+                // invisible. Streaming reaches it through
+                // StreamingMarkdown, which lays out identically and leaves
+                // the paragraphs that have already settled alone.
                 child: KeyedSubtree(
                   key: const Key('active-streaming-markdown'),
-                  child: TerminalMarkdown(
+                  child: StreamingMarkdown(
                     turn.text.isEmpty
                         ? AppLocalizations.of(context).thinkingPlaceholder
                         : turn.text,

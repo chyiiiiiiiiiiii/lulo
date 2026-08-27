@@ -135,7 +135,8 @@ void main() {
     expect(
       zh.systemInstruction.indexOf('不能上網'),
       lessThan(zh.systemInstruction.indexOf('被問到名字或身分時')),
-      reason: 'The capability line after the identity anchor leaked the '
+      reason:
+          'The capability line after the identity anchor leaked the '
           'name as Gemma at one seed in five.',
     );
 

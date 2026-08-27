@@ -1066,9 +1066,7 @@ void main() {
     final Generation generation = await generationStarted();
     // No sentence end until the very completion: nothing dispatches to the
     // voice while the model streams.
-    inference.emit(
-      GenerationDelta(generationId: generation.id, delta: '出太陽'),
-    );
+    inference.emit(GenerationDelta(generationId: generation.id, delta: '出太陽'));
     inference.emit(GenerationCompleted(generation.id));
     await pump();
     await pump();
@@ -1098,30 +1096,33 @@ void main() {
     expect(voice.calls, contains('finalizeUtterance'));
   });
 
-  test('a quick release waits for the words instead of sending nothing', () async {
-    // Recognition trails the voice by up to a second, so a hold released
-    // the moment the sentence ends can beat its own words to the release.
-    // Submitting the empty transcript there threw the whole utterance
-    // away — the user learned to keep holding until text appeared, which
-    // is the app training the person. The words are coming; wait for them.
-    await controller.enable();
-    controller.holdToTalkPressed();
-    await pump();
-    controller.holdToTalkReleased();
-    await pump();
-    expect(
-      inference.requests,
-      isEmpty,
-      reason: 'Nothing must be sent while the words are still coming.',
-    );
+  test(
+    'a quick release waits for the words instead of sending nothing',
+    () async {
+      // Recognition trails the voice by up to a second, so a hold released
+      // the moment the sentence ends can beat its own words to the release.
+      // Submitting the empty transcript there threw the whole utterance
+      // away — the user learned to keep holding until text appeared, which
+      // is the app training the person. The words are coming; wait for them.
+      await controller.enable();
+      controller.holdToTalkPressed();
+      await pump();
+      controller.holdToTalkReleased();
+      await pump();
+      expect(
+        inference.requests,
+        isEmpty,
+        reason: 'Nothing must be sent while the words are still coming.',
+      );
 
-    voice.hear(const FinalTranscript('今天天氣如何'));
-    await pump();
-    await pump();
+      voice.hear(const FinalTranscript('今天天氣如何'));
+      await pump();
+      await pump();
 
-    final GenerationRequest sent = await inference.requestReceived;
-    expect(sent.prompt, '今天天氣如何');
-  });
+      final GenerationRequest sent = await inference.requestReceived;
+      expect(sent.prompt, '今天天氣如何');
+    },
+  );
 
   test('the ears close the moment the held question is sent', () async {
     // Ducking exists for input quality and nothing else: the moment the
@@ -1143,7 +1144,8 @@ void main() {
     expect(
       voice.calls,
       contains('stopListening'),
-      reason: 'The microphone must close at the send, not after the '
+      reason:
+          'The microphone must close at the send, not after the '
           'answer.',
     );
 

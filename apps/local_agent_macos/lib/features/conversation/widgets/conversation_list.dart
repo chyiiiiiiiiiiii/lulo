@@ -98,6 +98,24 @@ final class _ConversationListState extends State<ConversationList> {
   /// How many completed turns have been accounted for.
   int _seenTurns = 0;
 
+  /// The widget already built for each settled turn, kept by the turn itself.
+  ///
+  /// The transcript is a plain Column, so appending one turn rebuilds every
+  /// turn before it — measured at 40 ms for five exchanges and 78 ms for
+  /// eighty, a hitch that arrives exactly when the user has just pressed
+  /// send. A [Turn] is immutable, so the widget standing for one can only be
+  /// built once; handing back the identical instance is Flutter's own
+  /// short-circuit and the element skips the whole subtree. This is the same
+  /// trade `_CompletedTurnState` already makes for its Markdown, one level
+  /// up. Theme and locale changes still reach it — inherited widgets notify
+  /// their dependents directly, without the parent.
+  ///
+  /// Keyed by identity, because a repeated question is a different turn that
+  /// happens to read the same. Only turns with no retries of their own are
+  /// kept: the newest question and the newest answer change what they offer
+  /// as the conversation moves under them.
+  final Map<Turn, Widget> _rendered = Map<Turn, Widget>.identity();
+
   @override
   void initState() {
     super.initState();
@@ -170,6 +188,11 @@ final class _ConversationListState extends State<ConversationList> {
   @override
   void didUpdateWidget(ConversationList oldWidget) {
     super.didUpdateWidget(oldWidget);
+    // A cached turn holds the callback it was built with, so a new one has
+    // to throw that away or the reuse hands back a dead button.
+    if (oldWidget.onSpeak != widget.onSpeak) {
+      _rendered.clear();
+    }
     if (oldWidget.completedTurns != widget.completedTurns) {
       oldWidget.completedTurns.removeListener(_followNewContent);
       widget.completedTurns.addListener(_followNewContent);
@@ -185,6 +208,7 @@ final class _ConversationListState extends State<ConversationList> {
     widget.completedTurns.removeListener(_followNewContent);
     widget.activeTurn.removeListener(_followNewContent);
     _scrollController.removeListener(_watchPosition);
+    _rendered.clear();
     _scrollController.dispose();
     super.dispose();
   }
@@ -275,6 +299,7 @@ final class _ConversationListState extends State<ConversationList> {
               valueListenable: widget.completedTurns,
               builder: (BuildContext context, List<Turn> turns, Widget? child) {
                 widget.onCompletedTurnsBuild?.call();
+                _forgetTurnsNoLongerShown(turns);
                 if (turns.isEmpty) {
                   return SizedBox(
                     height: (constraints.maxHeight - 40).clamp(
@@ -321,6 +346,18 @@ final class _ConversationListState extends State<ConversationList> {
 /// A turn that offers none is built plainly, so the listenable that gates the
 /// retries cannot rebuild the history behind it.
 extension on _ConversationListState {
+  /// Drops what was kept for turns the transcript no longer holds.
+  ///
+  /// A conversation opened, deleted, or rewound from its last question leaves
+  /// the cache holding widgets nothing will ask for again.
+  void _forgetTurnsNoLongerShown(List<Turn> turns) {
+    if (_rendered.isEmpty) {
+      return;
+    }
+    final Set<Turn> shown = Set<Turn>.identity()..addAll(turns);
+    _rendered.removeWhere((Turn turn, Widget _) => !shown.contains(turn));
+  }
+
   Widget _retryable({
     required Turn turn,
     required bool regenerate,
@@ -330,8 +367,14 @@ extension on _ConversationListState {
     final VoidCallback? onRegenerate = regenerate ? widget.onRegenerate : null;
     final ValueChanged<String>? onRevise = revise ? widget.onRevise : null;
     if (available == null || (onRegenerate == null && onRevise == null)) {
-      return CompletedTurn(turn: turn, onSpeak: widget.onSpeak);
+      return _rendered[turn] ??= CompletedTurn(
+        turn: turn,
+        onSpeak: widget.onSpeak,
+      );
     }
+    // This turn offers retries now and will stop offering them the moment
+    // another arrives, so nothing about it may be kept.
+    _rendered.remove(turn);
     return ValueListenableBuilder<bool>(
       valueListenable: available,
       builder: (BuildContext context, bool ready, Widget? child) =>

@@ -1237,7 +1237,6 @@ final class RecordingDesktopHostService implements DesktopHostService {
   @override
   Future<String> chooseTextFile() async => '';
 
-
   /// What [searchPlaces] answers.
   List<DesktopPlaceHit> placesToFind = const <DesktopPlaceHit>[];
 

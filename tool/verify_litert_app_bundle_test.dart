@@ -296,14 +296,12 @@ Future<void> _testLaunchFailureUsesStableError() async {
 }
 
 Future<void> _testUnknownOptionUsesStableUsageError() async {
-  final ProcessResult result = await Process.run(
-    Platform.resolvedExecutable,
-    <String>[
-      'tool/verify_litert_app_bundle.dart',
-      '/private/secret.app',
-      '--secret-option',
-    ],
-  );
+  final ProcessResult result =
+      await Process.run(Platform.resolvedExecutable, <String>[
+        'tool/verify_litert_app_bundle.dart',
+        '/private/secret.app',
+        '--secret-option',
+      ]);
 
   _expectEqual(result.exitCode, 64, 'unknown option exit code');
   _expectEqual(

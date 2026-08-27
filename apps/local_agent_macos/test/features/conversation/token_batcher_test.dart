@@ -64,11 +64,9 @@ void main() {
       expect(batches, <String>['AB']);
 
       clock.elapse(frame);
-      expect(
-        batches,
-        <String>['AB'],
-        reason: 'The scheduled frame must not emit what flush already did.',
-      );
+      expect(batches, <String>[
+        'AB',
+      ], reason: 'The scheduled frame must not emit what flush already did.');
       batcher.dispose();
     });
   });

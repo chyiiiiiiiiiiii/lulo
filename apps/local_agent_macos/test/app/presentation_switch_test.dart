@@ -225,11 +225,9 @@ void main() {
     await tester.pump();
     await tester.pump();
 
-    expect(
-      host.begunTransitions,
-      <DesktopPresentation>[DesktopPresentation.orb],
-      reason: 'The window was never grown to cover both forms.',
-    );
+    expect(host.begunTransitions, <DesktopPresentation>[
+      DesktopPresentation.orb,
+    ], reason: 'The window was never grown to cover both forms.');
     expect(
       host.endedTransitions,
       isEmpty,
@@ -242,11 +240,9 @@ void main() {
     await tester.pump();
     await tester.pump();
 
-    expect(
-      host.endedTransitions,
-      <DesktopPresentation>[DesktopPresentation.orb],
-      reason: 'The window never settled once the presence had arrived.',
-    );
+    expect(host.endedTransitions, <DesktopPresentation>[
+      DesktopPresentation.orb,
+    ], reason: 'The window never settled once the presence had arrived.');
     expect(host.presentation.value, DesktopPresentation.orb);
   });
 
@@ -440,11 +436,10 @@ void main() {
     await tester.pump();
     await tester.pump();
 
-    expect(
-      host.windowBehaviours.last,
-      (false, true),
-      reason: 'Turning the orb off the top never reached the window.',
-    );
+    expect(host.windowBehaviours.last, (
+      false,
+      true,
+    ), reason: 'Turning the orb off the top never reached the window.');
     expect(
       (await composition.settingsStore.load()).keepOrbOnTop,
       isFalse,
