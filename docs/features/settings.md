@@ -141,6 +141,28 @@ defaults-plus-one-flip and silently erase every stored choice. `initState`
 therefore gates showing it on the same `settingsLoaded` future it already
 holds. `test/app/settings_race_test.dart` pins this.
 
+## Where the notes go
+
+`obsidianJournal` is a stored setting; the folder it writes into is
+deliberately **not** one. The app is sandboxed and an Obsidian vault lives
+outside its container, so the folder is reachable only through a grant an
+`NSOpenPanel` issued, kept as a security-scoped bookmark in
+`ObsidianVault`. A path is not permission: a remembered string would show
+the user a folder that cannot actually be opened, so the pane asks for the
+current folder every time it appears — the same reason the login-item switch
+asks `SMAppService` rather than remembering an answer.
+
+The switch only appears once a folder has been chosen, because a switch that
+turns on a mirror with nowhere to write is a switch that does nothing; and
+choosing a folder turns it on, because choosing one is asking for this.
+Beneath it, how the **last** write went — a moved or deleted folder says so
+by name. A mirror that has quietly stopped is worse than one never turned on,
+because the user believes their thinking is being kept somewhere it is not.
+
+What is written, and why it is a day's page appended to rather than a note per
+conversation rewritten, is in
+[`a-journal-in-someone-elses-vault.md`](../decisions/a-journal-in-someone-elses-vault.md).
+
 ## What is deliberately not stored
 
 The window's frame. `setFrameAutosaveName("")` disables AppKit's own

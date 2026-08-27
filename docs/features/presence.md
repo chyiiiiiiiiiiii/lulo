@@ -15,7 +15,9 @@ which is not an aesthetic choice — it is what the measurements left.
 | File | Owns |
 |---|---|
 | `macos/Runner/DesktopPanelController.swift` | The stage: geometry, the two homes, click routing, the glide, per-form window behaviour |
-| `macos/Runner/DesktopPanelController.swift` (`OrbInputPanel`, `OrbCatcherView`) | The orb's clicks, in a panel of their own |
+| `macos/Runner/DesktopPanelController.swift` (`OrbInputPanel`, `OrbCatcherView`) | The orb's clicks, and the strip of buttons under the pointer, in a panel of their own |
+| `macos/Runner/OrbActionStrip.swift` | Where that strip stands, as a pure function of the orb and the screen |
+| `packages/agent_core/lib/src/presence/orb_actions.dart` | Which buttons the resting agent offers, and in what order |
 | `macos/Runner/DesktopPanelController.swift` (`StagePassThroughView`) | Where the window answers the mouse at all |
 | `macos/Runner/MainFlutterWindow.swift` | The one `NSPanel`, the one engine, the one view controller |
 | `macos/Runner/AppDelegate.swift` | Wiring the panel's callbacks to the pigeon event API; the hotkey; the menus |
@@ -145,6 +147,36 @@ reads as a faint circle wrapped around it, darkest at the bottom because the
 light sits top-left and that is the ring's shadow side. The halo now stops at
 `fieldRadius + 0.12`, hugging the vapour instead of surrounding it, and the
 measured profile ends at 0.725 in every state.
+
+### The strip under the pointer
+
+Resting on the orb for `OrbActionStrip.dwell` (0.25s) raises a capsule of
+buttons beside it: **talk**, **look**, and — only while there is something to
+stop — **stop**. The argument for each, and for the several that were left out,
+is in
+[`the-orb-that-answers-without-opening.md`](../decisions/the-orb-that-answers-without-opening.md).
+The short version is one test: an action earns a place only if doing it any
+other way costs a summon.
+
+It is drawn by AppKit because it has to be. The orb's square sits at
+`frame.minY` — the bottom edge of the stage — so there is nowhere inside the
+window to draw beneath it, and the window may never be resized to make room.
+Its words come from Dart anyway, exactly as `HostMenuBarLabels` does.
+
+The routing follows the three layers above without adding a fourth. The
+catcher panel grows to hold both the orb and the capsule, but while the strip
+is hidden it still paints only the orb's circle — so the capsule's rectangle is
+claimed by nobody and the desktop under it answers the mouse normally. While it
+shows, the whole panel is claimed at 1% alpha **including the gap** between the
+circle and the capsule: that gap is drawn by nobody, and a gap the window
+server hands to the desktop is a gap the pointer disappears into on its way to
+the buttons, taking the strip with it.
+
+`OrbActionStrip.layout` goes under the orb where there is room and over it
+where there is not, measuring the gap from `orbSilhouetteFraction = 0.725` —
+where the orb actually stops painting — rather than from the square it is drawn
+in. The home corner is 32pt from the bottom of the screen, so *over* is the
+common case, not the exception.
 
 `OrbCatcherView` turns presses into a summon or a drag itself:
 `acceptsFirstMouse` is true so the very first click works while the app is in

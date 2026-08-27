@@ -438,3 +438,38 @@ Ranked by how quietly they break.
 7. **Widening the storage isolate back to `createInBackground`** without
    checking that upstream issue. It crashes inside `sqlite3_bind_int64`, which
    points at nothing.
+
+## What it costs to draw
+
+Two rebuild costs were measured in widget tests before anything was changed,
+and the first hypothesis — that the Markdown parse was the expense — was wrong:
+the parse is 50µs of a 7.9ms rebuild.
+
+| | before | after |
+|---|---|---|
+| one streaming rebuild, 158 chars | 3.26 ms | 2.35 ms |
+| one streaming rebuild, 1118 chars | 7.88 ms | 2.71 ms |
+| one streaming rebuild, 3250 chars | — | 4.20 ms |
+| appending a turn, 5 exchanges | 40.4 ms | 22.1 ms |
+| appending a turn, 30 exchanges | 54.0 ms | 22.3 ms |
+| appending a turn, 80 exchanges | 78.0 ms | 24.2 ms |
+
+(Debug-mode numbers, so pessimistic in absolute terms. The shape is the point:
+both costs used to grow with the length of what was already on screen.)
+
+A token only ever changes the **last** paragraph, so `StreamingMarkdown`
+splits the answer at the last paragraph break and holds the settled half as the
+*same widget instance* across rebuilds — Flutter skips an identical child
+outright, so those paragraphs are not rebuilt, not laid out again, and, behind
+their own repaint boundary, not repainted. A break inside an unclosed code
+fence is not a break: the fence pattern reaches across blank lines, and
+settling inside one would cut the block in two and put it back together at
+completion, which is exactly the visible hand-off this is meant to avoid.
+
+A `Turn` is immutable, so `ConversationList` keeps the widget built for one and
+hands the same instance back on the next rebuild. That is the trade
+`_CompletedTurnState` already makes for its Markdown, one level up. The newest
+question and the newest answer are never kept, because what they offer changes
+as the conversation moves under them; the cache is pruned to the turns the
+transcript still holds, so a deleted or rewound conversation leaves nothing
+behind.

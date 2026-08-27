@@ -40,6 +40,58 @@ list as empty. With no model installed the app opens on `FirstRun` rather than
 on a conversation the built-in preview would answer with the same sentence
 every time.
 
+The resting orb answers three things without being opened. Hovering it for
+0.25s raises a capsule beside it: **talk** (opens or closes the microphone
+and leaves the agent resting — the conversation stays mounted while the orb
+rests, which is the difference between an assistant living on the desktop and
+a small window), **look**, and — only while there is something to stop —
+**stop**, which ends both halves, because the words can be finished minutes
+before the voice has read them. The bar an action had to clear is narrow:
+*doing it any other way has to cost a summon*. A new conversation, a clipboard
+question and a settings shortcut did not clear it. The order never changes and
+stop appears at the end rather than pushing to the front — a button that moves
+between hovers cannot be learned, and learning it is the reason to prefer this
+to the menu bar. AppKit draws it, which is forced rather than chosen: the orb's
+square sits at the very bottom of the stage's frame and the window may never be
+resized to make room. Its words still come from Dart, like the menu bar's. The
+catcher panel grows to hold the strip but claims only what it draws — and while
+it shows, it claims the **gap** too, because a gap the window server hands to
+the desktop is a gap the pointer disappears into on its way to the buttons. See
+`docs/decisions/the-orb-that-answers-without-opening.md`.
+
+Finished exchanges can be appended to a page in the user's own Obsidian vault,
+off by default, behind a folder they pick. The premise is not backup: a year
+from now, with Lulo uninstalled, the questions and answers are still in their
+notes beside the rest of their thinking. Three rules follow and each gives
+something up. **Append only** — nothing already written is ever rewritten,
+because the file is in somebody else's vault where they may have edited,
+linked, tagged or written under it; the cost is that a regenerated answer lands
+beside the one it replaced and a rewound question stays. **One page a day, not
+one a conversation** — a day is immutable so the file name never changes and no
+index of note-to-conversation exists to go stale, where a title moves whenever
+the user renames it and renaming their note breaks their links. **The question
+is the heading** — the only summary that costs nothing and cannot be wrong,
+where a model-written one would spend a whole generation per turn on something
+lossy in a file whose point is that nothing is lost. `ObsidianJournalWriter`
+delegates to the store first and mirrors afterwards, so a dead network share
+never costs the app its own record; only completed answers are filed, because a
+journal that cannot retract must not write what it would want to take back. The
+folder is a security-scoped bookmark, not a remembered path — a path is not
+permission — and Settings asks for it every time it opens. See
+`docs/decisions/a-journal-in-someone-elses-vault.md`.
+
+The answer stops rebuilding what it already wrote. Two costs were measured
+before anything changed, and the first hypothesis — the Markdown parse — was
+wrong: the parse is 50µs of a 7.9ms rebuild. A streaming rebuild of a
+1118-character answer went 7.88ms → 2.71ms, and appending a turn to an
+80-exchange conversation 78.0ms → 24.2ms; both used to grow with the length of
+what was already on screen and now do not. A token only ever changes the last
+paragraph, so `StreamingMarkdown` splits at the last paragraph break and holds
+the settled half as the **same widget instance**, which Flutter skips outright.
+A break inside an unclosed code fence is not a break. `ConversationList` keeps
+the widget built for each immutable `Turn` and hands the same instance back —
+the trade `_CompletedTurnState` already makes for its Markdown, one level up.
+
 The orb ends inside its own square. `agentPresenceSilhouetteFraction` is 0.75
 and the native click catcher fills 0.62, both measured from a real-shader
 capture that `verify.dart` re-runs: the halo used to paint 23/255 at 0.70 and
