@@ -102,8 +102,22 @@ would show the user a folder that cannot actually be opened, which is exactly
 the failure this is meant to make visible. A stale bookmark that still resolves
 is re-issued on the spot, or the grant expires behind the user.
 
+`startAccessingSecurityScopedResource()` returning false is **not** a refusal:
+it also answers false for a URL that needs no scope at all, such as anything
+inside the app's own container. Reading it as denial reported writes that were
+about to succeed as permission failures. It decides only whether the scope has
+to be handed back. "Nobody chose a folder" and "the folder they chose is gone"
+stay different answers, because Settings tells the user different things about
+the two.
+
 Writing happens off the main thread. A vault on a synced or network volume must
 never make a turn wait.
+
+`ObsidianVaultTests` runs the real `FileManager` and `FileHandle` path against
+a real folder, because every other test of this feature stands behind a fake
+host — and "built and never connected to anything" is exactly what a fake host
+cannot catch. The load-bearing one is
+`testWhatTheUserWroteThemselvesIsNeverTouched`.
 
 ## Off by default
 

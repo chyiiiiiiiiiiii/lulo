@@ -844,6 +844,33 @@ final class DesktopPanelControllerTests: XCTestCase {
     XCTAssertLessThan(layout.buttons[1].midX, layout.buttons[2].midX)
   }
 
+  /// The tint has to be drawn to exist at all, so wherever it is the only
+  /// thing on a pixel it is a real step of about 3/255 on a flat desktop.
+  /// The path claimed between the orb and its capsule is therefore only as
+  /// wide as the capsule and only as far as the orb's centre — not the whole
+  /// panel, which stood a rectangle's worth of that step out in the open.
+  func testThePathToTheStripIsClaimedNoWiderThanTheStrip() {
+    let orb = NSRect(x: 600, y: 400, width: 168, height: 168)
+    guard
+      let layout = OrbActionStrip.layout(
+        orb: orb,
+        count: 3,
+        within: NSRect(x: 0, y: 0, width: 1440, height: 900)
+      )
+    else {
+      return XCTFail("three actions must produce a strip")
+    }
+
+    let bridge = OrbCatcherView.bridge(from: orb, to: layout)
+
+    XCTAssertEqual(bridge.width, layout.strip.width, accuracy: 0.001)
+    XCTAssertLessThan(bridge.width, orb.width)
+    // It has to actually meet both ends, or the pointer falls through
+    // between them and takes the strip with it.
+    XCTAssertTrue(bridge.intersects(layout.strip))
+    XCTAssertTrue(bridge.intersects(OrbCatcherView.catchingCircle(in: orb)))
+  }
+
   /// The strip is drawn into the catcher's own panel, so that panel has to be
   /// big enough to hold both — and it must still claim only what it draws,
   /// or the desktop under the strip's rectangle stops answering the mouse

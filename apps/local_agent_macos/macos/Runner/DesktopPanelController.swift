@@ -263,18 +263,40 @@ final class OrbCatcherView: NSView {
   /// into on its way to the buttons, taking the strip with it.
   override func draw(_ dirtyRect: NSRect) {
     Self.catchingTint.setFill()
-    if stripIsShowing {
-      NSBezierPath(rect: bounds).fill()
-    } else {
-      NSBezierPath(ovalIn: Self.catchingCircle(in: orbRect)).fill()
-    }
+    NSBezierPath(ovalIn: Self.catchingCircle(in: orbRect)).fill()
     guard stripIsShowing, let strip else {
       return
     }
+    NSBezierPath(rect: Self.bridge(from: orbRect, to: strip)).fill()
     drawCapsule(strip.strip)
     for (index, rect) in strip.buttons.enumerated() where index < actions.count {
       draw(actions[index], in: rect, hovered: hovered == index)
     }
+  }
+
+  /// The claimed path between the orb's body and the capsule.
+  ///
+  /// The gap between them is drawn by nobody, and a gap the window server
+  /// hands to the desktop is a gap the pointer disappears into on its way to
+  /// the buttons: `mouseExited` fires, the strip goes away, and it can never
+  /// be reached. So it is claimed — but only as wide as the capsule and only
+  /// as far as the orb's centre, rather than the whole panel.
+  ///
+  /// The difference is measurable. The catching tint has to be drawn to exist
+  /// at all, so on a flat sky it is a real step of about 3/255 wherever it is
+  /// the only thing on the pixel. Claiming the whole panel put that step
+  /// around a rectangle standing well clear of everything drawn; this keeps it
+  /// under the capsule, where there is already a capsule.
+  static func bridge(from orb: NSRect, to strip: OrbStripLayout) -> NSRect {
+    let capsule = strip.strip
+    let top = max(capsule.maxY, orb.midY)
+    let bottom = min(capsule.minY, orb.midY)
+    return NSRect(
+      x: capsule.minX,
+      y: bottom,
+      width: capsule.width,
+      height: top - bottom
+    )
   }
 
   private func drawCapsule(_ rect: NSRect) {
@@ -302,10 +324,7 @@ final class OrbCatcherView: NSView {
         : NSColor.separatorColor.withAlphaComponent(0.5)).setFill()
       highlight.fill()
     }
-    let tint =
-      action.engaged
-      ? NSColor.white
-      : NSColor.labelColor
+    let tint = action.engaged ? NSColor.white : NSColor.labelColor
     guard
       let symbol = NSImage(
         systemSymbolName: action.symbol,
@@ -317,19 +336,27 @@ final class OrbCatcherView: NSView {
     else {
       return
     }
+    // Tinted inside an image of its own, never against this view's backing.
+    // `sourceAtop` composites over whatever is already opaque underneath, and
+    // underneath here is the capsule — so tinting in place painted a solid
+    // block of label colour across the whole button with the glyph knocked
+    // out of it. Given its own context, the only alpha to sit atop is the
+    // symbol's.
     let size = symbol.size
-    let target = NSRect(
-      x: rect.midX - size.width / 2,
-      y: rect.midY - size.height / 2,
-      width: size.width,
-      height: size.height
+    let tinted = NSImage(size: size, flipped: false) { bounds in
+      symbol.draw(in: bounds)
+      tint.set()
+      bounds.fill(using: .sourceAtop)
+      return true
+    }
+    tinted.draw(
+      in: NSRect(
+        x: rect.midX - size.width / 2,
+        y: rect.midY - size.height / 2,
+        width: size.width,
+        height: size.height
+      )
     )
-    symbol.isTemplate = true
-    NSGraphicsContext.saveGraphicsState()
-    symbol.draw(in: target)
-    tint.set()
-    target.fill(using: .sourceAtop)
-    NSGraphicsContext.restoreGraphicsState()
   }
 
   /// Answers the very first click even when the app is not in front, or the

@@ -68,6 +68,14 @@ final class ObsidianVault {
     }
   }
 
+  /// Whether a folder has ever been chosen, whether or not it still resolves.
+  ///
+  /// Kept apart from [folder] so that "nobody asked for this" and "the folder
+  /// they asked for is gone" stay different answers. Reported as the same
+  /// thing, Settings would tell a user whose vault had been deleted that they
+  /// had never chosen one.
+  var hasFolder: Bool { defaults.data(forKey: Self.bookmarkKey) != nil }
+
   /// The folder being written into, or nil if there is none to reach.
   func folder() -> URL? {
     guard let bookmark = defaults.data(forKey: Self.bookmarkKey) else {
@@ -110,12 +118,19 @@ final class ObsidianVault {
       return .failed
     }
     guard let folder = folder() else {
-      return .noVault
+      return hasFolder ? .denied : .noVault
     }
-    guard folder.startAccessingSecurityScopedResource() else {
-      return .denied
+    // A false answer here is not a refusal. `startAccessingSecurityScopedResource`
+    // also returns false for a URL that needs no scope at all — anything
+    // inside the app's own container — and treating that as denial would
+    // report a write that was about to succeed as a permission failure. The
+    // answer decides only whether the scope has to be handed back.
+    let scoped = folder.startAccessingSecurityScopedResource()
+    defer {
+      if scoped {
+        folder.stopAccessingSecurityScopedResource()
+      }
     }
-    defer { folder.stopAccessingSecurityScopedResource() }
     let file = folder.appendingPathComponent(fileName)
     do {
       if !FileManager.default.fileExists(atPath: file.path) {

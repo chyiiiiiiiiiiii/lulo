@@ -97,11 +97,20 @@ draws only the orb's 1%-alpha circle — so the rectangle where the capsule
 normally. A resident assistant must not be in the way of anything, and it is
 in the way of nothing more than it was before.
 
-While the strip **is** showing, the whole panel is claimed, at 1% alpha, gap
-included. That is deliberate and it is the trap: the gap between the orb's
-circle and the capsule is drawn by nobody, and a gap the window server hands to
-the desktop is a gap the pointer disappears into on its way to the buttons —
-`mouseExited` fires, the strip vanishes, and it can never be reached.
+While the strip **is** showing, the capsule and the path to it are claimed as
+well. The gap between the orb's circle and the capsule is drawn by nobody, and
+a gap the window server hands to the desktop is a gap the pointer disappears
+into on its way to the buttons — `mouseExited` fires, the strip vanishes, and
+it can never be reached.
+
+The first version claimed the **whole panel** for that, and it was measurably
+visible. The tint has to be drawn to exist at all, so wherever it is the only
+thing on a pixel it is a real step of about **3/255**: sampled off a real
+capture against a flat sky, rows inside the panel but clear of everything drawn
+had a luminance spread of 4 where the sky's own gradient gave 1. Narrowed by
+`OrbCatcherView.bridge(from:to:)` to a rectangle no wider than the capsule and
+reaching only to the orb's centre, the same rows read 1 — the step is still
+there, but only under a capsule that is already there.
 
 ## The dwell
 
