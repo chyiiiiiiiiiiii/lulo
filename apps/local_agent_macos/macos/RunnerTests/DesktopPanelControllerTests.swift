@@ -400,7 +400,8 @@ final class DesktopPanelControllerTests: XCTestCase {
     guard let screen = NSScreen.main else {
       return XCTFail("There is no screen to rest the orb on")
     }
-    let catcher = OrbInputPanel(onSummon: {}, onDragBy: { _, _ in })
+    let catcher = OrbInputPanel(
+      onSummon: {}, onDragBy: { _, _ in }, onAction: { _ in })
     let side = DesktopPanelController.orbSide
     let visible = screen.visibleFrame
     let rect = NSRect(
@@ -412,11 +413,11 @@ final class DesktopPanelControllerTests: XCTestCase {
     func stackAt(_ x: CGFloat, _ y: CGFloat) -> [Int] {
       Self.stack(at: NSPoint(x: x, y: y))
     }
-    catcher.place(over: rect)
+    catcher.place(over: rect, within: visible)
     // The server takes the window's shape from the drawing, so it is given the
     // run loop long enough to have received it.
     RunLoop.current.run(until: Date().addingTimeInterval(0.3))
-    defer { catcher.place(over: nil) }
+    defer { catcher.place(over: nil, within: nil) }
 
     let centreStack = stackAt(rect.midX, rect.midY)
     XCTAssertTrue(
@@ -752,5 +753,133 @@ final class DesktopPanelControllerTests: XCTestCase {
 
     XCTAssertFalse(panel.hidesOnDeactivate)
     XCTAssertEqual(panel.animationBehavior, .none)
+  }
+
+  // MARK: - The strip under the resting orb
+
+  /// The home corner is where the orb spends most of its life, and there is
+  /// not enough screen under it there — so the strip goes over it instead of
+  /// off the bottom of the display.
+  func testTheStripGoesOverTheOrbWhenThereIsNoRoomBeneathIt() {
+    let visible = NSRect(x: 0, y: 0, width: 1440, height: 900)
+    let home = NSRect(
+      x: visible.maxX - DesktopPanelController.orbMargin
+        - DesktopPanelController.orbSide,
+      y: visible.minY + DesktopPanelController.orbMargin,
+      width: DesktopPanelController.orbSide,
+      height: DesktopPanelController.orbSide
+    )
+
+    guard let layout = OrbActionStrip.layout(orb: home, count: 3, within: visible)
+    else {
+      return XCTFail("three actions must produce a strip")
+    }
+
+    XCTAssertTrue(layout.above, "at the home corner the strip has to go up")
+    XCTAssertGreaterThanOrEqual(layout.strip.minY, visible.minY)
+    XCTAssertLessThanOrEqual(layout.strip.maxY, visible.maxY)
+  }
+
+  func testTheStripGoesUnderAnOrbWithRoomBeneathIt() {
+    let visible = NSRect(x: 0, y: 0, width: 1440, height: 900)
+    let midScreen = NSRect(x: 600, y: 400, width: 168, height: 168)
+
+    guard
+      let layout = OrbActionStrip.layout(orb: midScreen, count: 2, within: visible)
+    else {
+      return XCTFail("two actions must produce a strip")
+    }
+
+    XCTAssertFalse(layout.above)
+    // Measured from where the orb stops painting, not from the square it is
+    // drawn in: a gap taken from the square would leave the strip floating a
+    // visible distance from an orb that ended long before it.
+    let bodyBottom =
+      midScreen.midY - midScreen.height * OrbActionStrip.orbSilhouetteFraction / 2
+    XCTAssertEqual(
+      layout.strip.maxY, bodyBottom - OrbActionStrip.orbGap, accuracy: 0.001)
+    XCTAssertEqual(layout.strip.midX, midScreen.midX, accuracy: 0.001)
+  }
+
+  func testTheStripStaysOnTheScreenBesideAnOrbDraggedToTheEdge() {
+    let visible = NSRect(x: 0, y: 0, width: 1440, height: 900)
+    let atTheEdge = NSRect(x: visible.maxX - 40, y: 400, width: 168, height: 168)
+
+    guard
+      let layout = OrbActionStrip.layout(orb: atTheEdge, count: 3, within: visible)
+    else {
+      return XCTFail("three actions must produce a strip")
+    }
+
+    XCTAssertLessThanOrEqual(layout.strip.maxX, visible.maxX)
+    XCTAssertGreaterThanOrEqual(layout.strip.minX, visible.minX)
+  }
+
+  func testAnOrbWithNothingToOfferHasNoStrip() {
+    XCTAssertNil(
+      OrbActionStrip.layout(
+        orb: NSRect(x: 0, y: 0, width: 168, height: 168),
+        count: 0,
+        within: NSRect(x: 0, y: 0, width: 1440, height: 900)
+      )
+    )
+  }
+
+  func testTheButtonsSitInsideTheirOwnCapsuleInOrder() {
+    guard
+      let layout = OrbActionStrip.layout(
+        orb: NSRect(x: 600, y: 400, width: 168, height: 168),
+        count: 3,
+        within: NSRect(x: 0, y: 0, width: 1440, height: 900)
+      )
+    else {
+      return XCTFail("three actions must produce a strip")
+    }
+
+    XCTAssertEqual(layout.buttons.count, 3)
+    for button in layout.buttons {
+      XCTAssertTrue(layout.strip.contains(button))
+    }
+    XCTAssertLessThan(layout.buttons[0].midX, layout.buttons[1].midX)
+    XCTAssertLessThan(layout.buttons[1].midX, layout.buttons[2].midX)
+  }
+
+  /// The strip is drawn into the catcher's own panel, so that panel has to be
+  /// big enough to hold both — and it must still claim only what it draws,
+  /// or the desktop under the strip's rectangle stops answering the mouse
+  /// whenever the agent is merely resting there.
+  func testTheCatcherGrowsToHoldTheStripAndClaimsItOnlyWhileItShows() {
+    let panel = NSPanel(
+      contentRect: NSRect(x: 0, y: 0, width: 480, height: 640),
+      styleMask: [.titled, .closable, .resizable],
+      backing: .buffered,
+      defer: false
+    )
+    let controller = DesktopPanelController(panel: panel) {
+      FlutterPanelContent(engine: NSObject(), viewController: NSViewController())
+    }
+    controller.show()
+    controller.setPresentationMode(.orb)
+    let withoutActions = controller.orbInputPanel.frame
+
+    controller.setOrbActions([
+      OrbAction(id: "talk", symbol: "mic", label: "Talk", engaged: false),
+      OrbAction(id: "look", symbol: "eye", label: "Look", engaged: false),
+    ])
+    let withActions = controller.orbInputPanel.frame
+
+    XCTAssertGreaterThan(withActions.height, withoutActions.height)
+    XCTAssertFalse(
+      controller.orbInputPanel.stripIsShowing,
+      "a strip nobody is pointing at must not be drawn"
+    )
+
+    controller.orbInputPanel.revealStripNow()
+    XCTAssertTrue(controller.orbInputPanel.stripIsShowing)
+
+    // Going back to the conversation takes the whole catcher away, strip
+    // included, rather than leaving a row of buttons on the desktop.
+    controller.setPresentationMode(.expanded)
+    XCTAssertFalse(controller.orbInputPanel.stripIsShowing)
   }
 }

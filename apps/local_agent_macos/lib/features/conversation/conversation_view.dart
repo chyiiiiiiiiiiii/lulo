@@ -93,6 +93,8 @@ final class ConversationView extends StatefulWidget {
     this.showVoiceEvidence = false,
     this.liveConversationToggle = false,
     this.voiceRequests,
+    this.orbActionRequests,
+    this.voiceEngaged,
     this.screenLook,
     super.key,
   });
@@ -106,6 +108,19 @@ final class ConversationView extends StatefulWidget {
   /// The status-bar menu offers it while the window is away, which is most of
   /// the time for a resident agent.
   final ValueListenable<int>? voiceRequests;
+
+  /// What was last asked of the agent from the strip under its resting orb.
+  ///
+  /// Carried with a sequence number so that pressing the same button twice
+  /// arrives twice. The microphone, the screen look and the stop all live
+  /// here — this view is the only thing that knows whether an ear is already
+  /// open or an answer still running — so the request travels in rather than
+  /// the state travelling out.
+  final ValueListenable<(OrbActionKind, int)?>? orbActionRequests;
+
+  /// Set to whether the microphone is currently open, for whoever is drawing
+  /// a control that has to show it — the strip under the resting orb.
+  final ValueNotifier<bool>? voiceEngaged;
 
   /// Whether to show why the agent took or yielded the floor.
   ///
@@ -256,11 +271,41 @@ final class _ConversationViewState extends State<ConversationView> {
       voice.addListener(_reflectVoice);
       widget.voiceRequests?.addListener(_startListeningOnRequest);
     }
+    widget.orbActionRequests?.addListener(_answerTheOrb);
   }
 
   void _reflectVoice() {
     _holdingToTalk.value = _voice?.holdingToTalk ?? false;
     _agentSpeaking.value = _voice?.speaking ?? false;
+    widget.voiceEngaged?.value = _voice?.enabled ?? false;
+  }
+
+  /// Does what the button under the resting orb asked for.
+  void _answerTheOrb() {
+    final (OrbActionKind, int)? request = widget.orbActionRequests?.value;
+    if (request == null) {
+      return;
+    }
+    switch (request.$1) {
+      case OrbActionKind.talk:
+        unawaited(_toggleVoice());
+      case OrbActionKind.look:
+        if (widget.screenLook != null) {
+          unawaited(_lookAtScreen(''));
+        }
+      case OrbActionKind.stop:
+        unawaited(_stopEverything());
+    }
+  }
+
+  /// Ends the answer, whichever half of it is still running.
+  ///
+  /// Both halves, because they are not the same one: the words can be
+  /// finished minutes before the voice has read them, and a stop that only
+  /// cancelled the generation would leave the agent talking.
+  Future<void> _stopEverything() async {
+    await widget.voiceService?.stopSpeaking();
+    await _viewModel.stop();
   }
 
   /// Takes the invited look and asks about it, or says why it could not.
@@ -301,6 +346,7 @@ final class _ConversationViewState extends State<ConversationView> {
     _holdingToTalk.dispose();
     _agentSpeaking.dispose();
     widget.voiceRequests?.removeListener(_startListeningOnRequest);
+    widget.orbActionRequests?.removeListener(_answerTheOrb);
     _viewModel.dispose();
     super.dispose();
   }

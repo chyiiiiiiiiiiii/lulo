@@ -243,6 +243,15 @@ final class _PresentationSwitchState extends State<_PresentationSwitch>
     ) {
       unawaited(_openFromMenuBar(null, thenListen: true));
     });
+    // The buttons under the resting orb. Only their identifiers cross the
+    // window boundary; what each one means is decided here, and carried out
+    // by the conversation, which is mounted the whole time the orb rests and
+    // is the only thing that knows whether an ear is already open.
+    _orbActions = widget.composition.presentationHost?.orbActionInvocations
+        .listen(_askTheConversation);
+    // What the strip offers depends on what the agent is doing, so it is
+    // pushed alongside the menu bar rather than on a clock of its own.
+    widget.composition.voiceEngaged.addListener(_refreshOrbActions);
     // A selection sent from another app. The window is already being shown
     // by the native side; this puts the text where the user can add what
     // they want done with it.
@@ -278,6 +287,69 @@ final class _PresentationSwitchState extends State<_PresentationSwitch>
     widget.composition.presentationHost?.presentation.addListener(
       _followPresentation,
     );
+  }
+
+  /// Turns a button press on the resting orb into a request the view answers.
+  void _askTheConversation(String actionId) {
+    final OrbActionKind? kind = switch (actionId) {
+      'talk' => OrbActionKind.talk,
+      'look' => OrbActionKind.look,
+      'stop' => OrbActionKind.stop,
+      _ => null,
+    };
+    if (kind == null) {
+      return;
+    }
+    // Looking has to bring the window back — the answer is written, not
+    // spoken, and an answer nobody can see is not one. Talking deliberately
+    // does not: opening the ears without opening the window is the whole
+    // point of the microphone being out here.
+    if (kind == OrbActionKind.look) {
+      unawaited(_openFromMenuBar(null));
+    }
+    final (OrbActionKind, int)? last =
+        widget.composition.orbActionRequests.value;
+    widget.composition.orbActionRequests.value = (kind, (last?.$2 ?? 0) + 1);
+  }
+
+  /// Tells the resting orb what to offer the next time it is hovered.
+  Future<void> _refreshOrbActions() async {
+    final DesktopPresentationHost? host = widget.composition.presentationHost;
+    if (host == null || !mounted) {
+      return;
+    }
+    final AppLocalizations words = AppLocalizations.of(context);
+    final DesktopAgentActivity activity = _menuActivity;
+    final bool engaged = widget.composition.voiceEngaged.value;
+    await host.setOrbActions(<DesktopOrbAction>[
+      for (final OrbActionKind kind in orbActionsFor(
+        hasModel: _settings.modelPath.isNotEmpty,
+        canTalk: widget.composition.voiceService != null,
+        canLook: true,
+        busy:
+            activity == DesktopAgentActivity.thinking ||
+            activity == DesktopAgentActivity.speaking ||
+            activity == DesktopAgentActivity.working,
+      ))
+        switch (kind) {
+          OrbActionKind.talk => DesktopOrbAction(
+            id: 'talk',
+            symbol: engaged ? 'mic.fill' : 'mic',
+            label: engaged ? words.orbStopTalking : words.orbTalk,
+            engaged: engaged,
+          ),
+          OrbActionKind.look => DesktopOrbAction(
+            id: 'look',
+            symbol: 'eye',
+            label: words.orbLook,
+          ),
+          OrbActionKind.stop => DesktopOrbAction(
+            id: 'stop',
+            symbol: 'stop.fill',
+            label: words.orbStop,
+          ),
+        },
+    ]);
   }
 
   void _followPresentation() {
@@ -378,6 +450,9 @@ final class _PresentationSwitchState extends State<_PresentationSwitch>
 
   StreamSubscription<ConversationId>? _menuConversations;
   StreamSubscription<void>? _menuVoice;
+
+  /// Buttons pressed on the resting orb.
+  StreamSubscription<String>? _orbActions;
   StreamSubscription<String>? _serviceText;
 
   /// Selections sent in from another app, for the composer to take.
@@ -401,6 +476,9 @@ final class _PresentationSwitchState extends State<_PresentationSwitch>
   /// is away, which is most of the time for a resident app.
   void _followPresenceIntoMenuBar() {
     unawaited(_pushMenuBar(reloadConversations: false));
+    // The strip offers a stop only while there is something to stop, so it
+    // follows the same state the menu bar's activity line does.
+    unawaited(_refreshOrbActions());
   }
 
   /// What the presence is doing, in the terms the menu bar speaks.
@@ -453,7 +531,10 @@ final class _PresentationSwitchState extends State<_PresentationSwitch>
   ///
   /// Pushed on every change rather than answered on demand, because AppKit
   /// builds the menu at the moment it opens and there is nowhere to wait.
-  Future<void> _refreshMenuBar() => _pushMenuBar(reloadConversations: true);
+  Future<void> _refreshMenuBar() async {
+    await _pushMenuBar(reloadConversations: true);
+    await _refreshOrbActions();
+  }
 
   /// Tells the status-bar menu what to show.
   Future<void> _pushMenuBar({required bool reloadConversations}) async {
@@ -855,6 +936,8 @@ final class _PresentationSwitchState extends State<_PresentationSwitch>
     );
     unawaited(_menuConversations?.cancel());
     unawaited(_menuVoice?.cancel());
+    unawaited(_orbActions?.cancel());
+    widget.composition.voiceEngaged.removeListener(_refreshOrbActions);
     unawaited(_serviceText?.cancel());
     unawaited(_composerSeed.close());
     unawaited(_settingsRequests?.cancel());
@@ -1104,6 +1187,8 @@ final class _PresentationSwitchState extends State<_PresentationSwitch>
         key: _conversationKey,
         modelLoading: widget.composition.modelLoading,
         voiceRequests: widget.composition.voiceRequests,
+        orbActionRequests: widget.composition.orbActionRequests,
+        voiceEngaged: widget.composition.voiceEngaged,
         composerSeed: _composerSeed.stream,
         viewModelFactory: () => widget.composition.createConversationViewModel(
           conversationId: _openConversation,

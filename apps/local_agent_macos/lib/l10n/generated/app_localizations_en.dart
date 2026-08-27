@@ -683,6 +683,18 @@ class AppLocalizationsEn extends AppLocalizations {
   String get menuQuit => 'Quit Lulo';
 
   @override
+  String get orbTalk => 'Talk';
+
+  @override
+  String get orbStopTalking => 'Stop listening';
+
+  @override
+  String get orbLook => 'Look at my screen';
+
+  @override
+  String get orbStop => 'Stop';
+
+  @override
   String get activityIdle => 'Ready';
 
   @override

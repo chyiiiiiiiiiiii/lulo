@@ -33,7 +33,8 @@ final class OrbInputPanel {
   /// Creates the catcher, off screen until the agent rests.
   init(
     onSummon: @escaping () -> Void,
-    onDragBy: @escaping (CGFloat, CGFloat) -> Void
+    onDragBy: @escaping (CGFloat, CGFloat) -> Void,
+    onAction: @escaping (String) -> Void
   ) {
     let panel = NSPanel(
       contentRect: NSRect(x: 0, y: 0, width: 1, height: 1),
@@ -49,19 +50,74 @@ final class OrbInputPanel {
     panel.hidesOnDeactivate = false
     panel.animationBehavior = .none
     panel.collectionBehavior.formUnion([.canJoinAllSpaces, .fullScreenAuxiliary])
-    panel.contentView = OrbCatcherView(onSummon: onSummon, onDragBy: onDragBy)
+    let catcher = OrbCatcherView(
+      onSummon: onSummon,
+      onDragBy: onDragBy,
+      onAction: onAction
+    )
+    panel.contentView = catcher
     self.panel = panel
+    self.catcher = catcher
   }
 
   private let panel: NSPanel
+  private let catcher: OrbCatcherView
 
-  /// Puts the catcher exactly over the orb, or takes it away.
-  func place(over rect: NSRect?) {
+  /// What the strip offers, in the order it should offer it.
+  var actions: [OrbAction] = [] {
+    didSet {
+      guard actions != oldValue else {
+        return
+      }
+      catcher.actions = actions
+      if let placed = placedOrb, let visible = placedVisible {
+        place(over: placed, within: visible)
+      }
+    }
+  }
+
+  private var placedOrb: NSRect?
+  private var placedVisible: NSRect?
+
+  /// Puts the catcher over the orb and its strip beside it, or takes it away.
+  ///
+  /// The panel has to be large enough to hold both, because the strip is drawn
+  /// into it — but it only *claims* the strip while the strip is showing. The
+  /// window server routes a see-through window's clicks by the alpha it draws,
+  /// so the part of this panel that is drawing nothing is not in anybody's way.
+  func place(over rect: NSRect?, within visible: NSRect?) {
     guard let rect else {
+      placedOrb = nil
+      placedVisible = nil
+      catcher.dismissStrip()
       panel.orderOut(nil)
       return
     }
-    panel.setFrame(rect, display: false)
+    placedOrb = rect
+    placedVisible = visible
+    let strip =
+      visible.flatMap {
+        OrbActionStrip.layout(orb: rect, count: actions.count, within: $0)
+      }
+    let frame = strip.map { rect.union($0.strip) } ?? rect
+    panel.setFrame(frame, display: false)
+    catcher.describe(
+      orb: NSRect(
+        x: rect.minX - frame.minX,
+        y: rect.minY - frame.minY,
+        width: rect.width,
+        height: rect.height
+      ),
+      strip: strip.map { layout in
+        OrbStripLayout(
+          strip: layout.strip.offsetBy(dx: -frame.minX, dy: -frame.minY),
+          buttons: layout.buttons.map {
+            $0.offsetBy(dx: -frame.minX, dy: -frame.minY)
+          },
+          above: layout.above
+        )
+      }
+    )
     panel.orderFrontRegardless()
   }
 
@@ -71,18 +127,29 @@ final class OrbInputPanel {
   /// Its identity to the window server, so a test can ask who owns a point.
   var windowNumber: Int { panel.windowNumber }
 
+  /// The frame the catcher currently stands in, for tests.
+  var frame: NSRect { panel.frame }
+
+  /// Whether the strip is currently drawn, for tests.
+  var stripIsShowing: Bool { catcher.stripIsShowing }
+
+  /// Shows the strip without waiting out the dwell, for tests.
+  func revealStripNow() { catcher.revealStrip() }
+
   /// How far a press may travel and still count as a click.
   static let dragSlop: CGFloat = 3
 }
 
-/// Turns presses on the orb into either a summon or a drag.
+/// Turns presses on the orb into a summon, a drag, or one of its actions.
 final class OrbCatcherView: NSView {
   init(
     onSummon: @escaping () -> Void,
-    onDragBy: @escaping (CGFloat, CGFloat) -> Void
+    onDragBy: @escaping (CGFloat, CGFloat) -> Void,
+    onAction: @escaping (String) -> Void
   ) {
     self.onSummon = onSummon
     self.onDragBy = onDragBy
+    self.onAction = onAction
     super.init(frame: .zero)
   }
 
@@ -93,7 +160,66 @@ final class OrbCatcherView: NSView {
 
   private let onSummon: () -> Void
   private let onDragBy: (CGFloat, CGFloat) -> Void
+  private let onAction: (String) -> Void
   private var travelled: CGFloat = 0
+
+  /// Which button the press started on, so a press that slid off does nothing.
+  private var pressedButton: Int?
+
+  /// What the strip offers.
+  var actions: [OrbAction] = [] {
+    didSet { needsDisplay = true }
+  }
+
+  /// Where the orb's square sits inside this view.
+  private var orbRect: NSRect = .zero
+
+  /// Where the strip sits inside this view, if there is one to draw.
+  private var strip: OrbStripLayout?
+
+  /// Whether the strip is currently drawn.
+  private(set) var stripIsShowing = false
+
+  /// Which button the pointer is over, or nil.
+  private var hovered: Int?
+
+  private var dwellTimer: Timer?
+
+  /// Tells the view where the orb and its strip stand inside it.
+  func describe(orb: NSRect, strip: OrbStripLayout?) {
+    orbRect = orb
+    self.strip = strip
+    if strip == nil {
+      dismissStrip()
+    }
+    needsDisplay = true
+    window?.invalidateCursorRects(for: self)
+  }
+
+  /// Shows the strip now, rather than after the dwell.
+  func revealStrip() {
+    dwellTimer?.invalidate()
+    dwellTimer = nil
+    guard strip != nil, !actions.isEmpty, !stripIsShowing else {
+      return
+    }
+    stripIsShowing = true
+    needsDisplay = true
+    window?.invalidateCursorRects(for: self)
+  }
+
+  /// Takes the strip away and stops any dwell that was counting towards it.
+  func dismissStrip() {
+    dwellTimer?.invalidate()
+    dwellTimer = nil
+    guard stripIsShowing || hovered != nil else {
+      return
+    }
+    stripIsShowing = false
+    hovered = nil
+    needsDisplay = true
+    window?.invalidateCursorRects(for: self)
+  }
 
   /// Faint enough that no display can show it, solid enough to be there.
   ///
@@ -130,9 +256,80 @@ final class OrbCatcherView: NSView {
   }
 
   /// Draws the orb's own body, so the desktop around it stays passable.
+  ///
+  /// While the strip is showing the whole panel is claimed instead, because
+  /// the gap between the orb and the capsule is drawn by nobody — and a gap
+  /// the window server hands to the desktop is a gap the pointer disappears
+  /// into on its way to the buttons, taking the strip with it.
   override func draw(_ dirtyRect: NSRect) {
     Self.catchingTint.setFill()
-    NSBezierPath(ovalIn: Self.catchingCircle(in: bounds)).fill()
+    if stripIsShowing {
+      NSBezierPath(rect: bounds).fill()
+    } else {
+      NSBezierPath(ovalIn: Self.catchingCircle(in: orbRect)).fill()
+    }
+    guard stripIsShowing, let strip else {
+      return
+    }
+    drawCapsule(strip.strip)
+    for (index, rect) in strip.buttons.enumerated() where index < actions.count {
+      draw(actions[index], in: rect, hovered: hovered == index)
+    }
+  }
+
+  private func drawCapsule(_ rect: NSRect) {
+    let path = NSBezierPath(
+      roundedRect: rect,
+      xRadius: OrbActionStrip.cornerRadius,
+      yRadius: OrbActionStrip.cornerRadius
+    )
+    NSColor.windowBackgroundColor.withAlphaComponent(0.96).setFill()
+    path.fill()
+    NSColor.separatorColor.setStroke()
+    path.lineWidth = 1
+    path.stroke()
+  }
+
+  private func draw(_ action: OrbAction, in rect: NSRect, hovered: Bool) {
+    if hovered || action.engaged {
+      let highlight = NSBezierPath(
+        roundedRect: rect.insetBy(dx: 1, dy: 1),
+        xRadius: (rect.height - 2) / 2,
+        yRadius: (rect.height - 2) / 2
+      )
+      (action.engaged
+        ? NSColor.controlAccentColor
+        : NSColor.separatorColor.withAlphaComponent(0.5)).setFill()
+      highlight.fill()
+    }
+    let tint =
+      action.engaged
+      ? NSColor.white
+      : NSColor.labelColor
+    guard
+      let symbol = NSImage(
+        systemSymbolName: action.symbol,
+        accessibilityDescription: action.label
+      )?
+      .withSymbolConfiguration(
+        NSImage.SymbolConfiguration(pointSize: 15, weight: .medium)
+      )
+    else {
+      return
+    }
+    let size = symbol.size
+    let target = NSRect(
+      x: rect.midX - size.width / 2,
+      y: rect.midY - size.height / 2,
+      width: size.width,
+      height: size.height
+    )
+    symbol.isTemplate = true
+    NSGraphicsContext.saveGraphicsState()
+    symbol.draw(in: target)
+    tint.set()
+    target.fill(using: .sourceAtop)
+    NSGraphicsContext.restoreGraphicsState()
   }
 
   /// Answers the very first click even when the app is not in front, or the
@@ -140,15 +337,97 @@ final class OrbCatcherView: NSView {
   /// would have to be clicked twice.
   override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
-  override func mouseDown(with event: NSEvent) { travelled = 0 }
+  override func updateTrackingAreas() {
+    super.updateTrackingAreas()
+    for area in trackingAreas {
+      removeTrackingArea(area)
+    }
+    addTrackingArea(
+      NSTrackingArea(
+        rect: bounds,
+        options: [
+          .mouseEnteredAndExited, .mouseMoved, .activeAlways, .inVisibleRect,
+        ],
+        owner: self,
+        userInfo: nil
+      )
+    )
+  }
+
+  override func mouseEntered(with event: NSEvent) {
+    beginDwell()
+  }
+
+  override func mouseMoved(with event: NSEvent) {
+    let point = convert(event.locationInWindow, from: nil)
+    let index = buttonIndex(at: point)
+    if index != hovered {
+      hovered = index
+      needsDisplay = true
+    }
+    if !stripIsShowing && dwellTimer == nil {
+      beginDwell()
+    }
+  }
+
+  override func mouseExited(with event: NSEvent) {
+    dismissStrip()
+  }
+
+  private func beginDwell() {
+    guard !stripIsShowing, strip != nil, !actions.isEmpty else {
+      return
+    }
+    dwellTimer?.invalidate()
+    dwellTimer = Timer.scheduledTimer(
+      withTimeInterval: OrbActionStrip.dwell,
+      repeats: false
+    ) { [weak self] _ in
+      self?.revealStrip()
+    }
+  }
+
+  /// Which button contains [point], while there is a strip showing to hit.
+  private func buttonIndex(at point: NSPoint) -> Int? {
+    guard stripIsShowing, let strip else {
+      return nil
+    }
+    for (index, rect) in strip.buttons.enumerated() where index < actions.count {
+      if rect.contains(point) {
+        return index
+      }
+    }
+    return nil
+  }
+
+  override func mouseDown(with event: NSEvent) {
+    travelled = 0
+    pressedButton = buttonIndex(at: convert(event.locationInWindow, from: nil))
+  }
 
   override func mouseDragged(with event: NSEvent) {
+    // A press that began on a button is a press, not a handle: dragging the
+    // whole agent off the screen by its microphone is not what was meant.
+    guard pressedButton == nil else {
+      return
+    }
     travelled += abs(event.deltaX) + abs(event.deltaY)
     onDragBy(event.deltaX, event.deltaY)
   }
 
   override func mouseUp(with event: NSEvent) {
-    if travelled <= OrbInputPanel.dragSlop { onSummon() }
+    let point = convert(event.locationInWindow, from: nil)
+    if let pressed = pressedButton {
+      pressedButton = nil
+      travelled = 0
+      if buttonIndex(at: point) == pressed, pressed < actions.count {
+        onAction(actions[pressed].id)
+      }
+      return
+    }
+    if travelled <= OrbInputPanel.dragSlop, buttonIndex(at: point) == nil {
+      onSummon()
+    }
     travelled = 0
   }
 
@@ -157,7 +436,31 @@ final class OrbCatcherView: NSView {
     // circle's box. It cannot reach past the catching circle in the directions
     // that matter, because the pointer only arrives here at all where the
     // window server already decided this window owns the point.
-    addCursorRect(Self.catchingCircle(in: bounds), cursor: .pointingHand)
+    addCursorRect(Self.catchingCircle(in: orbRect), cursor: .pointingHand)
+    guard stripIsShowing, let strip else {
+      return
+    }
+    for rect in strip.buttons {
+      addCursorRect(rect, cursor: .pointingHand)
+    }
+  }
+
+  /// The strip's buttons, so VoiceOver can reach what the pointer can.
+  ///
+  /// The orb itself is reached through Flutter's semantics on
+  /// `DesktopOrbSurface`; these are drawn by AppKit and have no such path.
+  override func accessibilityChildren() -> [Any]? {
+    guard let strip else {
+      return nil
+    }
+    return zip(actions, strip.buttons).map { action, rect in
+      let element = NSAccessibilityElement()
+      element.setAccessibilityRole(.button)
+      element.setAccessibilityLabel(action.label)
+      element.setAccessibilityParent(self)
+      element.setAccessibilityFrameInParentSpace(rect)
+      return element
+    }
   }
 }
 
@@ -168,6 +471,7 @@ protocol DesktopPanelControlling: AnyObject {
   func hide()
   func toggle()
   func setPresentationMode(_ mode: DesktopPresentationMode)
+  func setOrbActions(_ actions: [OrbAction])
   func moveBy(deltaX: CGFloat, deltaY: CGFloat)
   func setWindowBehaviour(keepOrbOnTop: Bool, followAcrossSpaces: Bool)
   func currentGeometry() -> DesktopTransitionGeometry
@@ -270,11 +574,24 @@ final class DesktopPanelController: NSObject, DesktopPanelControlling, NSWindowD
   /// Built the first time the agent rests, never during init.
   private lazy var orbInput: OrbInputPanel = OrbInputPanel(
     onSummon: { [weak self] in self?.requestPresentationMode(.expanded) },
-    onDragBy: { [weak self] dx, dy in self?.moveBy(deltaX: dx, deltaY: dy) }
+    onDragBy: { [weak self] dx, dy in self?.moveBy(deltaX: dx, deltaY: dy) },
+    onAction: { [weak self] id in self?.onOrbActionInvoked?(id) }
   )
 
   /// Whether the orb's catcher is on screen, for tests.
   var orbInputIsPlaced: Bool { orbInput.isPlaced }
+
+  /// The catcher itself, so a test can ask what it is showing.
+  var orbInputPanel: OrbInputPanel { orbInput }
+
+  /// The user pressed one of the buttons on the resting orb's strip.
+  var onOrbActionInvoked: ((String) -> Void)?
+
+  /// Tells the resting orb what to offer the next time it is hovered.
+  func setOrbActions(_ actions: [OrbAction]) {
+    precondition(Thread.isMainThread)
+    orbInput.actions = actions
+  }
   private let screenProvider: () -> NSScreen?
 
   init(
@@ -388,7 +705,10 @@ final class DesktopPanelController: NSObject, DesktopPanelControlling, NSWindowD
     // could be clicked. While the agent rests it gives up the mouse outright.
     // A resident assistant must not be in the way of anything.
     retainedPanel.ignoresMouseEvents = storedMode == .orb
-    orbInput.place(over: storedMode == .orb ? orbScreenRect(geometry.orb) : nil)
+    orbInput.place(
+      over: storedMode == .orb ? orbScreenRect(geometry.orb) : nil,
+      within: currentScreen()?.visibleFrame
+    )
   }
 
   /// Where a rectangle placed inside the stage sits on the screen.

@@ -586,6 +586,48 @@ final class DesktopScreenLook {
   final String path;
 }
 
+/// One button on the strip the resting orb shows under the pointer.
+///
+/// Drawn by AppKit, because the orb's square sits at the very bottom of the
+/// stage's frame and the window may never be resized to make room beneath it.
+/// Its words are composed here anyway, so the strip speaks whatever the rest
+/// of the app speaks.
+final class DesktopOrbAction {
+  /// Describes one button.
+  const DesktopOrbAction({
+    required this.id,
+    required this.symbol,
+    required this.label,
+    this.engaged = false,
+  });
+
+  /// What comes back on [DesktopPresentationHost.orbActionInvocations] when
+  /// this button is pressed.
+  final String id;
+
+  /// The SF Symbol drawn on it.
+  final String symbol;
+
+  /// What it is called, for its tooltip and for VoiceOver.
+  final String label;
+
+  /// Whether it is currently on — a microphone that is already listening.
+  final bool engaged;
+
+  /// Two buttons are the same when everything drawn on them is.
+  @override
+  bool operator ==(Object other) =>
+      other is DesktopOrbAction &&
+      other.id == id &&
+      other.symbol == symbol &&
+      other.label == label &&
+      other.engaged == engaged;
+
+  /// Hashes the fields compared above.
+  @override
+  int get hashCode => Object.hash(id, symbol, label, engaged);
+}
+
 /// The narrow desktop-window capability the app shell needs.
 ///
 /// Declared separately from [DesktopHostService] so the shell can depend on the
@@ -625,6 +667,17 @@ abstract interface class DesktopPresentationHost {
 
   /// Requests to start talking, made from the status-bar menu.
   Stream<void> get menuVoiceRequests;
+
+  /// Tells the resting orb what to offer the next time it is hovered.
+  ///
+  /// Pushed rather than pulled for the same reason the menu bar's contents
+  /// are: the strip is drawn by AppKit the instant the pointer settles, and
+  /// asking across the channel then would show an empty one until the answer
+  /// arrived. An empty list turns the strip off.
+  Future<void> setOrbActions(List<DesktopOrbAction> actions);
+
+  /// Buttons pressed on the resting orb, by their identifier.
+  Stream<String> get orbActionInvocations;
 
   /// Text the user sent from another app's Services menu.
   ///

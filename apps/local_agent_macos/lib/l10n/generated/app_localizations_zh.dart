@@ -653,6 +653,18 @@ class AppLocalizationsZh extends AppLocalizations {
   String get menuQuit => '結束 Lulo';
 
   @override
+  String get orbTalk => '說話';
+
+  @override
+  String get orbStopTalking => '停止聆聽';
+
+  @override
+  String get orbLook => '看一下我的螢幕';
+
+  @override
+  String get orbStop => '停止';
+
+  @override
   String get activityIdle => '待命中';
 
   @override

@@ -275,6 +275,13 @@ class AppDelegate: FlutterAppDelegate {
         completion: { _ in }
       )
     }
+    // The buttons under the resting orb are drawn by AppKit, because there is
+    // no room inside the stage's frame beneath the orb and the window may
+    // never be resized to make room. What each one *means* is decided in
+    // Dart, so only the identifier crosses.
+    panelController.onOrbActionInvoked = { id in
+      eventApi.onOrbActionInvoked(actionId: id, completion: { _ in })
+    }
     installSettingsMenuItem { eventApi.onSettingsRequested(completion: { _ in }) }
     installFileMenu()
     // Which app the user is in, told on every switch. Activating Lulo is

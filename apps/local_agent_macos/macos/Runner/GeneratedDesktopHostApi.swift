@@ -420,6 +420,104 @@ struct HostMenuBarState: Hashable {
   }
 }
 
+/// One button on the strip the resting orb shows under the pointer.
+///
+/// Drawn by AppKit rather than by Flutter, and that is forced rather than
+/// chosen: the orb's square sits at the very bottom of the stage's frame, so
+/// there is no room inside the window to draw anything beneath it, and the
+/// window may never be resized to make room — a resize blocks the engine for
+/// about a second. Its words still come from Dart for the same reason
+/// [HostMenuBarLabels] does: the rest of the app follows the system language
+/// and a strip that stayed English would be the one part that did not.
+///
+/// Generated class from Pigeon that represents data sent in messages.
+struct HostOrbAction: Hashable {
+  /// What to send back when this button is pressed.
+  var id: String
+  /// The SF Symbol drawn on it.
+  var symbol: String
+  /// What it is called, already in the user's language.
+  var label: String
+  /// Whether it is currently on — a microphone that is already listening.
+  var engaged: Bool
+
+
+  // swift-format-ignore: AlwaysUseLowerCamelCase
+  static func fromList(_ pigeonVar_list: [Any?]) -> HostOrbAction? {
+    let id = pigeonVar_list[0] as! String
+    let symbol = pigeonVar_list[1] as! String
+    let label = pigeonVar_list[2] as! String
+    let engaged = pigeonVar_list[3] as! Bool
+
+    return HostOrbAction(
+      id: id,
+      symbol: symbol,
+      label: label,
+      engaged: engaged
+    )
+  }
+  func toList() -> [Any?] {
+    return [
+      id,
+      symbol,
+      label,
+      engaged,
+    ]
+  }
+  static func == (lhs: HostOrbAction, rhs: HostOrbAction) -> Bool {
+    if Swift.type(of: lhs) != Swift.type(of: rhs) {
+      return false
+    }
+    return deepEqualsGeneratedDesktopHostApi(lhs.id, rhs.id) && deepEqualsGeneratedDesktopHostApi(lhs.symbol, rhs.symbol) && deepEqualsGeneratedDesktopHostApi(lhs.label, rhs.label) && deepEqualsGeneratedDesktopHostApi(lhs.engaged, rhs.engaged)
+  }
+
+  func hash(into hasher: inout Hasher) {
+    hasher.combine("HostOrbAction")
+    deepHashGeneratedDesktopHostApi(value: id, hasher: &hasher)
+    deepHashGeneratedDesktopHostApi(value: symbol, hasher: &hasher)
+    deepHashGeneratedDesktopHostApi(value: label, hasher: &hasher)
+    deepHashGeneratedDesktopHostApi(value: engaged, hasher: &hasher)
+  }
+}
+
+/// What the resting orb offers, in the order it should offer it.
+///
+/// Pushed rather than pulled, like the menu bar: the strip is drawn by AppKit
+/// the instant the pointer arrives, and asking Dart for it then would show an
+/// empty strip until the answer came back. An empty list turns it off.
+///
+/// Generated class from Pigeon that represents data sent in messages.
+struct HostOrbActions: Hashable {
+  /// The buttons, leading to trailing.
+  var actions: [HostOrbAction]
+
+
+  // swift-format-ignore: AlwaysUseLowerCamelCase
+  static func fromList(_ pigeonVar_list: [Any?]) -> HostOrbActions? {
+    let actions = pigeonVar_list[0] as! [HostOrbAction]
+
+    return HostOrbActions(
+      actions: actions
+    )
+  }
+  func toList() -> [Any?] {
+    return [
+      actions
+    ]
+  }
+  static func == (lhs: HostOrbActions, rhs: HostOrbActions) -> Bool {
+    if Swift.type(of: lhs) != Swift.type(of: rhs) {
+      return false
+    }
+    return deepEqualsGeneratedDesktopHostApi(lhs.actions, rhs.actions)
+  }
+
+  func hash(into hasher: inout Hasher) {
+    hasher.combine("HostOrbActions")
+    deepHashGeneratedDesktopHostApi(value: actions, hasher: &hasher)
+  }
+}
+
 /// Generated class from Pigeon that represents data sent in messages.
 struct HostRequest: Hashable {
   var schemaVersion: Int64
@@ -1225,34 +1323,38 @@ private class GeneratedDesktopHostApiPigeonCodecReader: FlutterStandardReader {
     case 137:
       return HostMenuBarState.fromList(self.readValue() as! [Any?])
     case 138:
-      return HostRequest.fromList(self.readValue() as! [Any?])
+      return HostOrbAction.fromList(self.readValue() as! [Any?])
     case 139:
-      return HostHandshakeResult.fromList(self.readValue() as! [Any?])
+      return HostOrbActions.fromList(self.readValue() as! [Any?])
     case 140:
-      return HostModelRequest.fromList(self.readValue() as! [Any?])
+      return HostRequest.fromList(self.readValue() as! [Any?])
     case 141:
-      return HostModelLoadResult.fromList(self.readValue() as! [Any?])
+      return HostHandshakeResult.fromList(self.readValue() as! [Any?])
     case 142:
-      return HostConversationTurn.fromList(self.readValue() as! [Any?])
+      return HostModelRequest.fromList(self.readValue() as! [Any?])
     case 143:
-      return HostGenerationRequest.fromList(self.readValue() as! [Any?])
+      return HostModelLoadResult.fromList(self.readValue() as! [Any?])
     case 144:
-      return HostGenerationAcknowledgement.fromList(self.readValue() as! [Any?])
+      return HostConversationTurn.fromList(self.readValue() as! [Any?])
     case 145:
-      return HostCancellationAcknowledgement.fromList(self.readValue() as! [Any?])
+      return HostGenerationRequest.fromList(self.readValue() as! [Any?])
     case 146:
-      return HostOperationCompletion.fromList(self.readValue() as! [Any?])
+      return HostGenerationAcknowledgement.fromList(self.readValue() as! [Any?])
     case 147:
-      return HostGenerationEvent.fromList(self.readValue() as! [Any?])
+      return HostCancellationAcknowledgement.fromList(self.readValue() as! [Any?])
     case 148:
-      return HostTransitionGeometry.fromList(self.readValue() as! [Any?])
+      return HostOperationCompletion.fromList(self.readValue() as! [Any?])
     case 149:
-      return HostPlaceHit.fromList(self.readValue() as! [Any?])
+      return HostGenerationEvent.fromList(self.readValue() as! [Any?])
     case 150:
-      return HostCalendarEvent.fromList(self.readValue() as! [Any?])
+      return HostTransitionGeometry.fromList(self.readValue() as! [Any?])
     case 151:
-      return HostCalendarAnswer.fromList(self.readValue() as! [Any?])
+      return HostPlaceHit.fromList(self.readValue() as! [Any?])
     case 152:
+      return HostCalendarEvent.fromList(self.readValue() as! [Any?])
+    case 153:
+      return HostCalendarAnswer.fromList(self.readValue() as! [Any?])
+    case 154:
       return HostScreenLookResult.fromList(self.readValue() as! [Any?])
     default:
       return super.readValue(ofType: type)
@@ -1289,50 +1391,56 @@ private class GeneratedDesktopHostApiPigeonCodecWriter: FlutterStandardWriter {
     } else if let value = value as? HostMenuBarState {
       super.writeByte(137)
       super.writeValue(value.toList())
-    } else if let value = value as? HostRequest {
+    } else if let value = value as? HostOrbAction {
       super.writeByte(138)
       super.writeValue(value.toList())
-    } else if let value = value as? HostHandshakeResult {
+    } else if let value = value as? HostOrbActions {
       super.writeByte(139)
       super.writeValue(value.toList())
-    } else if let value = value as? HostModelRequest {
+    } else if let value = value as? HostRequest {
       super.writeByte(140)
       super.writeValue(value.toList())
-    } else if let value = value as? HostModelLoadResult {
+    } else if let value = value as? HostHandshakeResult {
       super.writeByte(141)
       super.writeValue(value.toList())
-    } else if let value = value as? HostConversationTurn {
+    } else if let value = value as? HostModelRequest {
       super.writeByte(142)
       super.writeValue(value.toList())
-    } else if let value = value as? HostGenerationRequest {
+    } else if let value = value as? HostModelLoadResult {
       super.writeByte(143)
       super.writeValue(value.toList())
-    } else if let value = value as? HostGenerationAcknowledgement {
+    } else if let value = value as? HostConversationTurn {
       super.writeByte(144)
       super.writeValue(value.toList())
-    } else if let value = value as? HostCancellationAcknowledgement {
+    } else if let value = value as? HostGenerationRequest {
       super.writeByte(145)
       super.writeValue(value.toList())
-    } else if let value = value as? HostOperationCompletion {
+    } else if let value = value as? HostGenerationAcknowledgement {
       super.writeByte(146)
       super.writeValue(value.toList())
-    } else if let value = value as? HostGenerationEvent {
+    } else if let value = value as? HostCancellationAcknowledgement {
       super.writeByte(147)
       super.writeValue(value.toList())
-    } else if let value = value as? HostTransitionGeometry {
+    } else if let value = value as? HostOperationCompletion {
       super.writeByte(148)
       super.writeValue(value.toList())
-    } else if let value = value as? HostPlaceHit {
+    } else if let value = value as? HostGenerationEvent {
       super.writeByte(149)
       super.writeValue(value.toList())
-    } else if let value = value as? HostCalendarEvent {
+    } else if let value = value as? HostTransitionGeometry {
       super.writeByte(150)
       super.writeValue(value.toList())
-    } else if let value = value as? HostCalendarAnswer {
+    } else if let value = value as? HostPlaceHit {
       super.writeByte(151)
       super.writeValue(value.toList())
-    } else if let value = value as? HostScreenLookResult {
+    } else if let value = value as? HostCalendarEvent {
       super.writeByte(152)
+      super.writeValue(value.toList())
+    } else if let value = value as? HostCalendarAnswer {
+      super.writeByte(153)
+      super.writeValue(value.toList())
+    } else if let value = value as? HostScreenLookResult {
+      super.writeByte(154)
       super.writeValue(value.toList())
     } else {
       super.writeValue(value)
@@ -1425,6 +1533,8 @@ protocol DesktopHostApi {
   func endPresentationTransition(request: HostRequest, mode: HostPresentationMode) throws
   /// Tells the menu bar what to show the next time it is opened.
   func setMenuBarState(request: HostRequest, state: HostMenuBarState) throws
+  /// Tells the resting orb what to offer the next time it is hovered.
+  func setOrbActions(request: HostRequest, actions: HostOrbActions) throws
   /// Whether the app currently starts itself when the user logs in.
   func loginItemStatus(request: HostRequest, completion: @escaping (Result<HostLoginItemStatus, Error>) -> Void)
   /// Asks macOS to start the app at login, or to stop.
@@ -1854,6 +1964,23 @@ class DesktopHostApiSetup {
     } else {
       setMenuBarStateChannel.setMessageHandler(nil)
     }
+    /// Tells the resting orb what to offer the next time it is hovered.
+    let setOrbActionsChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.local_agent_macos.DesktopHostApi.setOrbActions\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
+    if let api = api {
+      setOrbActionsChannel.setMessageHandler { message, reply in
+        let args = message as! [Any?]
+        let requestArg = args[0] as! HostRequest
+        let actionsArg = args[1] as! HostOrbActions
+        do {
+          try api.setOrbActions(request: requestArg, actions: actionsArg)
+          reply(wrapResult(nil))
+        } catch {
+          reply(wrapError(error))
+        }
+      }
+    } else {
+      setOrbActionsChannel.setMessageHandler(nil)
+    }
     /// Whether the app currently starts itself when the user logs in.
     let loginItemStatusChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.local_agent_macos.DesktopHostApi.loginItemStatus\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
     if let api = api {
@@ -1952,6 +2079,11 @@ protocol DesktopHostEventApiProtocol {
   func onPresentationChangeRequested(target targetArg: HostPresentationMode, completion: @escaping (Result<Void, PigeonError>) -> Void)
   /// Asks the app to show its settings, from the menu bar or its shortcut.
   func onSettingsRequested(completion: @escaping (Result<Void, PigeonError>) -> Void)
+  /// The user pressed one of the buttons under the resting orb.
+  ///
+  /// Only the identifier crosses: what each one means is decided in Dart,
+  /// where the conversation, the voice and the screen look already live.
+  func onOrbActionInvoked(actionId actionIdArg: String, completion: @escaping (Result<Void, PigeonError>) -> Void)
   /// The app the user activated, by its visible name.
   ///
   /// Sent on every activation of an app that is not this one — summoning
@@ -2110,6 +2242,28 @@ class DesktopHostEventApi: DesktopHostEventApiProtocol {
     let channelName: String = "dev.flutter.pigeon.local_agent_macos.DesktopHostEventApi.onSettingsRequested\(messageChannelSuffix)"
     let channel = FlutterBasicMessageChannel(name: channelName, binaryMessenger: binaryMessenger, codec: codec)
     channel.sendMessage(nil) { response in
+      guard let listResponse = response as? [Any?] else {
+        completion(.failure(createConnectionError(withChannelName: channelName)))
+        return
+      }
+      if listResponse.count > 1 {
+        let code: String = listResponse[0] as! String
+        let message: String? = nilOrValue(listResponse[1])
+        let details: String? = nilOrValue(listResponse[2])
+        completion(.failure(PigeonError(code: code, message: message, details: details)))
+      } else {
+        completion(.success(()))
+      }
+    }
+  }
+  /// The user pressed one of the buttons under the resting orb.
+  ///
+  /// Only the identifier crosses: what each one means is decided in Dart,
+  /// where the conversation, the voice and the screen look already live.
+  func onOrbActionInvoked(actionId actionIdArg: String, completion: @escaping (Result<Void, PigeonError>) -> Void) {
+    let channelName: String = "dev.flutter.pigeon.local_agent_macos.DesktopHostEventApi.onOrbActionInvoked\(messageChannelSuffix)"
+    let channel = FlutterBasicMessageChannel(name: channelName, binaryMessenger: binaryMessenger, codec: codec)
+    channel.sendMessage([actionIdArg] as [Any?]) { response in
       guard let listResponse = response as? [Any?] else {
         completion(.failure(createConnectionError(withChannelName: channelName)))
         return

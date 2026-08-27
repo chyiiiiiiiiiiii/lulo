@@ -491,6 +491,22 @@ final class LocalRuntimeDesktopHostApi: DesktopHostApi {
     }
   }
 
+  func setOrbActions(request: HostRequest, actions: HostOrbActions) throws {
+    try validatePanelRequest(request)
+    onMain { [panelController] in
+      panelController.setOrbActions(
+        actions.actions.map {
+          OrbAction(
+            id: $0.id,
+            symbol: $0.symbol,
+            label: $0.label,
+            engaged: $0.engaged
+          )
+        }
+      )
+    }
+  }
+
   func saveTextFile(
     request: HostRequest,
     suggestedName: String,

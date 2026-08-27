@@ -373,6 +373,116 @@ class HostMenuBarState {
   int get hashCode => _deepHash(<Object?>[runtimeType, ..._toList()]);
 }
 
+/// One button on the strip the resting orb shows under the pointer.
+///
+/// Drawn by AppKit rather than by Flutter, and that is forced rather than
+/// chosen: the orb's square sits at the very bottom of the stage's frame, so
+/// there is no room inside the window to draw anything beneath it, and the
+/// window may never be resized to make room — a resize blocks the engine for
+/// about a second. Its words still come from Dart for the same reason
+/// [HostMenuBarLabels] does: the rest of the app follows the system language
+/// and a strip that stayed English would be the one part that did not.
+class HostOrbAction {
+  HostOrbAction({
+    required this.id,
+    required this.symbol,
+    required this.label,
+    required this.engaged,
+  });
+
+  /// What to send back when this button is pressed.
+  String id;
+
+  /// The SF Symbol drawn on it.
+  String symbol;
+
+  /// What it is called, already in the user's language.
+  String label;
+
+  /// Whether it is currently on — a microphone that is already listening.
+  bool engaged;
+
+  List<Object?> _toList() {
+    return <Object?>[id, symbol, label, engaged];
+  }
+
+  Object encode() {
+    return _toList();
+  }
+
+  static HostOrbAction decode(Object result) {
+    result as List<Object?>;
+    return HostOrbAction(
+      id: result[0]! as String,
+      symbol: result[1]! as String,
+      label: result[2]! as String,
+      engaged: result[3]! as bool,
+    );
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  bool operator ==(Object other) {
+    if (other is! HostOrbAction || other.runtimeType != runtimeType) {
+      return false;
+    }
+    if (identical(this, other)) {
+      return true;
+    }
+    return _deepEquals(id, other.id) &&
+        _deepEquals(symbol, other.symbol) &&
+        _deepEquals(label, other.label) &&
+        _deepEquals(engaged, other.engaged);
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  int get hashCode => _deepHash(<Object?>[runtimeType, ..._toList()]);
+}
+
+/// What the resting orb offers, in the order it should offer it.
+///
+/// Pushed rather than pulled, like the menu bar: the strip is drawn by AppKit
+/// the instant the pointer arrives, and asking Dart for it then would show an
+/// empty strip until the answer came back. An empty list turns it off.
+class HostOrbActions {
+  HostOrbActions({required this.actions});
+
+  /// The buttons, leading to trailing.
+  List<HostOrbAction> actions;
+
+  List<Object?> _toList() {
+    return <Object?>[actions];
+  }
+
+  Object encode() {
+    return _toList();
+  }
+
+  static HostOrbActions decode(Object result) {
+    result as List<Object?>;
+    return HostOrbActions(
+      actions: (result[0]! as List<Object?>).cast<HostOrbAction>(),
+    );
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  bool operator ==(Object other) {
+    if (other is! HostOrbActions || other.runtimeType != runtimeType) {
+      return false;
+    }
+    if (identical(this, other)) {
+      return true;
+    }
+    return _deepEquals(actions, other.actions);
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  int get hashCode => _deepHash(<Object?>[runtimeType, ..._toList()]);
+}
+
 class HostRequest {
   HostRequest({
     required this.schemaVersion,
@@ -1299,50 +1409,56 @@ class _PigeonCodec extends StandardMessageCodec {
     } else if (value is HostMenuBarState) {
       buffer.putUint8(137);
       writeValue(buffer, value.encode());
-    } else if (value is HostRequest) {
+    } else if (value is HostOrbAction) {
       buffer.putUint8(138);
       writeValue(buffer, value.encode());
-    } else if (value is HostHandshakeResult) {
+    } else if (value is HostOrbActions) {
       buffer.putUint8(139);
       writeValue(buffer, value.encode());
-    } else if (value is HostModelRequest) {
+    } else if (value is HostRequest) {
       buffer.putUint8(140);
       writeValue(buffer, value.encode());
-    } else if (value is HostModelLoadResult) {
+    } else if (value is HostHandshakeResult) {
       buffer.putUint8(141);
       writeValue(buffer, value.encode());
-    } else if (value is HostConversationTurn) {
+    } else if (value is HostModelRequest) {
       buffer.putUint8(142);
       writeValue(buffer, value.encode());
-    } else if (value is HostGenerationRequest) {
+    } else if (value is HostModelLoadResult) {
       buffer.putUint8(143);
       writeValue(buffer, value.encode());
-    } else if (value is HostGenerationAcknowledgement) {
+    } else if (value is HostConversationTurn) {
       buffer.putUint8(144);
       writeValue(buffer, value.encode());
-    } else if (value is HostCancellationAcknowledgement) {
+    } else if (value is HostGenerationRequest) {
       buffer.putUint8(145);
       writeValue(buffer, value.encode());
-    } else if (value is HostOperationCompletion) {
+    } else if (value is HostGenerationAcknowledgement) {
       buffer.putUint8(146);
       writeValue(buffer, value.encode());
-    } else if (value is HostGenerationEvent) {
+    } else if (value is HostCancellationAcknowledgement) {
       buffer.putUint8(147);
       writeValue(buffer, value.encode());
-    } else if (value is HostTransitionGeometry) {
+    } else if (value is HostOperationCompletion) {
       buffer.putUint8(148);
       writeValue(buffer, value.encode());
-    } else if (value is HostPlaceHit) {
+    } else if (value is HostGenerationEvent) {
       buffer.putUint8(149);
       writeValue(buffer, value.encode());
-    } else if (value is HostCalendarEvent) {
+    } else if (value is HostTransitionGeometry) {
       buffer.putUint8(150);
       writeValue(buffer, value.encode());
-    } else if (value is HostCalendarAnswer) {
+    } else if (value is HostPlaceHit) {
       buffer.putUint8(151);
       writeValue(buffer, value.encode());
-    } else if (value is HostScreenLookResult) {
+    } else if (value is HostCalendarEvent) {
       buffer.putUint8(152);
+      writeValue(buffer, value.encode());
+    } else if (value is HostCalendarAnswer) {
+      buffer.putUint8(153);
+      writeValue(buffer, value.encode());
+    } else if (value is HostScreenLookResult) {
+      buffer.putUint8(154);
       writeValue(buffer, value.encode());
     } else {
       super.writeValue(buffer, value);
@@ -1377,34 +1493,38 @@ class _PigeonCodec extends StandardMessageCodec {
       case 137:
         return HostMenuBarState.decode(readValue(buffer)!);
       case 138:
-        return HostRequest.decode(readValue(buffer)!);
+        return HostOrbAction.decode(readValue(buffer)!);
       case 139:
-        return HostHandshakeResult.decode(readValue(buffer)!);
+        return HostOrbActions.decode(readValue(buffer)!);
       case 140:
-        return HostModelRequest.decode(readValue(buffer)!);
+        return HostRequest.decode(readValue(buffer)!);
       case 141:
-        return HostModelLoadResult.decode(readValue(buffer)!);
+        return HostHandshakeResult.decode(readValue(buffer)!);
       case 142:
-        return HostConversationTurn.decode(readValue(buffer)!);
+        return HostModelRequest.decode(readValue(buffer)!);
       case 143:
-        return HostGenerationRequest.decode(readValue(buffer)!);
+        return HostModelLoadResult.decode(readValue(buffer)!);
       case 144:
-        return HostGenerationAcknowledgement.decode(readValue(buffer)!);
+        return HostConversationTurn.decode(readValue(buffer)!);
       case 145:
-        return HostCancellationAcknowledgement.decode(readValue(buffer)!);
+        return HostGenerationRequest.decode(readValue(buffer)!);
       case 146:
-        return HostOperationCompletion.decode(readValue(buffer)!);
+        return HostGenerationAcknowledgement.decode(readValue(buffer)!);
       case 147:
-        return HostGenerationEvent.decode(readValue(buffer)!);
+        return HostCancellationAcknowledgement.decode(readValue(buffer)!);
       case 148:
-        return HostTransitionGeometry.decode(readValue(buffer)!);
+        return HostOperationCompletion.decode(readValue(buffer)!);
       case 149:
-        return HostPlaceHit.decode(readValue(buffer)!);
+        return HostGenerationEvent.decode(readValue(buffer)!);
       case 150:
-        return HostCalendarEvent.decode(readValue(buffer)!);
+        return HostTransitionGeometry.decode(readValue(buffer)!);
       case 151:
-        return HostCalendarAnswer.decode(readValue(buffer)!);
+        return HostPlaceHit.decode(readValue(buffer)!);
       case 152:
+        return HostCalendarEvent.decode(readValue(buffer)!);
+      case 153:
+        return HostCalendarAnswer.decode(readValue(buffer)!);
+      case 154:
         return HostScreenLookResult.decode(readValue(buffer)!);
       default:
         return super.readValueOfType(type, buffer);
@@ -1954,6 +2074,30 @@ class DesktopHostApi {
     );
   }
 
+  /// Tells the resting orb what to offer the next time it is hovered.
+  Future<void> setOrbActions(
+    HostRequest request,
+    HostOrbActions actions,
+  ) async {
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.local_agent_macos.DesktopHostApi.setOrbActions$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channel = BasicMessageChannel<Object?>(
+      pigeonVar_channelName,
+      pigeonChannelCodec,
+      binaryMessenger: pigeonVar_binaryMessenger,
+    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(
+      <Object?>[request, actions],
+    );
+    final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
+
+    _extractReplyValueOrThrow(
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: true,
+    );
+  }
+
   /// Whether the app currently starts itself when the user logs in.
   Future<HostLoginItemStatus> loginItemStatus(HostRequest request) async {
     final pigeonVar_channelName =
@@ -2072,6 +2216,12 @@ abstract class DesktopHostEventApi {
 
   /// Asks the app to show its settings, from the menu bar or its shortcut.
   void onSettingsRequested();
+
+  /// The user pressed one of the buttons under the resting orb.
+  ///
+  /// Only the identifier crosses: what each one means is decided in Dart,
+  /// where the conversation, the voice and the screen look already live.
+  void onOrbActionInvoked(String actionId);
 
   /// The app the user activated, by its visible name.
   ///
@@ -2260,6 +2410,31 @@ abstract class DesktopHostEventApi {
         pigeonVar_channel.setMessageHandler((Object? message) async {
           try {
             api.onSettingsRequested();
+            return wrapResponse(empty: true);
+          } on PlatformException catch (e) {
+            return wrapResponse(error: e);
+          } catch (e) {
+            return wrapResponse(
+              error: PlatformException(code: 'error', message: e.toString()),
+            );
+          }
+        });
+      }
+    }
+    {
+      final pigeonVar_channel = BasicMessageChannel<Object?>(
+        'dev.flutter.pigeon.local_agent_macos.DesktopHostEventApi.onOrbActionInvoked$messageChannelSuffix',
+        pigeonChannelCodec,
+        binaryMessenger: binaryMessenger,
+      );
+      if (api == null) {
+        pigeonVar_channel.setMessageHandler(null);
+      } else {
+        pigeonVar_channel.setMessageHandler((Object? message) async {
+          final List<Object?> args = message! as List<Object?>;
+          final String arg_actionId = args[0]! as String;
+          try {
+            api.onOrbActionInvoked(arg_actionId);
             return wrapResponse(empty: true);
           } on PlatformException catch (e) {
             return wrapResponse(error: e);

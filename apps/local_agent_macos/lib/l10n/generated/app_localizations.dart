@@ -1305,6 +1305,30 @@ abstract class AppLocalizations {
   /// **'Quit Lulo'**
   String get menuQuit;
 
+  /// No description provided for @orbTalk.
+  ///
+  /// In en, this message translates to:
+  /// **'Talk'**
+  String get orbTalk;
+
+  /// No description provided for @orbStopTalking.
+  ///
+  /// In en, this message translates to:
+  /// **'Stop listening'**
+  String get orbStopTalking;
+
+  /// No description provided for @orbLook.
+  ///
+  /// In en, this message translates to:
+  /// **'Look at my screen'**
+  String get orbLook;
+
+  /// No description provided for @orbStop.
+  ///
+  /// In en, this message translates to:
+  /// **'Stop'**
+  String get orbStop;
+
   /// No description provided for @activityIdle.
   ///
   /// In en, this message translates to:

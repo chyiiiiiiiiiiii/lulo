@@ -131,6 +131,48 @@ class HostMenuBarState {
   final bool canStartVoice;
 }
 
+/// One button on the strip the resting orb shows under the pointer.
+///
+/// Drawn by AppKit rather than by Flutter, and that is forced rather than
+/// chosen: the orb's square sits at the very bottom of the stage's frame, so
+/// there is no room inside the window to draw anything beneath it, and the
+/// window may never be resized to make room — a resize blocks the engine for
+/// about a second. Its words still come from Dart for the same reason
+/// [HostMenuBarLabels] does: the rest of the app follows the system language
+/// and a strip that stayed English would be the one part that did not.
+class HostOrbAction {
+  HostOrbAction({
+    required this.id,
+    required this.symbol,
+    required this.label,
+    required this.engaged,
+  });
+
+  /// What to send back when this button is pressed.
+  final String id;
+
+  /// The SF Symbol drawn on it.
+  final String symbol;
+
+  /// What it is called, already in the user's language.
+  final String label;
+
+  /// Whether it is currently on — a microphone that is already listening.
+  final bool engaged;
+}
+
+/// What the resting orb offers, in the order it should offer it.
+///
+/// Pushed rather than pulled, like the menu bar: the strip is drawn by AppKit
+/// the instant the pointer arrives, and asking Dart for it then would show an
+/// empty strip until the answer came back. An empty list turns it off.
+class HostOrbActions {
+  HostOrbActions({required this.actions});
+
+  /// The buttons, leading to trailing.
+  final List<HostOrbAction> actions;
+}
+
 enum HostFailureCode {
   modelNotInstalled,
   modelLoadFailed,
@@ -528,6 +570,9 @@ abstract class DesktopHostApi {
   /// Tells the menu bar what to show the next time it is opened.
   void setMenuBarState(HostRequest request, HostMenuBarState state);
 
+  /// Tells the resting orb what to offer the next time it is hovered.
+  void setOrbActions(HostRequest request, HostOrbActions actions);
+
   /// Whether the app currently starts itself when the user logs in.
   @async
   HostLoginItemStatus loginItemStatus(HostRequest request);
@@ -617,6 +662,12 @@ abstract class DesktopHostEventApi {
 
   /// Asks the app to show its settings, from the menu bar or its shortcut.
   void onSettingsRequested();
+
+  /// The user pressed one of the buttons under the resting orb.
+  ///
+  /// Only the identifier crosses: what each one means is decided in Dart,
+  /// where the conversation, the voice and the screen look already live.
+  void onOrbActionInvoked(String actionId);
 
   /// The app the user activated, by its visible name.
   ///

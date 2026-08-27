@@ -50,6 +50,8 @@ final class AppComposition {
     ValueNotifier<bool>? shareFrontmostApp,
     ValueNotifier<bool>? rememberFacts,
     ValueNotifier<int>? voiceRequests,
+    ValueNotifier<(OrbActionKind, int)?>? orbActionRequests,
+    ValueNotifier<bool>? voiceEngaged,
     ValueNotifier<bool>? modelLoading,
     PresenceNoticeCenter? noticeCenter,
     ValueNotifier<bool>? presenceIdle,
@@ -62,6 +64,9 @@ final class AppComposition {
            ),
        presenceIdle = presenceIdle ?? ValueNotifier<bool>(true),
        voiceRequests = voiceRequests ?? ValueNotifier<int>(0),
+       orbActionRequests =
+           orbActionRequests ?? ValueNotifier<(OrbActionKind, int)?>(null),
+       voiceEngaged = voiceEngaged ?? ValueNotifier<bool>(false),
        answerStyle =
            answerStyle ?? ValueNotifier<AnswerStyle>(AnswerStyle.balanced),
        shareFrontmostApp = shareFrontmostApp ?? ValueNotifier<bool>(false),
@@ -113,6 +118,22 @@ final class AppComposition {
   /// whether one is already open — so the request travels to it rather than
   /// the state travelling out.
   final ValueNotifier<int> voiceRequests;
+
+  /// The newest thing asked of the agent from the strip under its resting orb.
+  ///
+  /// Carries a sequence number beside the action so that pressing the same
+  /// button twice arrives twice — a notifier holding only the action would go
+  /// quiet the second time, which is exactly when the user is pressing it
+  /// again because the first press looked like it did nothing.
+  final ValueNotifier<(OrbActionKind, int)?> orbActionRequests;
+
+  /// Whether the microphone is currently open, written by whoever owns it.
+  ///
+  /// The strip under the resting orb draws its microphone lit or unlit from
+  /// this. A control that cannot show which way it is pointing is a control
+  /// the user has to guess at, and guessing wrong here means talking to
+  /// something that is not listening.
+  final ValueNotifier<bool> voiceEngaged;
 
   /// How far the model may roam, read by the inference service on every
   /// question.

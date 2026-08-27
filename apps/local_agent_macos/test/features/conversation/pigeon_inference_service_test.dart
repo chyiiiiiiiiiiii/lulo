@@ -1420,6 +1420,12 @@ final class RecordingDesktopHostService implements DesktopHostService {
   Stream<void> get menuVoiceRequests => const Stream<void>.empty();
 
   @override
+  Stream<String> get orbActionInvocations => const Stream<String>.empty();
+
+  @override
+  Future<void> setOrbActions(List<DesktopOrbAction> actions) async {}
+
+  @override
   Future<void> setMenuBarState({
     required List<({ConversationId id, String title})> conversations,
     required String modelName,

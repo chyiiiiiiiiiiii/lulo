@@ -194,6 +194,21 @@ final class FakePresentationHost implements DesktopPresentationHost {
   @override
   Stream<void> get menuVoiceRequests => menuVoice.stream;
 
+  /// Buttons pressed on the resting orb, as a test drives them.
+  final StreamController<String> orbActions =
+      StreamController<String>.broadcast();
+
+  /// What the resting orb was last told to offer.
+  List<DesktopOrbAction> offeredOrbActions = <DesktopOrbAction>[];
+
+  @override
+  Stream<String> get orbActionInvocations => orbActions.stream;
+
+  @override
+  Future<void> setOrbActions(List<DesktopOrbAction> actions) async {
+    offeredOrbActions = actions;
+  }
+
   @override
   Future<void> setMenuBarState({
     required List<({ConversationId id, String title})> conversations,
