@@ -74,9 +74,9 @@ String obsidianJournalEntry({
       ..writeln('> ${_oneLine(asked)}')
       ..writeln();
   }
-  entry
-    ..writeln(answer.trim())
-    ..writeln();
+  // No trailing blank line: the next entry opens with one, and two of them
+  // read as a gap somebody left rather than as one entry ending.
+  entry.writeln(answer.trim());
   return entry.toString();
 }
 

@@ -11,6 +11,7 @@ import 'package:local_agent_macos/features/settings/agent_profile_settings.dart'
 import 'package:local_agent_macos/features/settings/settings_sheet.dart';
 import 'package:local_agent_macos/features/sidecar/sidecar_health.dart';
 import 'package:local_agent_macos/l10n/generated/app_localizations.dart';
+import 'package:local_agent_macos/platform/desktop_host_service.dart';
 
 /// Draws what this session added to `build/shots/`, so it can be looked at
 /// rather than only asserted.
@@ -115,6 +116,55 @@ void main() {
     await tester.pump();
     await tester.pump();
     await _shoot(tester, 'settings-sidecar-stopped');
+  });
+
+  testWidgets('the vault section, as it looks', (WidgetTester tester) async {
+    surface(tester, 420);
+    await tester.pumpWidget(
+      frame(
+        locale: const Locale('zh'),
+        height: 420,
+        ObsidianSection(
+          enabled: true,
+          onEnabledChanged: (bool _) {},
+          folder: () async =>
+              '/Users/you/Documents/Obsidian Vault/08-ClaudeLog/lulo',
+          choose: () async => '',
+          forget: () async {},
+          lastWrite: ValueNotifier<DesktopVaultStatus?>(
+            DesktopVaultStatus.written,
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+    await _shoot(tester, 'settings-vault');
+  });
+
+  testWidgets('the vault section when the folder is gone', (
+    WidgetTester tester,
+  ) async {
+    surface(tester, 470);
+    await tester.pumpWidget(
+      frame(
+        locale: const Locale('zh'),
+        height: 470,
+        ObsidianSection(
+          enabled: true,
+          onEnabledChanged: (bool _) {},
+          folder: () async => '/Volumes/NAS/Obsidian Vault/lulo',
+          choose: () async => '',
+          forget: () async {},
+          lastWrite: ValueNotifier<DesktopVaultStatus?>(
+            DesktopVaultStatus.denied,
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+    await _shoot(tester, 'settings-vault-gone');
   });
 }
 

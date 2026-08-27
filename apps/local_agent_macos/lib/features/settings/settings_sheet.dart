@@ -347,7 +347,7 @@ final class SettingsSheet extends StatelessWidget {
                         ],
                       ),
                       if (vaultFolder != null && chooseVaultFolder != null)
-                        _ObsidianSection(
+                        ObsidianSection(
                           enabled: settings.obsidianJournal,
                           onEnabledChanged: (bool value) => onChanged(
                             settings.copyWith(obsidianJournal: value),
@@ -1070,28 +1070,41 @@ final class NoticeLedgerTile extends StatelessWidget {
 /// macOS, and a vault can be moved, renamed or deleted while the app is not
 /// looking. Showing a stored path that no longer opens is exactly the failure
 /// this pane exists to make visible.
-final class _ObsidianSection extends StatefulWidget {
-  const _ObsidianSection({
+final class ObsidianSection extends StatefulWidget {
+  /// Creates the section, given the ways to read and change the folder.
+  const ObsidianSection({
     required this.enabled,
     required this.onEnabledChanged,
     required this.folder,
     required this.choose,
     required this.forget,
     required this.lastWrite,
+    super.key,
   });
 
+  /// Whether finished exchanges are being written into the notes.
   final bool enabled;
+
+  /// Called when the user turns that on or off.
   final ValueChanged<bool> onEnabledChanged;
+
+  /// Reads the folder currently being written into, empty when there is none.
   final Future<String> Function() folder;
+
+  /// Asks the user for a folder, returning its path or empty.
   final Future<String> Function() choose;
+
+  /// Stops writing and forgets how to reach the folder, where that is offered.
   final Future<void> Function()? forget;
+
+  /// How the last write went, or null where nothing writes.
   final ValueListenable<DesktopVaultStatus?>? lastWrite;
 
   @override
-  State<_ObsidianSection> createState() => _ObsidianSectionState();
+  State<ObsidianSection> createState() => _ObsidianSectionState();
 }
 
-final class _ObsidianSectionState extends State<_ObsidianSection> {
+final class _ObsidianSectionState extends State<ObsidianSection> {
   String? _folder;
 
   @override
