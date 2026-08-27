@@ -56,12 +56,20 @@ class AppDelegate: FlutterAppDelegate {
   /// Kept so the close item has something to send its action to.
   private var closeMenuTarget: MenuActionTarget?
 
+  /// Held for the app's life: a menu item's target is not retained by the
+  /// item, so a local one is deallocated and the shortcut stops working.
+  private var newConversationMenuTarget: MenuActionTarget?
+  private var conversationsMenuTarget: MenuActionTarget?
+
   /// Gives the app the File menu a Mac user expects to find.
   ///
   /// One item, because there is one thing to put in it. Closing puts the
   /// conversation away rather than closing the agent, which has no closed
   /// state to go to.
-  private func installFileMenu() {
+  private func installFileMenu(
+    onNewConversation: @escaping () -> Void,
+    onConversations: @escaping () -> Void
+  ) {
     guard let mainMenu = NSApp.mainMenu,
       !mainMenu.items.contains(where: { $0.title == "File" })
     else {
@@ -72,6 +80,28 @@ class AppDelegate: FlutterAppDelegate {
     }
     closeMenuTarget = target
     let fileMenu = NSMenu(title: "File")
+    // What every assistant on this desktop answers. Both actions already
+    // existed on the Dart side and had no way in but the history sheet.
+    let newTarget = MenuActionTarget(action: onNewConversation)
+    newConversationMenuTarget = newTarget
+    let new = NSMenuItem(
+      title: "New Conversation",
+      action: #selector(MenuActionTarget.run),
+      keyEquivalent: "n"
+    )
+    new.target = newTarget
+    fileMenu.addItem(new)
+    let listTarget = MenuActionTarget(action: onConversations)
+    conversationsMenuTarget = listTarget
+    let list = NSMenuItem(
+      title: "Conversations…",
+      action: #selector(MenuActionTarget.run),
+      keyEquivalent: "O"
+    )
+    list.keyEquivalentModifierMask = [.command, .shift]
+    list.target = listTarget
+    fileMenu.addItem(list)
+    fileMenu.addItem(.separator())
     let close = NSMenuItem(
       title: "Close",
       action: #selector(MenuActionTarget.run),
@@ -283,7 +313,14 @@ class AppDelegate: FlutterAppDelegate {
       eventApi.onOrbActionInvoked(actionId: id, completion: { _ in })
     }
     installSettingsMenuItem { eventApi.onSettingsRequested(completion: { _ in }) }
-    installFileMenu()
+    installFileMenu(
+      onNewConversation: {
+        eventApi.onNewConversationRequested(completion: { _ in })
+      },
+      onConversations: {
+        eventApi.onConversationsRequested(completion: { _ in })
+      }
+    )
     // Which app the user is in, told on every switch. Activating Lulo is
     // deliberately not reported: summoning the agent makes it frontmost,
     // and a question about "this" means the place the user came from.

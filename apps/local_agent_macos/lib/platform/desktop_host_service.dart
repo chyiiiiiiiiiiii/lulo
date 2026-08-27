@@ -695,6 +695,12 @@ abstract interface class DesktopPresentationHost {
   /// Buttons pressed on the resting orb, by their identifier.
   Stream<String> get orbActionInvocations;
 
+  /// Requests for an empty conversation, from File ▸ New (⌘N).
+  Stream<void> get newConversationRequests;
+
+  /// Requests to see what has already been said, from File ▸ Conversations…
+  Stream<void> get conversationsRequests;
+
   /// Asks the user for the folder in their notes to write into.
   ///
   /// Returns its path, or empty if they backed out. A sandboxed app reaches

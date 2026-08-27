@@ -1423,6 +1423,12 @@ final class RecordingDesktopHostService implements DesktopHostService {
   Stream<String> get orbActionInvocations => const Stream<String>.empty();
 
   @override
+  Stream<void> get newConversationRequests => const Stream<void>.empty();
+
+  @override
+  Stream<void> get conversationsRequests => const Stream<void>.empty();
+
+  @override
   Future<void> setOrbActions(List<DesktopOrbAction> actions) async {}
 
   @override

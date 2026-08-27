@@ -2400,6 +2400,17 @@ abstract class DesktopHostEventApi {
   /// Asks the app to show its settings, from the menu bar or its shortcut.
   void onSettingsRequested();
 
+  /// The user asked for an empty conversation, from File ▸ New (⌘N).
+  ///
+  /// Native because it is a menu item, and the menu bar belongs to AppKit.
+  /// Every assistant on this desktop answers ⌘N; this one answered nothing,
+  /// and starting fresh meant opening the history sheet to get past it.
+  void onNewConversationRequested();
+
+  /// The user asked to see what has already been said, from File ▸
+  /// Conversations… (⇧⌘O).
+  void onConversationsRequested();
+
   /// The user pressed one of the buttons under the resting orb.
   ///
   /// Only the identifier crosses: what each one means is decided in Dart,
@@ -2593,6 +2604,52 @@ abstract class DesktopHostEventApi {
         pigeonVar_channel.setMessageHandler((Object? message) async {
           try {
             api.onSettingsRequested();
+            return wrapResponse(empty: true);
+          } on PlatformException catch (e) {
+            return wrapResponse(error: e);
+          } catch (e) {
+            return wrapResponse(
+              error: PlatformException(code: 'error', message: e.toString()),
+            );
+          }
+        });
+      }
+    }
+    {
+      final pigeonVar_channel = BasicMessageChannel<Object?>(
+        'dev.flutter.pigeon.local_agent_macos.DesktopHostEventApi.onNewConversationRequested$messageChannelSuffix',
+        pigeonChannelCodec,
+        binaryMessenger: binaryMessenger,
+      );
+      if (api == null) {
+        pigeonVar_channel.setMessageHandler(null);
+      } else {
+        pigeonVar_channel.setMessageHandler((Object? message) async {
+          try {
+            api.onNewConversationRequested();
+            return wrapResponse(empty: true);
+          } on PlatformException catch (e) {
+            return wrapResponse(error: e);
+          } catch (e) {
+            return wrapResponse(
+              error: PlatformException(code: 'error', message: e.toString()),
+            );
+          }
+        });
+      }
+    }
+    {
+      final pigeonVar_channel = BasicMessageChannel<Object?>(
+        'dev.flutter.pigeon.local_agent_macos.DesktopHostEventApi.onConversationsRequested$messageChannelSuffix',
+        pigeonChannelCodec,
+        binaryMessenger: binaryMessenger,
+      );
+      if (api == null) {
+        pigeonVar_channel.setMessageHandler(null);
+      } else {
+        pigeonVar_channel.setMessageHandler((Object? message) async {
+          try {
+            api.onConversationsRequested();
             return wrapResponse(empty: true);
           } on PlatformException catch (e) {
             return wrapResponse(error: e);

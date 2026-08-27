@@ -206,6 +206,12 @@ final class PigeonDesktopHostService extends DesktopHostEventApi
   final StreamController<String> _orbActions =
       StreamController<String>.broadcast();
 
+  final StreamController<void> _newConversations =
+      StreamController<void>.broadcast();
+
+  final StreamController<void> _conversationLists =
+      StreamController<void>.broadcast();
+
   @override
   Stream<ConversationId> get menuConversationRequests =>
       _menuConversationRequests.stream;
@@ -215,6 +221,28 @@ final class PigeonDesktopHostService extends DesktopHostEventApi
 
   @override
   Stream<String> get orbActionInvocations => _orbActions.stream;
+
+  @override
+  Stream<void> get newConversationRequests => _newConversations.stream;
+
+  @override
+  Stream<void> get conversationsRequests => _conversationLists.stream;
+
+  @override
+  void onNewConversationRequested() {
+    if (_disposed) {
+      return;
+    }
+    _newConversations.add(null);
+  }
+
+  @override
+  void onConversationsRequested() {
+    if (_disposed) {
+      return;
+    }
+    _conversationLists.add(null);
+  }
 
   @override
   Future<void> setOrbActions(List<DesktopOrbAction> actions) {
@@ -709,6 +737,8 @@ final class PigeonDesktopHostService extends DesktopHostEventApi
     await _menuConversationRequests.close();
     await _menuVoiceRequests.close();
     await _orbActions.close();
+    await _newConversations.close();
+    await _conversationLists.close();
     await _geometryChanges.close();
   }
 }

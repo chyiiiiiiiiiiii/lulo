@@ -725,6 +725,17 @@ abstract class DesktopHostEventApi {
   /// Asks the app to show its settings, from the menu bar or its shortcut.
   void onSettingsRequested();
 
+  /// The user asked for an empty conversation, from File ▸ New (⌘N).
+  ///
+  /// Native because it is a menu item, and the menu bar belongs to AppKit.
+  /// Every assistant on this desktop answers ⌘N; this one answered nothing,
+  /// and starting fresh meant opening the history sheet to get past it.
+  void onNewConversationRequested();
+
+  /// The user asked to see what has already been said, from File ▸
+  /// Conversations… (⇧⌘O).
+  void onConversationsRequested();
+
   /// The user pressed one of the buttons under the resting orb.
   ///
   /// Only the identifier crosses: what each one means is decided in Dart,

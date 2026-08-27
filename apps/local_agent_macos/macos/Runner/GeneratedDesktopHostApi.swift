@@ -2257,6 +2257,15 @@ protocol DesktopHostEventApiProtocol {
   func onPresentationChangeRequested(target targetArg: HostPresentationMode, completion: @escaping (Result<Void, PigeonError>) -> Void)
   /// Asks the app to show its settings, from the menu bar or its shortcut.
   func onSettingsRequested(completion: @escaping (Result<Void, PigeonError>) -> Void)
+  /// The user asked for an empty conversation, from File ▸ New (⌘N).
+  ///
+  /// Native because it is a menu item, and the menu bar belongs to AppKit.
+  /// Every assistant on this desktop answers ⌘N; this one answered nothing,
+  /// and starting fresh meant opening the history sheet to get past it.
+  func onNewConversationRequested(completion: @escaping (Result<Void, PigeonError>) -> Void)
+  /// The user asked to see what has already been said, from File ▸
+  /// Conversations… (⇧⌘O).
+  func onConversationsRequested(completion: @escaping (Result<Void, PigeonError>) -> Void)
   /// The user pressed one of the buttons under the resting orb.
   ///
   /// Only the identifier crosses: what each one means is decided in Dart,
@@ -2418,6 +2427,49 @@ class DesktopHostEventApi: DesktopHostEventApiProtocol {
   /// Asks the app to show its settings, from the menu bar or its shortcut.
   func onSettingsRequested(completion: @escaping (Result<Void, PigeonError>) -> Void) {
     let channelName: String = "dev.flutter.pigeon.local_agent_macos.DesktopHostEventApi.onSettingsRequested\(messageChannelSuffix)"
+    let channel = FlutterBasicMessageChannel(name: channelName, binaryMessenger: binaryMessenger, codec: codec)
+    channel.sendMessage(nil) { response in
+      guard let listResponse = response as? [Any?] else {
+        completion(.failure(createConnectionError(withChannelName: channelName)))
+        return
+      }
+      if listResponse.count > 1 {
+        let code: String = listResponse[0] as! String
+        let message: String? = nilOrValue(listResponse[1])
+        let details: String? = nilOrValue(listResponse[2])
+        completion(.failure(PigeonError(code: code, message: message, details: details)))
+      } else {
+        completion(.success(()))
+      }
+    }
+  }
+  /// The user asked for an empty conversation, from File ▸ New (⌘N).
+  ///
+  /// Native because it is a menu item, and the menu bar belongs to AppKit.
+  /// Every assistant on this desktop answers ⌘N; this one answered nothing,
+  /// and starting fresh meant opening the history sheet to get past it.
+  func onNewConversationRequested(completion: @escaping (Result<Void, PigeonError>) -> Void) {
+    let channelName: String = "dev.flutter.pigeon.local_agent_macos.DesktopHostEventApi.onNewConversationRequested\(messageChannelSuffix)"
+    let channel = FlutterBasicMessageChannel(name: channelName, binaryMessenger: binaryMessenger, codec: codec)
+    channel.sendMessage(nil) { response in
+      guard let listResponse = response as? [Any?] else {
+        completion(.failure(createConnectionError(withChannelName: channelName)))
+        return
+      }
+      if listResponse.count > 1 {
+        let code: String = listResponse[0] as! String
+        let message: String? = nilOrValue(listResponse[1])
+        let details: String? = nilOrValue(listResponse[2])
+        completion(.failure(PigeonError(code: code, message: message, details: details)))
+      } else {
+        completion(.success(()))
+      }
+    }
+  }
+  /// The user asked to see what has already been said, from File ▸
+  /// Conversations… (⇧⌘O).
+  func onConversationsRequested(completion: @escaping (Result<Void, PigeonError>) -> Void) {
+    let channelName: String = "dev.flutter.pigeon.local_agent_macos.DesktopHostEventApi.onConversationsRequested\(messageChannelSuffix)"
     let channel = FlutterBasicMessageChannel(name: channelName, binaryMessenger: binaryMessenger, codec: codec)
     channel.sendMessage(nil) { response in
       guard let listResponse = response as? [Any?] else {

@@ -249,6 +249,18 @@ final class _PresentationSwitchState extends State<_PresentationSwitch>
     // is the only thing that knows whether an ear is already open.
     _orbActions = widget.composition.presentationHost?.orbActionInvocations
         .listen(_askTheConversation);
+    // File ▸ New (⌘N) and File ▸ Conversations… (⇧⌘O). Both actions already
+    // existed and had no way in but the history sheet.
+    _newConversations = widget
+        .composition
+        .presentationHost
+        ?.newConversationRequests
+        .listen((void _) => _startNewConversation());
+    _conversationLists = widget
+        .composition
+        .presentationHost
+        ?.conversationsRequests
+        .listen((void _) => unawaited(_showConversations()));
     // What the strip offers depends on what the agent is doing, so it is
     // pushed alongside the menu bar rather than on a clock of its own.
     widget.composition.voiceEngaged.addListener(_refreshOrbActions);
@@ -453,6 +465,12 @@ final class _PresentationSwitchState extends State<_PresentationSwitch>
 
   /// Buttons pressed on the resting orb.
   StreamSubscription<String>? _orbActions;
+
+  /// File ▸ New Conversation.
+  StreamSubscription<void>? _newConversations;
+
+  /// File ▸ Conversations….
+  StreamSubscription<void>? _conversationLists;
   StreamSubscription<String>? _serviceText;
 
   /// Selections sent in from another app, for the composer to take.
@@ -942,6 +960,8 @@ final class _PresentationSwitchState extends State<_PresentationSwitch>
     unawaited(_menuConversations?.cancel());
     unawaited(_menuVoice?.cancel());
     unawaited(_orbActions?.cancel());
+    unawaited(_newConversations?.cancel());
+    unawaited(_conversationLists?.cancel());
     widget.composition.voiceEngaged.removeListener(_refreshOrbActions);
     unawaited(_serviceText?.cancel());
     unawaited(_composerSeed.close());

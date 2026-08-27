@@ -40,6 +40,13 @@ list as empty. With no model installed the app opens on `FirstRun` rather than
 on a conversation the built-in preview would answer with the same sentence
 every time.
 
+The File menu answers ⌘N and ⇧⌘O. Both actions — an empty conversation, and
+the list of stored ones — already existed on the Dart side and had no way in
+but the history sheet, which is a strange thing to have to open in order to
+leave. Native because the menu bar is AppKit's; the target objects are held for
+the app's life, because a menu item does not retain its target and a local one
+is deallocated with the shortcut still on screen.
+
 The resting orb answers three things without being opened. Hovering it for
 0.25s raises a capsule beside it: **talk** (opens or closes the microphone
 and leaves the agent resting — the conversation stays mounted while the orb

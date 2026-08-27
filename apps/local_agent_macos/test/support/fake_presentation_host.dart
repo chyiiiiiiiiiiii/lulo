@@ -204,6 +204,20 @@ final class FakePresentationHost implements DesktopPresentationHost {
   @override
   Stream<String> get orbActionInvocations => orbActions.stream;
 
+  /// Asks for an empty conversation, as the File menu does.
+  final StreamController<void> newConversations =
+      StreamController<void>.broadcast();
+
+  /// Asks to see what has already been said, as the File menu does.
+  final StreamController<void> conversationLists =
+      StreamController<void>.broadcast();
+
+  @override
+  Stream<void> get newConversationRequests => newConversations.stream;
+
+  @override
+  Stream<void> get conversationsRequests => conversationLists.stream;
+
   @override
   Future<void> setOrbActions(List<DesktopOrbAction> actions) async {
     offeredOrbActions = actions;
