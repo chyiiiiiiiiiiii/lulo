@@ -225,6 +225,19 @@ enum HostPresentationMode: Int {
   case expanded = 1
 }
 
+/// How writing into the user's vault ended.
+enum HostVaultStatus: Int {
+  /// The entry is on disk.
+  case written = 0
+  /// No folder has been chosen, so there was nowhere to write.
+  case noVault = 1
+  /// The folder was chosen once and macOS will not hand it back — it was
+  /// moved, deleted, or the grant did not survive.
+  case denied = 2
+  /// It was reached and the write failed anyway.
+  case failed = 3
+}
+
 enum HostFailureCode: Int {
   case modelNotInstalled = 0
   case modelLoadFailed = 1
@@ -515,6 +528,52 @@ struct HostOrbActions: Hashable {
   func hash(into hasher: inout Hasher) {
     hasher.combine("HostOrbActions")
     deepHashGeneratedDesktopHostApi(value: actions, hasher: &hasher)
+  }
+}
+
+/// One exchange, on its way into the user's own notes.
+///
+/// Generated class from Pigeon that represents data sent in messages.
+struct HostVaultAppend: Hashable {
+  /// The file inside the chosen folder, with no path separators in it.
+  var fileName: String
+  /// Written only when the file does not exist yet.
+  var header: String
+  /// Appended to whatever the file already holds, which is never rewritten.
+  var entry: String
+
+
+  // swift-format-ignore: AlwaysUseLowerCamelCase
+  static func fromList(_ pigeonVar_list: [Any?]) -> HostVaultAppend? {
+    let fileName = pigeonVar_list[0] as! String
+    let header = pigeonVar_list[1] as! String
+    let entry = pigeonVar_list[2] as! String
+
+    return HostVaultAppend(
+      fileName: fileName,
+      header: header,
+      entry: entry
+    )
+  }
+  func toList() -> [Any?] {
+    return [
+      fileName,
+      header,
+      entry,
+    ]
+  }
+  static func == (lhs: HostVaultAppend, rhs: HostVaultAppend) -> Bool {
+    if Swift.type(of: lhs) != Swift.type(of: rhs) {
+      return false
+    }
+    return deepEqualsGeneratedDesktopHostApi(lhs.fileName, rhs.fileName) && deepEqualsGeneratedDesktopHostApi(lhs.header, rhs.header) && deepEqualsGeneratedDesktopHostApi(lhs.entry, rhs.entry)
+  }
+
+  func hash(into hasher: inout Hasher) {
+    hasher.combine("HostVaultAppend")
+    deepHashGeneratedDesktopHostApi(value: fileName, hasher: &hasher)
+    deepHashGeneratedDesktopHostApi(value: header, hasher: &hasher)
+    deepHashGeneratedDesktopHostApi(value: entry, hasher: &hasher)
   }
 }
 
@@ -1301,60 +1360,68 @@ private class GeneratedDesktopHostApiPigeonCodecReader: FlutterStandardReader {
     case 132:
       let enumResultAsInt: Int? = nilOrValue(self.readValue() as! Int?)
       if let enumResultAsInt = enumResultAsInt {
-        return HostFailureCode(rawValue: enumResultAsInt)
+        return HostVaultStatus(rawValue: enumResultAsInt)
       }
       return nil
     case 133:
       let enumResultAsInt: Int? = nilOrValue(self.readValue() as! Int?)
       if let enumResultAsInt = enumResultAsInt {
-        return HostTurnRole(rawValue: enumResultAsInt)
+        return HostFailureCode(rawValue: enumResultAsInt)
       }
       return nil
     case 134:
       let enumResultAsInt: Int? = nilOrValue(self.readValue() as! Int?)
       if let enumResultAsInt = enumResultAsInt {
-        return HostScreenLookStatus(rawValue: enumResultAsInt)
+        return HostTurnRole(rawValue: enumResultAsInt)
       }
       return nil
     case 135:
-      return HostMenuConversation.fromList(self.readValue() as! [Any?])
+      let enumResultAsInt: Int? = nilOrValue(self.readValue() as! Int?)
+      if let enumResultAsInt = enumResultAsInt {
+        return HostScreenLookStatus(rawValue: enumResultAsInt)
+      }
+      return nil
     case 136:
-      return HostMenuBarLabels.fromList(self.readValue() as! [Any?])
+      return HostMenuConversation.fromList(self.readValue() as! [Any?])
     case 137:
-      return HostMenuBarState.fromList(self.readValue() as! [Any?])
+      return HostMenuBarLabels.fromList(self.readValue() as! [Any?])
     case 138:
-      return HostOrbAction.fromList(self.readValue() as! [Any?])
+      return HostMenuBarState.fromList(self.readValue() as! [Any?])
     case 139:
-      return HostOrbActions.fromList(self.readValue() as! [Any?])
+      return HostOrbAction.fromList(self.readValue() as! [Any?])
     case 140:
-      return HostRequest.fromList(self.readValue() as! [Any?])
+      return HostOrbActions.fromList(self.readValue() as! [Any?])
     case 141:
-      return HostHandshakeResult.fromList(self.readValue() as! [Any?])
+      return HostVaultAppend.fromList(self.readValue() as! [Any?])
     case 142:
-      return HostModelRequest.fromList(self.readValue() as! [Any?])
+      return HostRequest.fromList(self.readValue() as! [Any?])
     case 143:
-      return HostModelLoadResult.fromList(self.readValue() as! [Any?])
+      return HostHandshakeResult.fromList(self.readValue() as! [Any?])
     case 144:
-      return HostConversationTurn.fromList(self.readValue() as! [Any?])
+      return HostModelRequest.fromList(self.readValue() as! [Any?])
     case 145:
-      return HostGenerationRequest.fromList(self.readValue() as! [Any?])
+      return HostModelLoadResult.fromList(self.readValue() as! [Any?])
     case 146:
-      return HostGenerationAcknowledgement.fromList(self.readValue() as! [Any?])
+      return HostConversationTurn.fromList(self.readValue() as! [Any?])
     case 147:
-      return HostCancellationAcknowledgement.fromList(self.readValue() as! [Any?])
+      return HostGenerationRequest.fromList(self.readValue() as! [Any?])
     case 148:
-      return HostOperationCompletion.fromList(self.readValue() as! [Any?])
+      return HostGenerationAcknowledgement.fromList(self.readValue() as! [Any?])
     case 149:
-      return HostGenerationEvent.fromList(self.readValue() as! [Any?])
+      return HostCancellationAcknowledgement.fromList(self.readValue() as! [Any?])
     case 150:
-      return HostTransitionGeometry.fromList(self.readValue() as! [Any?])
+      return HostOperationCompletion.fromList(self.readValue() as! [Any?])
     case 151:
-      return HostPlaceHit.fromList(self.readValue() as! [Any?])
+      return HostGenerationEvent.fromList(self.readValue() as! [Any?])
     case 152:
-      return HostCalendarEvent.fromList(self.readValue() as! [Any?])
+      return HostTransitionGeometry.fromList(self.readValue() as! [Any?])
     case 153:
-      return HostCalendarAnswer.fromList(self.readValue() as! [Any?])
+      return HostPlaceHit.fromList(self.readValue() as! [Any?])
     case 154:
+      return HostCalendarEvent.fromList(self.readValue() as! [Any?])
+    case 155:
+      return HostCalendarAnswer.fromList(self.readValue() as! [Any?])
+    case 156:
       return HostScreenLookResult.fromList(self.readValue() as! [Any?])
     default:
       return super.readValue(ofType: type)
@@ -1373,74 +1440,80 @@ private class GeneratedDesktopHostApiPigeonCodecWriter: FlutterStandardWriter {
     } else if let value = value as? HostPresentationMode {
       super.writeByte(131)
       super.writeValue(value.rawValue)
-    } else if let value = value as? HostFailureCode {
+    } else if let value = value as? HostVaultStatus {
       super.writeByte(132)
       super.writeValue(value.rawValue)
-    } else if let value = value as? HostTurnRole {
+    } else if let value = value as? HostFailureCode {
       super.writeByte(133)
       super.writeValue(value.rawValue)
-    } else if let value = value as? HostScreenLookStatus {
+    } else if let value = value as? HostTurnRole {
       super.writeByte(134)
       super.writeValue(value.rawValue)
-    } else if let value = value as? HostMenuConversation {
+    } else if let value = value as? HostScreenLookStatus {
       super.writeByte(135)
-      super.writeValue(value.toList())
-    } else if let value = value as? HostMenuBarLabels {
+      super.writeValue(value.rawValue)
+    } else if let value = value as? HostMenuConversation {
       super.writeByte(136)
       super.writeValue(value.toList())
-    } else if let value = value as? HostMenuBarState {
+    } else if let value = value as? HostMenuBarLabels {
       super.writeByte(137)
       super.writeValue(value.toList())
-    } else if let value = value as? HostOrbAction {
+    } else if let value = value as? HostMenuBarState {
       super.writeByte(138)
       super.writeValue(value.toList())
-    } else if let value = value as? HostOrbActions {
+    } else if let value = value as? HostOrbAction {
       super.writeByte(139)
       super.writeValue(value.toList())
-    } else if let value = value as? HostRequest {
+    } else if let value = value as? HostOrbActions {
       super.writeByte(140)
       super.writeValue(value.toList())
-    } else if let value = value as? HostHandshakeResult {
+    } else if let value = value as? HostVaultAppend {
       super.writeByte(141)
       super.writeValue(value.toList())
-    } else if let value = value as? HostModelRequest {
+    } else if let value = value as? HostRequest {
       super.writeByte(142)
       super.writeValue(value.toList())
-    } else if let value = value as? HostModelLoadResult {
+    } else if let value = value as? HostHandshakeResult {
       super.writeByte(143)
       super.writeValue(value.toList())
-    } else if let value = value as? HostConversationTurn {
+    } else if let value = value as? HostModelRequest {
       super.writeByte(144)
       super.writeValue(value.toList())
-    } else if let value = value as? HostGenerationRequest {
+    } else if let value = value as? HostModelLoadResult {
       super.writeByte(145)
       super.writeValue(value.toList())
-    } else if let value = value as? HostGenerationAcknowledgement {
+    } else if let value = value as? HostConversationTurn {
       super.writeByte(146)
       super.writeValue(value.toList())
-    } else if let value = value as? HostCancellationAcknowledgement {
+    } else if let value = value as? HostGenerationRequest {
       super.writeByte(147)
       super.writeValue(value.toList())
-    } else if let value = value as? HostOperationCompletion {
+    } else if let value = value as? HostGenerationAcknowledgement {
       super.writeByte(148)
       super.writeValue(value.toList())
-    } else if let value = value as? HostGenerationEvent {
+    } else if let value = value as? HostCancellationAcknowledgement {
       super.writeByte(149)
       super.writeValue(value.toList())
-    } else if let value = value as? HostTransitionGeometry {
+    } else if let value = value as? HostOperationCompletion {
       super.writeByte(150)
       super.writeValue(value.toList())
-    } else if let value = value as? HostPlaceHit {
+    } else if let value = value as? HostGenerationEvent {
       super.writeByte(151)
       super.writeValue(value.toList())
-    } else if let value = value as? HostCalendarEvent {
+    } else if let value = value as? HostTransitionGeometry {
       super.writeByte(152)
       super.writeValue(value.toList())
-    } else if let value = value as? HostCalendarAnswer {
+    } else if let value = value as? HostPlaceHit {
       super.writeByte(153)
       super.writeValue(value.toList())
-    } else if let value = value as? HostScreenLookResult {
+    } else if let value = value as? HostCalendarEvent {
       super.writeByte(154)
+      super.writeValue(value.toList())
+    } else if let value = value as? HostCalendarAnswer {
+      super.writeByte(155)
+      super.writeValue(value.toList())
+    } else if let value = value as? HostScreenLookResult {
+      super.writeByte(156)
       super.writeValue(value.toList())
     } else {
       super.writeValue(value)
@@ -1535,6 +1608,27 @@ protocol DesktopHostApi {
   func setMenuBarState(request: HostRequest, state: HostMenuBarState) throws
   /// Tells the resting orb what to offer the next time it is hovered.
   func setOrbActions(request: HostRequest, actions: HostOrbActions) throws
+  /// Asks the user for the folder in their notes to write into.
+  ///
+  /// Returns its path, or empty if they backed out. A sandboxed app may only
+  /// reach what a panel handed it, so this is also where the lasting grant is
+  /// taken: the folder is kept as a security-scoped bookmark, and without one
+  /// the app would have to ask again on every launch.
+  func chooseVaultFolder(request: HostRequest, completion: @escaping (Result<String, Error>) -> Void)
+  /// The folder currently being written into, or empty if there is none.
+  ///
+  /// Resolved from the stored bookmark rather than remembered as a string:
+  /// a path that no longer opens is not a folder, and showing one in Settings
+  /// that cannot be written to is the failure this is meant to make visible.
+  func vaultFolder(request: HostRequest, completion: @escaping (Result<String, Error>) -> Void)
+  /// Stops writing into the user's notes and forgets how to reach them.
+  func forgetVaultFolder(request: HostRequest) throws
+  /// Appends one entry to a file in the chosen folder, creating it if needed.
+  ///
+  /// Appending rather than writing, always: the file is in someone else's
+  /// vault, where they may have edited it, linked it, or written underneath
+  /// it, and a tool that rewrites it destroys that silently.
+  func appendToVault(request: HostRequest, append: HostVaultAppend, completion: @escaping (Result<HostVaultStatus, Error>) -> Void)
   /// Whether the app currently starts itself when the user logs in.
   func loginItemStatus(request: HostRequest, completion: @escaping (Result<HostLoginItemStatus, Error>) -> Void)
   /// Asks macOS to start the app at login, or to stop.
@@ -1980,6 +2074,90 @@ class DesktopHostApiSetup {
       }
     } else {
       setOrbActionsChannel.setMessageHandler(nil)
+    }
+    /// Asks the user for the folder in their notes to write into.
+    ///
+    /// Returns its path, or empty if they backed out. A sandboxed app may only
+    /// reach what a panel handed it, so this is also where the lasting grant is
+    /// taken: the folder is kept as a security-scoped bookmark, and without one
+    /// the app would have to ask again on every launch.
+    let chooseVaultFolderChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.local_agent_macos.DesktopHostApi.chooseVaultFolder\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
+    if let api = api {
+      chooseVaultFolderChannel.setMessageHandler { message, reply in
+        let args = message as! [Any?]
+        let requestArg = args[0] as! HostRequest
+        api.chooseVaultFolder(request: requestArg) { result in
+          switch result {
+          case .success(let res):
+            reply(wrapResult(res))
+          case .failure(let error):
+            reply(wrapError(error))
+          }
+        }
+      }
+    } else {
+      chooseVaultFolderChannel.setMessageHandler(nil)
+    }
+    /// The folder currently being written into, or empty if there is none.
+    ///
+    /// Resolved from the stored bookmark rather than remembered as a string:
+    /// a path that no longer opens is not a folder, and showing one in Settings
+    /// that cannot be written to is the failure this is meant to make visible.
+    let vaultFolderChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.local_agent_macos.DesktopHostApi.vaultFolder\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
+    if let api = api {
+      vaultFolderChannel.setMessageHandler { message, reply in
+        let args = message as! [Any?]
+        let requestArg = args[0] as! HostRequest
+        api.vaultFolder(request: requestArg) { result in
+          switch result {
+          case .success(let res):
+            reply(wrapResult(res))
+          case .failure(let error):
+            reply(wrapError(error))
+          }
+        }
+      }
+    } else {
+      vaultFolderChannel.setMessageHandler(nil)
+    }
+    /// Stops writing into the user's notes and forgets how to reach them.
+    let forgetVaultFolderChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.local_agent_macos.DesktopHostApi.forgetVaultFolder\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
+    if let api = api {
+      forgetVaultFolderChannel.setMessageHandler { message, reply in
+        let args = message as! [Any?]
+        let requestArg = args[0] as! HostRequest
+        do {
+          try api.forgetVaultFolder(request: requestArg)
+          reply(wrapResult(nil))
+        } catch {
+          reply(wrapError(error))
+        }
+      }
+    } else {
+      forgetVaultFolderChannel.setMessageHandler(nil)
+    }
+    /// Appends one entry to a file in the chosen folder, creating it if needed.
+    ///
+    /// Appending rather than writing, always: the file is in someone else's
+    /// vault, where they may have edited it, linked it, or written underneath
+    /// it, and a tool that rewrites it destroys that silently.
+    let appendToVaultChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.local_agent_macos.DesktopHostApi.appendToVault\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
+    if let api = api {
+      appendToVaultChannel.setMessageHandler { message, reply in
+        let args = message as! [Any?]
+        let requestArg = args[0] as! HostRequest
+        let appendArg = args[1] as! HostVaultAppend
+        api.appendToVault(request: requestArg, append: appendArg) { result in
+          switch result {
+          case .success(let res):
+            reply(wrapResult(res))
+          case .failure(let error):
+            reply(wrapError(error))
+          }
+        }
+      }
+    } else {
+      appendToVaultChannel.setMessageHandler(nil)
     }
     /// Whether the app currently starts itself when the user logs in.
     let loginItemStatusChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.local_agent_macos.DesktopHostApi.loginItemStatus\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)

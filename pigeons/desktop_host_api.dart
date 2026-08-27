@@ -173,6 +173,40 @@ class HostOrbActions {
   final List<HostOrbAction> actions;
 }
 
+/// One exchange, on its way into the user's own notes.
+class HostVaultAppend {
+  HostVaultAppend({
+    required this.fileName,
+    required this.header,
+    required this.entry,
+  });
+
+  /// The file inside the chosen folder, with no path separators in it.
+  final String fileName;
+
+  /// Written only when the file does not exist yet.
+  final String header;
+
+  /// Appended to whatever the file already holds, which is never rewritten.
+  final String entry;
+}
+
+/// How writing into the user's vault ended.
+enum HostVaultStatus {
+  /// The entry is on disk.
+  written,
+
+  /// No folder has been chosen, so there was nowhere to write.
+  noVault,
+
+  /// The folder was chosen once and macOS will not hand it back — it was
+  /// moved, deleted, or the grant did not survive.
+  denied,
+
+  /// It was reached and the write failed anyway.
+  failed,
+}
+
 enum HostFailureCode {
   modelNotInstalled,
   modelLoadFailed,
@@ -572,6 +606,34 @@ abstract class DesktopHostApi {
 
   /// Tells the resting orb what to offer the next time it is hovered.
   void setOrbActions(HostRequest request, HostOrbActions actions);
+
+  /// Asks the user for the folder in their notes to write into.
+  ///
+  /// Returns its path, or empty if they backed out. A sandboxed app may only
+  /// reach what a panel handed it, so this is also where the lasting grant is
+  /// taken: the folder is kept as a security-scoped bookmark, and without one
+  /// the app would have to ask again on every launch.
+  @async
+  String chooseVaultFolder(HostRequest request);
+
+  /// The folder currently being written into, or empty if there is none.
+  ///
+  /// Resolved from the stored bookmark rather than remembered as a string:
+  /// a path that no longer opens is not a folder, and showing one in Settings
+  /// that cannot be written to is the failure this is meant to make visible.
+  @async
+  String vaultFolder(HostRequest request);
+
+  /// Stops writing into the user's notes and forgets how to reach them.
+  void forgetVaultFolder(HostRequest request);
+
+  /// Appends one entry to a file in the chosen folder, creating it if needed.
+  ///
+  /// Appending rather than writing, always: the file is in someone else's
+  /// vault, where they may have edited it, linked it, or written underneath
+  /// it, and a tool that rewrites it destroys that silently.
+  @async
+  HostVaultStatus appendToVault(HostRequest request, HostVaultAppend append);
 
   /// Whether the app currently starts itself when the user logs in.
   @async

@@ -160,6 +160,22 @@ enum HostLoginItemStatus {
 /// on the desktop; in [expanded] it is the full conversation surface.
 enum HostPresentationMode { orb, expanded }
 
+/// How writing into the user's vault ended.
+enum HostVaultStatus {
+  /// The entry is on disk.
+  written,
+
+  /// No folder has been chosen, so there was nowhere to write.
+  noVault,
+
+  /// The folder was chosen once and macOS will not hand it back — it was
+  /// moved, deleted, or the grant did not survive.
+  denied,
+
+  /// It was reached and the write failed anyway.
+  failed,
+}
+
 enum HostFailureCode {
   modelNotInstalled,
   modelLoadFailed,
@@ -476,6 +492,59 @@ class HostOrbActions {
       return true;
     }
     return _deepEquals(actions, other.actions);
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  int get hashCode => _deepHash(<Object?>[runtimeType, ..._toList()]);
+}
+
+/// One exchange, on its way into the user's own notes.
+class HostVaultAppend {
+  HostVaultAppend({
+    required this.fileName,
+    required this.header,
+    required this.entry,
+  });
+
+  /// The file inside the chosen folder, with no path separators in it.
+  String fileName;
+
+  /// Written only when the file does not exist yet.
+  String header;
+
+  /// Appended to whatever the file already holds, which is never rewritten.
+  String entry;
+
+  List<Object?> _toList() {
+    return <Object?>[fileName, header, entry];
+  }
+
+  Object encode() {
+    return _toList();
+  }
+
+  static HostVaultAppend decode(Object result) {
+    result as List<Object?>;
+    return HostVaultAppend(
+      fileName: result[0]! as String,
+      header: result[1]! as String,
+      entry: result[2]! as String,
+    );
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  bool operator ==(Object other) {
+    if (other is! HostVaultAppend || other.runtimeType != runtimeType) {
+      return false;
+    }
+    if (identical(this, other)) {
+      return true;
+    }
+    return _deepEquals(fileName, other.fileName) &&
+        _deepEquals(header, other.header) &&
+        _deepEquals(entry, other.entry);
   }
 
   @override
@@ -1391,74 +1460,80 @@ class _PigeonCodec extends StandardMessageCodec {
     } else if (value is HostPresentationMode) {
       buffer.putUint8(131);
       writeValue(buffer, value.index);
-    } else if (value is HostFailureCode) {
+    } else if (value is HostVaultStatus) {
       buffer.putUint8(132);
       writeValue(buffer, value.index);
-    } else if (value is HostTurnRole) {
+    } else if (value is HostFailureCode) {
       buffer.putUint8(133);
       writeValue(buffer, value.index);
-    } else if (value is HostScreenLookStatus) {
+    } else if (value is HostTurnRole) {
       buffer.putUint8(134);
       writeValue(buffer, value.index);
-    } else if (value is HostMenuConversation) {
+    } else if (value is HostScreenLookStatus) {
       buffer.putUint8(135);
-      writeValue(buffer, value.encode());
-    } else if (value is HostMenuBarLabels) {
+      writeValue(buffer, value.index);
+    } else if (value is HostMenuConversation) {
       buffer.putUint8(136);
       writeValue(buffer, value.encode());
-    } else if (value is HostMenuBarState) {
+    } else if (value is HostMenuBarLabels) {
       buffer.putUint8(137);
       writeValue(buffer, value.encode());
-    } else if (value is HostOrbAction) {
+    } else if (value is HostMenuBarState) {
       buffer.putUint8(138);
       writeValue(buffer, value.encode());
-    } else if (value is HostOrbActions) {
+    } else if (value is HostOrbAction) {
       buffer.putUint8(139);
       writeValue(buffer, value.encode());
-    } else if (value is HostRequest) {
+    } else if (value is HostOrbActions) {
       buffer.putUint8(140);
       writeValue(buffer, value.encode());
-    } else if (value is HostHandshakeResult) {
+    } else if (value is HostVaultAppend) {
       buffer.putUint8(141);
       writeValue(buffer, value.encode());
-    } else if (value is HostModelRequest) {
+    } else if (value is HostRequest) {
       buffer.putUint8(142);
       writeValue(buffer, value.encode());
-    } else if (value is HostModelLoadResult) {
+    } else if (value is HostHandshakeResult) {
       buffer.putUint8(143);
       writeValue(buffer, value.encode());
-    } else if (value is HostConversationTurn) {
+    } else if (value is HostModelRequest) {
       buffer.putUint8(144);
       writeValue(buffer, value.encode());
-    } else if (value is HostGenerationRequest) {
+    } else if (value is HostModelLoadResult) {
       buffer.putUint8(145);
       writeValue(buffer, value.encode());
-    } else if (value is HostGenerationAcknowledgement) {
+    } else if (value is HostConversationTurn) {
       buffer.putUint8(146);
       writeValue(buffer, value.encode());
-    } else if (value is HostCancellationAcknowledgement) {
+    } else if (value is HostGenerationRequest) {
       buffer.putUint8(147);
       writeValue(buffer, value.encode());
-    } else if (value is HostOperationCompletion) {
+    } else if (value is HostGenerationAcknowledgement) {
       buffer.putUint8(148);
       writeValue(buffer, value.encode());
-    } else if (value is HostGenerationEvent) {
+    } else if (value is HostCancellationAcknowledgement) {
       buffer.putUint8(149);
       writeValue(buffer, value.encode());
-    } else if (value is HostTransitionGeometry) {
+    } else if (value is HostOperationCompletion) {
       buffer.putUint8(150);
       writeValue(buffer, value.encode());
-    } else if (value is HostPlaceHit) {
+    } else if (value is HostGenerationEvent) {
       buffer.putUint8(151);
       writeValue(buffer, value.encode());
-    } else if (value is HostCalendarEvent) {
+    } else if (value is HostTransitionGeometry) {
       buffer.putUint8(152);
       writeValue(buffer, value.encode());
-    } else if (value is HostCalendarAnswer) {
+    } else if (value is HostPlaceHit) {
       buffer.putUint8(153);
       writeValue(buffer, value.encode());
-    } else if (value is HostScreenLookResult) {
+    } else if (value is HostCalendarEvent) {
       buffer.putUint8(154);
+      writeValue(buffer, value.encode());
+    } else if (value is HostCalendarAnswer) {
+      buffer.putUint8(155);
+      writeValue(buffer, value.encode());
+    } else if (value is HostScreenLookResult) {
+      buffer.putUint8(156);
       writeValue(buffer, value.encode());
     } else {
       super.writeValue(buffer, value);
@@ -1479,52 +1554,57 @@ class _PigeonCodec extends StandardMessageCodec {
         return value == null ? null : HostPresentationMode.values[value];
       case 132:
         final value = readValue(buffer) as int?;
-        return value == null ? null : HostFailureCode.values[value];
+        return value == null ? null : HostVaultStatus.values[value];
       case 133:
         final value = readValue(buffer) as int?;
-        return value == null ? null : HostTurnRole.values[value];
+        return value == null ? null : HostFailureCode.values[value];
       case 134:
         final value = readValue(buffer) as int?;
-        return value == null ? null : HostScreenLookStatus.values[value];
+        return value == null ? null : HostTurnRole.values[value];
       case 135:
-        return HostMenuConversation.decode(readValue(buffer)!);
+        final value = readValue(buffer) as int?;
+        return value == null ? null : HostScreenLookStatus.values[value];
       case 136:
-        return HostMenuBarLabels.decode(readValue(buffer)!);
+        return HostMenuConversation.decode(readValue(buffer)!);
       case 137:
-        return HostMenuBarState.decode(readValue(buffer)!);
+        return HostMenuBarLabels.decode(readValue(buffer)!);
       case 138:
-        return HostOrbAction.decode(readValue(buffer)!);
+        return HostMenuBarState.decode(readValue(buffer)!);
       case 139:
-        return HostOrbActions.decode(readValue(buffer)!);
+        return HostOrbAction.decode(readValue(buffer)!);
       case 140:
-        return HostRequest.decode(readValue(buffer)!);
+        return HostOrbActions.decode(readValue(buffer)!);
       case 141:
-        return HostHandshakeResult.decode(readValue(buffer)!);
+        return HostVaultAppend.decode(readValue(buffer)!);
       case 142:
-        return HostModelRequest.decode(readValue(buffer)!);
+        return HostRequest.decode(readValue(buffer)!);
       case 143:
-        return HostModelLoadResult.decode(readValue(buffer)!);
+        return HostHandshakeResult.decode(readValue(buffer)!);
       case 144:
-        return HostConversationTurn.decode(readValue(buffer)!);
+        return HostModelRequest.decode(readValue(buffer)!);
       case 145:
-        return HostGenerationRequest.decode(readValue(buffer)!);
+        return HostModelLoadResult.decode(readValue(buffer)!);
       case 146:
-        return HostGenerationAcknowledgement.decode(readValue(buffer)!);
+        return HostConversationTurn.decode(readValue(buffer)!);
       case 147:
-        return HostCancellationAcknowledgement.decode(readValue(buffer)!);
+        return HostGenerationRequest.decode(readValue(buffer)!);
       case 148:
-        return HostOperationCompletion.decode(readValue(buffer)!);
+        return HostGenerationAcknowledgement.decode(readValue(buffer)!);
       case 149:
-        return HostGenerationEvent.decode(readValue(buffer)!);
+        return HostCancellationAcknowledgement.decode(readValue(buffer)!);
       case 150:
-        return HostTransitionGeometry.decode(readValue(buffer)!);
+        return HostOperationCompletion.decode(readValue(buffer)!);
       case 151:
-        return HostPlaceHit.decode(readValue(buffer)!);
+        return HostGenerationEvent.decode(readValue(buffer)!);
       case 152:
-        return HostCalendarEvent.decode(readValue(buffer)!);
+        return HostTransitionGeometry.decode(readValue(buffer)!);
       case 153:
-        return HostCalendarAnswer.decode(readValue(buffer)!);
+        return HostPlaceHit.decode(readValue(buffer)!);
       case 154:
+        return HostCalendarEvent.decode(readValue(buffer)!);
+      case 155:
+        return HostCalendarAnswer.decode(readValue(buffer)!);
+      case 156:
         return HostScreenLookResult.decode(readValue(buffer)!);
       default:
         return super.readValueOfType(type, buffer);
@@ -2096,6 +2176,109 @@ class DesktopHostApi {
       pigeonVar_channelName,
       isNullValid: true,
     );
+  }
+
+  /// Asks the user for the folder in their notes to write into.
+  ///
+  /// Returns its path, or empty if they backed out. A sandboxed app may only
+  /// reach what a panel handed it, so this is also where the lasting grant is
+  /// taken: the folder is kept as a security-scoped bookmark, and without one
+  /// the app would have to ask again on every launch.
+  Future<String> chooseVaultFolder(HostRequest request) async {
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.local_agent_macos.DesktopHostApi.chooseVaultFolder$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channel = BasicMessageChannel<Object?>(
+      pigeonVar_channelName,
+      pigeonChannelCodec,
+      binaryMessenger: pigeonVar_binaryMessenger,
+    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(
+      <Object?>[request],
+    );
+    final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
+
+    final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: false,
+    );
+    return pigeonVar_replyValue! as String;
+  }
+
+  /// The folder currently being written into, or empty if there is none.
+  ///
+  /// Resolved from the stored bookmark rather than remembered as a string:
+  /// a path that no longer opens is not a folder, and showing one in Settings
+  /// that cannot be written to is the failure this is meant to make visible.
+  Future<String> vaultFolder(HostRequest request) async {
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.local_agent_macos.DesktopHostApi.vaultFolder$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channel = BasicMessageChannel<Object?>(
+      pigeonVar_channelName,
+      pigeonChannelCodec,
+      binaryMessenger: pigeonVar_binaryMessenger,
+    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(
+      <Object?>[request],
+    );
+    final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
+
+    final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: false,
+    );
+    return pigeonVar_replyValue! as String;
+  }
+
+  /// Stops writing into the user's notes and forgets how to reach them.
+  Future<void> forgetVaultFolder(HostRequest request) async {
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.local_agent_macos.DesktopHostApi.forgetVaultFolder$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channel = BasicMessageChannel<Object?>(
+      pigeonVar_channelName,
+      pigeonChannelCodec,
+      binaryMessenger: pigeonVar_binaryMessenger,
+    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(
+      <Object?>[request],
+    );
+    final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
+
+    _extractReplyValueOrThrow(
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: true,
+    );
+  }
+
+  /// Appends one entry to a file in the chosen folder, creating it if needed.
+  ///
+  /// Appending rather than writing, always: the file is in someone else's
+  /// vault, where they may have edited it, linked it, or written underneath
+  /// it, and a tool that rewrites it destroys that silently.
+  Future<HostVaultStatus> appendToVault(
+    HostRequest request,
+    HostVaultAppend append,
+  ) async {
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.local_agent_macos.DesktopHostApi.appendToVault$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channel = BasicMessageChannel<Object?>(
+      pigeonVar_channelName,
+      pigeonChannelCodec,
+      binaryMessenger: pigeonVar_binaryMessenger,
+    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(
+      <Object?>[request, append],
+    );
+    final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
+
+    final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: false,
+    );
+    return pigeonVar_replyValue! as HostVaultStatus;
   }
 
   /// Whether the app currently starts itself when the user logs in.

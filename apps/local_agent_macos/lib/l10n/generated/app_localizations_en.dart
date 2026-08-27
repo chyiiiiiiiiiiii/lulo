@@ -695,6 +695,42 @@ class AppLocalizationsEn extends AppLocalizations {
   String get orbStop => 'Stop';
 
   @override
+  String get sectionObsidian => 'Your notes';
+
+  @override
+  String get obsidianJournal => 'Write finished exchanges into my notes';
+
+  @override
+  String get obsidianJournalNote =>
+      'One page a day, appended as you go, in Markdown. Nothing already written is ever changed — the page is yours, and it stays readable long after Lulo is gone.';
+
+  @override
+  String get obsidianChooseFolder => 'Choose folder…';
+
+  @override
+  String get obsidianChangeFolder => 'Change folder…';
+
+  @override
+  String get obsidianNoFolder => 'No folder chosen yet.';
+
+  @override
+  String get obsidianForget => 'Stop and forget the folder';
+
+  @override
+  String get obsidianDayHeading => 'Talking with Lulo';
+
+  @override
+  String get obsidianWriteDenied =>
+      'The folder can no longer be opened. It was moved, renamed, or deleted — choose it again.';
+
+  @override
+  String get obsidianWriteFailed => 'The last entry could not be written.';
+
+  @override
+  String get obsidianWriteNoVault =>
+      'Nothing is being written: no folder has been chosen.';
+
+  @override
   String get activityIdle => 'Ready';
 
   @override

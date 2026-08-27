@@ -44,6 +44,10 @@ final class SettingsSheet extends StatelessWidget {
     this.openDocument,
     this.closeDocument,
     this.openDocumentName,
+    this.vaultFolder,
+    this.chooseVaultFolder,
+    this.forgetVaultFolder,
+    this.lastVaultWrite,
     this.catalog = modelCatalog,
     super.key,
   });
@@ -107,6 +111,23 @@ final class SettingsSheet extends StatelessWidget {
 
   /// Offers the save panel again for a transcript already in hand.
   final Future<(TranscribeOutcome, String?)> Function()? saveHeldTranscript;
+
+  /// The folder in the user's notes being written into, or null on a surface
+  /// with no window host to ask — a test, or the app before it has one.
+  ///
+  /// Asked rather than stored, for the same reason [loginItem] is: the grant
+  /// belongs to macOS and the folder can be moved or deleted while the app is
+  /// not looking, so a remembered path would eventually be a wrong one.
+  final Future<String> Function()? vaultFolder;
+
+  /// Asks the user for the folder to write into, returning its path.
+  final Future<String> Function()? chooseVaultFolder;
+
+  /// Stops writing and forgets how to reach the folder.
+  final Future<void> Function()? forgetVaultFolder;
+
+  /// How the last write into the notes went, or null where nothing writes.
+  final ValueListenable<DesktopVaultStatus?>? lastVaultWrite;
 
   /// Picks a file for questions to be answered out of, returning its name,
   /// empty when the user backed out, or null when it could not be read.
@@ -325,6 +346,17 @@ final class SettingsSheet extends StatelessWidget {
                           ),
                         ],
                       ),
+                      if (vaultFolder != null && chooseVaultFolder != null)
+                        _ObsidianSection(
+                          enabled: settings.obsidianJournal,
+                          onEnabledChanged: (bool value) => onChanged(
+                            settings.copyWith(obsidianJournal: value),
+                          ),
+                          folder: vaultFolder!,
+                          choose: chooseVaultFolder!,
+                          forget: forgetVaultFolder,
+                          lastWrite: lastVaultWrite,
+                        ),
                       SettingsSection(
                         title: words.sectionHearing,
                         children: <Widget>[
@@ -1028,6 +1060,144 @@ final class NoticeLedgerTile extends StatelessWidget {
               : null,
         );
       },
+    );
+  }
+}
+
+/// Where the agent writes into the user's own notes, and whether it does.
+///
+/// The folder is asked for rather than remembered: the grant belongs to
+/// macOS, and a vault can be moved, renamed or deleted while the app is not
+/// looking. Showing a stored path that no longer opens is exactly the failure
+/// this pane exists to make visible.
+final class _ObsidianSection extends StatefulWidget {
+  const _ObsidianSection({
+    required this.enabled,
+    required this.onEnabledChanged,
+    required this.folder,
+    required this.choose,
+    required this.forget,
+    required this.lastWrite,
+  });
+
+  final bool enabled;
+  final ValueChanged<bool> onEnabledChanged;
+  final Future<String> Function() folder;
+  final Future<String> Function() choose;
+  final Future<void> Function()? forget;
+  final ValueListenable<DesktopVaultStatus?>? lastWrite;
+
+  @override
+  State<_ObsidianSection> createState() => _ObsidianSectionState();
+}
+
+final class _ObsidianSectionState extends State<_ObsidianSection> {
+  String? _folder;
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(_read());
+  }
+
+  Future<void> _read() async {
+    final String folder = await widget.folder();
+    if (mounted) {
+      setState(() => _folder = folder);
+    }
+  }
+
+  Future<void> _choose() async {
+    final String chosen = await widget.choose();
+    if (!mounted || chosen.isEmpty) {
+      return;
+    }
+    setState(() => _folder = chosen);
+    // Choosing a folder is asking for this, and a switch the user then has to
+    // find and flip is a step that does nothing but wait for them.
+    if (!widget.enabled) {
+      widget.onEnabledChanged(true);
+    }
+  }
+
+  Future<void> _forget() async {
+    await widget.forget?.call();
+    if (!mounted) {
+      return;
+    }
+    setState(() => _folder = '');
+    widget.onEnabledChanged(false);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final AppLocalizations words = AppLocalizations.of(context);
+    final String folder = _folder ?? '';
+    return SettingsSection(
+      title: words.sectionObsidian,
+      note: words.obsidianJournalNote,
+      children: <Widget>[
+        ListTile(
+          key: const Key('setting-obsidian-folder'),
+          title: Text(folder.isEmpty ? words.obsidianNoFolder : folder),
+          trailing: TextButton(
+            key: const Key('setting-obsidian-choose'),
+            onPressed: () => unawaited(_choose()),
+            child: Text(
+              folder.isEmpty
+                  ? words.obsidianChooseFolder
+                  : words.obsidianChangeFolder,
+            ),
+          ),
+        ),
+        // Only once there is somewhere to write: a switch that turns on a
+        // mirror with no folder behind it is a switch that does nothing.
+        if (folder.isNotEmpty) ...<Widget>[
+          SwitchListTile(
+            key: const Key('setting-obsidian-journal'),
+            value: widget.enabled,
+            title: Text(words.obsidianJournal),
+            onChanged: widget.onEnabledChanged,
+          ),
+          if (widget.lastWrite
+              case final ValueListenable<DesktopVaultStatus?> lastWrite)
+            ValueListenableBuilder<DesktopVaultStatus?>(
+              valueListenable: lastWrite,
+              builder:
+                  (
+                    BuildContext context,
+                    DesktopVaultStatus? status,
+                    Widget? child,
+                  ) {
+                    final String? trouble = switch (status) {
+                      DesktopVaultStatus.denied => words.obsidianWriteDenied,
+                      DesktopVaultStatus.failed => words.obsidianWriteFailed,
+                      DesktopVaultStatus.noVault => words.obsidianWriteNoVault,
+                      DesktopVaultStatus.written || null => null,
+                    };
+                    if (trouble == null) {
+                      return const SizedBox.shrink();
+                    }
+                    return ListTile(
+                      key: const Key('setting-obsidian-trouble'),
+                      leading: Icon(
+                        Icons.error_outline_rounded,
+                        color: Theme.of(context).colorScheme.error,
+                      ),
+                      title: Text(trouble),
+                    );
+                  },
+            ),
+          if (widget.forget != null)
+            ListTile(
+              key: const Key('setting-obsidian-forget'),
+              title: TextButton(
+                onPressed: () => unawaited(_forget()),
+                child: Text(words.obsidianForget),
+              ),
+            ),
+        ],
+      ],
     );
   }
 }

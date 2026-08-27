@@ -16,6 +16,7 @@ export 'src/conversation/conversation_markdown.dart';
 export 'src/conversation/generation.dart';
 export 'src/conversation/generation_event.dart';
 export 'src/conversation/turn.dart';
+export 'src/obsidian/obsidian_journal.dart';
 export 'src/presence/orb_actions.dart';
 export 'src/transcript_refiner/deterministic_transcript_refiner.dart';
 export 'src/transcript_refiner/transcript_proposal.dart';

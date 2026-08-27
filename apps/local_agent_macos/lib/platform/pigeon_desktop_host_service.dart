@@ -237,6 +237,39 @@ final class PigeonDesktopHostService extends DesktopHostEventApi
   }
 
   @override
+  Future<String> chooseVaultFolder() => _invokeResult(
+    (HostRequest request) => _hostApi.chooseVaultFolder(request),
+  );
+
+  @override
+  Future<String> vaultFolder() =>
+      _invokeResult((HostRequest request) => _hostApi.vaultFolder(request));
+
+  @override
+  Future<void> forgetVaultFolder() =>
+      _invoke((HostRequest request) => _hostApi.forgetVaultFolder(request));
+
+  @override
+  Future<DesktopVaultStatus> appendToVault({
+    required String fileName,
+    required String header,
+    required String entry,
+  }) async {
+    final HostVaultStatus status = await _invokeResult(
+      (HostRequest request) => _hostApi.appendToVault(
+        request,
+        HostVaultAppend(fileName: fileName, header: header, entry: entry),
+      ),
+    );
+    return switch (status) {
+      HostVaultStatus.written => DesktopVaultStatus.written,
+      HostVaultStatus.noVault => DesktopVaultStatus.noVault,
+      HostVaultStatus.denied => DesktopVaultStatus.denied,
+      HostVaultStatus.failed => DesktopVaultStatus.failed,
+    };
+  }
+
+  @override
   void onOrbActionInvoked(String actionId) {
     if (_disposed) {
       return;

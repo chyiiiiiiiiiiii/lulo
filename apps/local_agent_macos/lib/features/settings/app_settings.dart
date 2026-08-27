@@ -21,6 +21,7 @@ final class AppSettings {
     this.answerStyle = AnswerStyle.balanced,
     this.shareFrontmostApp = false,
     this.rememberFacts = false,
+    this.obsidianJournal = false,
     this.liveConversation = false,
   });
 
@@ -58,6 +59,10 @@ final class AppSettings {
         defaults.shareFrontmostApp,
       ),
       rememberFacts: _boolOr(json['rememberFacts'], defaults.rememberFacts),
+      obsidianJournal: _boolOr(
+        json['obsidianJournal'],
+        defaults.obsidianJournal,
+      ),
       liveConversation: _boolOr(
         json['liveConversation'],
         defaults.liveConversation,
@@ -111,6 +116,16 @@ final class AppSettings {
   /// read as consent.
   final bool rememberFacts;
 
+  /// Whether finished exchanges are also appended to the user's own notes.
+  ///
+  /// Off unless the user has said otherwise, and off on any settings file
+  /// that predates the feature. Writing into somebody's vault is a larger
+  /// permission than most: the folder is outside the app's container, the
+  /// files are ones they may have written in themselves, and the whole point
+  /// is that what lands there outlives this app. An absent key must never
+  /// read as consent to that.
+  final bool obsidianJournal;
+
   /// Whether the microphone may stay open for an always-on conversation.
   ///
   /// Off by default, and off on any settings file that predates the switch:
@@ -132,6 +147,7 @@ final class AppSettings {
     AnswerStyle? answerStyle,
     bool? shareFrontmostApp,
     bool? rememberFacts,
+    bool? obsidianJournal,
     bool? liveConversation,
   }) {
     return AppSettings(
@@ -145,6 +161,7 @@ final class AppSettings {
       answerStyle: answerStyle ?? this.answerStyle,
       shareFrontmostApp: shareFrontmostApp ?? this.shareFrontmostApp,
       rememberFacts: rememberFacts ?? this.rememberFacts,
+      obsidianJournal: obsidianJournal ?? this.obsidianJournal,
       liveConversation: liveConversation ?? this.liveConversation,
     );
   }
@@ -160,6 +177,7 @@ final class AppSettings {
     'answerStyle': answerStyle.name,
     'shareFrontmostApp': shareFrontmostApp,
     'rememberFacts': rememberFacts,
+    'obsidianJournal': obsidianJournal,
     'liveConversation': liveConversation,
   };
 
@@ -175,6 +193,7 @@ final class AppSettings {
       other.answerStyle == answerStyle &&
       other.shareFrontmostApp == shareFrontmostApp &&
       other.rememberFacts == rememberFacts &&
+      other.obsidianJournal == obsidianJournal &&
       other.liveConversation == liveConversation;
 
   @override
@@ -188,6 +207,7 @@ final class AppSettings {
     answerStyle,
     shareFrontmostApp,
     rememberFacts,
+    obsidianJournal,
     liveConversation,
   );
 

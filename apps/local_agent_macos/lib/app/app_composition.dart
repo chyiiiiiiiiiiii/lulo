@@ -12,6 +12,7 @@ import '../features/conversation/inference_service.dart';
 import '../features/model/model_catalog.dart';
 import '../features/model/model_download_manager.dart';
 import '../features/model/model_file_service.dart';
+import '../features/obsidian/obsidian_journal_writer.dart';
 import '../features/presence/notice/presence_notice_center.dart';
 import '../features/presence/notice/presence_notice_ledger.dart';
 import '../features/settings/app_settings.dart';
@@ -49,6 +50,8 @@ final class AppComposition {
     ValueNotifier<AnswerStyle>? answerStyle,
     ValueNotifier<bool>? shareFrontmostApp,
     ValueNotifier<bool>? rememberFacts,
+    ValueNotifier<bool>? obsidianJournal,
+    ValueNotifier<String>? vaultHeading,
     ValueNotifier<int>? voiceRequests,
     ValueNotifier<(OrbActionKind, int)?>? orbActionRequests,
     ValueNotifier<bool>? voiceEngaged,
@@ -71,6 +74,8 @@ final class AppComposition {
            answerStyle ?? ValueNotifier<AnswerStyle>(AnswerStyle.balanced),
        shareFrontmostApp = shareFrontmostApp ?? ValueNotifier<bool>(false),
        rememberFacts = rememberFacts ?? ValueNotifier<bool>(false),
+       obsidianJournal = obsidianJournal ?? ValueNotifier<bool>(false),
+       vaultHeading = vaultHeading ?? ValueNotifier<String>('Lulo'),
        agentProfile = agentProfile ?? InMemoryAgentProfileStore(),
        ttsVoice = ttsVoice ?? ValueNotifier<String>('ryan'),
        transcriptRefiner =
@@ -84,11 +89,46 @@ final class AppComposition {
        unfinishedEndings = unfinishedEndings ?? _emptyVocabulary,
        _changeModel = changeModel ?? _keepThePreview,
        settingsStore = settingsStore ?? InMemorySettingsStore(),
-       modelDownloads = modelDownloads ?? _downloadsNowhere(),
-       _conversationRepository = ConversationRepository(
-         storageService: storageService,
-         inferenceService: inferenceService,
-       );
+       modelDownloads = modelDownloads ?? _downloadsNowhere() {
+    // Built here rather than in the initializer list so that it listens to
+    // *this* graph's notifiers. Constructed up there it would be handed a
+    // second notifier made from the same defaulted argument, and the setting
+    // the user flips would be a different object from the one it reads.
+    //
+    // Wrapped rather than hooked into: with no window host there is nothing
+    // to write through, and the app then runs with no mirror in the graph at
+    // all rather than with one that quietly does nothing.
+    final DesktopPresentationHost? host = presentationHost;
+    journal = host == null
+        ? null
+        : ObsidianJournalWriter(
+            inner: storageService,
+            append: host.appendToVault,
+            enabled: this.obsidianJournal,
+            heading: this.vaultHeading,
+          );
+    _conversationRepository = ConversationRepository(
+      storageService: journal ?? storageService,
+      inferenceService: inferenceService,
+    );
+  }
+
+  /// Where finished exchanges are also written, or null with no window host.
+  ///
+  /// Held so Settings can read how the last write went. A mirror that has
+  /// quietly stopped working is worse than one never turned on: the user
+  /// believes their thinking is being kept somewhere it is not.
+  late final ObsidianJournalWriter? journal;
+
+  /// Whether finished exchanges are appended to the user's own notes.
+  final ValueNotifier<bool> obsidianJournal;
+
+  /// What a day's page in the vault is called, in the user's own language.
+  ///
+  /// A notifier written by the shell for the same reason the menu bar's
+  /// labels are pushed: the words come from `AppLocalizations`, which needs a
+  /// context, and this graph is built before there is one.
+  final ValueNotifier<String> vaultHeading;
 
   /// Where a trigger becomes, or fails to become, a quietly lit orb.
   ///
@@ -254,7 +294,7 @@ final class AppComposition {
 
   final FutureOr<void> Function() _disposeServices;
   final Future<void> Function(String modelPath) _changeModel;
-  final ConversationRepository _conversationRepository;
+  late final ConversationRepository _conversationRepository;
   int _nextConversation = 1;
   bool _disposed = false;
 

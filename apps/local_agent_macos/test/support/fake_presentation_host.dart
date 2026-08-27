@@ -209,6 +209,37 @@ final class FakePresentationHost implements DesktopPresentationHost {
     offeredOrbActions = actions;
   }
 
+  /// Everything the agent has written into the user's notes, in order.
+  final List<({String fileName, String header, String entry})> vaultWrites =
+      <({String fileName, String header, String entry})>[];
+
+  /// What the folder picker answers, and what the folder currently is.
+  String vault = '';
+
+  /// What the next append comes back as.
+  DesktopVaultStatus vaultStatus = DesktopVaultStatus.written;
+
+  @override
+  Future<String> chooseVaultFolder() async => vault;
+
+  @override
+  Future<String> vaultFolder() async => vault;
+
+  @override
+  Future<void> forgetVaultFolder() async {
+    vault = '';
+  }
+
+  @override
+  Future<DesktopVaultStatus> appendToVault({
+    required String fileName,
+    required String header,
+    required String entry,
+  }) async {
+    vaultWrites.add((fileName: fileName, header: header, entry: entry));
+    return vaultStatus;
+  }
+
   @override
   Future<void> setMenuBarState({
     required List<({ConversationId id, String title})> conversations,

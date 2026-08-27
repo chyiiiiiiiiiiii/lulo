@@ -543,6 +543,10 @@ final class _PresentationSwitchState extends State<_PresentationSwitch>
       return;
     }
     final AppLocalizations words = AppLocalizations.of(context);
+    // The vault's pages are titled in the user's language too, and this is
+    // the one place in the shell that already has both a context and a habit
+    // of pushing words outwards.
+    widget.composition.vaultHeading.value = words.obsidianDayHeading;
     final DesktopAgentActivity activity = _menuActivity;
     if (reloadConversations) {
       final List<ConversationSummary> recent = await widget.composition
@@ -887,6 +891,7 @@ final class _PresentationSwitchState extends State<_PresentationSwitch>
     widget.composition.answerStyle.value = settings.answerStyle;
     widget.composition.shareFrontmostApp.value = settings.shareFrontmostApp;
     widget.composition.rememberFacts.value = settings.rememberFacts;
+    widget.composition.obsidianJournal.value = settings.obsidianJournal;
     await widget.composition.presentationHost?.setWindowBehaviour(
       keepOrbOnTop: settings.keepOrbOnTop,
       followAcrossSpaces: settings.followAcrossSpaces,
@@ -1346,6 +1351,10 @@ final class _PresentationSwitchState extends State<_PresentationSwitch>
                               .presentationHost
                               ?.setLaunchAtLogin,
                           sidecarProbe: widget.composition.sidecarProbe,
+                          vaultFolder: host.vaultFolder,
+                          chooseVaultFolder: host.chooseVaultFolder,
+                          forgetVaultFolder: host.forgetVaultFolder,
+                          lastVaultWrite: widget.composition.journal?.lastWrite,
                           transcribeRecording:
                               widget.composition.voiceService == null ||
                                   widget.composition.presentationHost == null

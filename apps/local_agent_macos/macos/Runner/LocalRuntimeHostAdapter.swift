@@ -20,7 +20,8 @@ final class LocalRuntimeDesktopHostApi: DesktopHostApi {
     eventBridge: GenerationEventBridge,
     modelAccess: ChosenModelAccess = ChosenModelAccess(),
     menuBar: MenuBarController? = nil,
-    screenLook: ScreenLookController? = nil
+    screenLook: ScreenLookController? = nil,
+    vault: ObsidianVault = ObsidianVault()
   ) {
     self.panelController = panelController
     self.coordinator = coordinator
@@ -28,7 +29,12 @@ final class LocalRuntimeDesktopHostApi: DesktopHostApi {
     self.modelAccess = modelAccess
     self.menuBar = menuBar
     self.screenLook = screenLook
+    self.vault = vault
   }
+
+  /// The folder in the user's own notes the agent writes into, if they chose
+  /// one. Held whether or not there is a grant: it answers "no vault" itself.
+  private let vault: ObsidianVault
 
   /// Takes the invited look at the screen, absent in the window tests.
   private let screenLook: ScreenLookController?
@@ -504,6 +510,66 @@ final class LocalRuntimeDesktopHostApi: DesktopHostApi {
           )
         }
       )
+    }
+  }
+
+  func chooseVaultFolder(
+    request: HostRequest,
+    completion: @escaping (Result<String, Error>) -> Void
+  ) {
+    do {
+      try validatePanelRequest(request)
+    } catch {
+      return completion(.failure(error))
+    }
+    onMain { [vault] in
+      completion(.success(vault.choose() ?? ""))
+    }
+  }
+
+  func vaultFolder(
+    request: HostRequest,
+    completion: @escaping (Result<String, Error>) -> Void
+  ) {
+    do {
+      try validatePanelRequest(request)
+    } catch {
+      return completion(.failure(error))
+    }
+    completion(.success(vault.folder()?.path ?? ""))
+  }
+
+  func forgetVaultFolder(request: HostRequest) throws {
+    try validatePanelRequest(request)
+    vault.forget()
+  }
+
+  func appendToVault(
+    request: HostRequest,
+    append: HostVaultAppend,
+    completion: @escaping (Result<HostVaultStatus, Error>) -> Void
+  ) {
+    do {
+      try validatePanelRequest(request)
+    } catch {
+      return completion(.failure(error))
+    }
+    // Off the main thread on purpose: the vault can be on a synced folder or
+    // a network volume, and a turn must never wait on somebody's Dropbox.
+    DispatchQueue.global(qos: .utility).async { [vault] in
+      let outcome = vault.append(
+        fileName: append.fileName,
+        header: append.header,
+        entry: append.entry
+      )
+      let status: HostVaultStatus =
+        switch outcome {
+        case .written: .written
+        case .noVault: .noVault
+        case .denied: .denied
+        case .failed: .failed
+        }
+      DispatchQueue.main.async { completion(.success(status)) }
     }
   }
 

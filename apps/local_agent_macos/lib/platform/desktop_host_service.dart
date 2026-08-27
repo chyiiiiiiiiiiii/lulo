@@ -628,6 +628,22 @@ final class DesktopOrbAction {
   int get hashCode => Object.hash(id, symbol, label, engaged);
 }
 
+/// How one write into the user's own notes ended.
+enum DesktopVaultStatus {
+  /// The entry is on disk.
+  written,
+
+  /// No folder has been chosen, so there was nowhere to write.
+  noVault,
+
+  /// The folder was chosen once and macOS will not hand it back — it was
+  /// moved, deleted, or the grant did not survive.
+  denied,
+
+  /// It was reached and the write failed anyway.
+  failed,
+}
+
 /// The narrow desktop-window capability the app shell needs.
 ///
 /// Declared separately from [DesktopHostService] so the shell can depend on the
@@ -678,6 +694,33 @@ abstract interface class DesktopPresentationHost {
 
   /// Buttons pressed on the resting orb, by their identifier.
   Stream<String> get orbActionInvocations;
+
+  /// Asks the user for the folder in their notes to write into.
+  ///
+  /// Returns its path, or empty if they backed out. A sandboxed app reaches
+  /// only what a panel handed it, so this is also where the lasting grant is
+  /// taken — without one the app would have to ask again on every launch.
+  Future<String> chooseVaultFolder();
+
+  /// The folder currently being written into, or empty if there is none.
+  ///
+  /// Resolved from the stored grant rather than remembered as a string: a
+  /// path that no longer opens is not a folder, and a Settings pane showing
+  /// one that cannot be written to is the failure this makes visible.
+  Future<String> vaultFolder();
+
+  /// Stops writing into the user's notes and forgets how to reach them.
+  Future<void> forgetVaultFolder();
+
+  /// Appends one entry to [fileName] in the chosen folder.
+  ///
+  /// [header] is written only when the file does not exist yet. Nothing
+  /// already on disk is ever rewritten: the file is in somebody else's vault.
+  Future<DesktopVaultStatus> appendToVault({
+    required String fileName,
+    required String header,
+    required String entry,
+  });
 
   /// Text the user sent from another app's Services menu.
   ///

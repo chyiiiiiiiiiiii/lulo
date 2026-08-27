@@ -1426,6 +1426,22 @@ final class RecordingDesktopHostService implements DesktopHostService {
   Future<void> setOrbActions(List<DesktopOrbAction> actions) async {}
 
   @override
+  Future<String> chooseVaultFolder() async => '';
+
+  @override
+  Future<String> vaultFolder() async => '';
+
+  @override
+  Future<void> forgetVaultFolder() async {}
+
+  @override
+  Future<DesktopVaultStatus> appendToVault({
+    required String fileName,
+    required String header,
+    required String entry,
+  }) async => DesktopVaultStatus.noVault;
+
+  @override
   Future<void> setMenuBarState({
     required List<({ConversationId id, String title})> conversations,
     required String modelName,

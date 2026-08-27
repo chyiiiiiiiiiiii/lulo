@@ -1329,6 +1329,72 @@ abstract class AppLocalizations {
   /// **'Stop'**
   String get orbStop;
 
+  /// No description provided for @sectionObsidian.
+  ///
+  /// In en, this message translates to:
+  /// **'Your notes'**
+  String get sectionObsidian;
+
+  /// No description provided for @obsidianJournal.
+  ///
+  /// In en, this message translates to:
+  /// **'Write finished exchanges into my notes'**
+  String get obsidianJournal;
+
+  /// No description provided for @obsidianJournalNote.
+  ///
+  /// In en, this message translates to:
+  /// **'One page a day, appended as you go, in Markdown. Nothing already written is ever changed — the page is yours, and it stays readable long after Lulo is gone.'**
+  String get obsidianJournalNote;
+
+  /// No description provided for @obsidianChooseFolder.
+  ///
+  /// In en, this message translates to:
+  /// **'Choose folder…'**
+  String get obsidianChooseFolder;
+
+  /// No description provided for @obsidianChangeFolder.
+  ///
+  /// In en, this message translates to:
+  /// **'Change folder…'**
+  String get obsidianChangeFolder;
+
+  /// No description provided for @obsidianNoFolder.
+  ///
+  /// In en, this message translates to:
+  /// **'No folder chosen yet.'**
+  String get obsidianNoFolder;
+
+  /// No description provided for @obsidianForget.
+  ///
+  /// In en, this message translates to:
+  /// **'Stop and forget the folder'**
+  String get obsidianForget;
+
+  /// No description provided for @obsidianDayHeading.
+  ///
+  /// In en, this message translates to:
+  /// **'Talking with Lulo'**
+  String get obsidianDayHeading;
+
+  /// No description provided for @obsidianWriteDenied.
+  ///
+  /// In en, this message translates to:
+  /// **'The folder can no longer be opened. It was moved, renamed, or deleted — choose it again.'**
+  String get obsidianWriteDenied;
+
+  /// No description provided for @obsidianWriteFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'The last entry could not be written.'**
+  String get obsidianWriteFailed;
+
+  /// No description provided for @obsidianWriteNoVault.
+  ///
+  /// In en, this message translates to:
+  /// **'Nothing is being written: no folder has been chosen.'**
+  String get obsidianWriteNoVault;
+
   /// No description provided for @activityIdle.
   ///
   /// In en, this message translates to:

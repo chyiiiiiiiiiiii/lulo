@@ -665,6 +665,40 @@ class AppLocalizationsZh extends AppLocalizations {
   String get orbStop => '停止';
 
   @override
+  String get sectionObsidian => '你的筆記';
+
+  @override
+  String get obsidianJournal => '把完成的對話寫進我的筆記';
+
+  @override
+  String get obsidianJournalNote =>
+      '一天一頁，邊談邊附加，寫成 Markdown。已經寫下的內容不會被改動 —— 那一頁是你的，就算有一天不再用 Lulo，它也還在。';
+
+  @override
+  String get obsidianChooseFolder => '選擇資料夾…';
+
+  @override
+  String get obsidianChangeFolder => '換一個資料夾…';
+
+  @override
+  String get obsidianNoFolder => '還沒有選資料夾。';
+
+  @override
+  String get obsidianForget => '停止並忘記這個資料夾';
+
+  @override
+  String get obsidianDayHeading => '跟 Lulo 的對話';
+
+  @override
+  String get obsidianWriteDenied => '這個資料夾已經打不開了。它被搬走、改名或刪掉了 —— 請重新選一次。';
+
+  @override
+  String get obsidianWriteFailed => '上一筆內容沒能寫進去。';
+
+  @override
+  String get obsidianWriteNoVault => '目前什麼都沒寫：還沒有選資料夾。';
+
+  @override
   String get activityIdle => '待命中';
 
   @override
