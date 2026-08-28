@@ -330,6 +330,13 @@ final class _PresentationSwitchState extends State<_PresentationSwitch>
     if (host == null || !mounted) {
       return;
     }
+    // Off unless asked for. An empty list is how the strip is turned off at
+    // the host, so this is the same call rather than a second way in — the
+    // orb goes on answering clicks and drags either way.
+    if (!_settings.orbActions) {
+      await host.setOrbActions(const <DesktopOrbAction>[]);
+      return;
+    }
     final AppLocalizations words = AppLocalizations.of(context);
     final DesktopAgentActivity activity = _menuActivity;
     final bool engaged = widget.composition.voiceEngaged.value;

@@ -1,6 +1,16 @@
 # The orb that answers without opening
 
-**Status:** built. `macos/Runner/OrbActionStrip.swift`,
+**Status:** built, **off by default** — Settings › 你的桌面 › Buttons under
+the resting orb. The three actions all pass the test below; the person it was
+built for looked at it on their own desktop and said the situations where they
+would reach for it do not really come up. That is the more important
+measurement, and it is not one the test could have made. Kept rather than
+deleted because the argument and the tests are the expensive parts and both
+survive being switched off, and because the strip is still the only place the
+microphone can be opened without summoning the window — if a use turns up, it
+is a switch away.
+
+`macos/Runner/OrbActionStrip.swift`,
 `macos/Runner/DesktopPanelController.swift` (`OrbInputPanel`,
 `OrbCatcherView`), `packages/agent_core/lib/src/presence/orb_actions.dart`,
 `lib/app/app.dart` (`_askTheConversation`, `_refreshOrbActions`).

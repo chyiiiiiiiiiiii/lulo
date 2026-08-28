@@ -210,6 +210,14 @@ final class SettingsSheet extends StatelessWidget {
                             ),
                           ),
                           SwitchListTile(
+                            key: const Key('setting-orb-actions'),
+                            value: settings.orbActions,
+                            title: Text(words.orbActionsSetting),
+                            subtitle: Text(words.orbActionsSettingNote),
+                            onChanged: (bool value) =>
+                                onChanged(settings.copyWith(orbActions: value)),
+                          ),
+                          SwitchListTile(
                             key: const Key('setting-follow-across-spaces'),
                             value: settings.followAcrossSpaces,
                             title: Text(words.followAcrossSpaces),

@@ -254,6 +254,8 @@
   "orbStopTalking": "Stop listening",
   "orbLook": "Look at my screen",
   "orbStop": "Stop",
+  "orbActionsSetting": "Buttons under the resting orb",
+  "orbActionsSettingNote": "Hover the orb to talk, take a look at your screen, or stop an answer — without opening the window.",
   "sectionObsidian": "Your notes",
   "obsidianJournal": "Write finished exchanges into my notes",
   "obsidianJournalNote": "One page a day, appended as you go, in Markdown. Nothing already written is ever changed — the page is yours, and it stays readable long after Lulo is gone.",

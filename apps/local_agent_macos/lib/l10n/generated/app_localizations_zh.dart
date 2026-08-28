@@ -665,6 +665,12 @@ class AppLocalizationsZh extends AppLocalizations {
   String get orbStop => '停止';
 
   @override
+  String get orbActionsSetting => '圓球下方的小按鈕';
+
+  @override
+  String get orbActionsSettingNote => '滑鼠停在圓球上，可以直接說話、看螢幕、或停止回答，不用打開視窗。';
+
+  @override
   String get sectionObsidian => '你的筆記';
 
   @override

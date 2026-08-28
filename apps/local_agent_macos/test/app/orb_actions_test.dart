@@ -20,6 +20,7 @@ void main() {
   Future<(FakePresentationHost, AppComposition)> pumpApp(
     WidgetTester tester, {
     String modelPath = '/models/gemma-4-E4B-it.litertlm',
+    bool offered = true,
   }) async {
     final FakePresentationHost host = FakePresentationHost();
     final AppComposition composition = AppComposition(
@@ -27,7 +28,9 @@ void main() {
       storageService: InMemoryConversationStorageService(),
       inferenceService: ControlledInferenceService(),
       presentationHost: host,
-      settingsStore: InMemorySettingsStore(AppSettings(modelPath: modelPath)),
+      settingsStore: InMemorySettingsStore(
+        AppSettings(modelPath: modelPath, orbActions: offered),
+      ),
     );
     addTearDown(() => unawaited(composition.dispose()));
     host.presentation.value = DesktopPresentation.orb;
@@ -66,6 +69,17 @@ void main() {
       isNot(contains('stop')),
       reason: 'nothing is being answered, so there is nothing to stop',
     );
+  });
+
+  testWidgets('nothing is offered until the user asks for the strip', (
+    WidgetTester tester,
+  ) async {
+    final (FakePresentationHost host, _) = await pumpApp(
+      tester,
+      offered: false,
+    );
+
+    expect(host.offeredOrbActions, isEmpty);
   });
 
   testWidgets('an orb with no model to think with offers nothing', (

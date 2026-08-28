@@ -47,8 +47,8 @@ leave. Native because the menu bar is AppKit's; the target objects are held for
 the app's life, because a menu item does not retain its target and a local one
 is deallocated with the shortcut still on screen.
 
-The resting orb answers three things without being opened. Hovering it for
-0.25s raises a capsule beside it: **talk** (opens or closes the microphone
+The resting orb can answer three things without being opened, **off by
+default**. Hovering it for 0.25s raises a capsule beside it: **talk** (opens or closes the microphone
 and leaves the agent resting — the conversation stays mounted while the orb
 rests, which is the difference between an assistant living on the desktop and
 a small window), **look**, and — only while there is something to stop —
@@ -63,7 +63,11 @@ square sits at the very bottom of the stage's frame and the window may never be
 resized to make room. Its words still come from Dart, like the menu bar's. The
 catcher panel grows to hold the strip but claims only what it draws — and while
 it shows, it claims the **gap** too, because a gap the window server hands to
-the desktop is a gap the pointer disappears into on its way to the buttons. See
+the desktop is a gap the pointer disappears into on its way to the buttons. It
+is off because the person it was built for looked at it and could not think of
+a situation where they would reach for it — a thing can be well made, cheap and
+still not earn a permanent place on somebody's desktop, and that is the more
+important measurement. See
 `docs/decisions/the-orb-that-answers-without-opening.md`.
 
 Finished exchanges can be appended to a page in the user's own Obsidian vault,

@@ -695,6 +695,13 @@ class AppLocalizationsEn extends AppLocalizations {
   String get orbStop => 'Stop';
 
   @override
+  String get orbActionsSetting => 'Buttons under the resting orb';
+
+  @override
+  String get orbActionsSettingNote =>
+      'Hover the orb to talk, take a look at your screen, or stop an answer — without opening the window.';
+
+  @override
   String get sectionObsidian => 'Your notes';
 
   @override

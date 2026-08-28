@@ -22,6 +22,7 @@ final class AppSettings {
     this.shareFrontmostApp = false,
     this.rememberFacts = false,
     this.obsidianJournal = false,
+    this.orbActions = false,
     this.liveConversation = false,
   });
 
@@ -63,6 +64,7 @@ final class AppSettings {
         json['obsidianJournal'],
         defaults.obsidianJournal,
       ),
+      orbActions: _boolOr(json['orbActions'], defaults.orbActions),
       liveConversation: _boolOr(
         json['liveConversation'],
         defaults.liveConversation,
@@ -126,6 +128,21 @@ final class AppSettings {
   /// read as consent to that.
   final bool obsidianJournal;
 
+  /// Whether the resting orb raises a strip of buttons under the pointer.
+  ///
+  /// Off, and off on any settings file that predates the switch. The three
+  /// actions it offers all pass the test it was built to — doing them any
+  /// other way costs a summon — and the person it was built for looked at it
+  /// and said the situations where they would reach for it do not really come
+  /// up. That is the more important measurement: something can be well made,
+  /// cheap and still not earn a permanent place on somebody's desktop.
+  ///
+  /// Kept rather than deleted because the argument and the tests are the
+  /// expensive parts and both survive being switched off, and because a use
+  /// for it may turn up — the strip is the only place the microphone can be
+  /// opened without summoning the window.
+  final bool orbActions;
+
   /// Whether the microphone may stay open for an always-on conversation.
   ///
   /// Off by default, and off on any settings file that predates the switch:
@@ -148,6 +165,7 @@ final class AppSettings {
     bool? shareFrontmostApp,
     bool? rememberFacts,
     bool? obsidianJournal,
+    bool? orbActions,
     bool? liveConversation,
   }) {
     return AppSettings(
@@ -162,6 +180,7 @@ final class AppSettings {
       shareFrontmostApp: shareFrontmostApp ?? this.shareFrontmostApp,
       rememberFacts: rememberFacts ?? this.rememberFacts,
       obsidianJournal: obsidianJournal ?? this.obsidianJournal,
+      orbActions: orbActions ?? this.orbActions,
       liveConversation: liveConversation ?? this.liveConversation,
     );
   }
@@ -178,6 +197,7 @@ final class AppSettings {
     'shareFrontmostApp': shareFrontmostApp,
     'rememberFacts': rememberFacts,
     'obsidianJournal': obsidianJournal,
+    'orbActions': orbActions,
     'liveConversation': liveConversation,
   };
 
@@ -194,6 +214,7 @@ final class AppSettings {
       other.shareFrontmostApp == shareFrontmostApp &&
       other.rememberFacts == rememberFacts &&
       other.obsidianJournal == obsidianJournal &&
+      other.orbActions == orbActions &&
       other.liveConversation == liveConversation;
 
   @override
@@ -208,6 +229,7 @@ final class AppSettings {
     shareFrontmostApp,
     rememberFacts,
     obsidianJournal,
+    orbActions,
     liveConversation,
   );
 

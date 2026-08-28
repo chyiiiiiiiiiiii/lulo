@@ -1329,6 +1329,18 @@ abstract class AppLocalizations {
   /// **'Stop'**
   String get orbStop;
 
+  /// No description provided for @orbActionsSetting.
+  ///
+  /// In en, this message translates to:
+  /// **'Buttons under the resting orb'**
+  String get orbActionsSetting;
+
+  /// No description provided for @orbActionsSettingNote.
+  ///
+  /// In en, this message translates to:
+  /// **'Hover the orb to talk, take a look at your screen, or stop an answer — without opening the window.'**
+  String get orbActionsSettingNote;
+
   /// No description provided for @sectionObsidian.
   ///
   /// In en, this message translates to:

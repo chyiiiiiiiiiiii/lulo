@@ -206,6 +206,8 @@
   "orbStopTalking": "停止聆聽",
   "orbLook": "看一下我的螢幕",
   "orbStop": "停止",
+  "orbActionsSetting": "圓球下方的小按鈕",
+  "orbActionsSettingNote": "滑鼠停在圓球上，可以直接說話、看螢幕、或停止回答，不用打開視窗。",
   "sectionObsidian": "你的筆記",
   "obsidianJournal": "把完成的對話寫進我的筆記",
   "obsidianJournalNote": "一天一頁，邊談邊附加，寫成 Markdown。已經寫下的內容不會被改動 —— 那一頁是你的，就算有一天不再用 Lulo，它也還在。",
