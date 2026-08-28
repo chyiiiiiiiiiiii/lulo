@@ -69,7 +69,9 @@ void main() {
         ),
       );
 
-  testWidgets('the two word lists, as they look', (WidgetTester tester) async {
+  testWidgets('the three word lists, as they look', (
+    WidgetTester tester,
+  ) async {
     // The labels were swapped once already: `vocabulary` was called "words it
     // keeps mishearing", which is what `misheard` does, so a user reading the
     // sheet would have filled in the list measured to change the transcript
@@ -87,6 +89,10 @@ void main() {
                 MisheardWord(heard: '天器', meant: '天氣'),
               ],
               vocabulary: const <String>['Lulo', 'Flutter', 'Gemma'],
+              respellings: const <SpokenRespelling>[
+                SpokenRespelling(word: '企業', saidAs: '氣業'),
+                SpokenRespelling(word: '結構', saidAs: '潔構'),
+              ],
             ),
           ),
         ),
