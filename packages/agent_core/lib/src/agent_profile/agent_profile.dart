@@ -1,5 +1,6 @@
 import '../voice/floor_control.dart';
 import 'misheard_word.dart';
+import 'spoken_respelling.dart';
 
 /// How much detail Lulo should provide unless the question requires more.
 enum AgentResponseLength {
@@ -355,6 +356,7 @@ final class AgentProfile {
     List<AgentMemory> memories = const <AgentMemory>[],
     List<String> vocabulary = builtInVocabulary,
     List<MisheardWord> misheard = const <MisheardWord>[],
+    List<SpokenRespelling> respellings = const <SpokenRespelling>[],
     List<String> additionalInstructions = const <String>[],
   }) : floorControl = FloorControl(
          alsoAcknowledgements: turnTaking.acknowledgements,
@@ -363,6 +365,7 @@ final class AgentProfile {
        memories = List<AgentMemory>.unmodifiable(memories),
        vocabulary = List<String>.unmodifiable(vocabulary),
        misheard = List<MisheardWord>.unmodifiable(misheard),
+       respellings = List<SpokenRespelling>.unmodifiable(respellings),
        additionalInstructions = List<String>.unmodifiable(
          additionalInstructions,
        );
@@ -387,6 +390,7 @@ final class AgentProfile {
     List<AgentMemory>? memories,
     List<String>? vocabulary,
     List<MisheardWord>? misheard,
+    List<SpokenRespelling>? respellings,
     List<String>? additionalInstructions,
   }) {
     return AgentProfile(
@@ -398,6 +402,7 @@ final class AgentProfile {
       memories: memories ?? this.memories,
       vocabulary: vocabulary ?? this.vocabulary,
       misheard: misheard ?? this.misheard,
+      respellings: respellings ?? this.respellings,
       additionalInstructions:
           additionalInstructions ?? this.additionalInstructions,
     );
@@ -440,6 +445,16 @@ final class AgentProfile {
   /// they put back exactly what the user said should have been there.
   final List<MisheardWord> misheard;
 
+  /// Words the voice says wrongly, spelled as words it says correctly.
+  ///
+  /// The mirror image of [misheard] on the way out, and needed for the same
+  /// reason: the model at the far end of this is fixed, measured, and wrong
+  /// about a small set of words. [SpokenRespelling] carries what was tried
+  /// instead of this and why none of it worked. Applied at exactly one place,
+  /// the moment the text leaves for the synthesiser — never in the
+  /// conversation, in storage, or on screen.
+  final List<SpokenRespelling> respellings;
+
   /// Developer-authored instructions appended after bounded memories.
   final List<String> additionalInstructions;
 
@@ -454,6 +469,7 @@ final class AgentProfile {
       _listEquals(other.memories, memories) &&
       _listEquals(other.vocabulary, vocabulary) &&
       _listEquals(other.misheard, misheard) &&
+      _listEquals(other.respellings, respellings) &&
       _listEquals(other.additionalInstructions, additionalInstructions);
 
   @override
@@ -466,6 +482,7 @@ final class AgentProfile {
     Object.hashAll(memories),
     Object.hashAll(vocabulary),
     Object.hashAll(misheard),
+    Object.hashAll(respellings),
     Object.hashAll(additionalInstructions),
   );
 }

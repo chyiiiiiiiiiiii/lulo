@@ -173,4 +173,38 @@ void main() {
       const MisheardWord(heard: 'Dark text', meant: 'Dart test'),
     ]);
   });
+
+  test('respellings survive a trip through the file', () {
+    // Same reason as the corrections above: a word the user taught the voice
+    // to say properly, gone on the next launch, is a lesson taught twice.
+    final AgentProfile profile = AgentProfile(
+      respellings: const <SpokenRespelling>[
+        SpokenRespelling(word: '企業', saidAs: '氣業'),
+        SpokenRespelling(word: '結構', saidAs: '潔構'),
+      ],
+    );
+
+    final AgentProfileDecodeResult back = decodeAgentProfile(
+      jsonDecode(jsonEncode(encodeAgentProfile(profile)))
+          as Map<String, Object?>,
+    );
+
+    expect(back.profile.respellings, profile.respellings);
+  });
+
+  test('a malformed respelling is dropped rather than read as blank', () {
+    final AgentProfileDecodeResult back = decodeAgentProfile(<String, Object?>{
+      'schemaVersion': 1,
+      'respellings': <Object?>[
+        <String, Object?>{'saidAs': '氣業'},
+        <String, Object?>{'word': '', 'saidAs': '氣業'},
+        'not a row at all',
+        <String, Object?>{'word': '企業', 'saidAs': '氣業'},
+      ],
+    });
+
+    expect(back.profile.respellings, <SpokenRespelling>[
+      const SpokenRespelling(word: '企業', saidAs: '氣業'),
+    ]);
+  });
 }

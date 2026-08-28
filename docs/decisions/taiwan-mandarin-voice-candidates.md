@@ -198,6 +198,33 @@ screen all keep the real spelling. No model change, no speed cost, and the
 table records the defect each entry fixes so it can be deleted when a
 future model no longer needs it.
 
+### The table the user can reach
+
+The eleven entries above are the ones measured here. They are not the ones
+somebody will hit next, and adding to them meant editing a Python file in
+this repository and restarting a sidecar — while the mirror-image repair for
+the *recogniser*, `AgentProfile.misheard`, has been editable in Settings and
+live on the next turn all along. That asymmetry was the actual complaint the
+next time a word came out wrong.
+
+`AgentProfile.respellings` closes it. Same shape of control, in the same
+section of the same sheet, applied in `PigeonVoiceService.speak` — the single
+place text leaves for the voice, and deliberately the last thing that happens
+to a sentence. The sidecar's built-in table stays where it is as the floor;
+the user's runs first, so teaching a word overrides the shipped entry for it
+rather than fighting it.
+
+Two things a reader should know before extending this. The substitution runs
+on `applyMisheardWords` rather than on a second implementation, because it is
+the same problem — longest rule first, nothing one rule writes read by the
+next, graphemes not code units — and every one of those properties is already
+pinned by a test there. And **"same sound, always" is not enforceable in
+code**: an entry that changes the sound is the voice saying a different word,
+which is worse than the defect it replaces because it is invisible in text.
+`sidecars/tone_probe` is how an entry gets verified; the editor cannot do it,
+so the note under the field says what the field is for and the responsibility
+stays with whoever types in it.
+
 ### What the evidence does support
 
 **Listen before deciding anything else.** Naturalness, pacing, and whether

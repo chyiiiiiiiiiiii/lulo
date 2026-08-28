@@ -71,6 +71,10 @@ Map<String, Object?> encodeAgentProfile(AgentProfile profile) {
       for (final MisheardWord word in profile.misheard)
         <String, Object?>{'heard': word.heard, 'meant': word.meant},
     ],
+    'respellings': <Map<String, Object?>>[
+      for (final SpokenRespelling rule in profile.respellings)
+        <String, Object?>{'word': rule.word, 'saidAs': rule.saidAs},
+    ],
     'additionalInstructions': <String>[...profile.additionalInstructions],
   };
 }
@@ -178,6 +182,7 @@ AgentProfileDecodeResult decodeAgentProfile(Object? json) {
           ? _strings(json['vocabulary'])
           : defaults.vocabulary,
       misheard: _misheard(json['misheard']),
+      respellings: _respellings(json['respellings']),
       additionalInstructions: _strings(json['additionalInstructions']),
     ),
     skippedMemoryIds: skipped,
@@ -217,6 +222,33 @@ AgentMemoryKind _memoryKind(Object? value) =>
 /// string: an empty `heard` would match between every pair of characters in
 /// every transcript, so one bad row in a hand-edited file would rewrite
 /// everything the user says.
+/// The respelling table, dropping any row that cannot do anything.
+///
+/// Same rule as [_misheard] and for the same reason: a row missing either
+/// half is dropped rather than read as an empty string, or one bad row in a
+/// hand-edited file rewrites every sentence on its way to the voice.
+List<SpokenRespelling> _respellings(Object? value) {
+  if (value is! List<Object?>) {
+    return const <SpokenRespelling>[];
+  }
+  final List<SpokenRespelling> rules = <SpokenRespelling>[];
+  for (final Object? entry in value) {
+    if (entry is! Map<Object?, Object?>) {
+      continue;
+    }
+    final Object? word = entry['word'];
+    final Object? saidAs = entry['saidAs'];
+    if (word is! String || saidAs is! String) {
+      continue;
+    }
+    final SpokenRespelling rule = SpokenRespelling(word: word, saidAs: saidAs);
+    if (rule.isUsable) {
+      rules.add(rule);
+    }
+  }
+  return rules;
+}
+
 List<MisheardWord> _misheard(Object? value) {
   if (value is! List<Object?>) {
     return const <MisheardWord>[];

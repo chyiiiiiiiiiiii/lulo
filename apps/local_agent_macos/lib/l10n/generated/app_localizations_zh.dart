@@ -665,6 +665,22 @@ class AppLocalizationsZh extends AppLocalizations {
   String get orbStop => '停止';
 
   @override
+  String get profileRespelling => '它會唸錯的詞';
+
+  @override
+  String get profileRespellingNote =>
+      '有些詞語音模型會唸成另一個詞。把它拼成聽起來對的樣子 —— 企業寫成氣業 —— 它就唸對了。只有語音會看到這個拼法，你的對話紀錄還是原本的字。';
+
+  @override
+  String get profileRespellingWordHint => '原本的詞';
+
+  @override
+  String get profileRespellingSaidAsHint => '改拼成';
+
+  @override
+  String get profileRespellingAdd => '教它';
+
+  @override
   String get orbActionsSetting => '圓球下方的小按鈕';
 
   @override

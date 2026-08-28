@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'app/app.dart';
 import 'app/app_composition.dart';
 import 'app/bootstrap.dart';
+import 'features/agent_profile/agent_profile_store.dart';
 import 'features/model/model_catalog.dart';
 import 'features/settings/app_settings.dart';
 import 'features/voice/pigeon_voice_service.dart';
@@ -26,6 +27,10 @@ Future<void> main() async {
   );
   // Who speaks: kept in a notifier so a voice changed in settings applies
   // to the very next answer without rebuilding the service.
+  // Created here rather than inside the bootstrap so that the voice service,
+  // which is built before it, can read the table of words this voice says
+  // wrongly. The bootstrap is handed the same store.
+  final FileAgentProfileStore agentProfileStore = createAgentProfileStore();
   final ValueNotifier<String> ttsVoice = ValueNotifier<String>(
     settings.ttsVoice,
   );
@@ -49,8 +54,14 @@ Future<void> main() async {
     // button would throw on every tap.
     voiceService: hostingTests || !_speechAnalyzerAvailable()
         ? null
-        : PigeonVoiceService(voiceOf: () => ttsVoice.value),
+        : PigeonVoiceService(
+            voiceOf: () => ttsVoice.value,
+            // Read at every utterance, so a word taught in Settings is said
+            // properly in the very next sentence.
+            respellings: () => agentProfileStore.current.respellings,
+          ),
     ttsVoice: ttsVoice,
+    agentProfileStore: agentProfileStore,
   );
   // Before the first frame, so a conversation the last process died in the
   // middle of is already whole when it is first drawn rather than growing a

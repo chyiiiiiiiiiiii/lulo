@@ -240,6 +240,15 @@ final class AgentProfileSettings extends StatelessWidget {
                   onChanged: (List<MisheardWord> words) =>
                       save((AgentProfile p) => p.copyWith(misheard: words)),
                 ),
+                // The way out, beside the two ways in. Same shape of fix as
+                // the correction above it and the same reason for existing:
+                // the model at the far end is fixed, measured, and wrong
+                // about a small set of words.
+                _RespellingList(
+                  rules: profile.respellings,
+                  onChanged: (List<SpokenRespelling> rules) =>
+                      save((AgentProfile p) => p.copyWith(respellings: rules)),
+                ),
                 _WordList(
                   name: 'vocabulary',
                   title: words.profileVocabulary,
@@ -832,6 +841,128 @@ final class _MisheardListState extends State<_MisheardList> {
                 key: const Key('profile-misheard-add'),
                 onPressed: _add,
                 child: Text(words.profileMisheardAdd),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// The words the voice says wrongly, and what to hand it instead.
+///
+/// A near-twin of [_MisheardList] on purpose: the two are the same repair
+/// made at opposite ends of the conversation, and a user who has just heard
+/// a word mangled should find the same shape of control they used the last
+/// time they were misheard.
+final class _RespellingList extends StatefulWidget {
+  const _RespellingList({required this.rules, required this.onChanged});
+
+  final List<SpokenRespelling> rules;
+  final ValueChanged<List<SpokenRespelling>> onChanged;
+
+  @override
+  State<_RespellingList> createState() => _RespellingListState();
+}
+
+final class _RespellingListState extends State<_RespellingList> {
+  final TextEditingController _word = TextEditingController();
+  final TextEditingController _saidAs = TextEditingController();
+
+  @override
+  void dispose() {
+    _word.dispose();
+    _saidAs.dispose();
+    super.dispose();
+  }
+
+  void _add() {
+    final SpokenRespelling rule = SpokenRespelling(
+      word: _word.text.trim(),
+      saidAs: _saidAs.text.trim(),
+    );
+    // A blank left-hand side would match between every pair of characters in
+    // every sentence on its way to the voice.
+    if (!rule.isUsable || rule.saidAs.isEmpty) {
+      return;
+    }
+    final String key = rule.word.toLowerCase();
+    widget.onChanged(<SpokenRespelling>[
+      ...widget.rules.where(
+        (SpokenRespelling other) => other.word.trim().toLowerCase() != key,
+      ),
+      rule,
+    ]);
+    _word.clear();
+    _saidAs.clear();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final AppLocalizations words = AppLocalizations.of(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        ListTile(
+          contentPadding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+          title: Text(words.profileRespelling),
+          subtitle: Text(words.profileRespellingNote),
+        ),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: <Widget>[
+              for (final (int index, SpokenRespelling rule)
+                  in widget.rules.indexed)
+                InputChip(
+                  label: Text('${rule.word} → ${rule.saidAs}'),
+                  deleteIcon: Icon(
+                    Icons.close,
+                    key: Key('profile-forget-respelling-$index'),
+                    size: 18,
+                  ),
+                  onDeleted: () => widget.onChanged(<SpokenRespelling>[
+                    ...widget.rules.take(index),
+                    ...widget.rules.skip(index + 1),
+                  ]),
+                ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 8),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+          child: Row(
+            children: <Widget>[
+              Expanded(
+                child: TextField(
+                  key: const Key('profile-respelling-word'),
+                  controller: _word,
+                  decoration: InputDecoration(
+                    labelText: words.profileRespellingWordHint,
+                  ),
+                  onSubmitted: (String _) => _add(),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: TextField(
+                  key: const Key('profile-respelling-said-as'),
+                  controller: _saidAs,
+                  decoration: InputDecoration(
+                    labelText: words.profileRespellingSaidAsHint,
+                  ),
+                  onSubmitted: (String _) => _add(),
+                ),
+              ),
+              const SizedBox(width: 8),
+              FilledButton(
+                key: const Key('profile-respelling-add'),
+                onPressed: _add,
+                child: Text(words.profileRespellingAdd),
               ),
             ],
           ),

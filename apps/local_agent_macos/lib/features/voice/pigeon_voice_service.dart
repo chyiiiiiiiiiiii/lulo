@@ -1,5 +1,7 @@
 import 'dart:async';
 
+import 'package:agent_core/agent_core.dart';
+
 import '../../generated/voice_host_api.g.dart';
 import 'voice_service.dart';
 
@@ -14,15 +16,22 @@ final class PigeonVoiceService implements VoiceService, VoiceHostEvents {
   ///
   /// [voiceOf] names who speaks at the moment of each utterance, so a voice
   /// changed in settings applies to the very next answer.
-  PigeonVoiceService({VoiceHostApi? hostApi, String Function()? voiceOf})
-    : this._(hostApi ?? VoiceHostApi(), voiceOf);
+  PigeonVoiceService({
+    VoiceHostApi? hostApi,
+    String Function()? voiceOf,
+    List<SpokenRespelling> Function()? respellings,
+  }) : this._(hostApi ?? VoiceHostApi(), voiceOf, respellings);
 
-  PigeonVoiceService._(this._host, this._voiceOf) {
+  PigeonVoiceService._(this._host, this._voiceOf, this._respellings) {
     VoiceHostEvents.setUp(this);
   }
 
   final VoiceHostApi _host;
   final String Function()? _voiceOf;
+
+  /// Words this voice says wrongly, read again at every utterance so a table
+  /// edited in Settings applies to the very next sentence.
+  final List<SpokenRespelling> Function()? _respellings;
   final StreamController<VoiceEvent> _events =
       StreamController<VoiceEvent>.broadcast();
 
@@ -38,9 +47,24 @@ final class PigeonVoiceService implements VoiceService, VoiceHostEvents {
   @override
   Future<void> finalizeUtterance() => _guard(() => _host.finalizeUtterance());
 
+  /// Says [text], respelled for this voice's known mispronunciations.
+  ///
+  /// This is the one place a respelling is applied, and it is deliberately
+  /// the last thing that happens to the sentence. Everything upstream — the
+  /// turn, the store, the screen, the export — keeps the real spelling, or
+  /// the user reads 氣業 in their own transcript and rightly concludes the
+  /// agent cannot spell. See [SpokenRespelling].
   @override
-  Future<void> speak(String text, {String? language}) =>
-      _guard(() => _host.speak(text, _voiceOf?.call(), language));
+  Future<void> speak(String text, {String? language}) => _guard(
+    () => _host.speak(
+      respellForSpeech(
+        text,
+        _respellings?.call() ?? const <SpokenRespelling>[],
+      ),
+      _voiceOf?.call(),
+      language,
+    ),
+  );
 
   @override
   Future<void> stopSpeaking() => _guard(() => _host.stopSpeaking());

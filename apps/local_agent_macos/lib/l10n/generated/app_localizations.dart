@@ -1329,6 +1329,36 @@ abstract class AppLocalizations {
   /// **'Stop'**
   String get orbStop;
 
+  /// No description provided for @profileRespelling.
+  ///
+  /// In en, this message translates to:
+  /// **'Words it says wrongly'**
+  String get profileRespelling;
+
+  /// No description provided for @profileRespellingNote.
+  ///
+  /// In en, this message translates to:
+  /// **'The voice mispronounces some words badly enough to sound like a different word. Spell one the way it should sound — 企業 as 氣業 — and it will say it right. Only the voice sees the respelling; your transcript keeps the real word.'**
+  String get profileRespellingNote;
+
+  /// No description provided for @profileRespellingWordHint.
+  ///
+  /// In en, this message translates to:
+  /// **'The word'**
+  String get profileRespellingWordHint;
+
+  /// No description provided for @profileRespellingSaidAsHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Spell it this way'**
+  String get profileRespellingSaidAsHint;
+
+  /// No description provided for @profileRespellingAdd.
+  ///
+  /// In en, this message translates to:
+  /// **'Teach'**
+  String get profileRespellingAdd;
+
   /// No description provided for @orbActionsSetting.
   ///
   /// In en, this message translates to:

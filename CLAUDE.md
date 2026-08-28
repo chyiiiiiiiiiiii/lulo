@@ -238,6 +238,24 @@ belongs to macOS, survives reinstalls, and can be revoked in System Settings
 while the app is not running, so it is read back rather than remembered, in
 four states rather than two.
 
+A word it keeps *saying* wrongly can be taught too, and for the same reason
+the misheard list exists: the model at the far end is fixed, measured, and
+wrong about a small set of words. The voice is
+`mlx-community/Qwen3-TTS-12Hz-0.6B-Base-8bit` and it scores 27/37 on the
+pronunciation probe — and the failures are not tones slipping, they are a
+different syllable, which is why 企業 comes back through a recogniser as 奇幼.
+Pinyin annotation is not accepted (`qi1業` renders as 七一一), the unquantised
+build loses the same number of words, and the best alternative measured is
+better on isolated words, no better on real sentences, twice as slow and
+occasionally unintelligible. What works is spelling the word as a homophone.
+`sidecars/pronunciation` ships eleven measured entries and
+`AgentProfile.respellings` lets the user add their own, applied in
+`PigeonVoiceService.speak` — the single place text leaves for the voice, and
+never in the conversation, in storage, or on screen, or the user reads 氣業 in
+their own transcript. It runs on `applyMisheardWords` rather than a second
+substitution engine, because it is the same problem. See
+`docs/decisions/taiwan-mandarin-voice-candidates.md`.
+
 A word it keeps mishearing can be taught once. `AgentProfile.misheard` holds
 `MisheardWord(heard, meant)` pairs and `DeterministicTranscriptRefiner`
 applies them, so 「Dark text」 becomes 「Dart test」 in the question that

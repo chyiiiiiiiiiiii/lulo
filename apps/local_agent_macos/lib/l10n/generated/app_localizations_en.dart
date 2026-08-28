@@ -695,6 +695,22 @@ class AppLocalizationsEn extends AppLocalizations {
   String get orbStop => 'Stop';
 
   @override
+  String get profileRespelling => 'Words it says wrongly';
+
+  @override
+  String get profileRespellingNote =>
+      'The voice mispronounces some words badly enough to sound like a different word. Spell one the way it should sound — 企業 as 氣業 — and it will say it right. Only the voice sees the respelling; your transcript keeps the real word.';
+
+  @override
+  String get profileRespellingWordHint => 'The word';
+
+  @override
+  String get profileRespellingSaidAsHint => 'Spell it this way';
+
+  @override
+  String get profileRespellingAdd => 'Teach';
+
+  @override
   String get orbActionsSetting => 'Buttons under the resting orb';
 
   @override
