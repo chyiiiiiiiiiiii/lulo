@@ -211,6 +211,100 @@ void main() {
       reason: 'The wheel turned and the conversation did not move.',
     );
   });
+
+  testWidgets('an empty conversation offers no way back', (
+    WidgetTester tester,
+  ) async {
+    // Nothing has been said, so there is nothing below the fold and nothing
+    // to go back to — and the button was there before the first word, which
+    // is where it was first noticed.
+    final _Conversation conversation = _Conversation();
+    addTearDown(conversation.dispose);
+
+    await tester.pumpWidget(
+      conversation.surface(bottomInset: 180, height: 600),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    expect(
+      find.byKey(const Key('conversation-scroll-to-bottom')),
+      findsNothing,
+      reason: 'An empty conversation offered a way back to the newest answer.',
+    );
+    // And not by luck: the placeholder is sized to what can be seen, so
+    // there is no scroll to be at the bottom of in the first place.
+    expect(
+      _position(tester).maxScrollExtent,
+      0,
+      reason: 'An empty conversation could be scrolled, over nothing.',
+    );
+  });
+
+  testWidgets('a conversation that fits on screen offers no way back', (
+    WidgetTester tester,
+  ) async {
+    // The exchange ends well above the composer, so every word of it is on
+    // screen. The list can still be scrolled — its bottom padding clears
+    // the glass — and scrolling it reveals nothing but that padding.
+    final _Conversation conversation = _Conversation();
+    addTearDown(conversation.dispose);
+
+    await tester.pumpWidget(
+      conversation.surface(bottomInset: 180, height: 600),
+    );
+    conversation.completedTurns.value = _turns(2);
+    await tester.pump();
+    await tester.pump();
+
+    expect(
+      find.byKey(const Key('conversation-scroll-to-bottom')),
+      findsNothing,
+      reason: 'A conversation with nothing below the fold offered a way back.',
+    );
+  });
+
+  testWidgets('the way back goes when what it pointed at comes into view', (
+    WidgetTester tester,
+  ) async {
+    // The overlay grows while the agent is listening and shrinks again when
+    // it stops, which moves the fold without moving the scroll offset by a
+    // pixel. Nothing was watching that, so a button raised by the taller
+    // overlay stayed on screen over a conversation that now fitted.
+    final _Conversation conversation = _Conversation();
+    addTearDown(conversation.dispose);
+
+    await tester.pumpWidget(
+      conversation.surface(bottomInset: 180, height: 600),
+    );
+    conversation.completedTurns.value = _turns(8);
+    await tester.pump();
+    await tester.pump();
+
+    // Read back, so the newest answer really is off screen.
+    await tester.drag(
+      find.byKey(const Key('conversation-scroll-surface')),
+      const Offset(0, 400),
+    );
+    await tester.pump();
+    expect(
+      find.byKey(const Key('conversation-scroll-to-bottom')),
+      findsOneWidget,
+      reason: 'Reading back offered no way to the newest answer.',
+    );
+
+    // Everything fits again, without the scroll offset changing.
+    conversation.completedTurns.value = _turns(1);
+    await tester.pump();
+    await tester.pump();
+    await tester.pump();
+
+    expect(
+      find.byKey(const Key('conversation-scroll-to-bottom')),
+      findsNothing,
+      reason: 'The way back outlived the answer it was pointing at.',
+    );
+  });
 }
 
 /// Drives a [ConversationList] the way the ViewModel does.
@@ -220,15 +314,22 @@ final class _Conversation {
   );
   final ValueNotifier<Turn?> activeTurn = ValueNotifier<Turn?>(null);
 
-  Widget surface() => MaterialApp(
+  /// The list as the view mounts it, under a glass composer [bottomInset]
+  /// tall.
+  ///
+  /// The real composer is never zero — it is the measured height of the
+  /// overlay the list scrolls beneath — and every question here is about
+  /// what the user can see, so the tests that ask one have to pay it.
+  Widget surface({double bottomInset = 0, double height = 300}) => MaterialApp(
     localizationsDelegates: AppLocalizations.localizationsDelegates,
     supportedLocales: AppLocalizations.supportedLocales,
     home: Scaffold(
       body: SizedBox(
-        height: 300,
+        height: height,
         child: ConversationList(
           completedTurns: completedTurns,
           activeTurn: activeTurn,
+          bottomInset: bottomInset,
         ),
       ),
     ),

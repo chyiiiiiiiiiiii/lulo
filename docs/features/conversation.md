@@ -415,6 +415,36 @@ listener is torn down waits forever, never releasing its session and never
 letting the next one start. The extractor holds the reply completer and
 settles it by hand in `yieldSlot`.
 
+## The way back to the newest answer
+
+`ConversationList` offers a single button, centred over the tail of the list,
+and only while the newest answer is off screen. Everything about it is a
+question of when it is *not* there.
+
+Being near the bottom and following the bottom are kept apart on purpose:
+`_atBottom` decides whether to offer the way back, `_following` decides
+whether a new answer takes the view with it. A scroll that has only just
+begun is still within a hair of the end, and treating that as consent to
+follow is what made reading back impossible.
+
+Whether the fold has moved is watched from **two** places, because it moves
+in two ways. The scroll controller's listener catches the offset changing
+under a list of fixed height. `ScrollMetricsNotification` catches the
+opposite — the list changing height under a fixed offset — and that is the
+one that was missing. The bottom overlay grows while the agent is listening
+and shrinks when it stops, which moves the fold without moving the offset by
+a pixel, so a button raised by the taller overlay stayed on screen over a
+conversation that afterwards fitted on it. The user saw it as a button that
+was simply always there.
+
+The empty-conversation placeholder is sized to `maxHeight - 40 - bottomInset`
+rather than to the viewport. The glass over the tail is not room it has, and
+taking the whole viewport made an empty conversation taller than its own
+scroll view — scrollable over nothing, and offering a way back to an answer
+nobody had asked for yet. It is a `ConstrainedBox` on `minHeight`, not a
+`SizedBox`, so a window too short for the empty state grows instead of
+overflowing.
+
 ## Traps
 
 Ranked by how quietly they break.

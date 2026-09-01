@@ -125,12 +125,30 @@ final class _ConversationListState extends State<ConversationList> {
   }
 
   /// Decides whether the way back to the newest answer is worth offering.
+  ///
+  /// Reached from two places, because the fold moves in two ways. The
+  /// controller's listener catches the offset moving under a still list. The
+  /// metrics notification catches the opposite — the list changing height
+  /// under a still offset, which is what the overlay growing while the agent
+  /// listens and shrinking when it stops does. Nothing watched the second,
+  /// so a button raised by a taller overlay stayed on screen over a
+  /// conversation that afterwards fitted, offering a way back to an answer
+  /// already in view.
   void _watchPosition() {
     final bool atBottom = _isAtBottom();
     if (atBottom == _atBottom) {
       return;
     }
     setState(() => _atBottom = atBottom);
+  }
+
+  /// The list's own height changed, so where the fold falls has changed too.
+  bool _watchMetrics(ScrollMetricsNotification notification) {
+    if (notification.depth != 0) {
+      return false;
+    }
+    _watchPosition();
+    return false;
   }
 
   bool _isAtBottom() {
@@ -257,9 +275,12 @@ final class _ConversationListState extends State<ConversationList> {
       builder: (BuildContext context, BoxConstraints constraints) {
         return Stack(
           children: <Widget>[
-            NotificationListener<ScrollNotification>(
-              onNotification: _watchScroll,
-              child: _scrollSurface(constraints),
+            NotificationListener<ScrollMetricsNotification>(
+              onNotification: _watchMetrics,
+              child: NotificationListener<ScrollNotification>(
+                onNotification: _watchScroll,
+                child: _scrollSurface(constraints),
+              ),
             ),
             // Only offered when it is needed: while the newest answer is on
             // screen there is nothing to go back to.
@@ -301,10 +322,16 @@ final class _ConversationListState extends State<ConversationList> {
                 widget.onCompletedTurnsBuild?.call();
                 _forgetTurnsNoLongerShown(turns);
                 if (turns.isEmpty) {
-                  return SizedBox(
-                    height: (constraints.maxHeight - 40).clamp(
-                      0,
-                      double.infinity,
+                  // The glass over the tail is not room the placeholder has.
+                  // Taking the whole viewport made an empty conversation
+                  // taller than its own scroll view, so the list could be
+                  // scrolled over nothing and offered a way back to an
+                  // answer nobody had asked for yet.
+                  return ConstrainedBox(
+                    constraints: BoxConstraints(
+                      minHeight:
+                          (constraints.maxHeight - 40 - widget.bottomInset)
+                              .clamp(0, double.infinity),
                     ),
                     child: const _EmptyConversation(),
                   );
