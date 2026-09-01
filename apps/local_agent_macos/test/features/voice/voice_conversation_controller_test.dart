@@ -9,6 +9,7 @@ import 'package:local_agent_macos/features/conversation/conversation_view_model.
 import 'package:local_agent_macos/features/conversation/inference_service.dart';
 import 'package:local_agent_macos/features/conversation/token_batcher.dart';
 import 'package:local_agent_macos/features/transcript_refiner/transcript_shadow_coordinator.dart';
+import 'package:local_agent_macos/features/voice/speakable_text.dart';
 import 'package:local_agent_macos/features/voice/voice_conversation_controller.dart';
 import 'package:local_agent_macos/features/voice/voice_service.dart';
 import 'package:local_agent_macos/features/voice/voice_turn_log.dart';

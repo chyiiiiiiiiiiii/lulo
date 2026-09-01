@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:agent_core/agent_core.dart';
 
 import '../../generated/voice_host_api.g.dart';
+import 'speakable_text.dart';
 import 'voice_service.dart';
 
 /// The production [VoiceService]: the native host over pigeon.
@@ -47,18 +48,25 @@ final class PigeonVoiceService implements VoiceService, VoiceHostEvents {
   @override
   Future<void> finalizeUtterance() => _guard(() => _host.finalizeUtterance());
 
-  /// Says [text], respelled for this voice's known mispronunciations.
+  /// Says [text]: stripped of what cannot be spoken, then respelled for
+  /// this voice's known mispronunciations.
   ///
-  /// This is the one place a respelling is applied, and it is deliberately
-  /// the last thing that happens to the sentence. Everything upstream — the
-  /// turn, the store, the screen, the export — keeps the real spelling, or
-  /// the user reads 氣業 in their own transcript and rightly concludes the
-  /// agent cannot spell. See [SpokenRespelling].
+  /// This is the one place either happens, and it is deliberately the last
+  /// thing that happens to the sentence. Everything upstream — the turn, the
+  /// store, the screen, the export — keeps the real spelling, or the user
+  /// reads 氣業 in their own transcript and rightly concludes the agent
+  /// cannot spell. See [SpokenRespelling].
+  ///
+  /// [speakableText] used to run only inside the voice loop, so the
+  /// read-aloud button on a turn handed the raw answer over and the
+  /// synthesiser said the hashes and the list dashes out loud. Applying it
+  /// here covers every caller, including the next one; running it twice on
+  /// the loop's already-stripped text changes nothing.
   @override
   Future<void> speak(String text, {String? language}) => _guard(
     () => _host.speak(
       respellForSpeech(
-        text,
+        speakableText(text),
         _respellings?.call() ?? const <SpokenRespelling>[],
       ),
       _voiceOf?.call(),

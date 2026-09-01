@@ -347,7 +347,14 @@ temperature and `「C# 和 F#」` stays content, because the space after the
 marker is load-bearing. Every assistant turn also carries 「唸給我聽」,
 which calls the voice service directly — going through the conversation
 controller would enable it, which starts listening, which is not what
-reading one answer aloud means.
+reading one answer aloud means. That shortcut had a cost: `speakableText`,
+which takes out the code blocks, links, emoji and markup a synthesiser
+would otherwise read out loud, lived **inside** the controller, so the
+button handed the raw answer over and the voice said the hashes and the
+list dashes. It now runs in `PigeonVoiceService.speak` beside the
+respelling — the one place text leaves for the voice, so every caller
+including the next one is covered, and running it twice on the loop's
+already-stripped text changes nothing.
 
 Stopping an answer stops it. `cancelGeneration` used to abandon the
 decode rather than end it, because on LiteRT-LM **v0.14.0**

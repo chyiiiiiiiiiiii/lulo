@@ -38,7 +38,8 @@ with a way to fail silently.
 | `pigeons/voice_host_api.dart` | The boundary. Edit here, regenerate, never edit the generated pair |
 | `lib/features/voice/voice_service.dart` | The `VoiceService` interface and the `VoiceEvent` union |
 | `lib/features/voice/pigeon_voice_service.dart` | The production implementation; turns host failures into events |
-| `lib/features/voice/voice_conversation_controller.dart` | When to speak, what to speak, when to give way — and `speakableText` |
+| `lib/features/voice/voice_conversation_controller.dart` | When to speak, what to speak, when to give way |
+| `lib/features/voice/speakable_text.dart` | What is left of an answer once everything unsayable is taken out |
 | `lib/features/voice/tts_voices.dart` | The voice list, mirroring the sidecar's |
 | `~/dev/lulo-tts/server.py` | Qwen3-TTS, resident, on `127.0.0.1:46557` |
 
@@ -593,6 +594,18 @@ An empty result is not dispatched at all.
 
 Rules 4 and 5 came out of the full-duplex work and were kept when the rest was
 reverted; see the decision record.
+
+**Where it runs matters more than what it does.** It lived inside the
+controller, which meant it ran for the voice loop and for nothing else — and
+the 「唸給我聽」 button on a turn calls `VoiceService.speak` directly, on
+purpose, because going through the controller would switch the microphone on.
+So the button handed the raw answer to the synthesiser and it read the hashes
+and the list dashes out loud, on exactly the answers a 4B model decorates
+despite being told not to. It now lives in `speakable_text.dart` and runs
+inside `PigeonVoiceService.speak`, beside the respelling, which is the one
+place text leaves this app for a voice. Every caller is covered including the
+next one, and the loop applying it first costs nothing — stripping already
+stripped text is a no-op.
 
 ### Barge-in
 

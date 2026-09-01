@@ -6,6 +6,10 @@ import 'package:local_agent_macos/generated/voice_host_api.g.dart';
 /// The native side, held in the test's hand.
 final class _RecordingHost extends VoiceHostApi {
   final List<String> calls = <String>[];
+
+  /// Just the words handed to the synthesiser, without the call's framing —
+  /// which carries dashes of its own for the absent voice and language.
+  final List<String> spoken = <String>[];
   Object? failWith;
 
   Future<void> _call(String name) async {
@@ -26,8 +30,10 @@ final class _RecordingHost extends VoiceHostApi {
   Future<void> finalizeUtterance() => _call('finalizeUtterance');
 
   @override
-  Future<void> speak(String text, String? voice, String? language) =>
-      _call('speak:$text:${voice ?? "-"}:${language ?? "-"}');
+  Future<void> speak(String text, String? voice, String? language) {
+    spoken.add(text);
+    return _call('speak:$text:${voice ?? "-"}:${language ?? "-"}');
+  }
 
   @override
   Future<void> stopSpeaking() => _call('stopSpeaking');
@@ -35,6 +41,27 @@ final class _RecordingHost extends VoiceHostApi {
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+
+  test('what the voice is handed has no markup left in it', () async {
+    // The read-aloud button hands an answer straight here, and a 4B model
+    // told not to write Markdown writes it anyway. Only the voice loop
+    // stripped it, so pressing the button read "井字號井字號井字號" and
+    // every list item began with a minus. This is the one place text
+    // leaves for the voice, so it is where the stripping belongs.
+    final _RecordingHost host = _RecordingHost();
+    final PigeonVoiceService service = PigeonVoiceService(hostApi: host);
+
+    await service.speak(
+      '### 建議\n\n- 先熱身\n- 再訓練\n\n```dart\nvoid main() {}\n```',
+    );
+
+    expect(host.spoken.single, isNot(contains('#')));
+    expect(host.spoken.single, isNot(contains('-')));
+    expect(host.spoken.single, isNot(contains('`')));
+    expect(host.spoken.single, contains('建議'));
+    expect(host.spoken.single, contains('先熱身'));
+    expect(host.spoken.single, isNot(contains('void main')));
+  });
 
   test('drives the native host and relays its events', () async {
     final _RecordingHost host = _RecordingHost();
