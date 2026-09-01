@@ -26,8 +26,12 @@ jobs:
         run: flutter pub get
       # The gate runs the tone-probe tests, and they measure real waveforms.
       # The other sidecars' tests are import-light on purpose and need
-      # nothing installed; this one genuinely needs numpy, and without it the
-      # gate reported a missing module as a failing measurement tool.
+      # nothing installed; these two genuinely need something. tone_probe
+      # needs numpy, and without it the gate reported a missing module as a
+      # failing measurement tool. pronunciation needs three dictionaries for
+      # `candidates.py` alone -- those tests skip when they are absent, which
+      # is right for a laptop and wrong for CI, where the proposer is the
+      # part nobody would notice going stale.
       # Into a virtual environment, and onto PATH ahead of the runner's own
       # python3, which is Homebrew's and refuses to be installed into (PEP
       # 668). The gate invokes `python3` by name, so this is what it finds —
@@ -38,7 +42,8 @@ jobs:
           python3 -m venv "$RUNNER_TEMP/sidecar-venv"
           "$RUNNER_TEMP/sidecar-venv/bin/python" -m pip install \
             --disable-pip-version-check \
-            -r sidecars/tone_probe/requirements.txt
+            -r sidecars/tone_probe/requirements.txt \
+            -r sidecars/pronunciation/requirements.txt
           echo "$RUNNER_TEMP/sidecar-venv/bin" >> "$GITHUB_PATH"
       - name: Run quality gate
         run: dart tool/verify.dart

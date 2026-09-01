@@ -248,13 +248,60 @@ Pinyin annotation is not accepted (`qi1業` renders as 七一一), the unquantis
 build loses the same number of words, and the best alternative measured is
 better on isolated words, no better on real sentences, twice as slow and
 occasionally unintelligible. What works is spelling the word as a homophone.
-`sidecars/pronunciation` ships eleven measured entries and
+`sidecars/pronunciation` ships **214** measured entries — **1,791 words
+screened** (591 written by hand for what this agent says, then the 1,200
+commonest words of the language) lost **223, one word in eight**, including
+the two a listener reported by ear, 規劃 (窺 what) and 訓練 (碎裂).
 `AgentProfile.respellings` lets the user add their own, applied in
-`PigeonVoiceService.speak` — the single place text leaves for the voice, and
+`PigeonVoiceService.speak`, the single place text leaves for the voice, and
 never in the conversation, in storage, or on screen, or the user reads 氣業 in
-their own transcript. It runs on `applyMisheardWords` rather than a second
-substitution engine, because it is the same problem. See
-`docs/decisions/taiwan-mandarin-voice-candidates.md`.
+their own transcript. Measured over 40 whole answers: character error
+**0.073 → 0.035**, a 52% cut, and **none worse** at any point.
+
+It is a lookup and it has to be: the defect belongs to the **word**, not to
+its characters — 頻率 is right and 頻寬 wrong, 開始 right and 開發 wrong,
+頁面 right and 「128 頁」 wrong — so a character rule would fire on the
+correct words too. The one general rule that looked real is dead and the
+measurement is worth keeping: Simplified spellings fix 開發, 檔案, 網頁, 頁
+and 蔥薑蒜 where no homophone will, but rendering **every** sentence
+Simplified scores 0.0865 against 0.0732, twelve answers worse and two
+better. So the trick is per word, never per sentence — and inside a word it
+is ranked **last**, because a recogniser writes 企業 down whether it heard
+qì yè or qǐ yè, so nothing here can see a Simplified spelling pulling a
+reading toward the mainland standard, while a homophone is tone-safe by
+construction.
+
+What that leaves is a ratio nobody should hide: one word in eight is broken
+and a table only covers the words somebody screened. The answer is that
+**nobody picks an entry by hand any more** — the last **128 entries were
+found and fixed with nobody choosing anything**. `candidates.py` proposes
+(pypinyin for the reading, jieba's word list for how common a character is;
+a candidate whose *primary* reading matches ranks first, because 務 carries
+a literary wú and 之 a rare zhì, and 業无 and 之量 sound like nothing anybody
+says) and `~/dev/lulo-tts/grow_respellings.py` closes the loop: screen,
+propose, verify in the carrier, then verify the word's **sentence** is no
+worse. Two guards are tested: an entry must not be misread inside a longer
+word (行業 → 形業 also fires inside 五金行業, where 行 is háng — every other
+entry is clean against 335,000 dictionary words), and an entry whose reading
+differs from the dictionary's must say **why**, in `READS_DIFFERENTLY`.
+Growing the table is machine time, and it can be regenerated the day the
+voice changes. What the loop **cannot** do, pinned by a test: fix a Taiwan
+reading. 氣業 shares no reading with 企業, so it is not in the pool at any
+depth — that class needs `tone_probe` and a pair of ears.
+
+Both instruments lie in one direction each and the table is built from that:
+the bare carrier `這個詞是X。` destroys 字串 and 檔名, which are word-perfect
+in every sentence, so it convicts the innocent; a natural sentence repairs
+訓練, which a human hears as wrong, so it acquits the guilty. The carrier
+finds a defect, the sentences stop a fix making anything worse, and neither
+alone decides. It runs on `applyMisheardWords` rather than a second
+substitution engine, because it is the same problem, and the Python side
+matches it: one left-to-right pass, longest entry at each position, because
+at this size 檢查 and 查詢 overlap and rounds of `str.replace` answered in
+dictionary order. The voice sidecar imports the table **once at startup**,
+so a word added reaches the user when that process is next started. See
+`docs/decisions/taiwan-mandarin-voice-candidates.md` and
+`sidecars/pronunciation/README.md`.
 
 A word it keeps mishearing can be taught once. `AgentProfile.misheard` holds
 `MisheardWord(heard, meant)` pairs and `DeterministicTranscriptRefiner`

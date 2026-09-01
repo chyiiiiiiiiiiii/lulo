@@ -281,3 +281,142 @@ recogniser would have been able to say otherwise.
   product makes; a better accent is not worth breaking it.
 - **Kokoro** — cached and free to try, but it does not clone a voice, so
   adopting it means abandoning ryan.
+
+## The table grew from eleven words to forty-eight, 2026-08-30
+
+The complaint that reopened this: 「規劃、訓練這兩個詞 agent 講話都會歪嘴」.
+Both are destroyed — 規劃 renders as 窺 what, 訓練 as 碎裂 — and neither was
+in the eleven-word table, because that table was built from the
+thirty-seven probes above and those two are not in them.
+
+So the screen was widened to **287 words** of what the agent actually says,
+carried in `sidecars/pronunciation/corpus.py`. **45 came back wrong.** Every
+one that survived a second look got a respelling, verified the same way as
+the original eleven; thirty-seven of them shipped.
+
+| | before | after |
+|---|---|---|
+| mean character error, 40 whole answers | 0.0732 | **0.0487** |
+| answers improved / unchanged / worsened | | **7 / 33 / 0** |
+
+The *before* column already has the original eleven applied, so that is what
+the new entries are worth on their own.
+
+Three things this round established that the first one could not.
+
+**The carrier convicts the innocent.** 字串 came back as 自傳 in the carrier
+every single time and is word-perfect in two natural sentences. 自傳 is
+simply the likelier pair of characters for that sound. It got no entry, and
+a table built on the carrier alone would have had one.
+
+**The sentence acquits the guilty.** 訓練 comes back perfectly in both of
+its sentences, and a human reported it by ear as wrong — which is how this
+started. 學習, 電視, 客戶 and 溝通 were each repaired by the first sentence
+and destroyed by the second. A recogniser with context is a generous judge,
+so the carrier is what finds a defect and the sentences are what stop a fix
+making anything worse.
+
+**The scorer was flattering the hypothesis.** Five words — 數據, 文件, 權限,
+參數, 計算 — scored as destroyed and were perfect. OpenCC `s2twp` converts
+*terms* as well as characters, rewriting 数据 to 資料 and 权限 to 許可權, so
+the measurement was marking the voice down for the recogniser's own
+post-processing. Measurements here use `s2tw`.
+
+One entry is not a homophone. 開發 has no common homophone for fā and every
+attempt slipped a tone; **开发**, the Simplified spelling, comes back
+perfect. The model has a second door, and it is worth remembering before
+declaring a word unfixable.
+
+None of this changes the recommendation above — the voice is still
+Qwen3-TTS 0.6B Base 8bit, and VoxCPM2 is still not worth twice the time.
+
+### The second round, and the rule that does not exist
+
+A second screen of 304 more words lost another 42, and then a
+frequency-ranked screen of the 1,200 commonest words of the language lost
+141 more. **1,791 words screened, 223 broken — one word in eight.** The
+table is **214 entries** and the forty answers sit at **0.0353**, from
+0.0732 with the table emptied: a 52% cut, none of it borrowed from a
+different model.
+
+That ratio is the uncomfortable part, and it is the honest answer to "does
+this generalise": *not by itself*. So the obvious question was whether one
+rule could replace the table, and it was measured rather than argued.
+
+**It cannot, and here is why.** The defect is a property of the word, not
+of its characters. 頻率 is correct and 頻繁 and 頻寬 are not. 開始 is
+correct and 開發 is not. 頁面 and 首頁 are correct and 「128 頁」 is not. A
+character-level rule fires on the correct words as well, and a table entry
+is the only unit narrow enough.
+
+**The one general rule that looked real, and died.** Simplified spellings
+fixed 開發, 檔案, 網頁, 頁 and 蔥薑蒜 where no homophone would, which
+suggested the model simply prefers the script most of its training data was
+written in — and that rendering every sentence Simplified would replace the
+whole table with one call to OpenCC. Measured over the forty answers with
+the table emptied on both sides: **0.0865 Simplified against 0.0732
+Traditional**, twelve sentences worse and two better. The per-word use of
+the trick stays; the sentence-wide version is dead.
+
+Whether a Simplified spelling also drags a *reading* toward the mainland
+standard is a question this measurement cannot answer, and it is worth being
+explicit about: thirteen known-divergent words came back correct under a
+Simplified spelling, but a recogniser writes 企業 down whether it heard qì yè
+or qǐ yè, so that says the word survived and not which reading was spoken.
+The instrument for that is `sidecars/tone_probe`, which tracks pitch and is
+comparative rather than calibrated. Until somebody runs it, the proposer
+ranks the Simplified spelling **last** and reaches it only when no homophone
+works — a homophone is tone-safe by construction, because the pool is built
+from characters sharing a reading including its tone. Ranked first, it would
+have traded a defect a listener notices for one the measurement is blind to.
+
+### So the loop was automated instead
+
+`sidecars/pronunciation/candidates.py` proposes respellings, ranked by
+`pypinyin` for the reading and `jieba`'s word list for how common a
+character is, with the word's own Simplified spelling first.
+`~/dev/lulo-tts/grow_respellings.py` closes the loop: screen a word, render
+proposals until one brings it back, then check its sentence is no worse.
+The proposer reaches 72 of the 86 hand-picked answers inside its top fifty,
+and it does not need to find the same one — three to five usually pass.
+
+That is what makes the ratio survivable, and it is not a plan — the last
+**128 entries were found and fixed with nobody choosing anything**. The
+loop screened twelve hundred words in about three hours, lost 141, and
+verified a respelling for 131 of them, each against a sentence as well as
+the carrier. Growing the table is machine time now, and it can be re-run
+from scratch the day the voice model changes, which is exactly when a table
+of hand-picked substitutions would otherwise become a liability.
+
+Three guards came out of running it, each after the loop proposed something
+wrong:
+
+**Sharing *a* reading is not sharing *the* reading.** 務 carries a literary
+wú beside its ordinary wù, so 无 was proposed for 業務; 之 carries a rare
+zhì, so 之量 was proposed for 質量. Neither sounds like the word — and the
+bare carrier cannot say so, because 之量 is not a word and the recogniser
+writes 質量 down from a wrong sound. That is the 字串 bias pointing the
+other way. Ranking a candidate whose *primary* reading matches took the
+hand-picked answer from 45 of 86 inside the top twelve to 66.
+
+**A respelling that is safe in a word can be wrong inside a longer one.**
+行業 → 形業 also fires inside 五金行業 and 分行業, where 行 is háng. Every
+other entry, old and new, was checked against 335,000 dictionary words and
+is clean; the check is now a test and a merge filter.
+
+**A frequency list from a mainland dictionary carries mainland words.** 用戶
+scored as broken and Taiwan says 使用者, so the "defect" was the
+recogniser's own term conversion. Dropped by `s2twp(tw2s(word)) != word`.
+
+The residue after three rounds: fourteen words are broken and no spelling
+fixes them (**頻寬, 頻繁, 毫升, 毫米, 諮詢, 研製, 政體, 時期, 反映, 只能,
+行使, 一帶, 不禁, 縣級**). Five are broken in the bare carrier and correct
+in every sentence, and were deliberately left out (**字串, 檔名, 十五, 只要,
+但是**).
+
+And the boundary worth writing down for whoever picks this up: the loop
+fixes a word the voice **destroys**, and cannot touch a word the voice says
+with the mainland reading. 企業 is qǐ yè in the dictionary and qì yè here,
+and 氣 shares no reading with 企, so 氣業 is not in the candidate pool at any
+depth — nor is 維險, nor 西帶. Those came from the tone probe and a pair of
+ears, and the next ones will have to as well.

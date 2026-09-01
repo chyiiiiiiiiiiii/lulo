@@ -1,0 +1,6 @@
+# Only `candidates.py` needs these, and only when proposing new entries.
+# Everything else in this package imports nothing, so the gate can run the
+# tests with nothing installed -- the tests that need these skip instead.
+pypinyin
+jieba
+opencc-python-reimplemented
