@@ -64,6 +64,7 @@ final class VoiceConversationController extends ChangeNotifier {
     List<String> Function() unfinishedEndings = _noUnfinishedEndings,
     CutOffLedger? cutOffs,
     Duration reHearDeadline = const Duration(seconds: 8),
+    AgentLanguage Function() language = _englishConversation,
   }) : this._(
          voice,
          conversation,
@@ -78,6 +79,7 @@ final class VoiceConversationController extends ChangeNotifier {
          unfinishedEndings,
          cutOffs,
          reHearDeadline,
+         language,
        );
 
   VoiceConversationController._(
@@ -94,6 +96,7 @@ final class VoiceConversationController extends ChangeNotifier {
     this._unfinishedEndings,
     this._cutOffs,
     this._reHearDeadline,
+    this._language,
   ) {
     _events = _voice.events.listen(_onVoiceEvent);
     _conversation.completedTurnsListenable.addListener(_onTurnsChanged);
@@ -120,6 +123,13 @@ final class VoiceConversationController extends ChangeNotifier {
   /// said in it.
   final List<MisheardWord> Function() _misheard;
   final BatchScheduler _utteranceScheduler;
+
+  /// Which language this conversation is being held in.
+  ///
+  /// Read at the moment rather than captured, like the vocabulary and the
+  /// corrections beside it: the setting is the user's and they may change it
+  /// between one session and the next.
+  final AgentLanguage Function() _language;
   final DateTime Function() _now;
 
   /// Where the turn-taking rulings are written for the user to read, or
@@ -185,6 +195,9 @@ final class VoiceConversationController extends ChangeNotifier {
 
   /// The vocabulary last pushed to the recogniser, or null before the first.
   List<String>? _pushedVocabulary;
+
+  /// The locale the recogniser was last told, or null before the first.
+  String? _pushedLocale;
   StreamSubscription<VoiceEvent>? _events;
 
   /// When the last utterance settled.
@@ -459,6 +472,7 @@ final class VoiceConversationController extends ChangeNotifier {
     _enabling = false;
     _enabled = true;
     notifyListeners();
+    _pushRecognitionLocale();
     _pushUnfinishedEndings();
     _pushSpokenVocabulary();
     await _voice.startListening();
@@ -1033,7 +1047,7 @@ final class VoiceConversationController extends ChangeNotifier {
       TranscriptProposalRequest(
         requestId: 'voice-shadow-${_nextShadowRequest++}',
         rawTranscript: raw,
-        locale: 'zh-TW',
+        locale: _language().localeTag,
         protectedVocabulary: vocabulary,
         deadline: const Duration(milliseconds: 250),
       ),
@@ -1062,7 +1076,7 @@ final class VoiceConversationController extends ChangeNotifier {
     final TranscriptRefinement refinement = await _transcriptRefiner.refine(
       TranscriptRefinementRequest(
         rawTranscript: raw,
-        locale: 'zh-TW',
+        locale: _language().localeTag,
         protectedVocabulary: vocabulary,
         misheard: _misheard(),
         deadline: const Duration(milliseconds: 250),
@@ -1261,6 +1275,22 @@ final class VoiceConversationController extends ChangeNotifier {
     }
     _pushedEndings = List<String>.unmodifiable(endings);
     unawaited(_voice.useUnfinishedEndings(endings));
+  }
+
+  /// Sends the recogniser the language it is about to hear, if it changed.
+  ///
+  /// Before `startListening`, because the locale is chosen when the session
+  /// opens and a later one would take effect on the session after this one.
+  /// Not re-sent while unchanged, for the reason the vocabulary is not: this
+  /// replaces what the recogniser is holding, and it is usually holding the
+  /// right answer already.
+  void _pushRecognitionLocale() {
+    final String tag = _language().localeTag;
+    if (_pushedLocale == tag) {
+      return;
+    }
+    _pushedLocale = tag;
+    unawaited(_voice.useRecognitionLocale(tag));
   }
 
   /// Sends the recogniser the words this user cares about, if they changed.
@@ -1476,3 +1506,11 @@ final class _RawTranscriptRefiner implements TranscriptRefiner {
     elapsed: Duration.zero,
   );
 }
+
+/// What a conversation's language is when nobody has said otherwise.
+///
+/// English, measured rather than preferred: the resident voice renders
+/// English word-perfect back through a recogniser, where the Chinese side
+/// needed a table of 214 respellings before it could say ordinary words
+/// correctly.
+AgentLanguage _englishConversation() => AgentLanguage.byDefault;

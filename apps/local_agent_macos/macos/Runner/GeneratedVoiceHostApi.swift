@@ -322,6 +322,17 @@ protocol VoiceHostApi {
   /// audio path, where a hop across this channel per tick would cost more
   /// than the decision saves. Replaces the previous list wholesale.
   func useUnfinishedEndings(endings: [String], completion: @escaping (Result<Void, Error>) -> Void)
+  /// Tells the recogniser which language it will be hearing, as a BCP-47
+  /// tag.
+  ///
+  /// The transcriber is monolingual: a locale is chosen once, when the
+  /// session opens, and cannot be asked afterwards what it is hearing. Until
+  /// this existed that choice was made natively from
+  /// `Locale.preferredLanguages`, so the agent spoke whatever the Mac spoke
+  /// and an English agent on a Chinese machine could not be expressed at
+  /// all. Sent before `startListening`, because a locale that arrives after
+  /// the session has opened sets the language of the session after this one.
+  func useRecognitionLocale(bcp47: String, completion: @escaping (Result<Void, Error>) -> Void)
   /// Tells the recogniser the words this user says that it would otherwise
   /// spell as something else — names, products, jargon.
   ///
@@ -475,6 +486,33 @@ class VoiceHostApiSetup {
       }
     } else {
       useUnfinishedEndingsChannel.setMessageHandler(nil)
+    }
+    /// Tells the recogniser which language it will be hearing, as a BCP-47
+    /// tag.
+    ///
+    /// The transcriber is monolingual: a locale is chosen once, when the
+    /// session opens, and cannot be asked afterwards what it is hearing. Until
+    /// this existed that choice was made natively from
+    /// `Locale.preferredLanguages`, so the agent spoke whatever the Mac spoke
+    /// and an English agent on a Chinese machine could not be expressed at
+    /// all. Sent before `startListening`, because a locale that arrives after
+    /// the session has opened sets the language of the session after this one.
+    let useRecognitionLocaleChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.local_agent_macos.VoiceHostApi.useRecognitionLocale\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
+    if let api = api {
+      useRecognitionLocaleChannel.setMessageHandler { message, reply in
+        let args = message as! [Any?]
+        let bcp47Arg = args[0] as! String
+        api.useRecognitionLocale(bcp47: bcp47Arg) { result in
+          switch result {
+          case .success:
+            reply(wrapResult(nil))
+          case .failure(let error):
+            reply(wrapError(error))
+          }
+        }
+      }
+    } else {
+      useRecognitionLocaleChannel.setMessageHandler(nil)
     }
     /// Tells the recogniser the words this user says that it would otherwise
     /// spell as something else — names, products, jargon.

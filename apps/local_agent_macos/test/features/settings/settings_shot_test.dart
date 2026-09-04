@@ -8,6 +8,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:local_agent_macos/features/agent_profile/agent_profile_store.dart';
 import 'package:local_agent_macos/features/settings/agent_profile_settings.dart';
+import 'package:local_agent_macos/features/settings/settings_section.dart';
 import 'package:local_agent_macos/features/settings/settings_sheet.dart';
 import 'package:local_agent_macos/features/sidecar/sidecar_health.dart';
 import 'package:local_agent_macos/l10n/generated/app_localizations.dart';
@@ -68,6 +69,32 @@ void main() {
           ),
         ),
       );
+
+  testWidgets('the language it talks in, in both interface languages', (
+    WidgetTester tester,
+  ) async {
+    // Two axes, and the shot is the argument: the interface follows the Mac
+    // and the conversation follows this switch, so a Chinese-reading user
+    // running an English agent — the configuration this was built for — has
+    // to look right rather than merely be expressible.
+    for (final (String name, Locale locale) in <(String, Locale)>[
+      ('settings-language-en', Locale('en')),
+      ('settings-language-zh', Locale('zh')),
+    ]) {
+      surface(tester, 420);
+      await tester.pumpWidget(
+        frame(
+          locale: locale,
+          height: 420,
+          // Keyed by locale, or the second pump reuses the first's
+          // State and the Chinese shot silently keeps the English chip.
+          _LanguageSectionShot(key: ValueKey<Locale>(locale), locale: locale),
+        ),
+      );
+      await tester.pump();
+      await _shoot(tester, name);
+    }
+  });
 
   testWidgets('the three word lists, as they look', (
     WidgetTester tester,
@@ -210,4 +237,38 @@ File _materialIcons() {
     at = at.parent;
   }
   return File('');
+}
+
+/// The language section as the sheet draws it, on its own for the shot.
+final class _LanguageSectionShot extends StatefulWidget {
+  const _LanguageSectionShot({required super.key, required this.locale});
+
+  /// Which interface language this shot is of — the English one is shown
+  /// holding the English agent, the Chinese one holding the Chinese agent,
+  /// so both chips are seen selected across the pair.
+  final Locale locale;
+
+  @override
+  State<_LanguageSectionShot> createState() => _LanguageSectionShotState();
+}
+
+class _LanguageSectionShotState extends State<_LanguageSectionShot> {
+  late AgentLanguage _language = widget.locale.languageCode == 'zh'
+      ? AgentLanguage.chinese
+      : AgentLanguage.english;
+
+  @override
+  Widget build(BuildContext context) {
+    final AppLocalizations words = AppLocalizations.of(context);
+    return SettingsSection(
+      title: words.sectionConversationLanguage,
+      note: words.conversationLanguageNote,
+      children: <Widget>[
+        ConversationLanguageChoice(
+          value: _language,
+          onChanged: (AgentLanguage value) => setState(() => _language = value),
+        ),
+      ],
+    );
+  }
 }

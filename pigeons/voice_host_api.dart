@@ -116,6 +116,19 @@ abstract class VoiceHostApi {
   @async
   void useUnfinishedEndings(List<String> endings);
 
+  /// Tells the recogniser which language it will be hearing, as a BCP-47
+  /// tag.
+  ///
+  /// The transcriber is monolingual: a locale is chosen once, when the
+  /// session opens, and cannot be asked afterwards what it is hearing. Until
+  /// this existed that choice was made natively from
+  /// `Locale.preferredLanguages`, so the agent spoke whatever the Mac spoke
+  /// and an English agent on a Chinese machine could not be expressed at
+  /// all. Sent before `startListening`, because a locale that arrives after
+  /// the session has opened sets the language of the session after this one.
+  @async
+  void useRecognitionLocale(String bcp47);
+
   /// Tells the recogniser the words this user says that it would otherwise
   /// spell as something else — names, products, jargon.
   ///

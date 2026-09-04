@@ -7,6 +7,7 @@ export 'src/agent_profile/agent_prompt_composer.dart';
 export 'src/agent_profile/document_passages.dart';
 export 'src/agent_profile/misheard_word.dart';
 export 'src/agent_profile/spoken_respelling.dart';
+export 'src/conversation/agent_language.dart';
 export 'src/conversation/agent_tool.dart';
 export 'src/conversation/answer_style.dart';
 export 'src/conversation/between_turns.dart';

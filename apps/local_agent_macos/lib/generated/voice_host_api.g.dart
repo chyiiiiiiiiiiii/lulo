@@ -395,6 +395,36 @@ class VoiceHostApi {
     );
   }
 
+  /// Tells the recogniser which language it will be hearing, as a BCP-47
+  /// tag.
+  ///
+  /// The transcriber is monolingual: a locale is chosen once, when the
+  /// session opens, and cannot be asked afterwards what it is hearing. Until
+  /// this existed that choice was made natively from
+  /// `Locale.preferredLanguages`, so the agent spoke whatever the Mac spoke
+  /// and an English agent on a Chinese machine could not be expressed at
+  /// all. Sent before `startListening`, because a locale that arrives after
+  /// the session has opened sets the language of the session after this one.
+  Future<void> useRecognitionLocale(String bcp47) async {
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.local_agent_macos.VoiceHostApi.useRecognitionLocale$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channel = BasicMessageChannel<Object?>(
+      pigeonVar_channelName,
+      pigeonChannelCodec,
+      binaryMessenger: pigeonVar_binaryMessenger,
+    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(
+      <Object?>[bcp47],
+    );
+    final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
+
+    _extractReplyValueOrThrow(
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: true,
+    );
+  }
+
   /// Tells the recogniser the words this user says that it would otherwise
   /// spell as something else — names, products, jargon.
   ///

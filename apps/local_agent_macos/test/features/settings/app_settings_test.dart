@@ -109,6 +109,37 @@ void main() {
     expect(chosen.copyWith(liveConversation: false).liveConversation, isFalse);
   });
 
+  test(
+    'a settings file written before the switch existed opens in English',
+    () {
+      // The point of the switch, and the reason it is a new key rather than a
+      // reuse of the profile's locale: every settings file on every machine
+      // predates it, so absent has to mean English or nobody's app changes.
+      expect(
+        AppSettings.fromJson(const <String, Object?>{}).conversationLanguage,
+        AgentLanguage.english,
+      );
+      expect(const AppSettings().conversationLanguage, AgentLanguage.english);
+    },
+  );
+
+  test('the conversation language survives being written and read back', () {
+    const AppSettings written = AppSettings(
+      conversationLanguage: AgentLanguage.chinese,
+    );
+
+    expect(
+      AppSettings.fromJson(written.toJson()).conversationLanguage,
+      AgentLanguage.chinese,
+    );
+    expect(
+      written
+          .copyWith(conversationLanguage: AgentLanguage.english)
+          .conversationLanguage,
+      AgentLanguage.english,
+    );
+  });
+
   test('the answer style survives being written and read back', () {
     const AppSettings written = AppSettings(answerStyle: AnswerStyle.steady);
 

@@ -279,5 +279,11 @@
   "activityWorking": "Working…",
   "activityError": "Needs attention",
   "answering": "Answering",
-  "thinkingPlaceholder": "Thinking…"
+  "thinkingPlaceholder": "Thinking…",
+  "sectionConversationLanguage": "The language it talks in",
+  "conversationLanguageNote": "Which language the microphone is opened on. A typed question is answered in whatever language it was asked in, either way.",
+  "conversationLanguageEnglish": "English",
+  "conversationLanguageEnglishNote": "The default. Measured: the voice reads English back word-perfect through a recogniser, with no pronunciation table needed.",
+  "conversationLanguageChinese": "中文",
+  "conversationLanguageChineseNote": "Taiwanese Mandarin. The voice needs a table of 214 respellings to say ordinary words correctly; one screened word in eight was wrong before it was taught."
 }

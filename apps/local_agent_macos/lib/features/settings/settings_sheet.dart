@@ -314,6 +314,19 @@ final class SettingsSheet extends StatelessWidget {
                         ],
                       ),
                       SettingsSection(
+                        key: const Key('setting-conversation-language'),
+                        title: words.sectionConversationLanguage,
+                        note: words.conversationLanguageNote,
+                        children: <Widget>[
+                          ConversationLanguageChoice(
+                            value: settings.conversationLanguage,
+                            onChanged: (AgentLanguage language) => onChanged(
+                              settings.copyWith(conversationLanguage: language),
+                            ),
+                          ),
+                        ],
+                      ),
+                      SettingsSection(
                         title: words.sectionVoice,
                         children: <Widget>[
                           ListTile(
@@ -530,6 +543,75 @@ final class _ModelRow extends StatelessWidget {
 /// Named rather than numbered: temperature is a number nobody outside the
 /// model has the information to choose, and the two dials behind these move
 /// together because they are two halves of one decision.
+/// Which language the agent listens in.
+///
+/// Two chips rather than a switch, because neither is "off": both are
+/// languages the app speaks, and one of them is simply the one it opens in.
+/// The note under them says what the choice costs, because the difference
+/// between the two is measured and lopsided — the voice reads English back
+/// word-perfect and needed 214 respellings before it could say ordinary
+/// Chinese words correctly.
+final class ConversationLanguageChoice extends StatelessWidget {
+  /// Creates the chooser over [value].
+  const ConversationLanguageChoice({
+    required this.value,
+    required this.onChanged,
+    super.key,
+  });
+
+  /// The language currently chosen.
+  final AgentLanguage value;
+
+  /// Called with the language the user picked.
+  final ValueChanged<AgentLanguage> onChanged;
+
+  static ({String label, String note}) _describe(
+    AppLocalizations words,
+    AgentLanguage language,
+  ) => switch (language) {
+    AgentLanguage.english => (
+      label: words.conversationLanguageEnglish,
+      note: words.conversationLanguageEnglishNote,
+    ),
+    AgentLanguage.chinese => (
+      label: words.conversationLanguageChinese,
+      note: words.conversationLanguageChineseNote,
+    ),
+  };
+
+  @override
+  Widget build(BuildContext context) {
+    final AppLocalizations words = AppLocalizations.of(context);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Wrap(
+            spacing: 6,
+            children: <Widget>[
+              for (final AgentLanguage language in AgentLanguage.values)
+                ChoiceChip(
+                  key: Key('setting-conversation-language-${language.name}'),
+                  label: Text(_describe(words, language).label),
+                  selected: language == value,
+                  onSelected: (bool _) => onChanged(language),
+                ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            _describe(words, value).note,
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 final class _AnswerStyleChoice extends StatelessWidget {
   const _AnswerStyleChoice({required this.value, required this.onChanged});
 

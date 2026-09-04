@@ -24,6 +24,7 @@ final class AppSettings {
     this.obsidianJournal = false,
     this.orbActions = false,
     this.liveConversation = false,
+    this.conversationLanguage = AgentLanguage.byDefault,
   });
 
   /// Reads settings written by [toJson], ignoring anything unrecognised.
@@ -69,6 +70,9 @@ final class AppSettings {
         json['liveConversation'],
         defaults.liveConversation,
       ),
+      conversationLanguage:
+          AgentLanguage.values.asNameMap()[json['conversationLanguage']] ??
+          defaults.conversationLanguage,
     );
   }
 
@@ -153,6 +157,22 @@ final class AppSettings {
   /// and this switch exists for whoever wants the open microphone anyway.
   final bool liveConversation;
 
+  /// Which language the agent listens in.
+  ///
+  /// English unless the user says otherwise, and English on every settings
+  /// file that predates the switch — which is every settings file, and is
+  /// the reason this is a key of its own rather than a reuse of the agent
+  /// profile's locale: that field already says `zh-TW` on disk everywhere,
+  /// so changing its default would have moved nobody.
+  ///
+  /// Only the spoken half reads it. A typed question carries its own
+  /// language and `composeAgentPrompt` answers in the language it was
+  /// asked in, whatever this says — so a Chinese sentence typed into an
+  /// English agent still gets a Chinese answer. What this decides is the
+  /// recogniser, which is monolingual and has to be opened on one locale
+  /// before anybody has said anything.
+  final AgentLanguage conversationLanguage;
+
   /// Returns a copy with the named choices replaced.
   AppSettings copyWith({
     bool? keepOrbOnTop,
@@ -167,6 +187,7 @@ final class AppSettings {
     bool? obsidianJournal,
     bool? orbActions,
     bool? liveConversation,
+    AgentLanguage? conversationLanguage,
   }) {
     return AppSettings(
       keepOrbOnTop: keepOrbOnTop ?? this.keepOrbOnTop,
@@ -182,6 +203,7 @@ final class AppSettings {
       obsidianJournal: obsidianJournal ?? this.obsidianJournal,
       orbActions: orbActions ?? this.orbActions,
       liveConversation: liveConversation ?? this.liveConversation,
+      conversationLanguage: conversationLanguage ?? this.conversationLanguage,
     );
   }
 
@@ -199,6 +221,7 @@ final class AppSettings {
     'obsidianJournal': obsidianJournal,
     'orbActions': orbActions,
     'liveConversation': liveConversation,
+    'conversationLanguage': conversationLanguage.name,
   };
 
   @override
@@ -215,7 +238,8 @@ final class AppSettings {
       other.rememberFacts == rememberFacts &&
       other.obsidianJournal == obsidianJournal &&
       other.orbActions == orbActions &&
-      other.liveConversation == liveConversation;
+      other.liveConversation == liveConversation &&
+      other.conversationLanguage == conversationLanguage;
 
   @override
   int get hashCode => Object.hash(
@@ -231,6 +255,7 @@ final class AppSettings {
     obsidianJournal,
     orbActions,
     liveConversation,
+    conversationLanguage,
   );
 
   @override

@@ -83,6 +83,7 @@ final class ConversationView extends StatefulWidget {
     this.misheard,
     this.floorControl,
     this.unfinishedEndings,
+    this.conversationLanguage,
     this.buildObserver,
     this.composerSeed,
     this.presenceShaderLoader = loadAgentPresenceShader,
@@ -196,6 +197,13 @@ final class ConversationView extends StatefulWidget {
   /// The user's own ways of leaving a sentence unfinished, or null for none.
   final List<String> Function()? unfinishedEndings;
 
+  /// Which language this conversation is spoken in, or null for English.
+  ///
+  /// Read when the microphone opens rather than captured, because the user
+  /// may change it between sessions and the recogniser is opened afresh
+  /// each time.
+  final AgentLanguage Function()? conversationLanguage;
+
   /// Optional render instrumentation used by tests.
   final ConversationBuildObserver? buildObserver;
 
@@ -266,6 +274,7 @@ final class _ConversationViewState extends State<ConversationView> {
         unfinishedEndings:
             widget.unfinishedEndings ?? _emptyProtectedVocabulary,
         cutOffs: _cutOffs,
+        language: widget.conversationLanguage ?? _englishConversation,
       );
       _voice = voice;
       voice.addListener(_reflectVoice);
@@ -809,3 +818,6 @@ final class _HeardSoFar extends StatelessWidget {
 }
 
 List<MisheardWord> _nothingMisheard() => const <MisheardWord>[];
+
+/// What language a surface that never said is held in.
+AgentLanguage _englishConversation() => AgentLanguage.byDefault;

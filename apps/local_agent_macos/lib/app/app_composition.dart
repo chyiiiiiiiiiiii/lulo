@@ -48,6 +48,7 @@ final class AppComposition {
     ValueNotifier<String>? ttsVoice,
     AgentProfileStore? agentProfile,
     ValueNotifier<AnswerStyle>? answerStyle,
+    ValueNotifier<AgentLanguage>? conversationLanguage,
     ValueNotifier<bool>? shareFrontmostApp,
     ValueNotifier<bool>? rememberFacts,
     ValueNotifier<bool>? obsidianJournal,
@@ -72,6 +73,9 @@ final class AppComposition {
        voiceEngaged = voiceEngaged ?? ValueNotifier<bool>(false),
        answerStyle =
            answerStyle ?? ValueNotifier<AnswerStyle>(AnswerStyle.balanced),
+       conversationLanguage =
+           conversationLanguage ??
+           ValueNotifier<AgentLanguage>(AgentLanguage.byDefault),
        shareFrontmostApp = shareFrontmostApp ?? ValueNotifier<bool>(false),
        rememberFacts = rememberFacts ?? ValueNotifier<bool>(false),
        obsidianJournal = obsidianJournal ?? ValueNotifier<bool>(false),
@@ -182,6 +186,13 @@ final class AppComposition {
   /// reason `ttsVoice` is one: the setting can change while the model stays
   /// loaded, and reloading it to move a slider would cost seconds.
   final ValueNotifier<AnswerStyle> answerStyle;
+
+  /// Which language the conversation is held in, kept current by settings.
+  ///
+  /// Only the spoken half reads it: the recogniser is monolingual and has to
+  /// be opened on one locale before anybody has spoken. A typed question
+  /// still carries its own language, and is answered in it.
+  final ValueNotifier<AgentLanguage> conversationLanguage;
 
   /// Whether finished turns are read for facts about the user.
   ///

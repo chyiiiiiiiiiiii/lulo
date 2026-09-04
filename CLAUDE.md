@@ -110,6 +110,36 @@ was still visible at 0.95, which on the desktop read as a faint circle wrapped
 around the orb, and the catcher used to take every click within half a side of
 the centre. See `docs/features/presence.md`.
 
+The agent opens in **English**, and Chinese is a switch in Settings. Not a
+retreat from the Chinese work — that work is what made the asymmetry
+measurable. Rendered through the resident voice and read back by a
+recogniser, English scores **0.054 WER with every remaining difference a
+numeral convention** (`twenty past three` written back as `20 past 3`) and
+**not one mispronounced word**, needing no pronunciation table at all; the
+Chinese side needed 214 respellings because one screened word in eight came
+out wrong. Most of the app was already bilingual — `composeAgentPrompt` takes
+its language from the question, `FloorControl` and `TurnCompletion` carry
+English words, the synthesiser picks per answer from the script — so what
+actually moved is the one decision that must be made *before anybody has
+spoken*: the recogniser is monolingual, its locale is fixed at `begin()`, and
+that was read natively from `Locale.preferredLanguages`, which made an English
+agent on a Chinese Mac inexpressible. `AppSettings.conversationLanguage`
+decides it now and is pushed **before** `startListening` (a locale arriving
+later sets the language of the *next* session), with the machine's own
+languages kept underneath as the floor. It is a new key rather than
+`AgentIdentity.locale` because that field already says `zh-TW` in every
+profile on disk: an absent key is the only kind whose absence can mean
+English. Two planned changes were deleted by measurement — the batch
+recogniser's `language` flag reaches nothing (`zh` and `en` transcribe
+English identically, 0.173 WER both) and its Chinese `held_prompt` is the
+*best* of three prompts on English audio (0.115 against 0.173 for none),
+because the terms help and the language does not hurt. What English gets
+wrong is product names — `LiteRT → light RT`, `Gemma → German`,
+`MLX → NLOX` — which is what `AgentProfile.misheard` is for and is
+deliberately not seeded, since a built-in `German → Gemma` would corrupt a
+sentence genuinely about German. See
+`docs/decisions/the-agent-opens-in-english.md`.
+
 Which language works depends on the way in, not on the language.
 `docs/features/voice.md` › *What each path hears* is the one place the three
 are measured beside each other: typing has no disadvantage, holding the key

@@ -40,6 +40,7 @@ with a way to fail silently.
 | `lib/features/voice/pigeon_voice_service.dart` | The production implementation; turns host failures into events |
 | `lib/features/voice/voice_conversation_controller.dart` | When to speak, what to speak, when to give way |
 | `lib/features/voice/speakable_text.dart` | What is left of an answer once everything unsayable is taken out |
+| `lib/features/voice/voice_conversation_controller.dart` › `_pushRecognitionLocale` | Which language the microphone is opened on |
 | `lib/features/voice/tts_voices.dart` | The voice list, mirroring the sidecar's |
 | `~/dev/lulo-tts/server.py` | Qwen3-TTS, resident, on `127.0.0.1:46557` |
 
@@ -306,6 +307,28 @@ is in use: `FloorControl` carries English backchannels (`yeah`, `right`,
 the Chinese ones, `TurnCompletion` carries English connectives (`so`, `and`,
 `but`, `because`, `like`, `um`), and the burst-duration signal underneath both
 needs no language knowledge at all.
+
+### Which language it is opened in
+
+The recogniser is monolingual: one locale, chosen at `begin()`, before a word
+has been said. Until `AppSettings.conversationLanguage` existed that choice
+was made natively from `Locale.preferredLanguages`, so the agent heard
+whatever the Mac was set to and an English agent on a Chinese machine could
+not be expressed at all.
+
+The app chooses now, English by default, and the machine's own languages stay
+underneath as the floor — for a microphone opened by a path that never went
+through the setting, and for a locale the platform has no model for. The
+choice is pushed **before** `startListening`, because a locale that arrives
+after the session opens sets the language of the session after this one.
+
+Three things were measured before the default moved, and two of them deleted
+planned changes: the resident voice reads English back at 0.054 WER with no
+pronunciation table at all; the batch recogniser's `language` flag reaches
+nothing, so `zh` and `en` transcribe English identically; and the Chinese
+`held_prompt` is the *best* of three prompts on English audio, because its
+terms are what help and its language is not a handicap. See
+[the-agent-opens-in-english.md](../decisions/the-agent-opens-in-english.md).
 
 ### What follows from this
 

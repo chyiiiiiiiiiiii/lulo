@@ -914,6 +914,8 @@ final class _PresentationSwitchState extends State<_PresentationSwitch>
   Future<void> _applySettings(AppSettings settings) async {
     widget.composition.ttsVoice.value = settings.ttsVoice;
     widget.composition.answerStyle.value = settings.answerStyle;
+    widget.composition.conversationLanguage.value =
+        settings.conversationLanguage;
     widget.composition.shareFrontmostApp.value = settings.shareFrontmostApp;
     widget.composition.rememberFacts.value = settings.rememberFacts;
     widget.composition.obsidianJournal.value = settings.obsidianJournal;
@@ -1236,6 +1238,8 @@ final class _PresentationSwitchState extends State<_PresentationSwitch>
         misheard: widget.composition.misheard,
         floorControl: widget.composition.floorControl,
         unfinishedEndings: widget.composition.unfinishedEndings,
+        conversationLanguage: () =>
+            widget.composition.conversationLanguage.value,
         presenceShaderLoader: widget.presenceShaderLoader,
         showVoiceEvidence: _settings.showVoiceEvidence,
         liveConversationToggle: _settings.liveConversation,

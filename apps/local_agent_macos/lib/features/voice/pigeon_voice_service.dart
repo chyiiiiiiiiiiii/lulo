@@ -86,6 +86,10 @@ final class PigeonVoiceService implements VoiceService, VoiceHostEvents {
       _guard(() => _host.useSpokenVocabulary(terms));
 
   @override
+  Future<void> useRecognitionLocale(String bcp47) =>
+      _guard(() => _host.useRecognitionLocale(bcp47));
+
+  @override
   Future<String> reHearUtterance() => _host.reHearUtterance();
 
   @override

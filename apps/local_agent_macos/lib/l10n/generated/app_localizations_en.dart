@@ -776,4 +776,25 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get thinkingPlaceholder => 'Thinking…';
+
+  @override
+  String get sectionConversationLanguage => 'The language it talks in';
+
+  @override
+  String get conversationLanguageNote =>
+      'Which language the microphone is opened on. A typed question is answered in whatever language it was asked in, either way.';
+
+  @override
+  String get conversationLanguageEnglish => 'English';
+
+  @override
+  String get conversationLanguageEnglishNote =>
+      'The default. Measured: the voice reads English back word-perfect through a recogniser, with no pronunciation table needed.';
+
+  @override
+  String get conversationLanguageChinese => '中文';
+
+  @override
+  String get conversationLanguageChineseNote =>
+      'Taiwanese Mandarin. The voice needs a table of 214 respellings to say ordinary words correctly; one screened word in eight was wrong before it was taught.';
 }

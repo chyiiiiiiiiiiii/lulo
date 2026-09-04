@@ -53,6 +53,59 @@ void main() {
     );
   });
 
+  group('the language the recogniser is opened in', () {
+    test('is sent before the microphone opens, not after', () async {
+      // The recogniser is monolingual and its locale is chosen at begin().
+      // Telling it afterwards would set the language of the session after
+      // this one, and the user would have to say the first sentence twice.
+      await controller.enable();
+
+      final int told = voice.calls.indexOf('useRecognitionLocale');
+      final int opened = voice.calls.indexOf('startListening');
+      expect(told, isNonNegative, reason: 'Nothing said which language.');
+      expect(
+        told,
+        lessThan(opened),
+        reason: 'The microphone opened before the language was chosen.',
+      );
+      expect(voice.recognitionLocales, <String>['en-US']);
+    });
+
+    test('follows the setting rather than the machine', () async {
+      // The machine this is written on runs in Chinese, and that used to be
+      // the whole decision: Locale.preferredLanguages, natively, with the
+      // app having no say. An English agent on a Chinese Mac was not
+      // expressible.
+      final FakeVoiceService chineseVoice = FakeVoiceService();
+      addTearDown(chineseVoice.dispose);
+      final VoiceConversationController chinese = VoiceConversationController(
+        voice: chineseVoice,
+        conversation: vm,
+        language: () => AgentLanguage.chinese,
+      );
+      addTearDown(chinese.dispose);
+
+      await chinese.enable();
+
+      expect(chineseVoice.recognitionLocales, <String>['zh-TW']);
+    });
+
+    test('is not re-sent while it has not changed', () async {
+      // Replacing the recogniser's locale costs it the session. The
+      // vocabulary and the endings are pushed on the same rule, and for the
+      // same reason: the answer is usually the one it already has.
+      await controller.enable();
+      voice.hear(const FinalTranscript('hello there'));
+      await Future<void>.delayed(Duration.zero);
+      await Future<void>.delayed(Duration.zero);
+
+      expect(
+        voice.calls.where((String c) => c == 'useRecognitionLocale').length,
+        1,
+      );
+    });
+  });
+
   tearDown(() async {
     controller.dispose();
     vm.dispose();
@@ -148,6 +201,10 @@ void main() {
       conversation: vm,
       protectedVocabulary: () => const <String>['Flutter'],
       transcriptShadow: shadow,
+      // The sentence is Chinese, so the conversation is: the refiner is
+      // told the language the conversation is being held in, and that is
+      // now the user's setting rather than a constant in this file.
+      language: () => AgentLanguage.chinese,
     );
     await controller.enable();
 
@@ -2759,6 +2816,9 @@ final class _NeverStartsVoice implements VoiceService {
 
   @override
   Future<void> useSpokenVocabulary(List<String> terms) async {}
+
+  @override
+  Future<void> useRecognitionLocale(String bcp47) async {}
   @override
   Future<String> chooseRecording() async => '';
 

@@ -76,6 +76,13 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
   /// recogniser evaluation.
   private let heldSpeech = HeldSpeechCaptureBox()
 
+  /// The language the app asked to hear, or nil before it has asked.
+  ///
+  /// Nil is not an error: the microphone can be opened by a path that never
+  /// passed through the setting, and the machine's own languages are the
+  /// floor under it.
+  private var chosenLocale: String?
+
   /// The streaming session's last minute of audio, so a doubted utterance
   /// can be re-heard by the batch recogniser.
   private let utteranceRing = UtteranceRingBox()
@@ -714,6 +721,18 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
     completion(.success(()))
   }
 
+  func useRecognitionLocale(
+    bcp47: String,
+    completion: @escaping (Result<Void, Error>) -> Void
+  ) {
+    // Stored rather than applied: the transcriber's locale is fixed when the
+    // session opens, so this is read at the next begin(). Dart sends it
+    // before startListening for that reason.
+    chosenLocale = bcp47
+    NSLog("Lulo voice: the app asks to hear %@", bcp47)
+    completion(.success(()))
+  }
+
   func useSpokenVocabulary(
     terms: [String],
     completion: @escaping (Result<Void, Error>) -> Void
@@ -762,7 +781,8 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
     // The user's language, not the app bundle's: an unlocalized bundle
     // reports English as Locale.current, and a zh-TW speaker would be
     // transcribed into romanized noise.
-    guard let locale = await Self.preferredTranscriberLocale() else {
+    guard let locale = await Self.transcriberLocale(chosen: chosenLocale)
+    else {
       throw VoiceHostError.localeUnsupported
     }
     NSLog("Lulo voice: transcribing as %@", locale.identifier)
@@ -1542,14 +1562,23 @@ final class VoiceHostAdapter: NSObject, VoiceHostApi {
     emit(.voiceFailed, text: message)
   }
 
-  /// The first of the user's preferred languages the transcriber speaks.
-  private static func preferredTranscriberLocale() async -> Locale? {
-    for language in Locale.preferredLanguages {
-      if let match = await SpeechTranscriber.supportedLocale(
-        equivalentTo: Locale(identifier: language)
-      ) {
-        return match
-      }
+  /// The language the app asked for, or the first of the user's own that
+  /// the transcriber speaks.
+  ///
+  /// The app's choice leads because the agent's language is the user's
+  /// setting and not their Mac's: this machine runs in Chinese and an
+  /// English agent on it has to be expressible. What follows is the old
+  /// behaviour, kept as the floor — a choice that never arrived, or one the
+  /// platform has no model for, must not leave the user with a microphone
+  /// that opens onto nothing.
+  private static func transcriberLocale(chosen: String?) async -> Locale? {
+    let supported = await Array(SpeechTranscriber.supportedLocales)
+    if let match = RecognitionLocale.resolve(
+      chosen: chosen,
+      supported: supported,
+      preferred: Locale.preferredLanguages
+    ) {
+      return match
     }
     return await SpeechTranscriber.supportedLocale(equivalentTo: .current)
   }
@@ -2690,6 +2719,55 @@ private final class ResumeOnce: @unchecked Sendable {
 /// the macOS 26 it is gated on: one writes a WAV, one deletes old ones, and
 /// one posts a path to a sidecar over loopback. Dictation needs all three
 /// and must not carry a version requirement it has no use for.
+/// Which locale the monolingual transcriber is opened on.
+///
+/// Separated from the adapter so it can be tested without a microphone: the
+/// decision is pure, and it used to be made from `Locale.preferredLanguages`
+/// alone — the agent heard whatever the Mac was set to, and an English agent
+/// on a Chinese machine could not be expressed at all.
+///
+/// The app's choice comes first, the machine's own languages are the floor
+/// under it, and the language subtag is what decides. A tag is written a
+/// dozen ways (`zh-TW`, `zh-Hant-TW`, `zh_Hant`) and none of the differences
+/// pick a different model.
+enum RecognitionLocale {
+  /// The first of [chosen] then [preferred] that [supported] can speak.
+  ///
+  /// [chosen] is what the app asked for and may be absent: the microphone
+  /// can be opened by a path that never passed through the setting, and the
+  /// old behaviour is what should happen then rather than nothing at all.
+  /// A choice the platform has no model for falls through to the machine's
+  /// own languages for the same reason — the wrong language beats no ears,
+  /// and the app logs which one it got.
+  static func resolve(
+    chosen: String?,
+    supported: [Locale],
+    preferred: [String]
+  ) -> Locale? {
+    for tag in [chosen].compactMap({ $0 }) + preferred {
+      let wanted = languageOf(tag)
+      guard !wanted.isEmpty else { continue }
+      if let match = supported.first(
+        where: { languageOf($0.identifier) == wanted }
+      ) {
+        return match
+      }
+    }
+    return nil
+  }
+
+  /// The language subtag of [tag], lowercased.
+  ///
+  /// Read off the string rather than through `Locale.language`, which needs
+  /// a newer macOS than this app deploys to, and which would answer the same
+  /// thing: everything after the first subtag is script and region, and
+  /// neither picks a different transcription model.
+  private static func languageOf(_ tag: String) -> String {
+    let normalized = tag.replacingOccurrences(of: "_", with: "-")
+    return (normalized.split(separator: "-").first?.lowercased()) ?? ""
+  }
+}
+
 enum HeldSpeech {
   /// Deletes held-speech WAVs older than an hour.
   ///

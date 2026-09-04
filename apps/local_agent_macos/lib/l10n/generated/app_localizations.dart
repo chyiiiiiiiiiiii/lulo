@@ -1484,6 +1484,42 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Thinking…'**
   String get thinkingPlaceholder;
+
+  /// No description provided for @sectionConversationLanguage.
+  ///
+  /// In en, this message translates to:
+  /// **'The language it talks in'**
+  String get sectionConversationLanguage;
+
+  /// No description provided for @conversationLanguageNote.
+  ///
+  /// In en, this message translates to:
+  /// **'Which language the microphone is opened on. A typed question is answered in whatever language it was asked in, either way.'**
+  String get conversationLanguageNote;
+
+  /// No description provided for @conversationLanguageEnglish.
+  ///
+  /// In en, this message translates to:
+  /// **'English'**
+  String get conversationLanguageEnglish;
+
+  /// No description provided for @conversationLanguageEnglishNote.
+  ///
+  /// In en, this message translates to:
+  /// **'The default. Measured: the voice reads English back word-perfect through a recogniser, with no pronunciation table needed.'**
+  String get conversationLanguageEnglishNote;
+
+  /// No description provided for @conversationLanguageChinese.
+  ///
+  /// In en, this message translates to:
+  /// **'中文'**
+  String get conversationLanguageChinese;
+
+  /// No description provided for @conversationLanguageChineseNote.
+  ///
+  /// In en, this message translates to:
+  /// **'Taiwanese Mandarin. The voice needs a table of 214 respellings to say ordinary words correctly; one screened word in eight was wrong before it was taught.'**
+  String get conversationLanguageChineseNote;
 }
 
 class _AppLocalizationsDelegate

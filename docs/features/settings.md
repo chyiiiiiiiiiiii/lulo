@@ -42,6 +42,7 @@ one that has since been removed, does not stop the rest from being read.
 | `openConversationOnLaunch` | false | `_loadSettings`, once, after the stored choices arrive |
 | `modelPath` | `''` | `AppComposition.useModel` → `SwappableInferenceService.replaceWith`; and `main.dart` before the graph is built |
 | `ttsVoice` | `'ryan'` | `AppComposition.ttsVoice`, a `ValueNotifier` read by `PigeonVoiceService` at the moment of each `speak` |
+| `conversationLanguage` | `english` | `AppComposition.conversationLanguage`, a `ValueNotifier` read when the microphone opens — the recogniser is monolingual and its locale is fixed for the session |
 | `showVoiceEvidence` | false | `ConversationView`, which draws `VoiceTurnHud` under the conversation. An instrument for tuning turn-taking, not a feature — see [voice.md](voice.md) |
 | `answerStyle` | `balanced` | `AppComposition.answerStyle`, a `ValueNotifier` the inference service reads when it builds each request — the sampler travels in the request, so moving it reloads nothing |
 | `shareFrontmostApp` | **false** | `ProfileAgentContextProvider.frontmostAppOf`, at the moment each question is composed |
@@ -236,9 +237,27 @@ falls back to English. The strings are in `lib/l10n/app_en.arb` and
 `lib/l10n/app_zh.arb`, the latter Traditional because that is who this agent is
 for.
 
-This is separate from the language Lulo *answers* in, which is
-`AgentIdentity.locale` in the profile and defaults to `zh-TW`. A Mac in English
-with an agent answering in Chinese is a real configuration, not a mistake.
+This is separate from the language Lulo *talks* in, which is
+`conversationLanguage` and defaults to English. A Mac in Chinese running an
+English agent is a real configuration and is the one that change exists to
+serve — as is its mirror.
+
+Two different questions hide under "which language", and they have different
+answers:
+
+- **A typed question** is answered in the language it was asked in, whatever
+  the setting says. `composeAgentPrompt` reads the script off the question,
+  because a small model answers in the language it was instructed in and an
+  English preamble in front of a Chinese question turns the reply English.
+- **A spoken question** has no such evidence. The recogniser is monolingual
+  and is opened on one locale before anybody has spoken, so `conversationLanguage`
+  is what decides — and it is a setting rather than a guess for that reason.
+  See [the-agent-opens-in-english.md](../decisions/the-agent-opens-in-english.md).
+
+`AgentIdentity.locale` is still unread by anything. Its comment used to
+reserve it for the voice path; the voice path went elsewhere, because that
+field already says `zh-TW` in every profile on disk and an absent key is the
+only kind whose absence can mean English.
 
 ## Text selected in another app
 

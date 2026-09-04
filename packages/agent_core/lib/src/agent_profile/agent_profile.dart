@@ -39,10 +39,13 @@ final class AgentIdentity {
   /// prompt. That is pinned by `the instruction is written in the language of
   /// the question` in the app's `pigeon_inference_service_test.dart`.
   ///
-  /// Kept because the voice path will need it. There the recogniser is
-  /// monolingual — one locale chosen at `begin()` — so a transcript's script
-  /// says what the recogniser was set to, not what the user spoke, and the
-  /// question cannot be asked what language it is in.
+  /// The voice path was what this was being kept for, and the voice path
+  /// went elsewhere: `AppSettings.conversationLanguage`. The reasoning is
+  /// exactly that this field is already written — every `agent_profile.json`
+  /// on disk says `zh-TW` — so changing its default would have moved nobody,
+  /// where a key that has never been written is the only kind whose absence
+  /// can mean English. See
+  /// `docs/decisions/the-agent-opens-in-english.md`.
   final String locale;
 
   @override

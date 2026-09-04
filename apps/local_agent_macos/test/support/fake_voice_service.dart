@@ -68,6 +68,15 @@ final class FakeVoiceService implements VoiceService {
     return recordingTranscripts[path] ?? '';
   }
 
+  /// Every recognition locale pushed, in order.
+  final List<String> recognitionLocales = <String>[];
+
+  @override
+  Future<void> useRecognitionLocale(String bcp47) async {
+    calls.add('useRecognitionLocale');
+    recognitionLocales.add(bcp47);
+  }
+
   @override
   Future<void> useSpokenVocabulary(List<String> terms) async {
     calls.add('useSpokenVocabulary');

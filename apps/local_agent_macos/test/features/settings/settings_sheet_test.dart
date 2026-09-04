@@ -88,6 +88,35 @@ void main() {
     expect(find.byKey(const Key('setting-hearing-duplex')), findsOneWidget);
   });
 
+  testWidgets('the conversation language is a choice, English by default', (
+    WidgetTester tester,
+  ) async {
+    // The agent speaks English out of the box because that is the half
+    // that is measured good: the voice renders English word-perfect back
+    // through a recogniser, where Chinese needed 214 respellings before
+    // ordinary words came out right. Chinese is one tap away and stays a
+    // first-class language — this is which one the app opens in.
+    AppSettings? changed;
+    await tester.pumpWidget(
+      sheet(onClose: () {}, onChanged: (AppSettings value) => changed = value),
+    );
+    await tester.pump();
+
+    await tester.dragUntilVisible(
+      find.byKey(const Key('setting-conversation-language')),
+      find.byType(ListView),
+      const Offset(0, -160),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(
+      find.byKey(const Key('setting-conversation-language-chinese')),
+    );
+    await tester.pump();
+
+    expect(changed?.conversationLanguage, AgentLanguage.chinese);
+  });
+
   testWidgets('sharing the frontmost app is a switch the user flips', (
     WidgetTester tester,
   ) async {

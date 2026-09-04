@@ -157,6 +157,10 @@ AppComposition createAppComposition({
   final ValueNotifier<AnswerStyle> answerStyle = ValueNotifier<AnswerStyle>(
     AnswerStyle.balanced,
   );
+  // Read when the microphone opens, so a language chosen in settings is the
+  // language of the next session rather than of the next launch.
+  final ValueNotifier<AgentLanguage> conversationLanguage =
+      ValueNotifier<AgentLanguage>(AgentLanguage.byDefault);
   final AgentProfileStore profileStore =
       agentProfileStore ?? createAgentProfileStore();
   unawaited(profileStore.load());
@@ -349,6 +353,7 @@ AppComposition createAppComposition({
     unfinishedEndings: () => profileStore.current.turnTaking.unfinished,
     agentProfile: profileStore,
     answerStyle: answerStyle,
+    conversationLanguage: conversationLanguage,
     shareFrontmostApp: shareFrontmostApp,
     // The model is chosen in settings, and the only part of the graph that has
     // to change when it does is what sits behind this one service.

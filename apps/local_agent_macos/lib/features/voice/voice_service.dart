@@ -143,6 +143,15 @@ abstract interface class VoiceService {
   /// substitution cannot.
   Future<void> useSpokenVocabulary(List<String> terms);
 
+  /// Tells the recogniser which language it is about to hear, as a BCP-47
+  /// tag, before the microphone opens.
+  ///
+  /// The recogniser is monolingual and its locale is fixed for the whole
+  /// session, so this is a decision that has to be made before there is any
+  /// evidence to make it on. Sending it late sets the language of the next
+  /// session, not this one.
+  Future<void> useRecognitionLocale(String bcp47);
+
   /// Asks the batch recogniser to listen again to the utterance that just
   /// settled, and returns what it heard — or empty when it could not be
   /// reached, heard nothing, or there was no utterance to re-hear.

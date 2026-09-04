@@ -743,6 +743,27 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get thinkingPlaceholder => '思考中…';
+
+  @override
+  String get sectionConversationLanguage => '它說哪一種語言';
+
+  @override
+  String get conversationLanguageNote =>
+      '麥克風會用這個語言打開。用打字問的，不管這裡選什麼，都會用你問的那個語言回答。';
+
+  @override
+  String get conversationLanguageEnglish => 'English';
+
+  @override
+  String get conversationLanguageEnglishNote =>
+      '預設。量過：這個聲音唸的英文，經辨識器轉回來逐字正確，不需要任何發音表。';
+
+  @override
+  String get conversationLanguageChinese => '中文';
+
+  @override
+  String get conversationLanguageChineseNote =>
+      '台灣國語。這個聲音要靠 214 條改寫才唸得對常見詞；篩過的字裡每八個就有一個，在教它之前是唸錯的。';
 }
 
 /// The translations for Chinese, using the Han script (`zh_Hant`).

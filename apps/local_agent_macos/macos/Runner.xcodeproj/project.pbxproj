@@ -34,6 +34,7 @@
 		A2DT000000000000000DT011 /* DictationControllerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2DT000000000000000DT012 /* DictationControllerTests.swift */; };
 		A2LT000000000000000LT001 /* LaunchAtLoginTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2LT000000000000000LT002 /* LaunchAtLoginTests.swift */; };
 		A1SV000000000000000SV001 /* SpokenVocabularyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1SV000000000000000SV002 /* SpokenVocabularyTests.swift */; };
+		A1RL000000000000000RL001 /* RecognitionLocaleTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1RL000000000000000RL002 /* RecognitionLocaleTests.swift */; };
 		A1HK000000000000000HK001 /* HotKeyHoldSplitterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1HK000000000000000HK002 /* HotKeyHoldSplitterTests.swift */; };
 		A1HC000000000000000HC001 /* HeldSpeechCaptureTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1HC000000000000000HC002 /* HeldSpeechCaptureTests.swift */; };
 		A10000000000000000000002 /* GlobalHotKeyControllerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000004 /* GlobalHotKeyControllerTests.swift */; };
@@ -111,6 +112,7 @@
 		A2DT000000000000000DT012 /* DictationControllerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DictationControllerTests.swift; sourceTree = "<group>"; };
 		A2LT000000000000000LT002 /* LaunchAtLoginTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LaunchAtLoginTests.swift; sourceTree = "<group>"; };
 		A1SV000000000000000SV002 /* SpokenVocabularyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpokenVocabularyTests.swift; sourceTree = "<group>"; };
+		A1RL000000000000000RL002 /* RecognitionLocaleTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecognitionLocaleTests.swift; sourceTree = "<group>"; };
 		A1HK000000000000000HK002 /* HotKeyHoldSplitterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HotKeyHoldSplitterTests.swift; sourceTree = "<group>"; };
 		A1HC000000000000000HC002 /* HeldSpeechCaptureTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HeldSpeechCaptureTests.swift; sourceTree = "<group>"; };
 		A10000000000000000000004 /* GlobalHotKeyControllerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GlobalHotKeyControllerTests.swift; sourceTree = "<group>"; };
@@ -208,6 +210,7 @@
 		A2DT000000000000000DT012 /* DictationControllerTests.swift */,
 		A2LT000000000000000LT002 /* LaunchAtLoginTests.swift */,
 		A1SV000000000000000SV002 /* SpokenVocabularyTests.swift */,
+		A1RL000000000000000RL002 /* RecognitionLocaleTests.swift */,
 		A1HK000000000000000HK002 /* HotKeyHoldSplitterTests.swift */,
 		A1HC000000000000000HC002 /* HeldSpeechCaptureTests.swift */,
 				A10000000000000000000004 /* GlobalHotKeyControllerTests.swift */,
@@ -532,6 +535,7 @@
 		A2DT000000000000000DT011 /* DictationControllerTests.swift in Sources */,
 		A2LT000000000000000LT001 /* LaunchAtLoginTests.swift in Sources */,
 		A1SV000000000000000SV001 /* SpokenVocabularyTests.swift in Sources */,
+		A1RL000000000000000RL001 /* RecognitionLocaleTests.swift in Sources */,
 		A1HK000000000000000HK001 /* HotKeyHoldSplitterTests.swift in Sources */,
 		A1HC000000000000000HC001 /* HeldSpeechCaptureTests.swift in Sources */,
 				A10000000000000000000002 /* GlobalHotKeyControllerTests.swift in Sources */,
