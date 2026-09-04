@@ -89,6 +89,23 @@ character, and nothing since has shown otherwise. What was broken and is now
 fixed is that the setting reaches the thing it names.
 Unknown fields are ignored. Invalid memories are skipped independently.
 
+## The tone field is empty until it is yours
+
+`AgentPersonality.tone` defaults to 「親近但不裝熟」, and `composeAgentPrompt`
+deliberately **does not send it** while it still equals that default: the core
+identity block already states the built-in tone, in the language of the
+question, and repeating it said the same thing twice — in Chinese, inside an
+English instruction, in a composer whose own comment says a small model
+answers in the language it was instructed in.
+
+So the editor leaves the field **empty** while it is inherited, with the hint
+naming what the built-in tone is. A pre-filled field showed an instruction
+that was not in force, which is misleading in either language and became
+plainly wrong once the agent started opening in English. Typing in it makes
+the tone yours and sends it as written, in whatever language you wrote it;
+clearing it goes back to inherited. Both states are pinned by tests in
+`agent_profile_settings_test.dart`.
+
 ## The words you take and yield the floor with
 
 `turnTaking` is the one section that changes how the agent *listens* rather

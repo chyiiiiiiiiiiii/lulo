@@ -73,6 +73,27 @@ one is not a handicap — it is the best of the three. **So the sidecar was not
 changed here either.** Two changes were planned for it and both were deleted
 by evidence.
 
+### English is not cheaper, and that is worth writing down
+
+The obvious next claim is that English is also faster, because Han costs
+several tokens a character where English costs a fraction of one. Measured
+through the app's own estimator — `estimatedTokenCount`'s rule, which
+deliberately errs high — on the same default profile:
+
+| | System instruction | Turn half |
+|---|---:|---:|
+| English, spoken | 1053 chars, ~352 tokens | ~17 |
+| Chinese, spoken | 325 chars, ~295 tokens | ~15 |
+
+The English stable half is **longer**, not shorter: the same instructions take
+three times the characters to say. So there is no prompt-cost argument for
+English, in either direction that matters — the stable half is prefilled once
+per conversation and the turn halves are within two tokens of each other.
+
+The latency case for English is the one already measured at the other end: the
+voice renders at RTF 0.65 with first audio in 0.31–0.81 s, and it needs no
+respelling pass to be intelligible. Not the prompt.
+
 ## What English actually gets wrong
 
 Not pronunciation, and not grammar. Product names:
@@ -95,6 +116,63 @@ corrupt any sentence genuinely about German, and every one of these
 mishearings is a correctly spelled ordinary word — which is exactly why
 nothing downstream can detect them and why the user, who knows what they
 said, is the only one who can teach the correction.
+
+## The English preface, measured for the first time
+
+`agent_prompt_composer.dart` carries a comment on its English branch saying
+*"Mirrors the Chinese, which is what was probed; this side has not been."*
+That was defensible while English was the fallback. It stopped being
+defensible the day the agent started opening in English, so
+`EnglishPrefaceProbeTests` now asks the English text the three questions the
+Chinese one earned the hard way. Against the real gemma-4-E4B:
+
+| | Result |
+|---|---|
+| Name survives sampling (5 seeds, t=0.7) | **Lulo 4/5** |
+| Capability boundary (3 seeds, "find me a quiet café") | **clean 3/3** |
+| Answer spread across the five-question gradient | 1, 2, 3, 3–4 sentences |
+
+**The persona is at the bar, not above it.** Seed 5 answered "My name is
+Gemma 4." The Chinese side has the same failure mode and the same repair —
+one specific sentence in one specific slot — and English carries that
+sentence and still slips one time in five. It passes the ≥4/5 bar the Chinese
+probe set, and it is the first thing to look at if the identity ever feels
+loose.
+
+**The boundary line works.** All three replies said plainly that it has no
+location and no live business data, invented no shop, and promised no search.
+That line exists because without it the model invented three cafés and offered
+to go and look them up; the English rendering of it holds.
+
+**Length is granular differently, and one attempt to fix it failed.** Same
+model, same seed, same five questions in both languages:
+
+| | Sentences | Characters |
+|---|---|---|
+| English | 1, 2, 3, 3, 3 | 16, 39, 185, 367, 428 |
+| Chinese | 1, 2, 3, 4, 5 | 20, 15, 71, 142, 213 |
+
+Chinese expands by adding sentences; English caps at three and expands by
+making each one twice as long — under a block whose last line asks for short
+sentences *because they are being spoken aloud*. The spoken duration is
+comparable (428 English characters is about the 172 Chinese characters that
+`answer-length` measures at twenty-seven seconds), so this is granularity, not
+verbosity.
+
+A candidate rewording was probed, saying what expanding means — "use more
+sentences rather than longer ones — seven or eight short ones beat three long
+ones". Three seeds each: **shipped 3, 3, 4 sentences; candidate 4, 3, 3.**
+Nothing moved, and the persona held 3/3 in both. So the line was **not
+changed**, and the condition is kept in the probe so the next person does not
+spend the same afternoon on the same idea. Running three seeds is also what
+showed the shipped preface already reaches four sentences sometimes — the
+single-seed reading that started this was narrower than the truth.
+
+One instrument defect is worth recording with it: the first spread run capped
+output at 320 tokens and the two heaviest answers came back cut mid-word,
+`"twenty grams s"`. Their sentence counts were the cap's, and the assertion
+passed on a number the harness had invented. The probe now refuses to count an
+answer that does not end in sentence punctuation.
 
 ## Where the decision lives
 
@@ -164,18 +242,53 @@ tested on it — `RecognitionLocaleTests` natively, `AgentLanguage.ofLocale` in
   purpose: a Chinese-speaking user can run an English agent and read Chinese
   buttons, and that combination is the one this change exists to serve.
 
-## Known gaps
+## What the first pass left, and what happened to it
 
-- **The profile editor shows a Chinese default tone.** `AgentPersonality.tone`
-  defaults to 「親近但不裝熟」 and `AgentProfileSettings` renders it in a text
-  field, so an English-first user meets a Chinese value there. The composer
-  already *excludes* the tone when it equals the built-in default, so the
-  field is showing an instruction that is not in force — which is misleading
-  in both languages. The fix is in the editor, not the default.
+Four things were written down as gaps when the default moved. Three are
+closed; the list is kept because two of them closed by being **corrected**
+rather than built, and that is the more useful record.
+
+**The profile editor showed a Chinese default tone — fixed.**
+`AgentPersonality.tone` defaults to 「親近但不裝熟」 and the editor rendered it
+in the field, so an English-first user met a Chinese value there. The deeper
+problem was true in both languages: `composeAgentPrompt` *excludes* the tone
+while it equals the built-in one, because the core identity block already
+states it in the language of the question — so the field was showing an
+instruction that was not in force. It is empty now while it is inherited, and
+the hint names what the built-in tone is. Typing in it still makes it yours,
+which is pinned by its own test. The English hint no longer offers a Chinese
+example.
+
+**The always-listening figure did not need re-measuring — the claim did.**
+This document first said 13.4% heard CER "was obtained with the recogniser
+pinned to the machine's language". That was wrong.
+`FullDuplexCorpusProbeTests` opens the transcriber on the *corpus's* locale,
+so the number was always measured with English set correctly. What was broken
+was narrower and invisible to that probe: a **live** session on a Chinese Mac
+never reached that recogniser, because `begin()` took the machine's language.
+The number does not improve; it becomes reachable. Which is also why the hold
+key stays the default door at 3.8%, and the always-listening path stays behind
+its own switch, off.
+
+**The settings text had gone stale — fixed.** `hearingDuplexNote` told the
+user the recogniser "uses the first of your preferred languages", which
+stopped being true the moment the language became a setting. A user-facing
+sentence describing behaviour that no longer exists is worse than no sentence.
+
+**Product names are still what English gets wrong, and the app now says
+where the cure is.** Still not seeded, for the reason above. What changed is
+discoverability: the hold-key note names the actual mishearings — `LiteRT` as
+"light RT", `Gemma` as "German", `Dart test` as "Dark text" — and points at
+the list where one correction, taught once, holds for every sentence after. A
+cure nobody can find is indistinguishable from no cure.
+
+## Still open
+
 - **`sectionDesktop` is a duplicated key** in both `app_en.arb` and
   `app_zh.arb`, with different values; the second silently wins for both
   sections that use it. Pre-existing, unrelated to language, found while
   editing the files.
-- **The always-listening path in English has not been re-measured** since it
-  got a locale it could be told. Its published figure, 13.4% heard CER, was
-  obtained with the recogniser pinned to the machine's language.
+- **English on the always-listening path is 13.4% heard CER** and nothing here
+  moves it. The recogniser is the platform's, the vocabulary bias has twice
+  been measured changing nothing, and the errors are ordinary words. The
+  product answer stands: the better door is the default one.

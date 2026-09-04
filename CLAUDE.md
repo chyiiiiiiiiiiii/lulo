@@ -140,6 +140,24 @@ deliberately not seeded, since a built-in `German → Gemma` would corrupt a
 sentence genuinely about German. See
 `docs/decisions/the-agent-opens-in-english.md`.
 
+The English preface is now **measured**, not assumed — the composer's own
+comment said "this side has not been probed", which was fine while English
+was the fallback and not once it became the default.
+`EnglishPrefaceProbeTests` (opt-in, `REAL_GEMMA_MODEL_PATH`) asks it the
+three questions the Chinese one earned: the name survives sampling **4/5**
+(seed 5 answers 「My name is Gemma 4」 — at the bar, not above it, and the
+first place to look if identity ever feels loose); the capability line holds
+**3/3**, inventing no café and promising no search; and the answer spread is
+1, 2, 3, 3–4 sentences against Chinese's 1, 2, 3, 4, 5. English caps at
+three or four sentences and expands by **lengthening** them — 428 characters
+against Chinese's 213 for the same question, comparable spoken duration but
+coarser granularity, under a block asking for short sentences because they
+are spoken. One rewording was probed against that ("more sentences rather
+than longer ones") and moved **nothing** — shipped 3,3,4 against candidate
+4,3,3 — so the line is unchanged and the condition stays in the probe.
+Running three seeds is also what showed the shipped preface already reaches
+four sometimes; the single-seed reading that started it was too narrow.
+
 Which language works depends on the way in, not on the language.
 `docs/features/voice.md` › *What each path hears* is the one place the three
 are measured beside each other: typing has no disadvantage, holding the key

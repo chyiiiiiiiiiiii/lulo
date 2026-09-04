@@ -49,6 +49,47 @@ void main() {
     await tester.pumpAndSettle();
   }
 
+  testWidgets('the built-in tone is not shown as if the user had typed it', (
+    WidgetTester tester,
+  ) async {
+    // `composeAgentPrompt` deliberately *excludes* the tone when it still
+    // equals the built-in one: the core identity block already states it, in
+    // the language of the question. So a field pre-filled with 「親近但不裝熟」
+    // shows an instruction that is not in force — and, now that the agent
+    // opens in English, shows it in the wrong language too.
+    await pump(tester);
+    await tester.ensureVisible(find.byKey(const Key('profile-tone')));
+    await tester.pumpAndSettle();
+
+    expect(
+      tester
+          .widget<TextField>(find.byKey(const Key('profile-tone')))
+          .controller
+          ?.text,
+      '',
+      reason: 'The built-in tone was pre-filled as if the user had chosen it.',
+    );
+  });
+
+  testWidgets('a tone the user types is theirs and is kept', (
+    WidgetTester tester,
+  ) async {
+    // The other half: emptying the field means the built-in tone, and typing
+    // in it means yours. Nothing about the first may cost the second.
+    final InMemoryAgentProfileStore store = await pump(tester);
+    await tester.ensureVisible(find.byKey(const Key('profile-tone')));
+    await tester.pumpAndSettle();
+
+    await tester.enterText(
+      find.byKey(const Key('profile-tone')),
+      'Blunt, and never chatty',
+    );
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pumpAndSettle();
+
+    expect(store.current.personality.tone, 'Blunt, and never chatty');
+  });
+
   testWidgets('the agent can be given another name', (
     WidgetTester tester,
   ) async {

@@ -401,7 +401,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get profileTone => '語氣';
 
   @override
-  String get profileToneHint => '例如：直接一點，不要客套';
+  String get profileToneHint => '內建：親近但不裝熟。想換就直接寫。';
 
   @override
   String get profileHowMuch => '回答長度';
@@ -579,14 +579,14 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get hearingHoldNote =>
-      '放開就送出，中文英文都聽得懂。會出錯的地方是那些同時也是普通英文單字的產品名 —— Swift、Dart、test。';
+      '放開就送出，中文英文都聽得懂。會出錯的是那些同時也是普通字的產品名 —— LiteRT 聽成「light RT」、Gemma 聽成「German」、Dart test 聽成「Dark text」。在下面「它常聽錯的詞」教它一次，之後每一句都會自動修正。';
 
   @override
   String get hearingDuplexTitle => '讓語音一直開著';
 
   @override
   String get hearingDuplexNote =>
-      '持續聆聽，所以你可以插話。它用你偏好語言裡它支援的第一個，在開始聆聽時就決定，整段對話不換。這條路聽英文比較差：量測是 13.4% 錯字率，按住麥克風鍵是 3.8% —— 講英文時按住鍵比較準。';
+      '持續聆聽，所以你可以插話。它用上面設定選的語言，在開始聆聽時就固定，整段對話不換。這條路聽英文比較差：量測是 13.4% 錯字率，按住麥克風鍵是 3.8% —— 講英文時按住鍵比較準。';
 
   @override
   String get sectionAnswerStyle => '它可以放多開';

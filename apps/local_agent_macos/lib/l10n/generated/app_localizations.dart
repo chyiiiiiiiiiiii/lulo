@@ -840,7 +840,7 @@ abstract class AppLocalizations {
   /// No description provided for @profileToneHint.
   ///
   /// In en, this message translates to:
-  /// **'For example: 直接一點，不要客套'**
+  /// **'Built in: warm, without pretending familiarity. Type to replace it.'**
   String get profileToneHint;
 
   /// No description provided for @profileHowMuch.
@@ -1164,7 +1164,7 @@ abstract class AppLocalizations {
   /// No description provided for @hearingHoldNote.
   ///
   /// In en, this message translates to:
-  /// **'Sends when you let go, and hears English as well as Chinese. Product names that are also ordinary English words are where it slips — Swift, Dart, test.'**
+  /// **'Sends when you let go, and hears English as well as Chinese. Where it slips is product names that are also ordinary words — LiteRT as “light RT”, Gemma as “German”, Dart test as “Dark text”. Teach it those once, under the words it keeps mishearing below, and the correction holds for every sentence after.'**
   String get hearingHoldNote;
 
   /// No description provided for @hearingDuplexTitle.
@@ -1176,7 +1176,7 @@ abstract class AppLocalizations {
   /// No description provided for @hearingDuplexNote.
   ///
   /// In en, this message translates to:
-  /// **'Listens continuously so it can be interrupted, using the first of your preferred languages it supports — chosen when listening starts and kept for the whole conversation. English is weaker on this path: measured at 13.4% character error against 3.8% when holding the key, so for English the microphone key hears better.'**
+  /// **'Listens continuously so it can be interrupted, in the language chosen by the setting above — fixed when listening starts and kept for the whole conversation. English is weaker on this path: measured at 13.4% character error against 3.8% when holding the key, so for English the microphone key hears better.'**
   String get hearingDuplexNote;
 
   /// No description provided for @sectionAnswerStyle.

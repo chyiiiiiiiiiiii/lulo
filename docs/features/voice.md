@@ -337,10 +337,14 @@ than suspected: 13.4% heard CER against 6.0% for Chinese, on the same
 recogniser through the same harness. So the English problem is **partly** an
 interface question and partly not, and the halves want different answers.
 
-The interface half is still the cheap one and still undone: **a user has no way
-to know the hold key hears English well and the always-listening path does
-not.** Holding the key is 3.8% heard CER; leaving voice on is 13.4%. Those are
-the same app, and nothing on screen says so.
+The interface half was the cheap one and is done. **A user had no way to know
+the hold key hears English well and the always-listening path does not** —
+3.8% heard CER against 13.4%, the same app, nothing on screen saying so. The
+hearing notes in Settings carry both figures now, and the hold-key note goes
+one further: it names the mishearings this path actually makes (`LiteRT` as
+"light RT", `Gemma` as "German", `Dart test` as "Dark text") and points at the
+list where one correction, taught once, holds for every sentence after. A cure
+nobody can find is indistinguishable from no cure.
 
 The other half is a recogniser this app does not control. `SpeechTranscriber`
 is the only streaming option on the platform, the vocabulary bias has now twice

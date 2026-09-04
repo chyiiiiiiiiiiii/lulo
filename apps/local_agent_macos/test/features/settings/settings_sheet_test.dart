@@ -117,6 +117,60 @@ void main() {
     expect(changed?.conversationLanguage, AgentLanguage.chinese);
   });
 
+  testWidgets('the hearing notes say what is true now and where the cure is', (
+    WidgetTester tester,
+  ) async {
+    // Two separate defects in one paragraph. The always-listening note said
+    // the recogniser uses "the first of your preferred languages", which
+    // stopped being true the moment the language became a setting — a
+    // user-facing sentence that describes the old behaviour is worse than no
+    // sentence. And the hold note named the failure it makes (product names
+    // that are also ordinary words) without ever saying that the app can be
+    // taught them, which is the one thing that fixes it.
+    await tester.pumpWidget(sheet(onClose: () {}, locale: const Locale('en')));
+    await tester.pump();
+
+    await tester.dragUntilVisible(
+      find.byKey(const Key('setting-hearing-duplex')),
+      find.byType(ListView),
+      const Offset(0, -160),
+    );
+    await tester.pumpAndSettle();
+
+    final String duplex = tester
+        .widget<Text>(
+          find
+              .descendant(
+                of: find.byKey(const Key('setting-hearing-duplex')),
+                matching: find.byType(Text),
+              )
+              .last,
+        )
+        .data!;
+    expect(
+      duplex,
+      isNot(contains('preferred languages')),
+      reason: 'The note still describes the behaviour this replaced.',
+    );
+    expect(duplex, contains('setting'));
+
+    final String hold = tester
+        .widget<Text>(
+          find
+              .descendant(
+                of: find.byKey(const Key('setting-hearing-hold')),
+                matching: find.byType(Text),
+              )
+              .last,
+        )
+        .data!;
+    expect(
+      hold.toLowerCase(),
+      contains('teach'),
+      reason: 'The note names the defect and not the cure for it.',
+    );
+  });
+
   testWidgets('sharing the frontmost app is a switch the user flips', (
     WidgetTester tester,
   ) async {

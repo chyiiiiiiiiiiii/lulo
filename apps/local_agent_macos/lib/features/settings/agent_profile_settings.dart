@@ -82,7 +82,19 @@ final class AgentProfileSettings extends StatelessWidget {
                   fieldKey: const Key('profile-tone'),
                   label: words.profileTone,
                   hint: words.profileToneHint,
-                  value: profile.personality.tone,
+                  // Empty while it is still the built-in one, which the
+                  // prompt deliberately does not send: `composeAgentPrompt`
+                  // states the built-in tone inside the core identity block,
+                  // in the language of the question, and then excludes this
+                  // field unless the user has changed it. Pre-filling it
+                  // showed an instruction that was not in force — and, since
+                  // the agent opens in English, showed it in Chinese. The
+                  // hint says what the built-in one is instead, so an empty
+                  // field reads as inherited rather than as unset.
+                  value:
+                      profile.personality.tone == const AgentPersonality().tone
+                      ? ''
+                      : profile.personality.tone,
                   onCommit: (String value) => save(
                     (AgentProfile p) => p.copyWith(
                       personality: _personalityWith(p, tone: value),
