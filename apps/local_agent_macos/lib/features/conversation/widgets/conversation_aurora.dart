@@ -13,10 +13,15 @@ typedef ConversationAuroraShaderLoader = Future<ui.FragmentProgram> Function();
 Future<ui.FragmentProgram> loadConversationAuroraShader() =>
     ui.FragmentProgram.fromAsset('shaders/conversation_aurora.frag');
 
-/// Light rising behind the composer while an answer has not begun.
+/// Light rising behind the composer from the moment the user holds to talk
+/// until the answer's first word.
 ///
 /// The wait before the first word runs 1.6 s on a first answer and 5.7 s on
-/// a look at the screen. This is ChunUI's `CCAuroraLayer` (MIT,
+/// a look at the screen. Holding to talk is the same stretch begun earlier —
+/// the agent's attention is on the user — so the light comes up with the key.
+/// The always-open microphone of a live conversation does not raise it: that
+/// can stay open for an hour, and a light that is always on is one nobody
+/// sees. This is ChunUI's `CCAuroraLayer` (MIT,
 /// github.com/liseami/ChunUI) under the composer's glass, which blurs it into
 /// a glow. It leaves as the first word arrives, because an answer being read
 /// is not something to put moving colour behind.
@@ -28,15 +33,20 @@ Future<ui.FragmentProgram> loadConversationAuroraShader() =>
 /// rather than switching on. Reduce Motion, or a shader that will not load,
 /// leaves nothing drawn at all.
 final class ConversationAurora extends StatefulWidget {
-  /// Shows the aurora whenever [activeTurn] has nothing written yet.
+  /// Shows the aurora while [holdingToTalk] is held and whenever
+  /// [activeTurn] has nothing written yet.
   const ConversationAurora({
     required this.activeTurn,
+    this.holdingToTalk,
     this.shaderLoader = loadConversationAuroraShader,
     super.key,
   });
 
   /// The answer being produced, if any.
   final ValueListenable<Turn?> activeTurn;
+
+  /// Whether the user is holding to talk, or null where nothing listens.
+  final ValueListenable<bool>? holdingToTalk;
 
   /// Where the fragment program comes from.
   final ConversationAuroraShaderLoader shaderLoader;
@@ -77,6 +87,7 @@ final class _ConversationAuroraState extends State<ConversationAurora>
   void initState() {
     super.initState();
     widget.activeTurn.addListener(_watch);
+    widget.holdingToTalk?.addListener(_watch);
     unawaited(_load());
   }
 
@@ -95,11 +106,17 @@ final class _ConversationAuroraState extends State<ConversationAurora>
       widget.activeTurn.addListener(_watch);
       _watch();
     }
+    if (oldWidget.holdingToTalk != widget.holdingToTalk) {
+      oldWidget.holdingToTalk?.removeListener(_watch);
+      widget.holdingToTalk?.addListener(_watch);
+      _watch();
+    }
   }
 
   @override
   void dispose() {
     widget.activeTurn.removeListener(_watch);
+    widget.holdingToTalk?.removeListener(_watch);
     _clock.dispose();
     _presence.dispose();
     _time.dispose();
@@ -121,11 +138,13 @@ final class _ConversationAuroraState extends State<ConversationAurora>
     }
   }
 
-  /// Reads whether an answer has begun, reacting only when that changes —
-  /// never to the tokens themselves.
+  /// Reads whether the user is being attended to, reacting only when that
+  /// changes — never to the tokens themselves.
   void _watch() {
     final Turn? turn = widget.activeTurn.value;
-    final bool waiting = turn != null && turn.text.isEmpty && !_stilled;
+    final bool holding = widget.holdingToTalk?.value ?? false;
+    final bool waiting =
+        (holding || (turn != null && turn.text.isEmpty)) && !_stilled;
     if (waiting == _waiting) {
       return;
     }

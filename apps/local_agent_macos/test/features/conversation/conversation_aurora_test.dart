@@ -82,6 +82,44 @@ void main() {
     );
   });
 
+  testWidgets('holding to talk raises it, and letting go with nothing asked '
+      'lets it go', (WidgetTester tester) async {
+    final ValueNotifier<Turn?> active = ValueNotifier<Turn?>(null);
+    final ValueNotifier<bool> holding = ValueNotifier<bool>(false);
+    addTearDown(active.dispose);
+    addTearDown(holding.dispose);
+    await tester.pumpWidget(_host(active, program, holding: holding));
+    await tester.pump();
+
+    holding.value = true;
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 1300));
+    expect(_opacityOf(tester, _aurora), 1);
+
+    holding.value = false;
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 900));
+    expect(_aurora, findsNothing);
+  });
+
+  testWidgets('from holding to talk to the first word, it stays up', (
+    WidgetTester tester,
+  ) async {
+    final ValueNotifier<Turn?> active = ValueNotifier<Turn?>(null);
+    final ValueNotifier<bool> holding = ValueNotifier<bool>(true);
+    addTearDown(active.dispose);
+    addTearDown(holding.dispose);
+    await tester.pumpWidget(_host(active, program, holding: holding));
+    await tester.pump(const Duration(milliseconds: 1300));
+
+    active.value = _answering('');
+    holding.value = false;
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 900));
+
+    expect(_opacityOf(tester, _aurora), 1);
+  });
+
   testWidgets('arriving while an answer is already awaited, it still rises', (
     WidgetTester tester,
   ) async {
@@ -161,12 +199,14 @@ Widget _host(
   ValueNotifier<Turn?> active,
   ui.FragmentProgram program, {
   bool disableAnimations = false,
+  ValueNotifier<bool>? holding,
 }) => MaterialApp(
   home: MediaQuery(
     data: MediaQueryData(disableAnimations: disableAnimations),
     child: Scaffold(
       body: ConversationAurora(
         activeTurn: active,
+        holdingToTalk: holding,
         shaderLoader: () async => program,
       ),
     ),

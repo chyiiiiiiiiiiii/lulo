@@ -538,7 +538,12 @@ the first word cannot move it, and a sweep across all of that spent most of
 each pass lighting nothing. The ticker lives only while the placeholder is on
 screen, so a streaming answer carries no animation at all.
 
-**An aurora rises behind the composer** while the same wait lasts.
+**An aurora rises behind the composer** while the same wait lasts, and
+from the moment the user holds to talk — the same stretch of the agent
+attending, begun earlier, so the light comes up with the key and carries
+through to the first word. A live conversation's always-open microphone does
+not raise it: that can stay open for an hour, and a light that is always on is
+one nobody sees.
 `ConversationAurora` is ChunUI's `CCAuroraLayer`: `shaders/conversation_aurora.frag`
 across the lower 52% of the conversation, beneath the list and the glass, so
 the composer's backdrop blur turns it into a glow. It rises over 1.2s and

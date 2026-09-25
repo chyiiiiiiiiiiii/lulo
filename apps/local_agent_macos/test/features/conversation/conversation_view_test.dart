@@ -5,9 +5,11 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:local_agent_macos/features/conversation/conversation_repository.dart';
 import 'package:local_agent_macos/features/conversation/conversation_view.dart';
 import 'package:local_agent_macos/features/conversation/conversation_view_model.dart';
+import 'package:local_agent_macos/features/voice/voice_service.dart';
 import 'package:local_agent_macos/l10n/generated/app_localizations.dart';
 
 import '../../support/controlled_inference_service.dart';
+import '../../support/fake_voice_service.dart';
 import '../../support/recording_conversation_storage_service.dart';
 
 void main() {
@@ -236,6 +238,30 @@ void main() {
     await _finish(tester);
   });
 
+  testWidgets('holding to talk raises the aurora before anything is asked', (
+    tester,
+  ) async {
+    final _Harness harness = _Harness();
+    await tester.pumpWidget(harness.app(voice: FakeVoiceService()));
+    await tester.pump();
+
+    final TestGesture hold = await tester.startGesture(
+      tester.getCenter(find.byKey(const Key('conversation-hold-to-talk'))),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 1300));
+    expect(find.byKey(const Key('conversation-aurora')), findsOneWidget);
+
+    await hold.up();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 900));
+    expect(find.byKey(const Key('conversation-aurora')), findsNothing);
+
+    // The controller waits out the trailing transcript before settling.
+    await tester.pump(const Duration(seconds: 2));
+    await _finish(tester);
+  });
+
   testWidgets('failed turn has visible status semantics', (tester) async {
     final _Harness harness = _Harness();
     await tester.pumpWidget(harness.app());
@@ -350,12 +376,13 @@ final class _Harness {
 
   final ValueNotifier<bool> modelLoading = ValueNotifier<bool>(false);
 
-  Widget app() => MaterialApp(
+  Widget app({VoiceService? voice}) => MaterialApp(
     localizationsDelegates: AppLocalizations.localizationsDelegates,
     supportedLocales: AppLocalizations.supportedLocales,
     home: ConversationView(
       viewModelFactory: createViewModel,
       modelLoading: modelLoading,
+      voiceService: voice,
     ),
   );
 

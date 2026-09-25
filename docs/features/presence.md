@@ -368,6 +368,26 @@ not having started its transition, and the orb paints the state being left.
 Re-aligning on every sample instead would peg reported time to the last sample
 and freeze blend progress between them.
 
+### What was not borrowed
+
+ChunUI (github.com/liseami/ChunUI), the SwiftUI design system the
+conversation's motion and aurora come from, ships an orb of its own, and it was
+looked at on 2026-09-26 and not taken. It is a glass sphere with a hard edge
+and a drop shadow, which is the faint circle around the orb that this one
+measured out of existence; it is seven layers of blur, blend modes and
+SpriteKit particles, where this is one fixed-cost pass that idles at 2% of a
+core; and it has no states, where this blends six.
+
+Two of its details looked borrowable — a rim light while listening, twinkles
+inside the body while thinking — and were rendered before anything was written:
+all six states at the desktop's 168pt, four moments each, on a dark and a light
+desktop. Every state already owns a hue (idle periwinkle, listening cyan,
+thinking violet, speaking blue with a scalloped edge, working pale mint, error
+coral), so neither detail would tell the user anything the colour does not.
+The rim would also sit in the 0.62–0.75 ring the silhouette test measures, and
+twinkles are motion on something that sits on the desktop all day and is kept
+quiet on purpose. Revisit only if a state is shown to be mistaken for another.
+
 ## Traps
 
 Ranked by how quietly they break.

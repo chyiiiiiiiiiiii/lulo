@@ -437,6 +437,7 @@ final class _ConversationViewState extends State<ConversationView> {
                         heightFactor: 0.52,
                         child: ConversationAurora(
                           activeTurn: _viewModel.activeTurnListenable,
+                          holdingToTalk: _voice == null ? null : _holdingToTalk,
                         ),
                       ),
                     ),
