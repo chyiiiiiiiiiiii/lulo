@@ -200,6 +200,42 @@ void main() {
     await _finish(tester);
   });
 
+  testWidgets('an answer not yet begun raises the aurora under the glass', (
+    tester,
+  ) async {
+    final _Harness harness = _Harness();
+    await tester.pumpWidget(harness.app());
+    await _submit(tester, 'Hello');
+    await harness.inference.requestReceived;
+    harness.start();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 1300));
+
+    final Finder aurora = find.byKey(const Key('conversation-aurora'));
+    final Finder composer = find.byKey(
+      const Key('conversation-bottom-overlay'),
+    );
+    expect(aurora, findsOneWidget);
+    expect(tester.getRect(aurora).bottom, tester.getRect(composer).bottom);
+    expect(
+      tester.getRect(aurora).top,
+      lessThan(tester.getRect(composer).top),
+      reason: 'The light should rise out from behind the glass.',
+    );
+
+    harness.inference.emit(
+      const GenerationDelta(
+        generationId: GenerationId('generation-1'),
+        delta: 'Hi',
+      ),
+    );
+    await tester.pump(const Duration(milliseconds: 200));
+    await tester.pump(const Duration(milliseconds: 900));
+    expect(aurora, findsNothing);
+
+    await _finish(tester);
+  });
+
   testWidgets('failed turn has visible status semantics', (tester) async {
     final _Harness harness = _Harness();
     await tester.pumpWidget(harness.app());

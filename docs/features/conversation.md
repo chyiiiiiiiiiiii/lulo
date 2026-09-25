@@ -32,7 +32,7 @@ Tests: `test/features/conversation/conversation_view_model_test.dart`,
 `conversation_storage_contract_test.dart` (run against both stores through
 `test/support/conversation_storage_contract.dart`),
 `conversation_render_isolation_test.dart`, `conversation_scroll_test.dart`,
-`turn_motion_test.dart`,
+`turn_motion_test.dart`, `conversation_aurora_test.dart`,
 `swappable_inference_service_test.dart`, `pigeon_inference_service_test.dart`,
 and `packages/agent_core/test/conversation_contract_test.dart`.
 
@@ -507,9 +507,10 @@ behind.
 
 ## How a turn arrives
 
-Three pieces of motion, taken from ChunUI (MIT, github.com/liseami/ChunUI), a
-SwiftUI design system. Only its numbers crossed over: nothing SwiftUI draws can
-be drawn here.
+Four pieces of motion, taken from ChunUI (MIT, github.com/liseami/ChunUI), a
+SwiftUI design system. Nothing SwiftUI draws can be drawn here, so what crossed
+over is numbers and, for the aurora, a Metal shader ported to GLSL — which
+carries both MIT notices in its header.
 
 **A question rises into place.** `TurnReveal` fades it in while it travels up
 14pt, over 320ms on `Cubic(0.22, 0.8, 0.36, 1)` — ChunUI's `CCMotion.reveal`,
@@ -537,8 +538,22 @@ the first word cannot move it, and a sweep across all of that spent most of
 each pass lighting nothing. The ticker lives only while the placeholder is on
 screen, so a streaming answer carries no animation at all.
 
-Reduce Motion turns all three off: the turn is simply there and the placeholder
-holds still.
+**An aurora rises behind the composer** while the same wait lasts.
+`ConversationAurora` is ChunUI's `CCAuroraLayer`: `shaders/conversation_aurora.frag`
+across the lower 52% of the conversation, beneath the list and the glass, so
+the composer's backdrop blur turns it into a glow. It rises over 1.2s and
+leaves over 0.8s as the first word arrives — an answer being read is not
+something to put moving colour behind. Two rules come from ChunUI's own notes
+on getting it wrong, and both are pinned by tests: the shader's clock runs only
+while the aurora is drawn and is frozen, not reset, when it leaves, because a
+clock read off the wall hands the shader the whole hidden stretch at once and
+the sky lurches; and once it has left nothing is drawn and nothing ticks. Its
+stops are fixed tones, the same in both schemes, with the accent at full colour
+in the middle: the first render used three pastels, and behind the grey glass
+of the dark scheme they came out as fog.
+
+Reduce Motion turns all of it off: the turn is simply there, the placeholder
+holds still, and no aurora is drawn. So does a shader that will not load.
 
 **Not built: a cursor at the end of the streaming text.** The answer is
 `SelectableText`, so anything placed inline — a `TextSpan` or a `WidgetSpan` —

@@ -39,3 +39,4 @@ flutter:
   generate: true
   shaders:
     - shaders/agent_presence.frag
+    - shaders/conversation_aurora.frag

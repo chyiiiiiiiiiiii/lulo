@@ -15,6 +15,7 @@ import '../voice/voice_service.dart';
 import '../voice/voice_turn_hud.dart';
 import '../voice/voice_turn_log.dart';
 import 'conversation_view_model.dart';
+import 'widgets/conversation_aurora.dart';
 import 'widgets/conversation_composer.dart';
 import 'widgets/conversation_content_column.dart';
 import 'widgets/conversation_list.dart';
@@ -427,6 +428,19 @@ final class _ConversationViewState extends State<ConversationView> {
               // the last message can always clear the glass.
               child: Stack(
                 children: <Widget>[
+                  // Beneath everything, so the composer's glass blurs it into
+                  // a glow and the words stay above it.
+                  Positioned.fill(
+                    child: Align(
+                      alignment: Alignment.bottomCenter,
+                      child: FractionallySizedBox(
+                        heightFactor: 0.52,
+                        child: ConversationAurora(
+                          activeTurn: _viewModel.activeTurnListenable,
+                        ),
+                      ),
+                    ),
+                  ),
                   ConversationList(
                     completedTurns: _viewModel.completedTurnsListenable,
                     activeTurn: _viewModel.activeTurnListenable,
