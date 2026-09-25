@@ -9,6 +9,7 @@ import '../../../l10n/generated/app_localizations.dart';
 import 'active_streaming_turn.dart';
 import 'completed_turn.dart';
 import 'conversation_content_column.dart';
+import 'turn_reveal.dart';
 
 /// Scrollable terminal history plus an independently listening active turn.
 final class ConversationList extends StatefulWidget {
@@ -116,9 +117,18 @@ final class _ConversationListState extends State<ConversationList> {
   /// as the conversation moves under them.
   final Map<Turn, Widget> _rendered = Map<Turn, Widget>.identity();
 
+  /// The completed turns as last built, to tell one that has just been said
+  /// from one that was already there.
+  Set<Turn> _shown = Set<Turn>.identity();
+
+  /// The question that has just been asked, the one turn that enters with
+  /// motion.
+  Turn? _arriving;
+
   @override
   void initState() {
     super.initState();
+    _shown.addAll(widget.completedTurns.value);
     widget.completedTurns.addListener(_followNewContent);
     widget.activeTurn.addListener(_followNewContent);
     _scrollController.addListener(_watchPosition);
@@ -321,6 +331,7 @@ final class _ConversationListState extends State<ConversationList> {
               builder: (BuildContext context, List<Turn> turns, Widget? child) {
                 widget.onCompletedTurnsBuild?.call();
                 _forgetTurnsNoLongerShown(turns);
+                _noteArrival(turns);
                 if (turns.isEmpty) {
                   // The glass over the tail is not room the placeholder has.
                   // Taking the whole viewport made an empty conversation
@@ -385,6 +396,41 @@ extension on _ConversationListState {
     _rendered.removeWhere((Turn turn, Widget _) => !shown.contains(turn));
   }
 
+  /// Picks out the question that has just been asked, if that is what
+  /// changed.
+  ///
+  /// Opening a conversation replaces every turn at once and none of them has
+  /// just been said, so only a lone new question at the end counts — which is
+  /// what sending one and asking one again both look like.
+  void _noteArrival(List<Turn> turns) {
+    final Set<Turn> before = _shown;
+    _shown = Set<Turn>.identity()..addAll(turns);
+    if (turns.isEmpty) {
+      return;
+    }
+    final Turn last = turns.last;
+    if (last.role == TurnRole.user &&
+        !before.contains(last) &&
+        turns.take(turns.length - 1).every(before.contains)) {
+      _arriving = last;
+    }
+  }
+
+  /// A question enters with motion when it has just been asked; an answer
+  /// already entered as it began streaming, and is left as it lands.
+  Widget _entering(Turn turn, Widget child) {
+    if (turn.role != TurnRole.user) {
+      return child;
+    }
+    // Keyed by the turn, so asking a question again replaces the old one's
+    // entrance rather than inheriting it.
+    return TurnReveal(
+      key: ObjectKey(turn),
+      play: identical(turn, _arriving),
+      child: child,
+    );
+  }
+
   Widget _retryable({
     required Turn turn,
     required bool regenerate,
@@ -394,23 +440,26 @@ extension on _ConversationListState {
     final VoidCallback? onRegenerate = regenerate ? widget.onRegenerate : null;
     final ValueChanged<String>? onRevise = revise ? widget.onRevise : null;
     if (available == null || (onRegenerate == null && onRevise == null)) {
-      return _rendered[turn] ??= CompletedTurn(
-        turn: turn,
-        onSpeak: widget.onSpeak,
+      return _rendered[turn] ??= _entering(
+        turn,
+        CompletedTurn(turn: turn, onSpeak: widget.onSpeak),
       );
     }
     // This turn offers retries now and will stop offering them the moment
     // another arrives, so nothing about it may be kept.
     _rendered.remove(turn);
-    return ValueListenableBuilder<bool>(
-      valueListenable: available,
-      builder: (BuildContext context, bool ready, Widget? child) =>
-          CompletedTurn(
-            turn: turn,
-            onRegenerate: ready ? onRegenerate : null,
-            onRevise: ready ? onRevise : null,
-            onSpeak: widget.onSpeak,
-          ),
+    return _entering(
+      turn,
+      ValueListenableBuilder<bool>(
+        valueListenable: available,
+        builder: (BuildContext context, bool ready, Widget? child) =>
+            CompletedTurn(
+              turn: turn,
+              onRegenerate: ready ? onRegenerate : null,
+              onRevise: ready ? onRevise : null,
+              onSpeak: widget.onSpeak,
+            ),
+      ),
     );
   }
 }

@@ -24,7 +24,7 @@ pipeline can be tested without a window, a microphone, or a model.
 | `lib/features/conversation/pigeon_inference_service.dart` | The production implementation, over the desktop host boundary |
 | `lib/features/conversation/swappable_inference_service.dart` | The model changeable underneath a live conversation |
 | `lib/app/fake_runtime.dart` | `DeterministicFakeInferenceService` and the in-memory store |
-| `lib/features/conversation/widgets/` | The list, the composer, the streaming turn, the history sheet |
+| `lib/features/conversation/widgets/` | The list, the composer, the streaming turn, the history sheet, how a turn arrives |
 
 Tests: `test/features/conversation/conversation_view_model_test.dart`,
 `conversation_view_model_batching_test.dart`, `token_batcher_test.dart`,
@@ -32,6 +32,7 @@ Tests: `test/features/conversation/conversation_view_model_test.dart`,
 `conversation_storage_contract_test.dart` (run against both stores through
 `test/support/conversation_storage_contract.dart`),
 `conversation_render_isolation_test.dart`, `conversation_scroll_test.dart`,
+`turn_motion_test.dart`,
 `swappable_inference_service_test.dart`, `pigeon_inference_service_test.dart`,
 and `packages/agent_core/test/conversation_contract_test.dart`.
 
@@ -503,3 +504,55 @@ question and the newest answer are never kept, because what they offer changes
 as the conversation moves under them; the cache is pruned to the turns the
 transcript still holds, so a deleted or rewound conversation leaves nothing
 behind.
+
+## How a turn arrives
+
+Three pieces of motion, taken from ChunUI (MIT, github.com/liseami/ChunUI), a
+SwiftUI design system. Only its numbers crossed over: nothing SwiftUI draws can
+be drawn here.
+
+**A question rises into place.** `TurnReveal` fades it in while it travels up
+14pt, over 320ms on `Cubic(0.22, 0.8, 0.36, 1)` — ChunUI's `CCMotion.reveal`,
+which arrives without overshooting. The rise is a paint transform, so the list
+lays the turn out where it will settle from the first frame and the follow that
+scrolls to the newest answer never chases a moving target. Only a question that
+has *just been asked* moves: `_noteArrival` wants a lone new user turn at the
+end with every other turn already shown, which is what sending and asking again
+both look like, and what opening a conversation — every turn new at once —
+does not. The reveal is keyed by its turn, because asking again puts the new
+wording at the old one's index, and an unkeyed element there inherits an
+entrance that has already played.
+
+**The answer follows 70ms behind**, ChunUI's stagger step, as its bubble
+appears in `ActiveStreamingTurn`. When it completes and moves into the history
+nothing animates: that hand-off is meant to be invisible and still is.
+
+**The placeholder shimmers.** Until the first word, 「思考中…」 is drawn
+through a `ShaderMask` whose band of the accent colour passes over the words
+every 1.6s. The words rest at half strength because in the dark scheme the
+accent and the muted text are nearly the same brightness, and in the rendered
+frames a light that only changed hue was a light nobody saw pass. It travels
+100pt rather than the bubble's width: the placeholder is laid out full width so
+the first word cannot move it, and a sweep across all of that spent most of
+each pass lighting nothing. The ticker lives only while the placeholder is on
+screen, so a streaming answer carries no animation at all.
+
+Reduce Motion turns all three off: the turn is simply there and the placeholder
+holds still.
+
+**Not built: a cursor at the end of the streaming text.** The answer is
+`SelectableText`, so anything placed inline — a `TextSpan` or a `WidgetSpan` —
+becomes part of the text: it is copied with a selection, and every finder that
+asks what the answer says reads it too. Drawing it over the text instead means
+measuring the caret after layout on every batch. Neither was worth it beside a
+shimmer that already covers the silent wait and text whose growth is its own
+signal.
+
+The entrance does not change what appending costs. The reveal is part of the
+widget cached for each turn, so an old question is not rebuilt for it.
+Re-measured on 2026-09-26 against the commit before it, appending a question
+or an answer at 5, 30 and 80 exchanges stayed flat with length in both, and the
+two differed by less than two runs of the same code differ from each other —
+medians of 59–90ms for a question and 32–56ms for an answer. (Debug mode, and a
+different harness from the table above, so the absolute numbers do not compare
+with it.)
