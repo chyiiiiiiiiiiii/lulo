@@ -1,6 +1,6 @@
 huggingface-hub==2.2.0
 librosa==0.11.0
-numpy==2.2.6
+numpy==2.5.3
 onnxruntime==1.22.1
 transformers==5.19.0
 # Not imported here. Pinned because the resolver otherwise picks releases
