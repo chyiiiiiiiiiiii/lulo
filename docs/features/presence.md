@@ -31,13 +31,14 @@ which is not an aesthetic choice — it is what the measurements left.
 | `lib/platform/pigeon_desktop_host_service.dart` | The Dart side of the window boundary |
 
 Tests: `macos/RunnerTests/DesktopPanelControllerTests.swift` (the stage, in a
-real window — seventeen cases, including `testTheRestingAgentStandsInNobodysWay`
+real window — thirty-one cases, including `testTheRestingAgentStandsInNobodysWay`
 and `testAClickOnTheRestingOrbReachesTheCatcher`),
 `test/app/presentation_switch_test.dart`, `test/app/reduced_motion_test.dart`,
 `test/features/presence/presence_flight_test.dart`,
 `desktop_orb_surface_test.dart`, `agent_presence_state_test.dart`,
-`agent_presence_orb_controller_swap_test.dart`, and the golden set under
-`test/features/presence/goldens/`.
+`agent_presence_orb_controller_swap_test.dart`, `test/app/orb_actions_test.dart`
+and `packages/agent_core/test/orb_actions_test.dart` (the strip), and the
+golden set under `test/features/presence/goldens/`.
 
 ## The stage
 
@@ -71,6 +72,19 @@ conversation's frame and nothing grows
 `testTheWindowIsNoBiggerThanTheConversationItIsShowing`). The window is
 therefore the same size in both forms, which is the property the whole design
 is built to keep.
+
+The frosted glass under the conversation is the one thing that is not in
+the panel. `glassWindow` is a borderless `NSWindow` holding an
+`NSVisualEffectView`, added as a child **below** the panel with
+`ignoresMouseEvents = true`, and `updateGlass()` keeps it on the panel's frame
+and level while the conversation shows and takes it away for the orb and for
+the duration of a change of form. It was a view inside the panel first, and
+the behind-window blur intermittently took the window's whole mouse with it —
+every click and every scroll; a window that ignores the mouse outright cannot
+repeat that (`testTheConversationRestsOnFrostedGlassAndTheOrbOnBareDesktop`,
+`testTheGlassStaysAwayWhileTheChangeOfFormIsDrawn`,
+`testTheGlassFollowsAResizedConversation`). It hosts no engine, so "one
+window, one engine" still holds for everything that draws Flutter.
 
 `currentGeometry()` derives from `retainedPanel.frame` rather than
 recomputing from the screen. A geometry that answered from the screen instead
@@ -150,9 +164,20 @@ measured profile ends at 0.725 in every state.
 
 ### The strip under the pointer
 
-Resting on the orb for `OrbActionStrip.dwell` (0.25s) raises a capsule of
-buttons beside it: **talk**, **look**, and — only while there is something to
-stop — **stop**. The argument for each, and for the several that were left out,
+**Off by default.** `AppSettings.orbActions` is false, and false on any
+settings file that predates it, because the person it was built for looked
+at it and could not think of a situation where they would reach for it. It
+is turned on in Settings › Your desktop › Buttons under the resting orb.
+While it is off, `_refreshOrbActions` in `app.dart` hands the host an empty
+list, which is how the strip is turned off natively; the orb goes on
+answering clicks and drags either way. With no model installed
+`orbActionsFor` offers nothing even when it is on, because a microphone that
+opens onto something unable to answer fails after the user has spoken.
+`test/app/orb_actions_test.dart` pins both.
+
+With it on, resting on the orb for `OrbActionStrip.dwell` (0.25s) raises a
+capsule of buttons beside it: **talk**, **look**, and — only while there is
+something to stop — **stop**. The argument for each, and for the several that were left out,
 is in
 [`the-orb-that-answers-without-opening.md`](../decisions/the-orb-that-answers-without-opening.md).
 The short version is one test: an action earns a place only if doing it any

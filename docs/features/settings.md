@@ -1,21 +1,31 @@
 # Settings
 
-Nine choices in a JSON file. The interesting part is not the store, it is that
-every one of them is honoured live by something outside the sheet — nothing is
-kept that the app cannot act on, and nothing waits for a save button.
+A small set of choices in a JSON file, and a sheet that shows more than the
+file holds. The interesting part is not the store, it is that every stored
+choice is honoured live by something outside the sheet — nothing is kept that
+the app cannot act on, and nothing waits for a save button — and that the
+rows which are *not* stored are read back from whoever really owns them.
 
 ## The files
 
 | File | Owns |
 |---|---|
 | `lib/features/settings/app_settings.dart` | `AppSettings`, `SettingsStore`, and the two implementations |
-| `lib/features/settings/settings_sheet.dart` | The surface, shown over the conversation |
+| `lib/features/settings/settings_sheet.dart` | The surface, shown over the conversation, and the sections that are not about the profile |
+| `lib/features/settings/agent_profile_settings.dart` | The profile's sections: who it is, how it talks, memories, words, turn-taking |
+| `lib/features/settings/settings_section.dart` | The titled group every section is drawn in |
+| `lib/features/sidecar/sidecar_health.dart` | `SidecarHealthProbe`: whether the two loopback sidecars answer |
 | `lib/app/app.dart` (`_loadSettings`, `_applySettings`, `_changeSettings`) | Reading, applying, and writing |
 | `lib/main.dart` | The one read that happens before the composition exists |
 
 Tests: `test/features/settings/app_settings_test.dart`,
 `settings_sheet_test.dart`, `settings_model_rows_test.dart`,
-`test/app/settings_race_test.dart`, `test/app/model_default_test.dart`.
+`agent_profile_settings_test.dart`, `launch_at_login_setting_test.dart`,
+`document_section_test.dart`, `transcribe_section_test.dart`,
+`sidecar_section_test.dart`, `notice_ledger_tile_test.dart`,
+`settings_shot_test.dart`, `test/features/sidecar/sidecar_health_test.dart`,
+`test/app/settings_race_test.dart`, `test/app/settings_reach_the_agent_test.dart`,
+`test/app/model_default_test.dart`, `test/app/orb_actions_test.dart`.
 
 ## The store
 
@@ -33,12 +43,13 @@ the user their preferences and failing to start costs them their agent.
 than requiring a whole valid object, so a field written by a later version, or
 one that has since been removed, does not stop the rest from being read.
 
-## The nine, and who acts on them
+## The stored choices, and who acts on them
 
 | Setting | Default | Read live by |
 |---|---|---|
 | `keepOrbOnTop` | true | `DesktopPanelController.applyWindowBehaviour` — the resting orb's window level |
 | `followAcrossSpaces` | true | `applySpaceBehaviour` — `canJoinAllSpaces` vs `managed`, for **both** forms |
+| `orbActions` | **false** | `_refreshOrbActions` in `app.dart`, which hands the host an empty list while it is off — that is how the strip under the resting orb is turned off. Not pushed by `_applySettings`: it is read whenever the strip is next refreshed (the agent's state, the microphone, or the menu bar changing). See [presence.md](presence.md) |
 | `openConversationOnLaunch` | false | `_loadSettings`, once, after the stored choices arrive |
 | `modelPath` | `''` | `AppComposition.useModel` → `SwappableInferenceService.replaceWith`; and `main.dart` before the graph is built |
 | `ttsVoice` | `'ryan'` | `AppComposition.ttsVoice`, a `ValueNotifier` read by `PigeonVoiceService` at the moment of each `speak` |
@@ -47,14 +58,16 @@ one that has since been removed, does not stop the rest from being read.
 | `answerStyle` | `balanced` | `AppComposition.answerStyle`, a `ValueNotifier` the inference service reads when it builds each request — the sampler travels in the request, so moving it reloads nothing |
 | `shareFrontmostApp` | **false** | `ProfileAgentContextProvider.frontmostAppOf`, at the moment each question is composed |
 | `rememberFacts` | **false** | `AgentMemoryExtractor`, read once per finished turn — see [agent-profile.md](agent-profile.md) |
+| `obsidianJournal` | **false** | `AppComposition.obsidianJournal`, a `ValueNotifier` `ObsidianJournalWriter` reads at every finished answer — see *Where the notes go* below and [conversation.md](conversation.md) |
 | `liveConversation` | **false** | `ConversationView.liveConversationToggle` — whether the chrome offers the always-on microphone toggle at all. Off, holding to talk is the only door, and a session a hold opened closes after its turn — see [voice.md](voice.md) |
 
 The first two travel through `setWindowBehaviour` on the pigeon boundary;
 see [presence.md](presence.md) for what they mean to AppKit. `modelPath` is
 the expensive one — see [model.md](model.md).
 
-The last two are the two that default to **off**, and they are the two that
-are not about how the app behaves but about what it is allowed to know.
+`shareFrontmostApp` and `rememberFacts` default to **off** for a different
+reason from the other switches: they are not about how the app behaves but
+about what it is allowed to know.
 `shareFrontmostApp` lets a question carry the name of the app you are in;
 `rememberFacts` lets a finished turn be read for one durable fact about you
 and written into the profile. Both are read live rather than captured, so
@@ -68,6 +81,35 @@ for why the second one ships off rather than on.
 `PigeonVoiceService` is constructed with `voiceOf: () => ttsVoice.value`, so a
 voice changed in the sheet applies to the very next sentence without anything
 being rebuilt.
+
+## What the sheet shows
+
+The sheet is drawn only in the conversation form, and only by a shell that
+has a window host, so in the running app every section below is present —
+except *Write a recording out*, which needs a voice service, and `main.dart`
+builds none below macOS 26 (`_speechAnalyzerAvailable`). Several are built
+only when their dependency is injected, which is what keeps them out of
+widget tests that merely render the sheet. In the order
+`SettingsSheet.build` draws them, titles as the English strings in
+`app_en.arb`:
+
+| Section | What is on it | Kept where |
+|---|---|---|
+| Your desktop | Keep the orb above other windows; Buttons under the resting orb; Follow me between Spaces | `keepOrbOnTop`, `orbActions`, `followAcrossSpaces` |
+| Ask about a file | `_DocumentSection`: pick one text file to answer out of, or close it | Not stored — `AppComposition.openDocument` for this run |
+| Write a recording out | `_TranscribeSection`: pick an audio file, run it through the batch recogniser, save the text through the save panel; "save again" if that panel was dismissed | Nothing stored |
+| The two helpers running behind this | `SidecarSection`: opens a socket to 46557 (voice) and 46558 (ears) when the sheet opens and on "Check again", and names whichever is down. It reports and offers no fix, because the sandbox cannot spawn a process. Built only when a `SidecarHealthProbe` is injected, and drawn only once it has answered | Not stored |
+| When it starts | Be here when I log in (`_LaunchAtLoginSwitch`, below); Open the conversation on launch | `SMAppService`, not the file; `openConversationOnLaunch` |
+| The model it thinks with | The curated catalog rows and Choose… — see [model.md](model.md) | `modelPath` |
+| The language it talks in | English / 中文, with a note on what each costs | `conversationLanguage` |
+| The voice it speaks with | The sidecar's voices, `ttsVoices` | `ttsVoice` |
+| How far it may roam | Careful / Balanced / Inventive | `answerStyle` |
+| Your notes | `ObsidianSection`: the vault folder, the journal switch once a folder exists, how the last write went, and forget — see *Where the notes go* | The folder in `ObsidianVault`'s bookmark; `obsidianJournal` |
+| How it hears you | Two read-only notes comparing the microphone hold with leaving voice on, carrying the measured error figures from [voice.md](voice.md) | Nothing stored |
+| Your desktop | A second section under the same title: Let it know which app you're in; Let it remember things about you; and `NoticeLedgerTile`, the quiet light's tallies with its re-enable button | `shareFrontmostApp`, `rememberFacts`; `presence_notices.json` |
+| Who it is · How it talks · What it remembers · The words it hears · Your own words for taking turns | `AgentProfileSettings` — *The profile, in the same sheet*, below | `agent_profile.json` |
+| Taking turns | Live conversation; Show why it took the floor | `liveConversation`, `showVoiceEvidence` |
+| Summoning | A read-only row naming ⌘⇧Space | Nothing stored |
 
 ## Reading, applying, writing
 
@@ -107,7 +149,7 @@ sequenceDiagram
     App->>App: setState(_settings)
     Note over App,Panel: _applySettings — the window and the<br/>voice hear it before the disk does
     App->>Comp: ttsVoice.value = settings.ttsVoice
-    App->>Comp: answerStyle / shareFrontmostApp /<br/>rememberFacts notifiers
+    App->>Comp: answerStyle / conversationLanguage /<br/>shareFrontmostApp / rememberFacts /<br/>obsidianJournal notifiers
     App->>Panel: setWindowBehaviour(keepOrbOnTop,<br/>followAcrossSpaces) — pigeon
     Panel->>Panel: applyWindowBehaviour(for: storedMode)<br/>+ applySpaceBehaviour()
     App->>Store: save(settings) → settings.json
@@ -293,16 +335,19 @@ scoped to Services-originated turns rather than applied to every answer.
 
 `AgentProfileSettings` puts the typed profile behind human controls rather
 than a raw system prompt: what Lulo is called and what it calls you, its tone
-and how much it says, the facts it remembers, the words it hears, and the
-user's own words for taking and yielding the floor.
+and how much it says, the facts it remembers, the words it hears and says, and
+the user's own words for taking and yielding the floor.
 
-The words it hears are two lists and the order they appear in is an argument.
-`misheard` comes first — pairs of what was heard and what was said, applied
-as a substitution, so it always takes effect. `vocabulary` comes second — a
-hint to the recogniser, which `SpokenVocabularyBook` records changing the
-transcript by not one character. Somebody who has just been misheard should
-reach the one that works first, and the labels say which is which rather than
-both describing the same job.
+The words section holds three lists and the order they appear in is an
+argument. `misheard` comes first — pairs of what was heard and what was said,
+applied as a substitution, so it always takes effect. `respellings` comes
+next — the same shape of fix on the way out, a word the voice says wrongly
+spelled as one it says correctly (企業 as 氣業), applied only to the text
+handed to the synthesiser. `vocabulary` comes last — a hint to the
+recogniser, which `SpokenVocabularyBook` records changing the transcript by
+not one character. Somebody who has just been misheard should reach the one
+that works first, and the labels say which is which rather than all three
+describing the same job.
 
 It writes the same file [agent-profile.md](agent-profile.md) documents, in the
 same schema, through `AgentProfileStore.save`. There is no second copy of the
@@ -322,14 +367,18 @@ Three things about it are load-bearing:
 - **Text fields commit on submit and on losing focus**, not per keystroke.
   Each save rewrites the file.
 
-A memory added here is always `personal`. A memory with no triggers is only
-ever eligible when it is personal or a preference, so any other kind offered
-here would be saved and then never used.
+A memory added here goes through `writeAgentMemory` with
+`source: AgentMemorySource.user`, so it is bounded like every other write and
+not screened — an instruction the user typed is one they meant. It is always
+`personal`: a memory with no triggers is only ever eligible when it is
+personal or a preference, so any other kind offered here would be saved and
+then never used. Every row shows who wrote it and when, and while anything
+was written by the agent, one row offers to forget exactly those.
 
-Still deferred: memory proposals that require confirmation, per-memory scope
-and source, sensitive categories that are never saved automatically, export
-and erase-all. Automatic extraction and semantic retrieval remain disabled
-until those controls and their privacy review exist.
+Automatic extraction exists and is off by default behind `rememberFacts`;
+see [agent-profile.md](agent-profile.md) › *Privacy boundary*. Still not
+built: memory proposals that wait for confirmation, per-memory scope, export,
+and erasing everything at once.
 
 ## Traps
 

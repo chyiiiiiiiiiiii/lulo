@@ -52,6 +52,8 @@ restores the built-in profile.
     "unfinished": ["我的意思是說"]
   },
   "vocabulary": ["Lulo", "Flutter", "MLX", "Codex"],
+  "misheard": [{ "heard": "Dark text", "meant": "Dart test" }],
+  "respellings": [{ "word": "企業", "saidAs": "氣業" }],
   "additionalInstructions": ["不要空泛稱讚；有不同判斷時直接說明。"]
 }
 ```
@@ -64,9 +66,9 @@ moments. The transcript refiner reads it in Dart and refuses to edit those
 words away — a repair after the fact. The recogniser is biased towards them
 before any audio is decoded, which is Apple's `contextualStrings`; that is
 native, so the profile is pushed across through
-`VoiceHostApi.useSpokenVocabulary` when the ears open and again whenever the
-list changes. It was pushed nowhere at all until recently: this file claimed
-the recogniser leaned on the profile while the recogniser in fact ran off a
+`VoiceHostApi.useSpokenVocabulary` when the ears open and again, if the list
+has changed, at every settled utterance (`_pushSpokenVocabulary`). It was
+pushed nowhere at all until recently: this file claimed the recogniser leaned on the profile while the recogniser in fact ran off a
 hardcoded list of its own, and the only vocabulary it ever learned came from
 the agent's own spoken answers.
 
@@ -87,6 +89,25 @@ Do not read the wiring as an accuracy win. `SpokenVocabularyBook` carries a
 measurement where a thirty-two term bias changed the transcript by not one
 character, and nothing since has shown otherwise. What was broken and is now
 fixed is that the setting reaches the thing it names.
+
+`respellings` is the same fix on the way out. The voice
+(`mlx-community/Qwen3-TTS-12Hz-0.6B-Base-8bit`) says a small set of words as
+a different syllable, so a `SpokenRespelling` pairs a `word` with a homophone
+it says correctly — `企業` as `氣業`. `respellForSpeech` runs it on
+`applyMisheardWords` rather than on a substitution engine of its own, and it
+is applied in exactly one place, `PigeonVoiceService.speak`, after
+`speakableText`; the turn, the store and the screen keep the real spelling,
+or the user would read 氣業 in their own transcript. The list is read again
+at every utterance, so an edit applies to the next sentence. These are the
+user's own entries: the measured built-in table (214 entries) lives in
+`sidecars/pronunciation` and is applied by the TTS sidecar, which imports it
+once at startup — see [voice.md](voice.md) › *The TTS sidecar*. When the
+file is read, a row whose `word` is absent or blank, or whose `saidAs` is
+absent or the same as the word, is dropped for the reason a blank `heard`
+is. The Settings editor additionally refuses an empty `saidAs`; the decoder
+does not, so a hand-written `"saidAs": ""` is kept and removes the word from
+what is spoken.
+
 Unknown fields are ignored. Invalid memories are skipped independently.
 
 ## The tone field is empty until it is yours
@@ -131,11 +152,12 @@ How each is matched, which is worth knowing before adding a short one:
 - A word listed in both `acknowledgements` and `corrections` is a
   correction. Being unable to stop the agent is the worse failure.
 
-The first two take effect on the next thing said, because the file is
-watched and the policy is read at every ruling. `unfinished` is pushed
-across to the native endpointer once per settled utterance, so it takes
-effect on the next turn — a beat later, and not something anyone edits
-mid-sentence.
+The first two take effect on the next thing said, because the policy is read
+from `profileStore.current` at every ruling, and both a Settings edit and — in
+debug and profile builds, which watch the file — a hand edit replace it.
+`unfinished` is pushed across to the native endpointer once per settled
+utterance, so it takes effect on the next turn — a beat later, and not
+something anyone edits mid-sentence.
 
 Watch them working with Settings › Taking turns › *Show why it took the
 floor*. See
@@ -157,7 +179,8 @@ logs profile or memory content. Diagnostics may use stable memory IDs.
 
 Three things write memories, and all of them go through
 `writeAgentMemory` in `agent_core` so that one place owns the bounds:
-the settings sheet's add field, `RememberTool`, and the extraction pass.
+the settings sheet's add field, `RememberTool` (built but not registered —
+see below), and the extraction pass.
 
 Every entry records **who wrote it** — `AgentMemorySource` is `developer`
 (hand-authored in the file), `user` (typed into Settings) or `agent`
@@ -203,8 +226,12 @@ registered** — gemma-4-E4B does not call it, 0/5 across eleven conditions,
 including one where the user says 「記住我住在台南」 outright. Asked to
 remember, it answers 「我記住了」 and writes nothing.
 
-What works instead is a second pass, measured at 15/15 recall and 0/15 false
-keeps: after a turn finishes, `AgentMemoryExtractor` sends what the user
+What works instead is a second pass — measured at 15/15 recall and 0/15 false
+keeps when it was built, and at 25/25 recall and 0/20 false keeps across the
+wider conditions re-run after its instruction learned to refuse directives
+dressed as facts
+([../decisions/memory-is-an-attack-surface.md](../decisions/memory-is-an-attack-surface.md)):
+after a turn finishes, `AgentMemoryExtractor` sends what the user
 said to the same model with no persona and no tools, and reads back one
 sentence or `NONE`. When the profile already holds memories they are listed
 in that prompt, so one pass both keeps a fact and names what it retires.
@@ -220,14 +247,27 @@ twice:
 ```text
 systemInstruction — prefilled once per conversation
   core identity
-  spoken-response behavior, including the sentence budget
+  spoken-response or written-response behavior, by AnswerChannel,
+    including the sentence budget
   user preferences
   additional developer instructions
 
 turnInstruction — read again with every question
   relevant structured memories
+  [Background: now] — the clock
+  [Background: desktop] — the frontmost app, only when shareFrontmostApp is on
+  [From the document] — passages of the open file the question locates
+  one line saying the background is not part of the question
   current question
 ```
+
+The section titles are in the language of the question — `[背景：現在]`,
+`[背景：桌面]`, `[文件裡相關的段落]` for a Chinese one. Which answer block
+the system half carries follows `GenerationRequest.channel`: a spoken
+question gets the spoken rules, a typed one gets `Written response`, which
+allows dash lists and nothing else of Markdown. Switching between typing and
+talking therefore changes the system message and rebuilds the conversation
+once.
 
 The bounded recent conversation remains on the native history field. The
 question appears exactly once.
@@ -242,8 +282,11 @@ of memories for the same reason: the stable half has to end at the same
 place every turn. See
 [../decisions/voice-turn-latency.md](../decisions/voice-turn-latency.md).
 
-The 1,200-character cap still bounds both halves together, so a profile full
-of memories cannot grow the prompt by moving text across the seam.
+The 1,200-character cap still bounds the profile-derived text in both halves
+together, so a profile full of memories cannot grow the prompt by moving text
+across the seam. The background blocks are outside it: the clock and the app
+name are a line each, and document passages have their own 1,400-character
+bound (`maxDocumentCharacters`).
 
 ## The spoken length is a number, not an adjective
 
@@ -256,18 +299,27 @@ profile with `回答控制在三句話以內` answered in 91, and shortened ever
 five. Three of the five ended by asking a question back, which the long
 answers never did.
 
-| `responseLength` | Budget |
+That first budget was a ceiling, 「三句話以內」, and a ceiling is read as a
+target: four questions of very different weight came back at exactly three
+sentences each. The budget now names a typical length **and** what raises it,
+in words that appear in the question itself — see
+[../decisions/answer-length-should-follow-the-question.md](../decisions/answer-length-should-follow-the-question.md).
+
+| `responseLength` | Budget (`_spokenLength`, `_zhSpokenLength`) |
 |---|---|
-| `concise` | three sentences |
-| `balanced` | five sentences |
+| `concise` | one to three sentences for most questions; seven or eight when the question needs steps, a comparison, or a reason |
+| `balanced` | one to five sentences for most questions; longer when it needs steps, a comparison, or a reason |
 | `detailed` | no count — "still talking, not writing" |
 
-The budget carries a second clause — 講完核心就停，細節等使用者追問再說 — because
-telling a model to stop is not the same as telling it where the rest of the
-answer went. With it, stopping reads as leaving room rather than running out.
+Each budget ends 「講完就停，不要為了湊長度補話」 / "Stop when you are done,
+and never pad to fill the room." Without it the raised ceiling becomes the new
+target and every answer grows to eight sentences instead of three.
 
-It is gated on `voiceBehavior.preferNaturalShortSentences`: a profile that
-has turned spoken-sentence shaping off does not get a budget either.
+On the spoken channel it is gated on
+`voiceBehavior.preferNaturalShortSentences`: a profile that has turned
+spoken-sentence shaping off does not get a budget either. A typed question
+always gets one, from `_writtenLength`, with the same lines except
+`detailed`, which asks for paragraphs.
 
 A profile the user edits changes the system message, and a prefilled KV
 cache cannot be amended in place. The runtime driver notices and rebuilds

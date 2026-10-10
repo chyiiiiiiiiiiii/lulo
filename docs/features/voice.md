@@ -21,6 +21,14 @@ with a way to fail silently.
 > Ducking exists for input quality and nothing else, so it lasts exactly
 > as long as the input does.
 >
+> The two ways of holding are **not** the same recogniser. ⌘⇧Space captures
+> its audio natively (`HeldSpeechCaptureBox`) and sends it to the batch
+> recogniser, with the streamed transcript only as an 8s backstop; the
+> composer's `_HoldToTalkButton` calls `holdToTalkPressed()` without
+> `withBatchRecognition`, so what it sends is the streaming
+> `SpeechTranscriber`'s transcript. The "2-4x more accurate" above is the
+> hotkey's.
+>
 > When the switch is on, full duplex works as documented below: voice
 > processing on both the input and the output node, the microphone open
 > while the agent speaks, the user able to talk over an answer. The
@@ -42,12 +50,20 @@ with a way to fail silently.
 | `lib/features/voice/speakable_text.dart` | What is left of an answer once everything unsayable is taken out |
 | `lib/features/voice/voice_conversation_controller.dart` › `_pushRecognitionLocale` | Which language the microphone is opened on |
 | `lib/features/voice/tts_voices.dart` | The voice list, mirroring the sidecar's |
+| `macos/Runner/VoiceHostAdapter.swift` (`SpeechTurn`) | The endpointer's and the mute's bookkeeping, apart from the adapter so it can be tested without an audio device |
+| `macos/Runner/VoiceHostAdapter.swift` (`RecognitionLocale`) | Which locale the transcriber is opened on: the app's choice, then the Mac's languages |
+| `macos/Runner/DictationController.swift` | ⌃⇧Space dictation to the clipboard, on its own `AVAudioEngine` |
 | `~/dev/lulo-tts/server.py` | Qwen3-TTS, resident, on `127.0.0.1:46557` |
+| `~/dev/lulo-tts/ears.py` | The batch recogniser, on `127.0.0.1:46558` |
 
 Tests: `macos/RunnerTests/VoiceActivityTests.swift` (the VAD, against
-synthesised rooms), `test/features/voice/voice_conversation_controller_test.dart`
+synthesised rooms), `macos/RunnerTests/SpeechTurnTests.swift` (the
+endpointer and the mute, with a test clock), `RecognitionLocaleTests.swift`,
+`DictationControllerTests.swift`,
+`test/features/voice/voice_conversation_controller_test.dart`
 (the loop, against `FakeVoiceService`),
 `test/features/voice/pigeon_voice_service_test.dart`,
+`test/features/voice/spoken_respelling_reaches_the_voice_test.dart`,
 `test/features/voice/voice_ui_test.dart`.
 
 ## Full duplex, and the half-duplex fallback
@@ -59,6 +75,17 @@ agent speaks and the player node, `/render` and `renderAndPlay` are all live.
 When the output node refuses, the input is turned back off and the mute-based
 path below takes over — input-only voice processing is worse than none, since
 the microphone stays open with nothing removing the agent from it.
+
+There is a third arrangement, decided by `InputDevicePolicy` in
+`finishWarmEngine` at each press. When the default output is Bluetooth
+(`skipsEchoCancellation(outputTransport:)`) the agent's voice goes into the
+user's ears and never reaches the room, so there is nothing to cancel: no
+voice processing is enabled, no output unit is touched, the microphone stays
+open (`openMicWithoutCanceller`, which `utteranceBegan` also exempts from the
+mute), and the sidecar speaks through its own player. Touching the output
+side while a Bluetooth route renegotiated failed start after start. A
+Bluetooth *input* is declined in favour of the built-in microphone
+(`pinsBuiltInMicrophone`). `InputDevicePolicyTests.swift` pins the decisions.
 
 The rest of this section is the history, kept because the reasoning in it was
 wrong twice in the same way and that is worth not repeating. Quoted from
@@ -118,9 +145,9 @@ second `startListening` would return success over a session that no longer
 exists.
 
 `stopListening` bumps the same counter, which invalidates any start still in
-flight, and additionally resets the whole speech state (`speakEpoch`,
-`unmuteGeneration`, `outstandingUtterances`, `speakingReported`,
-`mute.muted = false`). A fallback utterance whose terminal callback never
+flight, and additionally resets the whole speech state (`speakEpoch`, then
+`SpeechTurn.listeningStopped()` — `unmuteGeneration`, `outstanding`,
+`speakingReported` and the utterance clocks — and `mute.muted = false`). A fallback utterance whose terminal callback never
 arrived must not leave the microphone muted for the session that comes next.
 `pipelineFailed` does exactly the same reset for the same reason.
 
@@ -189,7 +216,7 @@ SpeechTranscriber(
   locale: locale,
   transcriptionOptions: [],
   reportingOptions: [.volatileResults, .fastResults],
-  attributeOptions: []
+  attributeOptions: [.transcriptionConfidence]
 )
 ```
 
@@ -197,17 +224,22 @@ SpeechTranscriber(
 *while the words are still being said*. Without it the first partial can trail
 the speech by seconds, and the endpointer starves — it never learns that this
 utterance was heard at all. The finals settle the spelling afterwards.
+`.transcriptionConfidence` is what puts a score on every word; the weakest
+one is what *The second listen* and the doubt caption below act on.
 
-The locale comes from `Locale.preferredLanguages`, not `Locale.current`. The
-bundle is unlocalized, so `Locale.current` reports English and a zh-TW
-speaker would be transcribed into romanised noise.
+The locale is the one Dart asked for through `useRecognitionLocale` —
+`AppSettings.conversationLanguage`, pushed before `startListening` — and
+`RecognitionLocale.resolve` falls back to `Locale.preferredLanguages` when it
+is absent or has no model on this platform. Never `Locale.current` alone: the
+bundle is unlocalized, so it reports English and a zh-TW speaker would be
+transcribed into romanised noise. See *Which language it is opened in*.
 
 Results are consumed in `resultsTask`. Bookkeeping inside it is guarded by
 `id == self.sessionCounter` so a dead session's trailing results cannot steer
 the live session's endpointer — but the guard runs **even for empty results**,
 because a finalize that produced nothing must still clear
-`endpointFinalizeRequested`, or the fast path stays latched off for the rest
-of the session.
+`SpeechTurn.finalizeRequested` (`settled()`), or the fast path stays latched
+off until the 3s re-ask below.
 
 ### Tearing down
 
@@ -241,7 +273,7 @@ is the one place that puts them beside each other.
 | | Typing | Holding the key | Full duplex |
 |---|---|---|---|
 | Recogniser | none | Breeze-ASR-25, batch | Apple `SpeechTranscriber`, streaming |
-| How the language is chosen | from what is typed | **pinned `language="zh"`** | **pinned at `begin()` from `Locale.preferredLanguages`** |
+| How the language is chosen | from what is typed | **pinned `language="zh"`** | **pinned at `begin()` from `conversationLanguage`**, `Locale.preferredLanguages` as the floor |
 | Chinese | — | 1.6% heard CER | 14.6% spoken CER / **6.0% heard CER** |
 | English | — | **3.8% heard CER** | 16.4% spoken CER / **13.4% heard CER** |
 | Per utterance | — | ~1.3 s | live partials |
@@ -265,8 +297,12 @@ substitution cannot fail the same way. See
 [agent-profile.md](agent-profile.md) and
 [batch-asr-candidates.md](../decisions/batch-asr-candidates.md).
 
-**Full duplex** pins one locale for the whole session, so on a zh-TW Mac an
-English sentence is heard by a recogniser set to Chinese. This column used to
+"Holding the key" is ⌘⇧Space. The composer's hold button sends what the
+streaming recogniser heard, so it belongs to the full-duplex column (see the
+note at the top).
+
+**Full duplex** pins one locale for the whole session, so an English sentence
+said to a session opened in Chinese is heard by a recogniser set to Chinese. This column used to
 read "never measured", and the reason was not English: the full-duplex
 recogniser could not be measured **at all**. `voice_eval` scores files and
 `SpeechTranscriber` only existed wired to a live `AVAudioEngine`, so the only
@@ -439,27 +475,43 @@ Lulo voice: vad floor 0.0021 peak 0.0480 (utterance pending)
 endpointer is declining, the VAD never heard this utterance, and the Dart
 settle is carrying the turn.
 
-### `checkEndpoint` — the four guards and the two clocks
+### `checkEndpoint` and `SpeechTurn` — the guards and the two clocks
 
-The endpoint task ticks every 50ms and calls `checkEndpoint`, which does
-nothing unless **all** of:
+The endpoint task ticks every 50ms and calls `checkEndpoint`. The adapter
+keeps the effects — the mute, the events, the finalize — and the decisions
+live in `SpeechTurn`, a struct with no audio device in it, which is what lets
+`SpeechTurnTests.swift` run a whole conversation on a test clock.
+`checkEndpoint` itself returns unless:
 
 ```swift
 id == sessionCounter          // this session
-utteranceInProgress           // something volatile is on screen
-!endpointFinalizeRequested    // asked once, not every tick
+!turn.muteOverdue(now: now)   // otherwise: force the microphone open, below
 !mute.muted                   // the agent is not talking
 ```
 
-then requires silence longer than `endpointSilence = 0.8`, and finally the
-guard that is easiest to break:
+and then asks `turn.shouldFinalize(silence:lastVoiceAt:endpointSilence:now:)`,
+which refuses unless all of:
 
 ```swift
-guard vad.lastVoiceAt() >= max(utteranceHeardAt - 1.5, muteLiftedAt) else { return }
+utteranceInProgress           // something volatile is on screen
+!finalizeRequested            // asked once — or unanswered for 3s
+silence > TurnCompletion.requiredSilence(after: volatileText,
+                                         endpointSilence: 0.8, …)
+lastVoiceAt >= max(heardAt - 1.5, muteLiftedAt)   // the easiest to break
 ```
 
-Read that as: *only trust a silence measured against voice heard for THIS
-utterance, in a stretch of time the microphone was actually open.*
+Read the last one as: *only trust a silence measured against voice heard for
+THIS utterance, in a stretch of time the microphone was actually open.*
+
+Two escapes exist because their absence was a session going wrong with no
+event saying so. A finalize the analyzer accepts and then never answers —
+no final, not even an empty result — left nothing to clear the latch, so
+`reaskUnansweredFinalize` (3s) asks again rather than letting every later
+turn fall back to the Dart settle. And a sidecar that wedges inside a render
+never returns its sentence, so the mute never lifts and the agent is deaf
+behind a button that still shows a live microphone: after `muteCeiling` (45s)
+with no sentence starting or finishing, `checkEndpoint` abandons the speech,
+lifts the mute and emits `speakingFinished`.
 
 Every tick runs the whole cascade, and each rung refuses for its own reason:
 
@@ -467,34 +519,36 @@ Every tick runs the whole cascade, and each rung refuses for its own reason:
 flowchart TD
     tick["endpointTask ticks — Task.sleep(50ms), main actor"] --> g1["id == sessionCounter"]
     g1 -->|"a session that has been replaced"| out(["return, silently"])
-    g1 --> g2["utteranceInProgress"]
-    g2 -->|"nothing volatile on screen yet"| out
-    g2 --> g3["!endpointFinalizeRequested"]
-    g3 -->|"already asked — once per utterance"| out
-    g3 --> g4["!mute.muted"]
+    g1 --> g0["turn.muteOverdue(now:)"]
+    g0 -->|"shut 45s with nothing moving"| reopen(["abandonSpeech, unmute,<br/>emit speakingFinished"])
+    g0 --> g4["!mute.muted"]
     g4 -->|"the agent is talking, and the VAD<br/>is seeing no buffers at all"| out
-    g4 --> sil["silence.isFinite<br/>silence > endpointSilence (0.8s)"]
-    sil -->|"shorter than 0.8s, or infinite<br/>because no voice was ever heard here"| out
-    sil --> clocks["vad.lastVoiceAt() >=<br/>max(utteranceHeardAt - 1.5, muteLiftedAt)"]
+    g4 --> g2["SpeechTurn.shouldFinalize:<br/>utteranceInProgress"]
+    g2 -->|"nothing volatile on screen yet"| out
+    g2 --> g3["!finalizeRequested,<br/>or asked 3s ago and unanswered"]
+    g3 -->|"already asked"| out
+    g3 --> sil["silence.isFinite<br/>silence > TurnCompletion.requiredSilence<br/>(0.55s / 0.8s / 1.4s)"]
+    sil -->|"too short, or infinite<br/>because no voice was ever heard here"| out
+    sil --> clocks["lastVoiceAt >=<br/>max(heardAt - 1.5, muteLiftedAt)"]
     clocks -->|"the last voice belongs to<br/>the pre-answer past"| decline(["return — the Dart settle<br/>carries this turn"])
-    clocks --> fire["endpointFinalizeRequested = true<br/>analyzer.finalize(through: nil)"]
+    clocks --> fire["turn.askedToFinalize(at:)<br/>analyzer.finalize(through: nil)"]
 ```
 
-The two clocks in the last guard are the ones with a history. `utteranceHeardAt`
+The two clocks in the last guard are the ones with a history. `heardAt`
 answers *whose silence is this?* and `muteLiftedAt` answers *was anyone
 listening during it?* — and the `decline` arm is not a failure. It is the
 endpointer saying it has no honest measurement, which is what the heartbeat's
 `(utterance pending)` reports and what the Dart settle exists to cover.
 
-- **`utteranceHeardAt`** is set when the current utterance's first volatile
-  arrives (`if !utteranceInProgress { utteranceHeardAt = now }`). The `- 1.5`
-  margin exists because recognition trails the voice it heard: the first
-  volatile can arrive after the room already went quiet, and without the
-  margin its own utterance would look older than the last voice.
-- **`muteLiftedAt`** is set to `systemUptime` when the mute is released after
-  an answer. Anything the VAD heard before that instant is the pre-answer
-  past. The mute was unmeasured dead time; a silence spanning it is not a
-  silence anyone observed.
+- **`heardAt`** is set when the current utterance's first volatile arrives
+  (`SpeechTurn.heardVolatile`: `if !utteranceInProgress { heardAt = now }`).
+  The `- 1.5` margin exists because recognition trails the voice it heard:
+  the first volatile can arrive after the room already went quiet, and
+  without the margin its own utterance would look older than the last voice.
+- **`muteLiftedAt`** is set by `SpeechTurn.microphoneReopened(at:)` when the
+  mute is released after an answer. Anything the VAD heard before that
+  instant is the pre-answer past. The mute was unmeasured dead time; a
+  silence spanning it is not a silence anyone observed.
 
 Without these two, the first volatile after an answer is finalized on the
 spot — the VAD's `lastVoice` is minutes stale, so "silence" is enormous — and
@@ -515,27 +569,30 @@ stateDiagram-v2
     Draining --> Listening: 300ms later — unmute, clocks reset, SpeakingFinished
 
     note right of Speaking
-      utteranceBegan(): outstanding++, unmuteGeneration++
+      utteranceBegan() → turn.began(at:):
+      outstanding++, unmuteGeneration++
       on 0→1: mute.muted = true, emit SpeakingStarted
     end note
     note right of Draining
-      utteranceEnded() captured unmuteGeneration and slept 300ms.
-      It only completes if that generation still matches and
-      outstanding is still 0. Then: mute.muted = false,
-      muteLiftedAt = now, utteranceInProgress = false,
-      utteranceHeardAt = infinity, endpointFinalizeRequested = false,
-      speakingReported = false, emit SpeakingFinished.
+      utteranceEnded() → turn.ended(at:) returned a generation,
+      then slept 300ms. turn.liftMute(generation:) only passes
+      if that generation still matches and outstanding is
+      still 0. Then: mute.muted = false and
+      turn.microphoneReopened(at:) — muteLiftedAt = now,
+      utteranceInProgress = false, heardAt = infinity,
+      finalizeRequested = false — and emit SpeakingFinished.
     end note
 ```
 
 | State | Why it exists | Breaking it looks like |
 |---|---|---|
-| `outstandingUtterances` | The mute and `SpeakingFinished` belong to the whole answer, not one sentence | Sentence one's return reopens the microphone while sentence two plays; the agent transcribes itself |
+| `SpeechTurn.outstanding` | The mute and `SpeakingFinished` belong to the whole answer, not one sentence | Sentence one's return reopens the microphone while sentence two plays; the agent transcribes itself |
 | `unmuteGeneration` | Cancels a pending delayed unmute when a newer speech state supersedes it | A late unmute from the previous answer opens the microphone in the middle of the next one |
 | `speakingReported` | The 300ms hangover can bridge two utterances | Doubled `SpeakingStarted`/`SpeakingFinished` pairs; the UI flickers |
 | The 300ms delay itself | The speaker's tail is still in the air when the sidecar returns | The agent transcribes its own last word |
 | `speakEpoch` | Bumped by `stopSpeaking`; an in-flight utterance captured it at entry | A barged-over sentence keeps rendering, or a stale one reports over the new turn |
-| `muteLiftedAt`, `utteranceHeardAt`, `utteranceInProgress`, `endpointFinalizeRequested` reset together | The endpointer starts each turn clean | See above — first word of the next sentence gets finalized alone |
+| `muteLiftedAt`, `heardAt`, `utteranceInProgress`, `finalizeRequested` reset together (`microphoneReopened`) | The endpointer starts each turn clean | See above — first word of the next sentence gets finalized alone |
+| `lastProgressAt` and `muteCeiling` | A sentence wedged inside the sidecar must not keep the microphone shut forever | The agent goes deaf mid-session while the button still shows a live microphone |
 
 Note the `if !self.fullDuplex` around the endpointer reset in
 `utteranceEnded`: full duplex never mutes, never freezes the clock, and the
@@ -567,15 +624,22 @@ and an indicator must not claim an open microphone during it.
 Driven by `_onActiveTurnChanged`, which sees the streaming answer grow:
 
 1. `_dispatchedOfActive` marks how much has already gone to the voice.
-2. In the undispatched remainder, find the last **safe** sentence end
-   (`[。！？!?.…；;\n]`).
-3. If there is none and this is the answer's **first** chunk, accept a clause
+2. For the answer's **first** chunk, find the last **safe** sentence end in
+   the undispatched remainder (`_sentenceEnd`, `[。．｡！？!?.…；;\n]`). After
+   that, `_sentenceEndNear` takes the **first** safe sentence end at or past
+   the target rather than the last one — taking the last made the target a
+   minimum with no maximum, and chunks measured in use ran from 5 to 140
+   characters.
+3. If there is none and this is the answer's first chunk, accept a clause
    end instead (`,`, `，`, `、`) provided it has at least
    `_firstClauseTarget = 6` characters of substance — `好的,` alone reads as a
-   stutter.
-4. After the first chunk, require `_chunkTarget = 40` characters. Single short
-   sentences drift in timbre and every separate synthesis pays its own prosody
-   reset.
+   stutter. Later chunks fall back to a clause end only once twice the
+   target has gone by with no sentence end in sight.
+4. After the first chunk, require `_chunkTargetForAnswer` characters:
+   `_chunkTarget = 64` for an answer pinned to English, `_cjkChunkTarget = 32`
+   for one pinned to Chinese — the same few seconds of speech, since Chinese
+   runs about 0.156s a character. Single short sentences drift in timbre and
+   every separate synthesis pays its own prosody reset.
 5. Dispatch through `_speakAloud`.
 
 Two guards on "safe":
@@ -636,15 +700,30 @@ stripped text is a no-op.
 
 ### Barge-in
 
-`_yieldToTheUser()` is the whole interruption:
+`_yieldToTheUser()` is the whole interruption, reduced to its shape:
 
 ```dart
-if (_speaking || _speechRequested) { _voice.stopSpeaking(); }
+if (_pttHeld || _pttSettling || _pttProtected) return; // a hold owns the floor
+if (_deliveringAnswer) {
+  _interruptedSpeech = _speechOutstanding.join();       // held, not dropped
+  _pendingResume = schedule(_resumeDelay, _resumeInterruptedSpeech);
+  _voice.stopSpeaking();
+}
 if (!_conversation.canSubmit) { _stopRequestedForActive = true; _conversation.stop(); }
 ```
 
 It fires from a `PartialTranscript` that `FloorControl` says takes the floor —
 the user has started talking, so the agent stops, the way a friend does.
+
+Two things around it are easy to miss. A question asked by holding a key is
+**shielded**: while a hold is down, settling, or its answer is still being
+spoken (`_pttProtected`, `answerShielded`), nothing said yields the floor
+except the next hold. And what was cut off is not thrown away: the sentences
+still with the voice are held for `_resumeDelay` (2s). If what the user said
+becomes a question, that question wins and the held speech is dropped; if
+they were only reacting, `_resumeInterruptedSpeech` picks the answer up where
+it stopped. In the session that prompted it, 53 yields stopped the speech and
+48 of those took the answer away and gave nothing back (`git show 2c88ca2`).
 
 **What counts as taking it** is decided by the words, not their length.
 `FloorControl.classify` sorts the utterance into `backchannel` (嗯嗯, 對對對,
@@ -714,9 +793,9 @@ the work is not.
 |---|---|---|---|
 | `GET /health` | — | `{"ok": true, "model": …}` | Liveness |
 | `GET /voices` | — | `{"voices": [...]}` | Mirrored by `tts_voices.dart` |
-| `POST /speak` | `{text, voice, lang}` | `{"ok": true, "stopped": bool}` **after playback drains** | Half duplex — today's path |
-| `POST /render` | `{text, voice, lang}` | chunked raw float32 mono PCM, `X-Sample-Rate` header | Full duplex — gated off |
-| `POST /stop` | — | `{"ok": true}` | Barge-in |
+| `POST /speak` | `{text, voice, lang, epoch}` | `{"ok": true, "stopped": bool}` **after playback drains** | No full-duplex session is open: the half-duplex fallback, and a hold once its session closed at the send |
+| `POST /render` | `{text, voice, lang}` | chunked raw float32 mono PCM, `X-Sample-Rate` header | A full-duplex session, played through its `AVAudioPlayerNode` (`renderAndPlay`) |
+| `POST /stop` | `{epoch}` | `{"ok": true}` | Barge-in |
 
 `/speak` blocking until the sound has actually finished is not laziness — it
 *is* the `SpeakingFinished` signal. The adapter's 120s timeout is the ceiling;
@@ -735,6 +814,17 @@ which `onset.py` now trims off the first chunk; and the chunk interval is the
 floor under how soon any first chunk can exist, which halving moved from
 0.62s to 0.33s. Read that record before raising either number back.
 
+The built-in pronunciation table is applied here, not in the app.
+`server.py` puts `sidecars/pronunciation` from this repository (or
+`LULO_PRONUNCIATION_DIR`) on its path and imports `lexicon.respell` **once,
+at startup**, so an entry added to that table reaches the voice when the
+sidecar is next restarted; a missing table falls back to speaking the text
+as written rather than silencing the voice. The user's own
+`AgentProfile.respellings` are applied on the app side, in
+`PigeonVoiceService.speak`, before the text leaves — see
+[agent-profile.md](agent-profile.md) and
+[the decision record](../decisions/taiwan-mandarin-voice-candidates.md).
+
 Pacing comes from the reference recording. The voice is cloned from
 `voices/ryan.wav`, and cloning imitates the reference's pace — which retired
 the CustomVoice `語速快一點` instruct that used to do this job. The model's
@@ -747,7 +837,7 @@ itself on boot.
 
 ### The epoch mechanism
 
-There are two epochs, one per side, and they do different jobs.
+There are three epochs, and they do different jobs.
 
 **Sidecar `_stop_epoch`.** `/stop` bumps it under `_epoch_lock`, then drains
 the work queue, marking every waiting request `stopped`. Each request captured
@@ -770,8 +860,46 @@ at entry. Its job is to keep a stale utterance from reporting anything after
 the user has already barged over it — and, on the `/render` path, to stop
 pulling bytes mid-download and cancel the task.
 
+**Sidecar `_client_live_epoch`.** The adapter's epoch, as last declared.
+`/speak` carries the `speakEpoch` it was sent under and `/stop` carries the
+current one, which the sidecar keeps as `_client_live_epoch`; a `/speak`
+stamped older is answered `stopped` without being queued. Delivery order is
+not send order — a request can sit in the app's connection pool through a
+stop and land after the sidecar's own epoch has moved on, looking like fresh
+work — and the app's clock is the one that heard the user.
+
 On the `/render` path the client hanging up *is* the barge-in signal: the
 sidecar's `_stream_render` stops at the first failed write.
+
+## Dictation: ⌃⇧Space to the clipboard
+
+Holding ⌃⇧Space in any app, speaking and letting go puts the words on the
+clipboard. It is registered unconditionally in
+`AppDelegate.applicationDidFinishLaunching`, on a `GlobalHotKeyController` of
+its own; a key that will not register is logged and dictation is simply
+absent. Not ⌘⇧D, because Finder, Mail and most editors use it and a Carbon
+hot key beats the frontmost app's menu. Neither key is configurable.
+
+It shares nothing with the conversation, on purpose.
+`DictationController` is entirely native and never reaches Dart, so a
+transcript cannot stop an answer, take the agent's turn, or come back as a
+question. Its microphone is `DictationAudioEngine`: its own `AVAudioEngine`,
+built fresh for each hold and with **no voice processing** — there is no
+agent speaking to cancel, and skipping it is most of what makes the engine
+cheap. Carving a mode out of the conversation's tap was built first and taken
+back out, because every guard it needed broke the VAD, the endpointer or the
+half-duplex mute; [../decisions/dictation-cannot-share-the-tap.md](../decisions/dictation-cannot-share-the-tap.md)
+is that story, and `SecondAudioEngineTests` is what showed a second engine
+works.
+
+On release the clip goes through the same `HeldSpeech.writeHeldClip` and
+`transcribeHeld` the hold key uses, to the batch recogniser on 46558, with no
+vocabulary terms and a 30s budget for a whole held utterance. The outcome is
+one of four — copied, heard nothing, microphone unavailable, recogniser
+unreachable — reported in the menu bar with a sound, because dictation
+happens while the user is looking at another app. An empty transcript leaves
+the clipboard alone rather than replacing what was on it with nothing. Tests:
+`macos/RunnerTests/DictationControllerTests.swift`.
 
 ## Reversible transcript refinement
 
@@ -819,8 +947,11 @@ What comes back replaces the streamed words wholesale, and the doubt with
 them: the turn carries no `heardConfidence`, because the score belonged to
 the recogniser whose words were discarded, and the near-miss repair stands
 down for the same reason. Empty, unreachable, and late all collapse to the
-streamed sentence standing, doubt and all. Only the streaming path asks —
-the hold key's text already came from the batch recogniser — and the ~1.3s
+streamed sentence standing, doubt and all. Only a final the always-listening
+session settled asks — the hold key's text already came from the batch
+recogniser. `_submitHeldSpeech` refines without `reHearable` for either kind
+of hold, so the composer button's streamed words are neither batch-heard nor
+re-heard. The ~1.3s
 the second listen costs is paid only on sentences that were going to be
 wrong: measured on the same corpus, the streaming recogniser's heard CER is
 6.0% zh / 13.4% en against Breeze's 1.6% / 3.8%.
@@ -864,16 +995,16 @@ snapshot into the existing candidate JSON data without writing it to disk.
 
 Ranked by how quietly they break.
 
-1. **Touching the mute/unmute state cluster.** `outstandingUtterances`,
-   `unmuteGeneration`, `speakingReported`, `muteLiftedAt`, `utteranceHeardAt`,
-   `endpointFinalizeRequested`. They are one mechanism, not six variables. The
+1. **Touching the mute/unmute state cluster.** `SpeechTurn`'s `outstanding`,
+   `unmuteGeneration`, `speakingReported`, `muteLiftedAt`, `heardAt`,
+   `finalizeRequested`. They are one mechanism, not six variables. The
    symptom of getting it wrong is usually "the agent answers its own answer"
    or "the first word of my sentence becomes the whole question" — neither of
    which points at this code.
-2. **Removing the `- 1.5` margin or `muteLiftedAt` from `checkEndpoint`.**
+2. **Removing the `- 1.5` margin or `muteLiftedAt` from `SpeechTurn.shouldFinalize`.**
    Looks like a redundant guard. Is not.
 3. **Unmuting per sentence instead of per answer.** Reads as an obvious
-   simplification of `outstandingUtterances`.
+   simplification of `SpeechTurn.outstanding`.
 4. **Reordering `completedTurns` and `activeTurn` notifications** in
    `ConversationViewModel`. Doubles the last sentence of every spoken answer.
 5. **Reaching for adapter state inside the audio tap.** It runs on the
@@ -898,7 +1029,8 @@ The adapter is chatty on purpose. `Console.app`, or `log stream`, filtered on
 
 | Line | Means |
 |---|---|
-| `transcribing as zh-TW` | Which locale won out of `preferredLanguages` |
+| `transcribing as zh-TW` | Which locale `RecognitionLocale.resolve` chose: the app's choice, or the Mac's languages under it |
+| `the app asks to hear en-US` | What `useRecognitionLocale` was last handed, for the next session |
 | `vad floor 0.0021 peak 0.0480` | Calibration heartbeat, ~every 3s |
 | `… (utterance pending)` persisting | The endpointer is declining; the Dart settle is doing the work |
 | `endpointing after 0.87s of silence` | The fast path fired |

@@ -18,9 +18,11 @@ pipeline can be tested without a window, a microphone, or a model.
 | `lib/features/conversation/conversation_view_model.dart` | Presentation state, the three listenables, submit and stop |
 | `lib/features/conversation/token_batcher.dart` | Coalescing deltas to one rebuild per frame |
 | `lib/features/conversation/conversation_repository.dart` | One generation at a time, persistence around it, cancellation teardown |
-| `lib/features/conversation/conversation_storage_service.dart` | The storage interface and `ConversationSummary` |
-| `lib/features/conversation/drift_conversation_storage_service.dart` | The durable store: one table, SQLite through drift |
-| `lib/features/conversation/inference_service.dart` | The inference interface — two methods, no platform in sight |
+| `lib/features/conversation/conversation_storage_service.dart` | The storage interface, `ConversationSummary`, and `RunRecord` |
+| `lib/features/conversation/drift_conversation_storage_service.dart` | The durable store: turns, runs and the user's decisions about a conversation, SQLite through drift |
+| `lib/features/obsidian/obsidian_journal_writer.dart` | A decorator over the store that appends finished exchanges to the user's own notes |
+| `lib/features/conversation/conversation_search_tool.dart`, `place_search_tool.dart`, `calendar_tool.dart` | The three registered tools; `buildToolbox` in `lib/app/bootstrap.dart` registers them |
+| `lib/features/conversation/inference_service.dart` | The inference interface — `generate`, `cancel`, `releaseSession` and a `modelId`, no platform in sight |
 | `lib/features/conversation/pigeon_inference_service.dart` | The production implementation, over the desktop host boundary |
 | `lib/features/conversation/swappable_inference_service.dart` | The model changeable underneath a live conversation |
 | `lib/app/fake_runtime.dart` | `DeterministicFakeInferenceService` and the in-memory store |
@@ -33,13 +35,19 @@ Tests: `test/features/conversation/conversation_view_model_test.dart`,
 `test/support/conversation_storage_contract.dart`),
 `conversation_render_isolation_test.dart`, `conversation_scroll_test.dart`,
 `turn_motion_test.dart`, `conversation_aurora_test.dart`,
+`conversation_view_model_retry_test.dart`, `completed_turn_actions_test.dart`,
+`conversation_search_tool_test.dart`, `place_search_tool_test.dart`,
+`calendar_tool_test.dart`,
 `swappable_inference_service_test.dart`, `pigeon_inference_service_test.dart`,
+`test/features/obsidian/obsidian_journal_writer_test.dart`,
+`test/app/file_menu_test.dart`,
 and `packages/agent_core/test/conversation_contract_test.dart`.
 
 ## The pure-Dart contract
 
-`packages/agent_core` is the whole vocabulary and about two hundred lines. It
-must never import Flutter — see `AGENTS.md`.
+`packages/agent_core/lib/src/conversation/` is the whole vocabulary — the
+turn model above, plus the tool and between-turns types the later sections
+use. It must never import Flutter — see `AGENTS.md`.
 
 A `Turn` is a role, some text, and a status, and it is immutable: `append`
 and `copyWith` return new ones. It carries no identity and no timestamp,
@@ -50,8 +58,9 @@ belongs to (ADR-003 found the earlier shape unable to).
 
 `ConversationProjection` is the invariant, enforced in its factory:
 
-- everything in `completedTurns` is terminal — `completed`, `cancelled`, or
-  `failed`
+- everything in `completedTurns` is terminal — `completed`, `cancelled`,
+  `failed`, or `interrupted` (the process went away mid-answer; see
+  *Runs* below)
 - `activeTurn`, if there is one, is `streaming`
 
 So "an answer is being written" and "an answer has been written" cannot be
@@ -79,15 +88,18 @@ sequenceDiagram
     Repo->>Store: saveUserTurn
     Repo->>Inf: generate(request)
     Inf-->>Repo: GenerationStarted
+    Repo->>Store: beginRun — before any answer text exists
     Repo-->>VM: GenerationStarted → activeTurn = empty streaming turn
     loop tokens
         Inf-->>Repo: GenerationDelta
         Repo->>Repo: accumulate _assistantText
         Repo-->>VM: GenerationDelta → TokenBatcher.add
+        Repo->>Store: checkpointRun(whole answer so far)<br/>at most once per checkpointInterval (500ms)
     end
     Note over VM: batcher flushes once per 8.333ms:<br/>one combined delta, one rebuild
     Inf-->>Repo: GenerationCompleted
     Repo->>Store: saveTerminalAssistantTurn(accumulated, generation)
+    Repo->>Store: endRun — closed behind its turn
     Repo-->>VM: GenerationCompleted
     VM->>VM: flush batcher, move activeTurn into completedTurns
     Note over Repo: stream closes → onDone → canSubmit true
@@ -101,9 +113,9 @@ Three things in that picture are load-bearing:
 - **The repository accumulates the answer separately from the ViewModel.**
   `_GenerationOperation._assistantText` is what gets stored; the ViewModel's
   projection is what gets drawn. They receive the same deltas and are never
-  compared. The store therefore never sees a partial answer: one row is
-  written, once, at the terminal event. An answer interrupted by a crash is
-  simply not there.
+  compared. The turn row is written once, at the terminal event; what a
+  crash would otherwise lose is covered by the run row beside it, which is
+  overwritten with the answer so far as it streams (see *Runs* below).
 - **`await _restored` inside `submit`.** History lands before the first
   message, so the message joins the restored conversation instead of racing it
   into a freshly minted one.
@@ -159,9 +171,13 @@ it, because a disposed ViewModel has nothing left to draw into.
 
 ## Cancelling, which is where it gets interesting
 
-A generation can be stopped from three places — the stop button, Escape while
-streaming, and the voice loop yielding to a user who started talking — and it
-can be stopped at two very different moments.
+A generation can be stopped from four places — the stop button, Escape while
+streaming, the voice loop yielding to a user who started talking, and the
+**stop** on the strip under the resting orb, which `_stopEverything` in
+`conversation_view.dart` turns into `stopSpeaking` followed by `stop`, because
+the words can be finished long before the voice has read them (the strip is
+off by default; see [presence.md](presence.md)) — and it can be stopped at two
+very different moments.
 
 **Before the runtime has answered.** There is no `GenerationId` yet, so there
 is nothing to cancel by name. `ConversationViewModel._stop` cancels the stream
@@ -230,14 +246,38 @@ Only the newest exchange is retryable. Replacing an answer in the middle would
 leave every answer after it standing on a question that never got that reply,
 and nothing in this schema could represent that.
 
-## Storage: one table, no second copy of the truth
+On screen, `CompletedTurn` puts a row of actions under every turn: **copy**
+on all of them, **ask again** on the newest answer, **rewrite** on the newest
+question, and **read aloud** on assistant turns whenever a voice service
+exists. `ConversationList._retryable` decides which turn carries which, and
+gates the two retries on `canSubmitListenable` (passed in as
+`retryAvailable`), so neither is offered while an answer is still running.
+Rewriting edits the question in place rather than sending it back to the
+composer — a user watching their words appear down there has no reason to
+believe the one up here is going away — and Escape backs out of it. Read
+aloud calls `VoiceService.speak` directly rather than going through the
+voice controller, because enabling the controller would open the
+microphone; see [voice.md](voice.md) › *`speakableText`*.
 
-`TurnRows` is the only table. A conversation is whatever rows share a
-`conversationId`; its title is its first user row; its recency is its newest
-row. `listConversations` derives all of that in one query
-(`ORDER BY MAX(id) DESC` — insertion order, monotonic even when two turns land
-inside the same millisecond). There is no conversations table to fall out of
-step with the turns.
+## Storage: no second copy of the truth
+
+Three tables, and none of them is a list of conversations. A conversation is
+whatever `TurnRows` share a `conversationId`; its title is its first user
+row; its recency is its newest row. `ConversationMetaRows` holds only what
+the turns cannot derive — a title the user typed and when they pinned it —
+and a conversation nobody has renamed or pinned has no row there at all.
+`RunRows` is the record of generations in flight, below. `_summaries` derives
+the list in one query: the user's title if there is one and the first
+question otherwise, pinned first with the newest pin leading, then
+`MAX(turns.id) DESC` — insertion order, monotonic even when two turns land
+inside the same millisecond. The same query narrowed by `LIKE` is
+`searchConversations`: substring rather than full-text, because FTS
+tokenizes on non-alphanumerics and 「中天」 would not find 「台中天氣」. A
+blank title clears the rename rather than storing an empty one, so undoing a
+rename needs no copy of the original.
+
+The history sheet (`conversation_history_sheet.dart`) is where all of that is
+reached: open, new, search, rename, pin, delete, and export as Markdown.
 
 `role` and `status` are stored **by name**, so reordering either enum cannot
 silently rewrite history. An unrecognised status reads back as `failed`.
@@ -265,9 +305,50 @@ Both stores — durable and in-memory — are held to the same suite
 (`test/support/conversation_storage_contract.dart`), so the preview cannot
 drift away from the real thing.
 
+### Runs: what survives a crash
+
+A turn is written once, when it is over, which leaves a long answer only in
+memory until it finishes. A **run** is the record that survives:
+`_GenerationOperation._openRun` calls `beginRun` the moment
+`GenerationStarted` arrives, `_checkpoint` overwrites `partialText` with the
+whole answer so far at most once per `checkpointInterval` (500ms by default;
+the first delta always writes, so a crash on the first token still leaves a
+word), and `_persistTerminal` writes the turn and only then `endRun`. The
+delta is handed to the stream before the checkpoint is awaited, so the write
+is never what the next frame waits on.
+
+`ConversationRepository.recoverInterruptedRuns` is awaited in `main.dart`
+before `runApp`. Anything still open is the residue of a process that died
+mid-answer: its checkpointed text becomes an assistant turn with
+`TurnStatus.interrupted` (drawn as "Response interrupted"), a run with
+nothing checkpointed leaves no turn at all, and every run is closed either
+way so the same wreckage is not reconsidered on every launch.
+
+`RunRows` is keyed by its own autoincrement id, not by the generation id:
+generation ids restart with every new inference service, which means with
+every model change, and keyed by them the second run landed on top of the
+first and run recording died silently at the first swap.
+
+### Mirrored into the user's notes
+
+`ObsidianJournalWriter` wraps the store and appends finished exchanges to a
+day's page in a folder the user picked. `AppComposition` wraps whenever there
+is a window host, and the `obsidianJournal` notifier — off by default — is
+read at every write. It **delegates first and mirrors afterwards**, so a
+vault on a dead share costs the app nothing but a `lastWrite` status that
+Settings shows; and it mirrors only `completed`, non-empty answers, because a
+journal that cannot retract must not write what it would want to take back.
+The heading is the question as sent (`generation.request.prompt`), so asking
+again appends a second entry beside the first rather than replacing it —
+nothing already written to somebody else's vault is ever rewritten. Why the
+page is a day and not a conversation is in
+[decisions/a-journal-in-someone-elses-vault.md](../decisions/a-journal-in-someone-elses-vault.md);
+the folder grant is in [settings.md](settings.md) › *Where the notes go*.
+
 ## The runtime behind the interface
 
-`InferenceService` is two methods. Three things implement it:
+`InferenceService` is `generate`, `cancel` and `releaseSession`, plus the
+`modelId` every run is recorded under. Three things implement it:
 
 - `DeterministicFakeInferenceService` — three fixed chunks, ~1s end to end,
   no weights. What the tests and the preview run against.
@@ -280,12 +361,17 @@ share one `_readinessAttempt`, so a prompt arriving mid-warmup waits for the
 same load instead of starting a second one; a failed attempt is cleared, so
 the next prompt retries and reports the failure where the user can see it.
 
-**One thing that is easy to miss: the conversation's history is not sent to
-the model.** `PigeonInferenceService` passes `context: const <String>[]` and
-sets `sessionId` to the conversation's id. Continuity comes from the native
-side keeping one LiteRT-LM `Conversation` per session id, alive for as long as
-the model is loaded. The consequence is stated plainly in [model.md](model.md)
-under *What the model remembers*.
+**One thing that is easy to miss: the history travels with every question,
+but is only used when a conversation is built.** `submit` reads the completed
+turns *before* the new question joins them and sends them as
+`GenerationRequest.history`; `PigeonInferenceService` forwards them as the
+request's `history` and sets `sessionId` to the conversation's id. The native
+side keeps one LiteRT-LM `Conversation` per session id and seeds a new one
+from that history only when it has none to reuse — after a relaunch, a model
+swap, a `releaseSession`, or a rebuild — so a live conversation is never told
+everything twice. Which events rebuild it and how the history is trimmed to
+the window are described once, in [model.md](model.md) under *What the model
+remembers*.
 
 ## Tools: declared in Dart, routed in Dart
 
@@ -312,7 +398,7 @@ Three pieces, all in `agent_core/src/conversation/agent_tool.dart`:
 sequenceDiagram
     participant VM as ConversationViewModel
     participant Op as _PigeonGenerationOperation
-    participant Box as AgentToolbox
+    participant Toolbox as AgentToolbox
     participant Tool as ConversationSearchTool
     participant Host as Swift → LiteRT-LM
 
@@ -321,10 +407,10 @@ sequenceDiagram
     Host-->>Op: deltas
     Note over Host: the model emits a tool call —<br/>terminal for this host generation
     Host-->>Op: toolCall event (JSON)
-    Op->>Box: call(name, arguments)
-    Box->>Tool: call(arguments)
-    Tool-->>Box: {"matches": …}
-    Box-->>Op: AgentToolResult
+    Op->>Toolbox: call(name, arguments)
+    Toolbox->>Tool: call(arguments)
+    Tool-->>Toolbox: {"matches": …}
+    Toolbox-->>Op: AgentToolResult
     Op->>Host: startGeneration(continuation id,<br/>same session, toolResponsesJson)
     Host-->>Op: deltas, then completed
     Op-->>VM: one turn, which never saw any of this
@@ -446,6 +532,25 @@ nobody had asked for yet. It is a `ConstrainedBox` on `minHeight`, not a
 `SizedBox`, so a window too short for the empty state grows instead of
 overflowing.
 
+## Ways in from the File menu
+
+**File ▸ New Conversation (⌘N)** and **File ▸ Conversations… (⇧⌘O)** are
+AppKit menu items, installed by `AppDelegate.installFileMenu`, because the
+menu bar is AppKit's. Both actions already existed on the Dart side and had no
+way in but the history sheet. Pressing one sends
+`onNewConversationRequested` or `onConversationsRequested` over pigeon, and
+`app.dart` answers with `_startNewConversation` — an empty conversation under
+a fresh `GlobalKey`, the stored ones left where they are — or
+`_showConversations`, which opens the history sheet.
+`test/app/file_menu_test.dart` pins both. **File ▸ Close (⌘W)** puts the
+conversation away to the orb rather than closing anything; see
+[presence.md](presence.md).
+
+The menu items' target objects are held in `AppDelegate` properties for the
+app's life: an `NSMenuItem` does not retain its target, and a local one is
+deallocated with its shortcut still on screen doing nothing. The three titles
+are English string literals in `installFileMenu`, not localized strings.
+
 ## Traps
 
 Ranked by how quietly they break.
@@ -461,11 +566,14 @@ Ranked by how quietly they break.
 4. **Awaiting the terminal event instead of `done` before the next
    generation.** The native cancel round trip is still in flight, and the next
    message gets refused as busy.
-5. **Adding a conversations table.** The list is derived; a second copy of the
-   truth is a second thing to keep in step, and deletion already has one ghost
-   scenario without it.
-6. **Persisting deltas as they arrive.** The single terminal write is what
-   keeps sending cheap; per-delta writes put SQLite in the token path.
+5. **Adding a conversations table that repeats what the turns say.** The list
+   is derived; a second copy of the truth is a second thing to keep in step,
+   and deletion already has one ghost scenario without it.
+   `ConversationMetaRows` is not that table — it holds only the user's own
+   decisions, which no turn records.
+6. **Checkpointing on every delta, or awaiting the checkpoint before handing
+   the delta on.** The throttle and the order are what keep SQLite out of the
+   token path; a checkpoint per token is thousands of writes per answer.
 7. **Widening the storage isolate back to `createInBackground`** without
    checking that upstream issue. It crashes inside `sqlite3_bind_int64`, which
    points at nothing.

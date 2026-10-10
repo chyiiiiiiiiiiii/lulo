@@ -1,7 +1,9 @@
 # An ignored light stays ignored
 
-**State:** criteria fixed, nothing built. This file is written before the
-first line of Stage 2 code, on purpose.
+**State:** criteria fixed, then built. This file was written before the
+first line of Stage 2 code, on purpose; `PresenceNoticeCenter`
+(`apps/local_agent_macos/lib/features/presence/notice/`) implements it and
+landed in the same commit.
 [the-companion-that-watches.md](the-companion-that-watches.md) gave the
 stage one test — *does the user open it, or learn to ignore it?* — and
 this document turns that sentence into definitions, budgets and tripwires

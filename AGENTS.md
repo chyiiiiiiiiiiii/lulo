@@ -15,6 +15,9 @@ does not carry to the other: re-sending the profile inside every question
 cost 1.4s a turn in Chinese and nothing at all in English, and an
 English-only real-model slice sat green over it. When a change could touch
 cost, quality, or the recogniser, the Chinese case is the one that decides.
+The agent opens in English now (`docs/decisions/the-agent-opens-in-english.md`);
+that moved the default, not this rule — English has to be measured too, and
+Chinese is still the harder workload.
 
 ## Building
 

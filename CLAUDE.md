@@ -110,6 +110,20 @@ was still visible at 0.95, which on the desktop read as a faint circle wrapped
 around the orb, and the catcher used to take every click within half a side of
 the centre. See `docs/features/presence.md`.
 
+The wait before the first word is drawn rather than left blank. A question
+rises in (`TurnReveal`, 320ms, the answer 70ms behind it), 「思考中…」 carries
+a shimmer, and until the first word arrives `ConversationAurora` — ChunUI's
+Aurora.metal ported to `shaders/conversation_aurora.frag`, licence headers in
+the file and in `ThirdPartyNotices.txt` — rises behind the composer's glass.
+Holding the key raises it too, because that is the same wait begun earlier.
+The open microphone of a live conversation does **not**: it can stay open
+for an hour, and a light that is always on is a light nobody sees and a GPU
+that never rests. Its clock is frozen, not reset, while it is gone. A streaming caret was
+declined: the answer is a `SelectableText`, and any inline span becomes part
+of what is copied and found. The orb's own ChunUI details were declined with
+the evidence in `presence.md` — a rim light would land in the ring the
+silhouette test measures.
+
 The agent opens in **English**, and Chinese is a switch in Settings. Not a
 retreat from the Chinese work — that work is what made the asymmetry
 measurable. Rendered through the resident voice and read back by a
@@ -188,9 +202,16 @@ travel as opaque JSON from `AgentToolbox` (agent_core) through Pigeon into
 ends with a `toolCall` event; `PigeonInferenceService` runs the tool in
 Dart and continues the same session with `toolResponsesJson` — one turn
 upward, however many host generations the loop spends. Three rounds, then
-the turn fails rather than looping. The first tool is
+the turn fails rather than looping. The first tool was
 `search_conversations` (titles and dates, read-only, no permission layer
-needed); the clock stays told, not fetched. End-to-end against the real
+needed); `search_places` (Apple Maps local search, no location attached —
+the model names the city in the query) and `read_calendar` (read-only
+EventKit behind the system's own dialog, authorization travelling with the
+events so a denial never reaches the model as a free day) followed, because
+asked for quiet cafés the model invented three and promised to search Google
+Maps. `search_places` is the one path by which text derived from a
+conversation leaves the machine, and unlike every other outward-facing
+feature it has no switch. The clock stays told, not fetched. End-to-end against the real
 model: ask the time under the app's own instruction, the model calls,
 reads `02:53` back as 「凌晨兩點五三分」, 3.1 s warm
 (`ToolLoopIntegrationTests`). Read
@@ -284,7 +305,7 @@ after a restart, because nothing asked macOS to start it; `LaunchAtLogin`
 does now. It is deliberately absent from `AppSettings` — the registration
 belongs to macOS, survives reinstalls, and can be revoked in System Settings
 while the app is not running, so it is read back rather than remembered, in
-four states rather than two.
+five states rather than two (`HostLoginItemStatus`).
 
 A word it keeps *saying* wrongly can be taught too, and for the same reason
 the misheard list exists: the model at the far end is fixed, measured, and
@@ -365,17 +386,20 @@ skipped the check entirely for 「台中 weather」 and every other mixed-script
 rule this app is actually for; and matching walks graphemes, because indexing
 code units moved a combining accent onto the replacement.
 
-Speaking into the clipboard was built and taken back out, and
-`docs/decisions/dictation-cannot-share-the-tap.md` is the reason. A hold-to-
+Speaking into the clipboard was built, taken back out, and built again:
+⌃⇧Space held anywhere records through `DictationController`'s **own**
+`DictationAudioEngine`, sends the clip to the batch recogniser, and puts the
+words on the clipboard. `docs/decisions/dictation-cannot-share-the-tap.md` is
+why the first version was reverted. A hold-to-
 dictate key cannot carve a mode out of the conversation's microphone tap:
 that tap serves a live endpointer, a voice-activity detector and a
 half-duplex mute, and every guard added for dictation broke one of them —
 skipping the VAD froze `lastVoice` and made the endpointer fire *sooner*,
 submitting a truncated question mid-dictation, and letting dictation past
 the mute recorded the agent's own voice in the one mode with no echo
-canceller. The next attempt needs its own `AVAudioEngine`, and that is now
-measured rather than hoped: `SecondAudioEngineTests` passes in 2.4s with
-both taps receiving buffers, so the plan in that document is unblocked. It
+canceller. The second attempt has its own `AVAudioEngine`, and that was
+measured before it was built: `SecondAudioEngineTests` passes in 2.4s with
+both taps receiving buffers. It
 was twice written up as impossible — first as a TCC prompt nobody could
 click, then as a wedged virtual HAL driver the machine owner would have to
 uninstall — and both were an elimination argument handing the remainder to
@@ -389,7 +413,9 @@ first), `sweepHeldClips` deletes held-speech recordings after an hour, and
 "heard nothing".
 
 The two sidecars fail silently by design and no longer fail invisibly. Both
-live outside this repository, are started by hand, and take the voice and the
+live outside this repository (`~/dev/lulo-tts`, kept alive on the
+development machine by `com.lulo.tts` and `com.lulo.ears` LaunchAgents that
+no repository tracks), and take the voice and the
 batch recogniser down with them — until now the only symptom was an agent
 that heard, thought, wrote, and stayed quiet. `SidecarHealthProbe` opens a
 socket against 46557 and 46558 when Settings opens and says which is down.
