@@ -10,7 +10,7 @@
 
 ## Global Constraints
 
-- Work only in `/Users/you/dev/flutter_local_agent` on the user-approved `main` branch.
+- Work only in this repository on the user-approved `main` branch.
 - Do not modify the dirty external `~/dev/lulo-tts` repository.
 - Do not commit human or generated audio.
 - Do not log transcript or prompt content by default.
@@ -202,7 +202,7 @@ Run voice-eval `dart format --set-exit-if-changed .`, `dart analyze --fatal-info
 - [ ] **Step 6: Run focused and full verification**
 
 Run: `cd benchmarks/voice_eval && dart pub get && dart test && dart analyze --fatal-infos --fatal-warnings`
-Run: `cd /Users/you/dev/flutter_local_agent && dart run tool/verify.dart`
+Run: `dart run tool/verify.dart` (from the repository root)
 Expected: every subprocess exits `0`; real-model smoke tests may retain their documented environment-dependent skips.
 
 - [ ] **Step 7: Commit the completed integration**

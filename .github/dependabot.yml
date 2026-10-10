@@ -1,0 +1,15 @@
+# The workflow pins actions by commit and the sidecars pin exact versions,
+# so neither moves unless something moves it.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+  - package-ecosystem: pip
+    directories:
+      - /sidecars/qwen_transcript_refiner
+      - /sidecars/smart_turn_shadow
+      - /sidecars/tone_probe
+    schedule:
+      interval: monthly

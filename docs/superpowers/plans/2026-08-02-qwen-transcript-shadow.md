@@ -10,7 +10,7 @@
 
 ## Global Constraints
 
-- Work in `/Users/you/dev/flutter_local_agent` on the user-approved `main` branch.
+- Work in this repository on the user-approved `main` branch.
 - Shadow work never changes selected transcript, UI, conversation storage, inference prompt, endpointing, or TTS.
 - Never send conversation history, memories, the full profile, or previous transcripts to a proposal provider.
 - Default composition is disabled and performs no request, process launch, download, or file write.

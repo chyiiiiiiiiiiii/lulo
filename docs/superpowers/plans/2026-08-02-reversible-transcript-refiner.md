@@ -10,7 +10,7 @@
 
 ## Global Constraints
 
-- Work in `/Users/you/dev/flutter_local_agent` on the user-approved `main` branch.
+- Work in this repository on the user-approved `main` branch.
 - Never refine partial transcripts.
 - Never log raw, proposed, selected, replacement, or protected-token text.
 - Any timeout, exception, invalid proposal, or disposal submits exact raw text.

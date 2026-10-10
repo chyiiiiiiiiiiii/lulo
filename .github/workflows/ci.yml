@@ -16,8 +16,12 @@ jobs:
       CI: 'true'
       FLUTTER_SUPPRESS_ANALYTICS: 'true'
     steps:
-      - uses: actions/checkout@v4
-      - uses: subosito/flutter-action@v2
+      # Pinned by commit: a tag can be moved, a commit cannot.
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          # The gate never pushes; nothing after checkout needs the token.
+          persist-credentials: false
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
         with:
           channel: stable
           flutter-version: 3.44.1

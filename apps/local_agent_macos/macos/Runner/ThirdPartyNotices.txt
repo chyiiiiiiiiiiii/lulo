@@ -8,15 +8,15 @@ LiteRT-LM
 ---------
 
 Source:   https://github.com/google-ai-edge/LiteRT-LM
-Release:  v0.14.0
-Revision: 80f301ff9a3b02c2c1e7be2dd1a567752f7b51b6
+Release:  v0.16.0
+Revision: 924e79c91542761242244e4f1651851f822e4cbb
 License:  Apache License, Version 2.0
 
 Redistributed components:
 
   * libCLiteRTLM_mac.dylib, from the official macOS release artifact
     CLiteRTLM_mac.xcframework.zip
-    (SHA-256 450615483509aaa6d34b321fdc6862e41a224b674468ab10aff64ebe113d21b7)
+    (SHA-256 3ae6c876abd74614b1869bfc40cb4d0b892981363564740268b1f8ac5cf895a4)
   * The production Swift wrapper sources under swift/, carrying narrow local
     modifications that are documented in full in the project's
     native/vendor/litert_lm/PATCHES.md
@@ -240,3 +240,47 @@ Full Apache License, Version 2.0 text follows.
    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
    See the License for the specific language governing permissions and
    limitations under the License.
+
+
+ChunUI (Aurora shader)
+----------------------
+
+Source:   https://github.com/liseami/ChunUI
+License:  MIT License
+
+The conversation aurora (shaders/conversation_aurora.frag) is ported from
+ChunUI's Aurora.metal.
+
+Copyright (c) 2026 liseami (赵纯想)
+
+
+webgl-noise (simplex noise)
+---------------------------
+
+Source:   https://github.com/ashima/webgl-noise
+License:  MIT License
+
+The simplex noise inside the aurora shader is Ashima Arts' webgl-noise.
+
+Copyright (C) 2011 Ashima Arts
+
+
+The MIT License text, which applies to both of the above:
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to
+deal in the Software without restriction, including without limitation the
+rights to use, copy, modify, merge, publish, distribute, sublicense, and/or
+sell copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
+IN THE SOFTWARE.

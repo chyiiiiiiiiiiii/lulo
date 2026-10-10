@@ -22,14 +22,16 @@ the shipped configuration hear English" are two different questions.
 from __future__ import annotations
 
 import json
+import os
 import sys
 import time
 import wave
 from pathlib import Path
 
-REPO = Path("/Users/you/dev/flutter_local_agent")
+REPO = Path(__file__).resolve().parents[3]
 DEFAULT_CORPUS = REPO / "benchmarks/voice_eval/corpus/zh-TW-v1.json"
-sys.path.insert(0, "/Users/you/dev/lulo-tts")
+# `lang` lives in the voice sidecar, which is not part of this repository.
+sys.path.insert(0, os.environ.get("LULO_TTS_DIR", str(Path.home() / "dev/lulo-tts")))
 
 import mlx_whisper  # noqa: E402
 from lang import held_prompt, tidy_transcript  # noqa: E402

@@ -160,8 +160,7 @@ void main() {
         ObsidianSection(
           enabled: true,
           onEnabledChanged: (bool _) {},
-          folder: () async =>
-              '/Users/you/Documents/Obsidian Vault/08-ClaudeLog/lulo',
+          folder: () async => '/Users/you/Documents/Obsidian Vault/lulo',
           choose: () async => '',
           forget: () async {},
           lastWrite: ValueNotifier<DesktopVaultStatus?>(

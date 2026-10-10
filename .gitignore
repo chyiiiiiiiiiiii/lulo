@@ -9,3 +9,6 @@ build/
 .firecrawl/
 __pycache__/
 .venv/
+
+# Agent working notes, not part of the project.
+.superpowers/
