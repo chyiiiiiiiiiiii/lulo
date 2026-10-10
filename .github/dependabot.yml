@@ -1,15 +1,21 @@
 # The workflow pins actions by commit and the sidecars pin exact versions,
-# so neither moves unless something moves it.
+# so neither moves unless something moves it. Everything moves together, in
+# one pull request a month: one CI run to read instead of one per package.
+# Advisories do not wait for this; security updates still open on their own.
 version: 2
+multi-ecosystem-groups:
+  dependencies:
+    schedule:
+      interval: monthly
 updates:
   - package-ecosystem: github-actions
     directory: /
-    schedule:
-      interval: monthly
+    patterns: ["*"]
+    multi-ecosystem-group: dependencies
   - package-ecosystem: pip
     directories:
       - /sidecars/qwen_transcript_refiner
       - /sidecars/smart_turn_shadow
       - /sidecars/tone_probe
-    schedule:
-      interval: monthly
+    patterns: ["*"]
+    multi-ecosystem-group: dependencies
