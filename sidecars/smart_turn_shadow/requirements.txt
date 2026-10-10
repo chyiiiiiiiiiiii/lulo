@@ -1,5 +1,5 @@
 huggingface-hub==2.2.0
-librosa==0.11.0
+librosa==1.0.0
 numpy==2.2.6
 onnxruntime==1.22.1
 transformers==5.19.0
