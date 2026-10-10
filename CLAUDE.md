@@ -550,7 +550,12 @@ paragraph. `documentOf` is read at compose time, so a file left open that the
 next question has nothing to do with costs nothing — which is what makes
 leaving one open safe.
 
-Toolchain is pinned by CI: Flutter **3.44.1** stable, Dart SDK `^3.12.0`.
+Toolchain is pinned by CI: Flutter **3.47.1** stable, Dart SDK `^3.12.0`.
+The pin must move when the development machine's Flutter does: from
+2026-08-05 to 2026-10-10 CI never ran (the private repository's macOS
+minutes ran out), the machine moved to 3.47.1, and the first run on the
+public repository found 3.44.1's formatter and framework disagreeing with
+every gate that had passed locally since.
 
 ## Layout
 

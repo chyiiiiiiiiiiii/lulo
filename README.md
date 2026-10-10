@@ -50,7 +50,7 @@ your own Obsidian vault are all **off** until you turn them on.
 - **macOS 26** for voice — listening uses `SpeechAnalyzer`. Typing works
   without it.
 - macOS 14 for the screen look (ScreenCaptureKit).
-- Flutter **3.44.1** (Dart `^3.12.0`), which CI pins.
+- Flutter **3.47.1** (Dart `^3.12.0`), which CI pins.
 - About 3.7 GB of disk for the recommended model.
 
 ## Running it
