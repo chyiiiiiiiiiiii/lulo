@@ -1,4 +1,4 @@
-mlx-lm==0.31.3
+mlx-lm==0.32.0
 # Not imported here; mlx-lm pulls them in. Pinned because the resolver
 # otherwise picks releases with published advisories (osv-scanner, 2026-10-10).
 transformers==5.19.0
