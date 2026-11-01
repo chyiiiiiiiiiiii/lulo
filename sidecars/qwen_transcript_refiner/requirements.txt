@@ -1,8 +1,8 @@
-mlx-lm==0.31.3
+mlx-lm==0.32.2
 # Not imported here; mlx-lm pulls them in. Pinned because the resolver
 # otherwise picks releases with published advisories (osv-scanner, 2026-10-10).
-transformers==5.19.0
+transformers==5.21.1
 anyio==4.15.1
 idna==3.20
-httpx2==2.13.1
-httpcore2==2.13.1
+httpx2==2.16.0
+httpcore2==2.16.0
