@@ -1,10 +1,10 @@
-huggingface-hub==2.2.0
-librosa==0.11.0
-numpy==2.2.6
-onnxruntime==1.22.1
-transformers==5.19.0
+huggingface-hub==2.3.0
+librosa==1.0.0
+numpy==2.5.4
+onnxruntime==1.31.1
+transformers==5.21.1
 # Not imported here. Pinned because the resolver otherwise picks releases
 # with published advisories (osv-scanner, 2026-10-10).
 idna==3.20
-httpx2==2.13.1
-httpcore2==2.13.1
+httpx2==2.16.0
+httpcore2==2.16.0
